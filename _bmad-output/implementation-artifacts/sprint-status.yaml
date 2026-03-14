@@ -1,0 +1,173 @@
+# generated: 2026-03-13
+# last_updated: 2026-03-13
+# project: porquinho
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: {project-root}/_bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2026-03-13
+last_updated: 2026-03-14 # code-review completed
+project: porquinho
+project_key: NOKEY
+tracking_system: file-system
+story_location: "{project-root}/_bmad-output/implementation-artifacts"
+
+development_status:
+  # Epic 0: Project Foundation & Technical Setup
+  epic-0: in-progress
+  0-1-initialize-vue-frontend-project: done
+  0-2-initialize-spring-boot-backend-project: done
+  0-3-setup-postgresql-database-with-flyway: backlog
+  0-4-configure-tailwind-css-shadcn-vue-design-system: backlog
+  0-5-setup-redis-for-caching: backlog
+  0-6-configure-ci-cd-pipeline-docker-containers: backlog
+  0-7-implement-design-tokens-color-system: backlog
+  0-8-implement-typography-spacing-foundation: backlog
+  0-9-setup-accessibility-foundation-wcag-2-1-aa: backlog
+  epic-0-retrospective: optional
+
+  # Epic 1: User Authentication & Account Management
+  epic-1: backlog
+  1-1-user-registration-with-google-oauth: backlog
+  1-2-user-registration-with-email-password: backlog
+  1-3-user-login-with-any-configured-method: backlog
+  1-4-password-recovery-via-email: backlog
+  1-5-enable-two-factor-authentication-2fa: backlog
+  1-6-change-account-email-address: backlog
+  1-7-add-remove-authentication-methods: backlog
+  1-8-view-active-sessions-remote-logout: backlog
+  1-9-export-all-user-data-lgpd-compliance: backlog
+  1-10-request-permanent-account-deletion-lgpd-compliance: backlog
+  epic-1-retrospective: optional
+
+  # Epic 2: Subscription & Billing System
+  epic-2: backlog
+  2-1-automatically-activate-30-day-free-trial: backlog
+  2-2-subscribe-to-monthly-plan-after-trial: backlog
+  2-3-send-trial-expiration-reminders: backlog
+  2-4-self-service-subscription-cancellation: backlog
+  2-5-reactivate-cancelled-subscription: backlog
+  2-6-process-recurring-monthly-payments: backlog
+  2-7-handle-payment-failures-with-retry-notifications: backlog
+  epic-2-retrospective: optional
+
+  # Epic 3: Guided Onboarding Experience
+  epic-3: backlog
+  3-1-display-welcome-envelope-budget-concept-tutorial: backlog
+  3-2-add-bank-accounts-during-setup: backlog
+  3-3-add-credit-cards-during-setup: backlog
+  3-4-suggest-initial-spending-categories: backlog
+  3-5-customize-suggested-categories: backlog
+  3-6-guided-first-transaction-import: backlog
+  3-7-explain-dashboard-gps-3-layer-navigation: backlog
+  3-8-create-initial-emergency-fund-goal: backlog
+  epic-3-retrospective: optional
+
+  # Epic 4: Financial Accounts & Cards Management
+  epic-4: backlog
+  4-1-register-multiple-bank-accounts: backlog
+  4-2-register-multiple-credit-cards: backlog
+  4-3-edit-account-and-card-information: backlog
+  4-4-deactivate-or-remove-accounts-and-cards: backlog
+  4-5-record-internal-transfers-between-own-accounts: backlog
+  4-6-reconcile-account-balance-with-bank: backlog
+  4-7-view-account-balance-history-over-time: backlog
+  epic-4-retrospective: optional
+
+  # Epic 5: Transaction Import & AI Classification
+  epic-5: backlog
+  5-1-upload-ofx-files-from-5-brazilian-banks: backlog
+  5-2-upload-csv-files-from-5-brazilian-banks: backlog
+  5-3-auto-detect-file-format-and-bank: backlog
+  5-4-parse-transactions-with-robust-error-handling: backlog
+  5-5-detect-and-flag-duplicate-transactions: backlog
+  5-6-identify-pix-transactions-and-extract-details: backlog
+  5-7-detect-installment-purchases-and-split-across-months: backlog
+  5-8-auto-classify-transactions-using-ai: backlog
+  5-9-present-classified-transactions-for-user-review: backlog
+  5-10-review-and-adjust-ai-classifications: backlog
+  5-11-learn-from-user-corrections-to-improve-ai: backlog
+  5-12-manually-edit-any-transaction: backlog
+  5-13-manually-add-transactions-cash-expenses: backlog
+  epic-5-retrospective: optional
+
+  # Epic 6: Budget & Category System (Envelope Method)
+  epic-6: backlog
+  6-1-create-custom-spending-categories: backlog
+  6-2-organize-categories-in-hierarchical-groups: backlog
+  6-3-allocate-monthly-budget-per-category: backlog
+  6-4-display-real-time-available-balance-per-category: backlog
+  6-5-reallocate-money-between-categories: backlog
+  6-6-auto-deduct-from-category-when-transaction-classified: backlog
+  6-7-visual-indicators-for-low-negative-balance-categories: backlog
+  6-8-view-category-allocation-history: backlog
+  6-9-compare-planned-vs-actual-spending-by-category: backlog
+  epic-6-retrospective: optional
+
+  # Epic 7: Dashboard GPS - Complete Financial Overview
+  epic-7: backlog
+  7-1-dashboard-gps-container-vertical-scroll-navigation: backlog
+  7-2-financial-health-semaphore-sticky-top-component: backlog
+  7-3-layer-1-5-essential-metrics-overview-2s-performance: backlog
+  7-4-wealth-growth-chart-component-animated-curve: backlog
+  7-5-layer-2-tactical-view-with-category-breakdown: backlog
+  7-6-layer-3-complete-transaction-list-with-filters: backlog
+  7-7-optimize-dashboard-performance-with-redis-caching: backlog
+  epic-7-retrospective: optional
+
+  # Epic 8: Financial Goals Management
+  epic-8: backlog
+  8-1-create-multiple-financial-goals: backlog
+  8-2-allocate-monthly-resources-to-goals: backlog
+  8-3-visualize-goal-progress-with-charts: backlog
+  8-4-auto-project-goal-completion-date: backlog
+  8-5-adjust-allocation-between-goals: backlog
+  8-6-use-pre-configured-goal-templates: backlog
+  8-7-mark-goals-as-completed: backlog
+  8-8-view-goal-progress-history-over-time: backlog
+  epic-8-retrospective: optional
+
+  # Epic 9: Reports & Data Export
+  epic-9: backlog
+  9-1-export-transaction-reports-to-csv: backlog
+  9-2-export-budget-category-reports-to-csv: backlog
+  9-3-export-complete-account-data-lgpd-portability: backlog
+  epic-9-retrospective: optional
+
+  # Epic 10: Admin Operations & System Monitoring
+  epic-10: backlog
+  10-1-admin-dashboard-system-health-metrics: backlog
+  10-2-import-error-rate-by-bank: backlog
+  10-3-ai-classification-accuracy-by-bank: backlog
+  10-4-active-users-metrics: backlog
+  10-5-automated-alerts-for-critical-metrics: backlog
+  epic-10-retrospective: optional

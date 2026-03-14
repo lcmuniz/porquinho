@@ -1,0 +1,10 @@
+# OS
+.DS_Store
+Thumbs.db
+*.log
+
+# IDE / CLI config (personal, not project-specific)
+.claude/
+
+# Mise local overrides (global mise config goes in mise.toml, keep it tracked)
+.mise.local.toml
