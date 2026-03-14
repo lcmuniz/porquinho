@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-13
-last_updated: 2026-03-14 # code-review completed
+last_updated: 2026-03-14  # Updated by code-review workflow
 project: porquinho
 project_key: NOKEY
 tracking_system: file-system
@@ -46,9 +46,9 @@ development_status:
   epic-0: in-progress
   0-1-initialize-vue-frontend-project: done
   0-2-initialize-spring-boot-backend-project: done
-  0-3-setup-postgresql-database-with-flyway: backlog
-  0-4-configure-tailwind-css-shadcn-vue-design-system: backlog
-  0-5-setup-redis-for-caching: backlog
+  0-3-setup-postgresql-database-with-flyway: done
+  0-4-configure-tailwind-css-shadcn-vue-design-system: done
+  0-5-setup-redis-for-caching: done
   0-6-configure-ci-cd-pipeline-docker-containers: backlog
   0-7-implement-design-tokens-color-system: backlog
   0-8-implement-typography-spacing-foundation: backlog
