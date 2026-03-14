@@ -1,0 +1,18 @@
+# Copy this file to application-dev.yml and fill in real Supabase credentials
+# application-dev.yml is gitignored and should NEVER be committed
+#
+# IMPORTANT: Use the Supabase Session Pooler (not the direct connection).
+# Direct connection (db.[REF].supabase.co) is IPv6-only and may not work on IPv4 networks.
+# Session Pooler host and username format below:
+spring:
+  datasource:
+    url: jdbc:postgresql://aws-1-us-east-1.pooler.supabase.com:5432/postgres
+    username: postgres.[PROJECT-REF]
+    password: YOUR-SUPABASE-PASSWORD-HERE
+  jpa:
+    show-sql: true
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password:

@@ -5,12 +5,41 @@ spring:
     active: dev
   autoconfigure:
     exclude:
-      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
-      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+      # Security exclusions - will be removed when auth is configured (Story 1.1)
       - org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration
       - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
       - org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration
       - org.springframework.boot.actuate.autoconfigure.security.servlet.ManagementWebSecurityAutoConfiguration
+  datasource:
+    url: ${SUPABASE_DB_URL}
+    username: ${SUPABASE_DB_USERNAME}
+    password: ${SUPABASE_DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        default_schema: public
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+    validate-on-migrate: true
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2000ms
+  cache:
+    type: redis
 server:
   port: 8080
 management:
