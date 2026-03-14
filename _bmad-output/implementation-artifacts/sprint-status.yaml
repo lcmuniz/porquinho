@@ -52,7 +52,7 @@ development_status:
   0-6-configure-ci-cd-pipeline-docker-containers: done
   0-7-implement-design-tokens-color-system: done
   0-8-implement-typography-spacing-foundation: done
-  0-9-setup-accessibility-foundation-wcag-2-1-aa: backlog
+  0-9-setup-accessibility-foundation-wcag-2-1-aa: done
   epic-0-retrospective: optional
 
   # Epic 1: User Authentication & Account Management

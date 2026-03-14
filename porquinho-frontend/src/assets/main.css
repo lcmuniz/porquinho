@@ -206,4 +206,52 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Story 0-9: Focus indicators - WCAG 2.1 AA (AC #2) */
+  *:focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+
+  /* Story 0-9: Touch targets minimum 44x44px (AC #4) */
+  button,
+  [role="button"],
+  input,
+  select,
+  textarea {
+    min-height: 2.75rem; /* 44px */
+  }
+
+  button:not([data-icon]),
+  [role="button"]:not([data-icon]) {
+    min-width: 2.75rem; /* 44px */
+  }
+
+  /* Story 0-9: Skip link pattern (AC #5) */
+  .skip-link {
+    position: absolute;
+    top: -100%;
+    left: 0;
+    z-index: 100;
+    padding: 0.5rem 1rem;
+    background: var(--color-background);
+    color: var(--color-foreground);
+    border: 2px solid var(--color-ring);
+    border-radius: var(--radius-md);
+    font-weight: 500;
+    text-decoration: none;
+  }
+  .skip-link:focus {
+    top: 0;
+  }
+}
+
+/* Story 0-9: prefers-reduced-motion (AC NFR) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
