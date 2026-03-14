@@ -9,6 +9,7 @@ on:
     branches: [main]
     paths:
       - 'porquinho-frontend/**'
+  workflow_dispatch:
 
 defaults:
   run:
