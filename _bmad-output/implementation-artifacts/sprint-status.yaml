@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-13
-last_updated: 2026-03-14  # Updated by code-review workflow
+last_updated: 2026-03-14  # Updated by retrospective workflow
 project: porquinho
 project_key: NOKEY
 tracking_system: file-system
@@ -53,7 +53,7 @@ development_status:
   0-7-implement-design-tokens-color-system: done
   0-8-implement-typography-spacing-foundation: done
   0-9-setup-accessibility-foundation-wcag-2-1-aa: done
-  epic-0-retrospective: optional
+  epic-0-retrospective: done
 
   # Epic 1: User Authentication & Account Management
   epic-1: backlog
