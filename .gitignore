@@ -8,3 +8,9 @@ Thumbs.db
 
 # Mise local overrides (global mise config goes in mise.toml, keep it tracked)
 .mise.local.toml
+
+# Environment variables (secrets)
+.env
+
+# SSL certificates
+ssl/
