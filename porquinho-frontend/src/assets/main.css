@@ -26,11 +26,13 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  /* Chart colors - UX spec (Task 3) */
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -39,6 +41,33 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  /* Gray scale tokens (Task 1) */
+  --color-gray-50: var(--gray-50);
+  --color-gray-100: var(--gray-100);
+  --color-gray-200: var(--gray-200);
+  --color-gray-300: var(--gray-300);
+  --color-gray-400: var(--gray-400);
+  --color-gray-500: var(--gray-500);
+  --color-gray-700: var(--gray-700);
+  --color-gray-900: var(--gray-900);
+  /* State color tokens (Task 2) */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-subtle: var(--success-subtle);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-subtle: var(--warning-subtle);
+  --color-error: var(--error);
+  --color-error-foreground: var(--error-foreground);
+  --color-error-subtle: var(--error-subtle);
+  /* Purple scale tokens (Task 4) */
+  --color-purple-50: var(--purple-50);
+  --color-purple-100: var(--purple-100);
+  --color-purple-500: var(--purple-500);
+  --color-purple-700: var(--purple-700);
+  /* Semantic info token (Task 5) */
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
 }
 
 :root {
@@ -61,11 +90,40 @@
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.558 0.244 292.717); /* Purple 600: #9333EA */
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
+  /* Chart colors - UX spec (Task 3) */
+  --chart-1: oklch(0.558 0.244 292.717); /* Purple #9333EA - main wealth */
+  --chart-2: oklch(0.715 0.143 215.221); /* Cyan #06B6D4 - revenues */
+  --chart-3: oklch(0.795 0.160 84.429);  /* Amber #F59E0B - expenses */
+  --chart-4: oklch(0.696 0.170 162.480); /* Green #10B981 - goals */
+  --chart-5: oklch(0.656 0.241 354.308); /* Pink #EC4899 - secondary categories */
+  --chart-6: oklch(0.585 0.233 292.717); /* Violet #8B5CF6 - projections */
+  /* Gray scale (Task 1) */
+  --gray-50: oklch(0.985 0 0);
+  --gray-100: oklch(0.967 0.001 286.375);
+  --gray-200: oklch(0.920 0.004 286.32);
+  --gray-300: oklch(0.869 0.005 286.286);
+  --gray-400: oklch(0.707 0.010 286.067);
+  --gray-500: oklch(0.551 0.012 286.067);
+  --gray-700: oklch(0.373 0.010 286.067);
+  --gray-900: oklch(0.210 0.006 285.885);
+  /* State colors (Task 2) */
+  --success: oklch(0.627 0.176 149.579);       /* Green 600 #16A34A */
+  --success-foreground: oklch(0.985 0 0);
+  --success-subtle: oklch(0.962 0.044 156.743); /* Green 100 #DCFCE7 */
+  --warning: oklch(0.681 0.162 96.042);         /* Yellow 600 #CA8A04 */
+  --warning-foreground: oklch(0.985 0 0);
+  --warning-subtle: oklch(0.973 0.071 103.193); /* Yellow 100 #FEF9C3 */
+  --error: oklch(0.577 0.245 27.325);           /* Red 600 #DC2626 */
+  --error-foreground: oklch(0.985 0 0);
+  --error-subtle: oklch(0.936 0.032 17.717);    /* Red 100 #FEE2E2 */
+  /* Purple scale (Task 4) */
+  --purple-50: oklch(0.977 0.014 292.717);
+  --purple-100: oklch(0.946 0.033 292.717);
+  --purple-500: oklch(0.627 0.265 292.717);
+  --purple-700: oklch(0.496 0.232 292.717);
+  /* Semantic info token (Task 5) */
+  --info: oklch(0.627 0.265 292.717);           /* Purple 500 #A855F7 */
+  --info-foreground: oklch(0.985 0 0);
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.558 0.244 292.717); /* Purple 600: #9333EA */
@@ -95,11 +153,40 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.702 0.22 292.717); /* Purple 400 (matches dark primary) */
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
+  /* Chart colors dark mode (Task 3) */
+  --chart-1: oklch(0.702 0.22 292.717);  /* Purple lighter */
+  --chart-2: oklch(0.780 0.130 215.221); /* Cyan lighter */
+  --chart-3: oklch(0.850 0.140 84.429);  /* Amber lighter */
+  --chart-4: oklch(0.760 0.150 162.480); /* Green lighter */
+  --chart-5: oklch(0.730 0.210 354.308); /* Pink lighter */
+  --chart-6: oklch(0.680 0.200 292.717); /* Violet lighter */
+  /* Gray scale dark mode (Task 1) - inverted lightness */
+  --gray-50: oklch(0.210 0.006 285.885);
+  --gray-100: oklch(0.269 0 0);
+  --gray-200: oklch(0.320 0.005 286.286);
+  --gray-300: oklch(0.373 0.010 286.067);
+  --gray-400: oklch(0.551 0.012 286.067);
+  --gray-500: oklch(0.707 0.010 286.067);
+  --gray-700: oklch(0.869 0.005 286.286);
+  --gray-900: oklch(0.985 0 0);
+  /* State colors dark mode (Task 2) */
+  --success: oklch(0.723 0.191 149.579);       /* Green 500 - brighter for dark */
+  --success-foreground: oklch(0.145 0 0);
+  --success-subtle: oklch(0.210 0.040 156.743);
+  --warning: oklch(0.795 0.184 96.042);         /* Yellow 500 - brighter for dark */
+  --warning-foreground: oklch(0.145 0 0);
+  --warning-subtle: oklch(0.210 0.060 103.193);
+  --error: oklch(0.637 0.237 25.331);           /* Red 500 - brighter for dark */
+  --error-foreground: oklch(0.985 0 0);
+  --error-subtle: oklch(0.210 0.030 17.717);
+  /* Purple scale dark mode (Task 4) */
+  --purple-50: oklch(0.210 0.020 292.717);
+  --purple-100: oklch(0.269 0.040 292.717);
+  --purple-500: oklch(0.702 0.22 292.717);
+  --purple-700: oklch(0.627 0.265 292.717);
+  /* Semantic info token dark mode (Task 5) */
+  --info: oklch(0.702 0.22 292.717);            /* Purple 400 - brighter for dark */
+  --info-foreground: oklch(0.145 0 0);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.702 0.22 292.717); /* Purple 400 */
