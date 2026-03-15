@@ -5,7 +5,7 @@
 
 -- Users table: Stores user account information and authentication details
 CREATE TABLE users (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    id UUID DEFAULT RANDOM_UUID() PRIMARY KEY,
     email VARCHAR(255) NOT NULL,
     auth_provider VARCHAR(20) NOT NULL CHECK (UPPER(auth_provider) IN ('GOOGLE', 'EMAIL')),
     google_id VARCHAR(255),

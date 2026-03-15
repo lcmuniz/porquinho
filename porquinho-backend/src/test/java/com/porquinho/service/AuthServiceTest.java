@@ -57,13 +57,15 @@ class AuthServiceTest {
             .thenReturn(new AuditLog());
 
         // Act
-        User result = authService.registerOrGetUserFromGoogle(email, googleId, ipAddress);
+        AuthService.UserRegistrationResult result = authService.registerOrGetUserFromGoogle(email, googleId, ipAddress);
 
         // Assert
         assertThat(result).isNotNull();
-        assertThat(result.getEmail()).isEqualTo(email);
-        assertThat(result.getGoogleId()).isEqualTo(googleId);
-        assertThat(result.getAuthProvider()).isEqualTo(User.AuthProvider.GOOGLE);
+        assertThat(result.isNewUser()).isTrue();
+        assertThat(result.getUser()).isNotNull();
+        assertThat(result.getUser().getEmail()).isEqualTo(email);
+        assertThat(result.getUser().getGoogleId()).isEqualTo(googleId);
+        assertThat(result.getUser().getAuthProvider()).isEqualTo(User.AuthProvider.GOOGLE);
 
         verify(userRepository).findByGoogleIdAndDeletedAtIsNull(googleId);
         verify(userRepository).findByEmailAndDeletedAtIsNull(email);
@@ -84,11 +86,12 @@ class AuthServiceTest {
         when(userRepository.findByGoogleIdAndDeletedAtIsNull(googleId)).thenReturn(Optional.of(existingUser));
 
         // Act
-        User result = authService.registerOrGetUserFromGoogle(email, googleId, ipAddress);
+        AuthService.UserRegistrationResult result = authService.registerOrGetUserFromGoogle(email, googleId, ipAddress);
 
         // Assert
         assertThat(result).isNotNull();
-        assertThat(result).isEqualTo(existingUser);
+        assertThat(result.isNewUser()).isFalse();
+        assertThat(result.getUser()).isEqualTo(existingUser);
 
         verify(userRepository).findByGoogleIdAndDeletedAtIsNull(googleId);
         verify(userRepository, never()).findByEmailAndDeletedAtIsNull(anyString());
@@ -97,7 +100,7 @@ class AuthServiceTest {
     }
 
     @Test
-    void shouldReturnExistingUserWhenFoundByEmail() {
+    void shouldLinkGoogleAccountWhenUserExistsByEmail() {
         // Arrange
         String email = "existing@example.com";
         String googleId = "google789";
@@ -106,20 +109,27 @@ class AuthServiceTest {
         User existingUser = new User(email, User.AuthProvider.EMAIL, null);
         existingUser.setId(UUID.randomUUID());
 
+        User updatedUser = new User(email, User.AuthProvider.GOOGLE, googleId);
+        updatedUser.setId(existingUser.getId());
+
         when(userRepository.findByGoogleIdAndDeletedAtIsNull(googleId)).thenReturn(Optional.empty());
         when(userRepository.findByEmailAndDeletedAtIsNull(email)).thenReturn(Optional.of(existingUser));
+        when(userRepository.save(any(User.class))).thenReturn(updatedUser);
+        when(auditLogService.log(anyString(), any(UUID.class), anyString(), anyString()))
+            .thenReturn(new AuditLog());
 
         // Act
-        User result = authService.registerOrGetUserFromGoogle(email, googleId, ipAddress);
+        AuthService.UserRegistrationResult result = authService.registerOrGetUserFromGoogle(email, googleId, ipAddress);
 
         // Assert
         assertThat(result).isNotNull();
-        assertThat(result).isEqualTo(existingUser);
+        assertThat(result.isNewUser()).isFalse();
+        assertThat(result.getUser()).isNotNull();
 
         verify(userRepository).findByGoogleIdAndDeletedAtIsNull(googleId);
         verify(userRepository).findByEmailAndDeletedAtIsNull(email);
-        verify(userRepository, never()).save(any(User.class));
-        verify(auditLogService, never()).log(anyString(), any(UUID.class), anyString(), anyString());
+        verify(userRepository).save(any(User.class));
+        verify(auditLogService).log(eq("google_account_linked"), any(UUID.class), eq(ipAddress), anyString());
     }
 
     @Test

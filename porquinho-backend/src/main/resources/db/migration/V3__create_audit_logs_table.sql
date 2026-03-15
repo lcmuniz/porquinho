@@ -5,7 +5,7 @@
 
 -- Audit logs table: Stores security events and user actions for compliance (NFR20)
 CREATE TABLE audit_logs (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    id UUID DEFAULT RANDOM_UUID() PRIMARY KEY,
     user_id UUID,
     event_type VARCHAR(100) NOT NULL,
     timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

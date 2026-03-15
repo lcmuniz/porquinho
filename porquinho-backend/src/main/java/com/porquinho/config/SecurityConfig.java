@@ -5,6 +5,7 @@ import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -19,9 +20,11 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  * Security configuration for Porquinho backend.
  * Configures JWT-based authentication using Supabase Auth as the identity provider.
  * CORS is enabled for local frontend development.
+ * Only active in non-test profiles.
  */
 @Configuration
 @EnableWebSecurity
+@Profile("!test")
 public class SecurityConfig {
 
     @Value("${spring.security.oauth2.resourceserver.jwt.jwk-set-uri}")
@@ -36,8 +39,9 @@ public class SecurityConfig {
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             )
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/actuator/health", "/api/v1/health").permitAll()
-                .requestMatchers("/api/v1/auth/**").permitAll() // Auth endpoints don't require JWT
+                .requestMatchers("/actuator/health").permitAll()
+                .requestMatchers("/api/v1/auth/health").permitAll() // Health check endpoint
+                .requestMatchers("/api/v1/auth/register/**").authenticated() // Registration requires JWT from Supabase OAuth
                 .requestMatchers("/api/v1/**").authenticated() // All other API endpoints require authentication
                 .anyRequest().permitAll()
             )

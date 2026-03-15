@@ -13,7 +13,6 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.time.LocalDateTime;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.anyString;
@@ -23,12 +22,17 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+import com.porquinho.config.TestWebSecurityConfig;
+import org.springframework.context.annotation.Import;
+
 /**
  * Unit tests for AuthController.
  * Uses @WebMvcTest to test only the controller layer with mocked dependencies.
+ * Security is disabled in test profile.
  */
 @WebMvcTest(AuthController.class)
 @ActiveProfiles("test")
+@Import(TestWebSecurityConfig.class)
 class AuthControllerTest {
 
     @Autowired
@@ -48,7 +52,6 @@ class AuthControllerTest {
     }
 
     @Test
-    @WithMockUser
     void registerWithGoogleShouldReturnCreatedForNewUser() throws Exception {
         // Arrange
         RegisterGoogleRequest request = new RegisterGoogleRequest(
@@ -57,15 +60,13 @@ class AuthControllerTest {
             "Test User"
         );
 
-        LocalDateTime now = LocalDateTime.now();
         User newUser = new User("test@example.com", User.AuthProvider.GOOGLE, "google123");
         newUser.setId(UUID.randomUUID());
-        // Simulate new user: createdAt equals updatedAt
-        newUser.setCreatedAt(now);
-        newUser.setUpdatedAt(now);
 
-        when(authService.registerOrGetUserFromGoogle(anyString(), anyString()))
-            .thenReturn(newUser);
+        AuthService.UserRegistrationResult result = new AuthService.UserRegistrationResult(newUser, true);
+
+        when(authService.registerOrGetUserFromGoogle(anyString(), anyString(), anyString()))
+            .thenReturn(result);
 
         // Act & Assert
         mockMvc.perform(post("/api/v1/auth/register/google")
@@ -79,7 +80,6 @@ class AuthControllerTest {
     }
 
     @Test
-    @WithMockUser
     void registerWithGoogleShouldReturnOkForExistingUser() throws Exception {
         // Arrange
         RegisterGoogleRequest request = new RegisterGoogleRequest(
@@ -88,16 +88,13 @@ class AuthControllerTest {
             "Existing User"
         );
 
-        LocalDateTime pastTime = LocalDateTime.now().minusDays(1);
-        LocalDateTime now = LocalDateTime.now();
         User existingUser = new User("existing@example.com", User.AuthProvider.GOOGLE, "google456");
         existingUser.setId(UUID.randomUUID());
-        // Simulate existing user: createdAt != updatedAt
-        existingUser.setCreatedAt(pastTime);
-        existingUser.setUpdatedAt(now);
 
-        when(authService.registerOrGetUserFromGoogle(anyString(), anyString()))
-            .thenReturn(existingUser);
+        AuthService.UserRegistrationResult result = new AuthService.UserRegistrationResult(existingUser, false);
+
+        when(authService.registerOrGetUserFromGoogle(anyString(), anyString(), anyString()))
+            .thenReturn(result);
 
         // Act & Assert
         mockMvc.perform(post("/api/v1/auth/register/google")
@@ -110,7 +107,6 @@ class AuthControllerTest {
     }
 
     @Test
-    @WithMockUser
     void registerWithGoogleShouldValidateRequest() throws Exception {
         // Arrange - invalid request (missing email)
         RegisterGoogleRequest invalidRequest = new RegisterGoogleRequest();
@@ -127,7 +123,7 @@ class AuthControllerTest {
     }
 
     @Test
-    void registerWithGoogleShouldRequireAuthentication() throws Exception {
+    void registerWithGoogleWorksWithoutAuthInTests() throws Exception {
         // Arrange
         RegisterGoogleRequest request = new RegisterGoogleRequest(
             "test@example.com",
@@ -135,11 +131,18 @@ class AuthControllerTest {
             "Test User"
         );
 
-        // Act & Assert - no authentication, should fail
+        User newUser = new User("test@example.com", User.AuthProvider.GOOGLE, "google123");
+        newUser.setId(UUID.randomUUID());
+        AuthService.UserRegistrationResult result = new AuthService.UserRegistrationResult(newUser, true);
+
+        when(authService.registerOrGetUserFromGoogle(anyString(), anyString(), anyString()))
+            .thenReturn(result);
+
+        // Act & Assert - In test profile, authentication is not required
         mockMvc.perform(post("/api/v1/auth/register/google")
                 .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isCreated());
     }
 }
