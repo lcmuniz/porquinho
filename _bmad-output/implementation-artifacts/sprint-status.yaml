@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-13
-last_updated: 2026-03-14  # Updated by retrospective workflow
+last_updated: 2026-03-15  # Story 1-1 code review completed, all issues fixed
 project: porquinho
 project_key: NOKEY
 tracking_system: file-system
@@ -56,8 +56,8 @@ development_status:
   epic-0-retrospective: done
 
   # Epic 1: User Authentication & Account Management
-  epic-1: backlog
-  1-1-user-registration-with-google-oauth: backlog
+  epic-1: in-progress
+  1-1-user-registration-with-google-oauth: done
   1-2-user-registration-with-email-password: backlog
   1-3-user-login-with-any-configured-method: backlog
   1-4-password-recovery-via-email: backlog

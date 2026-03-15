@@ -29,12 +29,36 @@ const router = createRouter({
       component: () => import('../views/ForgotPasswordView.vue'),
       meta: { requiresAuth: false },
     },
+    {
+      path: '/auth/callback',
+      name: 'auth-callback',
+      component: () => import('../views/AuthCallbackView.vue'),
+      meta: { requiresAuth: false },
+    },
+    {
+      path: '/terms',
+      name: 'terms',
+      component: () => import('../views/TermsView.vue'),
+      meta: { requiresAuth: false },
+    },
+    {
+      path: '/privacy',
+      name: 'privacy',
+      component: () => import('../views/PrivacyView.vue'),
+      meta: { requiresAuth: false },
+    },
 
     // Rotas protegidas (requerem autenticacao)
     {
       path: '/dashboard',
       name: 'dashboard',
       component: () => import('../views/DashboardView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/onboarding',
+      name: 'onboarding',
+      component: () => import('../views/OnboardingView.vue'),
       meta: { requiresAuth: true },
     },
 
