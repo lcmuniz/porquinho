@@ -11,10 +11,109 @@
           </CardDescription>
         </CardHeader>
         <CardContent class="space-y-4">
+          <!-- Email/Password Form -->
+          <form @submit.prevent="handleEmailSubmit" class="space-y-4">
+            <div class="space-y-2">
+              <label for="name" class="text-sm font-medium text-gray-900">
+                Nome completo
+              </label>
+              <Input
+                id="name"
+                v-model="name"
+                type="text"
+                required
+                placeholder="Seu nome"
+                aria-label="Nome completo"
+                :disabled="isLoading"
+                class="min-h-[44px]"
+              />
+            </div>
+
+            <div class="space-y-2">
+              <label for="email" class="text-sm font-medium text-gray-900">
+                Email
+              </label>
+              <Input
+                id="email"
+                v-model="email"
+                type="email"
+                required
+                placeholder="seu@email.com"
+                aria-label="Endereço de email"
+                :disabled="isLoading"
+                class="min-h-[44px]"
+              />
+            </div>
+
+            <div class="space-y-2">
+              <label for="password" class="text-sm font-medium text-gray-900">
+                Senha
+              </label>
+              <Input
+                id="password"
+                v-model="password"
+                type="password"
+                required
+                minlength="8"
+                placeholder="Crie uma senha forte"
+                aria-label="Senha"
+                :disabled="isLoading"
+                class="min-h-[44px]"
+              />
+              <PasswordStrengthIndicator v-if="password.length > 0" :password="password" />
+            </div>
+
+            <div class="space-y-2">
+              <label for="confirmPassword" class="text-sm font-medium text-gray-900">
+                Confirmar senha
+              </label>
+              <Input
+                id="confirmPassword"
+                v-model="confirmPassword"
+                type="password"
+                required
+                placeholder="Digite a senha novamente"
+                aria-label="Confirmar senha"
+                :disabled="isLoading"
+                class="min-h-[44px]"
+                :aria-invalid="confirmPassword.length > 0 && !passwordsMatch"
+              />
+              <p
+                v-if="confirmPassword.length > 0 && !passwordsMatch"
+                class="text-sm text-red-600"
+                role="alert"
+              >
+                As senhas não coincidem
+              </p>
+            </div>
+
+            <Button
+              type="submit"
+              :disabled="isLoading || !isFormValid"
+              class="w-full min-h-[44px] bg-purple-600 hover:bg-purple-700 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="Cadastrar com email"
+            >
+              <span v-if="isLoading">Criando conta...</span>
+              <span v-else>Cadastrar com Email</span>
+            </Button>
+          </form>
+
+          <!-- Divider -->
+          <div class="relative my-6">
+            <div class="absolute inset-0 flex items-center">
+              <div class="w-full border-t border-gray-200"></div>
+            </div>
+            <div class="relative flex justify-center text-sm">
+              <span class="px-2 bg-white text-gray-500">OU</span>
+            </div>
+          </div>
+
+          <!-- Google OAuth Button -->
           <Button
             @click="handleGoogleSignUp"
             :disabled="isLoading"
-            class="w-full min-h-[44px] bg-purple-600 hover:bg-purple-700 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600"
+            variant="outline"
+            class="w-full min-h-[44px] border-gray-300 hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600"
             aria-label="Cadastrar com Google"
           >
             <svg
@@ -73,14 +172,82 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import PasswordStrengthIndicator from '@/components/PasswordStrengthIndicator.vue'
 import { useAuth } from '@/composables/useAuth'
 
-const { signUpWithGoogle } = useAuth()
+const router = useRouter()
+
+const { signUpWithGoogle, signUpWithEmail } = useAuth()
 const isLoading = ref(false)
 const errorMessage = ref('')
+
+// Email/Password form fields
+const email = ref('')
+const password = ref('')
+const confirmPassword = ref('')
+const name = ref('')
+
+// Password validation
+const isPasswordValid = computed(() => {
+  if (password.value.length < 8) return false
+  if (!/[A-Z]/.test(password.value)) return false
+  if (!/[a-z]/.test(password.value)) return false
+  if (!/[0-9]/.test(password.value)) return false
+  return true
+})
+
+const passwordsMatch = computed(() => {
+  return password.value === confirmPassword.value && confirmPassword.value.length > 0
+})
+
+const isFormValid = computed(() => {
+  return (
+    email.value.length > 0 &&
+    isPasswordValid.value &&
+    passwordsMatch.value &&
+    name.value.length > 0
+  )
+})
+
+const handleEmailSubmit = async () => {
+  if (!isFormValid.value) {
+    errorMessage.value = 'Por favor, preencha todos os campos corretamente.'
+    return
+  }
+
+  isLoading.value = true
+  errorMessage.value = ''
+
+  try {
+    const result = await signUpWithEmail(email.value, password.value, name.value)
+
+    // Registration successful!
+    if (result.user) {
+      // Redirect to onboarding page (AC requirement)
+      router.push('/onboarding')
+    }
+  } catch (error: any) {
+    console.error('Erro ao cadastrar com email:', error)
+
+    // Handle specific error messages
+    if (error.message?.includes('Email already registered') ||
+        error.message?.includes('already registered') ||
+        error.message?.includes('User already registered')) {
+      errorMessage.value = 'Este email já está cadastrado.'
+    } else if (error.message?.includes('weak password') || error.message?.includes('Password')) {
+      errorMessage.value = 'Senha não atende aos requisitos mínimos.'
+    } else {
+      errorMessage.value = 'Erro ao criar conta. Por favor, tente novamente.'
+    }
+  } finally {
+    isLoading.value = false
+  }
+}
 
 const handleGoogleSignUp = async () => {
   isLoading.value = true

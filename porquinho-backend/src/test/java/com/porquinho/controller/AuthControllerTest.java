@@ -2,7 +2,9 @@ package com.porquinho.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.porquinho.dto.RegisterGoogleRequest;
+import com.porquinho.dto.RegisterEmailRequest;
 import com.porquinho.entity.User;
+import com.porquinho.exception.ConflictException;
 import com.porquinho.service.AuthService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,6 +18,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -144,5 +147,77 @@ class AuthControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated());
+    }
+
+    @Test
+    void shouldRegisterUserWithEmail() throws Exception {
+        // Arrange
+        RegisterEmailRequest request = new RegisterEmailRequest(
+            "test@example.com",
+            "Test User"
+        );
+
+        User newUser = new User("test@example.com", User.AuthProvider.EMAIL, null);
+        newUser.setId(UUID.randomUUID());
+
+        AuthService.UserRegistrationResult result = new AuthService.UserRegistrationResult(newUser, true);
+
+        when(authService.registerOrGetUserFromEmail(anyString(), any(RegisterEmailRequest.class), anyString()))
+            .thenReturn(result);
+
+        // Act & Assert
+        mockMvc.perform(post("/api/v1/auth/register/email")
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.email").value("test@example.com"))
+                .andExpect(jsonPath("$.authProvider").value("EMAIL"))
+                .andExpect(jsonPath("$.id").exists());
+    }
+
+    @Test
+    void shouldReturnConflictWhenEmailExists() throws Exception {
+        // Arrange
+        RegisterEmailRequest request = new RegisterEmailRequest(
+            "existing@example.com",
+            "Existing User"
+        );
+
+        when(authService.registerOrGetUserFromEmail(anyString(), any(RegisterEmailRequest.class), anyString()))
+            .thenThrow(new ConflictException("Email already registered"));
+
+        // Act & Assert
+        mockMvc.perform(post("/api/v1/auth/register/email")
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void shouldLinkEmailPasswordToGoogleUser() throws Exception {
+        // Arrange
+        RegisterEmailRequest request = new RegisterEmailRequest(
+            "google@example.com",
+            "Google User"
+        );
+
+        User existingUser = new User("google@example.com", User.AuthProvider.EMAIL, "google123");
+        existingUser.setId(UUID.randomUUID());
+
+        AuthService.UserRegistrationResult result = new AuthService.UserRegistrationResult(existingUser, false);
+
+        when(authService.registerOrGetUserFromEmail(anyString(), any(RegisterEmailRequest.class), anyString()))
+            .thenReturn(result);
+
+        // Act & Assert
+        mockMvc.perform(post("/api/v1/auth/register/email")
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value("google@example.com"))
+                .andExpect(jsonPath("$.authProvider").value("EMAIL"));
     }
 }

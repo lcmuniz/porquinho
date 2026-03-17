@@ -1,11 +1,14 @@
 package com.porquinho.service;
 
+import com.porquinho.dto.RegisterEmailRequest;
 import com.porquinho.entity.User;
+import com.porquinho.exception.ConflictException;
 import com.porquinho.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Service for authentication and user registration operations.
@@ -91,6 +94,62 @@ public class AuthService {
         // Log audit event for user registration (NFR20)
         auditLogService.log("user_registration", savedUser.getId(), ipAddress,
             String.format("{\"provider\":\"google\",\"email\":\"%s\"}", email));
+
+        return new UserRegistrationResult(savedUser, true);
+    }
+
+    /**
+     * Register or retrieve user from email/password registration.
+     * If user already exists with EMAIL provider, throws ConflictException.
+     * If user exists with GOOGLE provider, links email/password method.
+     * Otherwise, creates new user with Email provider and logs audit event.
+     *
+     * NOTE (2026-03-17): This method is implemented but currently NOT CALLED.
+     * Following simplified architecture (ARQUITETURA-SIMPLIFICADA.md), the frontend
+     * uses Supabase-only approach with no backend user sync during registration.
+     * This method remains available for future use or alternative scenarios.
+     *
+     * @param userId User ID from Supabase JWT
+     * @param request Registration request with email and name
+     * @param ipAddress Client IP address for audit logging
+     * @return UserRegistrationResult with user entity and isNewUser flag
+     * @throws ConflictException if user already exists with EMAIL provider
+     */
+    @Transactional
+    public UserRegistrationResult registerOrGetUserFromEmail(String userId, RegisterEmailRequest request, String ipAddress) {
+        String email = request.getEmail();
+
+        // Check if user exists by email
+        Optional<User> existingByEmail = userRepository.findByEmailAndDeletedAtIsNull(email);
+
+        if (existingByEmail.isPresent()) {
+            User existingUser = existingByEmail.get();
+
+            // If user already has EMAIL provider, throw conflict
+            if (existingUser.getAuthProvider() == User.AuthProvider.EMAIL) {
+                throw new ConflictException("Email already registered");
+            }
+
+            // User exists with GOOGLE provider - link email/password method
+            existingUser.setAuthProvider(User.AuthProvider.EMAIL);
+            User updatedUser = userRepository.save(existingUser);
+
+            // Log account linking event
+            auditLogService.log("auth_method_linked", updatedUser.getId(), ipAddress,
+                String.format("{\"email\":\"%s\",\"previous_provider\":\"GOOGLE\"}", email));
+
+            return new UserRegistrationResult(updatedUser, false);
+        }
+
+        // Create new user with LGPD consent timestamp (NFR25)
+        User newUser = new User(email, User.AuthProvider.EMAIL, null);
+        newUser.setId(UUID.fromString(userId)); // Use Supabase user ID
+        newUser.setLgpdConsentAt(java.time.LocalDateTime.now());
+        User savedUser = userRepository.save(newUser);
+
+        // Log audit event for user registration (NFR20)
+        auditLogService.log("user_registration", savedUser.getId(), ipAddress,
+            String.format("{\"provider\":\"email\",\"email\":\"%s\"}", email));
 
         return new UserRegistrationResult(savedUser, true);
     }

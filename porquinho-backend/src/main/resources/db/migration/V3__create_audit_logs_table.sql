@@ -1,11 +1,11 @@
 -- V3__create_audit_logs_table.sql
 -- Create audit_logs table for security and compliance logging
 -- Database: PostgreSQL 16+ via Supabase
--- Story: 1-1-user-registration-with-google-oauth
+-- Stories: 1-1 (Google OAuth), 1-2 (Email/Password)
 
 -- Audit logs table: Stores security events and user actions for compliance (NFR20)
 CREATE TABLE audit_logs (
-    id UUID DEFAULT RANDOM_UUID() PRIMARY KEY,
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     user_id UUID,
     event_type VARCHAR(100) NOT NULL,
     timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

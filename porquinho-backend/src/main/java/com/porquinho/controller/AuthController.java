@@ -1,6 +1,7 @@
 package com.porquinho.controller;
 
 import com.porquinho.dto.RegisterGoogleRequest;
+import com.porquinho.dto.RegisterEmailRequest;
 import com.porquinho.dto.UserResponse;
 import com.porquinho.entity.User;
 import com.porquinho.service.AuthService;
@@ -13,7 +14,7 @@ import org.springframework.web.bind.annotation.*;
 
 /**
  * REST controller for authentication operations.
- * Handles user registration and login via Google OAuth.
+ * Handles user registration and login via Google OAuth and email/password.
  */
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -52,6 +53,45 @@ public class AuthController {
         UserResponse response = UserResponse.fromEntity(result.getUser());
 
         // Return 201 Created for new users, 200 OK for existing users
+        HttpStatus status = result.isNewUser() ? HttpStatus.CREATED : HttpStatus.OK;
+
+        return ResponseEntity.status(status).body(response);
+    }
+
+    /**
+     * Register user with email/password.
+     * This endpoint is called by the frontend after Supabase completes email/password registration.
+     * The JWT from Supabase is validated by Spring Security, and user_id is extracted from the "sub" claim.
+     * Supabase handles password hashing with bcrypt (NFR13).
+     *
+     * NOTE (2026-03-17): This endpoint is implemented but currently NOT CALLED by frontend.
+     * Following simplified architecture decision (ARQUITETURA-SIMPLIFICADA.md), the frontend
+     * registers users directly with Supabase Auth and stores all data in auth.users table
+     * with user_metadata (no backend sync). This endpoint remains available for future use
+     * or alternative architecture scenarios.
+     *
+     * @param userId User ID extracted from JWT sub claim by JwtAuthenticationConverter
+     * @param request Request containing email and name
+     * @param httpRequest HTTP request to extract client IP address
+     * @return UserResponse with user data
+     */
+    @PostMapping("/register/email")
+    public ResponseEntity<UserResponse> registerWithEmail(
+        @AuthenticationPrincipal String userId,
+        @Valid @RequestBody RegisterEmailRequest request,
+        HttpServletRequest httpRequest
+    ) {
+        // Extract client IP address for audit logging
+        String ipAddress = getClientIpAddress(httpRequest);
+
+        // Register or retrieve user
+        AuthService.UserRegistrationResult result = authService.registerOrGetUserFromEmail(
+            userId, request, ipAddress);
+
+        // Convert to response DTO
+        UserResponse response = UserResponse.fromEntity(result.getUser());
+
+        // Return 201 Created for new users, 200 OK for existing users (account linking)
         HttpStatus status = result.isNewUser() ? HttpStatus.CREATED : HttpStatus.OK;
 
         return ResponseEntity.status(status).body(response);
