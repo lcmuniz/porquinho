@@ -233,9 +233,21 @@ onMounted(async () => {
         'Link de verificação inválido ou expirado. Por favor, registre-se novamente.'
     }
   } else {
-    // Sem tokens na URL - usuário veio do redirect após registro
-    console.log('No tokens in URL - showing pending state')
-    verificationStatus.value = 'pending'
+    // Sem tokens na URL - verificar se usuário já tem sessão ativa
+    console.log('No tokens in URL - checking if already verified')
+
+    // Se usuário já está com sessão e email confirmado, mostrar sucesso
+    const { data: sessionData } = await supabase.auth.getSession()
+
+    if (sessionData.session?.user?.email_confirmed_at) {
+      console.log('User already has verified session')
+      verificationStatus.value = 'success'
+      userEmail.value = sessionData.session.user.email || ''
+    } else {
+      // Usuário veio do redirect após registro (ainda não verificou)
+      console.log('User needs to verify email - showing pending state')
+      verificationStatus.value = 'pending'
+    }
   }
 })
 </script>
