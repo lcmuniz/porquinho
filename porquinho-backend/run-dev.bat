@@ -1,23 +1,31 @@
 @echo off
 REM Script para rodar o backend em desenvolvimento no Windows
+REM Le variaveis do arquivo .env e inicia o Spring Boot
 
 echo.
-echo [BACKEND] Carregando variaveis de .env e iniciando Spring Boot...
+echo [BACKEND] Iniciando Spring Boot (perfil: dev)...
 echo.
 
-REM Definir variaveis manualmente (conteudo do .env)
-set SUPABASE_DB_URL=jdbc:postgresql://aws-1-us-east-1.pooler.supabase.com:5432/postgres
-set SUPABASE_DB_USERNAME=postgres.vhkjyefwpwtlcyuznqgq
-set SUPABASE_DB_PASSWORD=Lc@280475
-set SUPABASE_JWT_SECRET=aBAyKZ+87900WIQ9sB+WlZwsbzxCuX2BcPmFEMmLVZWcbpnB3LqSKnqWlXyQQndjpx5yxQQQKiVJv2OnsEzaGA==
-set SUPABASE_JWT_ISSUER_URI=https://vhkjyefwpwtlcyuznqgq.supabase.co/auth/v1
-set REDIS_HOST=localhost
-set REDIS_PORT=6379
-set REDIS_PASSWORD=
+REM Verificar se .env existe
+if not exist ".env" (
+    echo [ERRO] Arquivo .env nao encontrado em %CD%
+    echo.
+    exit /b 1
+)
 
-echo [ENV] Variaveis de ambiente definidas!
+echo [ENV] Lendo variaveis de .env
 echo.
-echo Iniciando Spring Boot...
+
+REM Ler arquivo .env linha por linha (pular linhas vazias e comentarios)
+for /f "usebackq eol=# tokens=1,* delims==" %%a in (".env") do (
+    if not "%%b"=="" (
+        set "%%a=%%b"
+        echo [ENV] Carregado: %%a
+    )
+)
+
+echo.
+echo [INFO] Variaveis de ambiente carregadas do .env
 echo.
 
 REM Iniciar Maven com Spring Boot
