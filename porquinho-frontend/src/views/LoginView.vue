@@ -60,8 +60,23 @@ async function handleEmailLogin() {
     try {
       await authService.logLogin(email.value)
     } catch (backendError: any) {
-      // If backend fails but Supabase succeeded, continue anyway (audit is not critical)
-      console.warn('Backend audit log failed:', backendError)
+      // If user doesn't exist in backend (404), create them now (lazy sync)
+      if (backendError.response?.status === 404) {
+        try {
+          console.log('User not found in backend, creating record...')
+          await authService.registerWithEmail({
+            email: email.value,
+            name: user.user_metadata?.name || email.value,
+          })
+          // Retry logging the login
+          await authService.logLogin(email.value)
+        } catch (syncError: any) {
+          console.warn('Failed to sync user to backend:', syncError)
+        }
+      } else {
+        // Other backend errors are non-critical
+        console.warn('Backend audit log failed:', backendError)
+      }
     }
 
     // Step 4: Update auth store
