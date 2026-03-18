@@ -61,12 +61,11 @@ development_status:
   1-2-user-registration-with-email-password: done
   1-3-user-login-with-any-configured-method: done
   1-4-password-recovery-via-email: done
-  1-5-enable-two-factor-authentication-2fa: backlog
-  1-6-change-account-email-address: backlog
-  1-7-add-remove-authentication-methods: backlog
-  1-8-view-active-sessions-remote-logout: backlog
-  1-9-export-all-user-data-lgpd-compliance: backlog
-  1-10-request-permanent-account-deletion-lgpd-compliance: backlog
+  1-5-change-account-email-address: backlog
+  1-6-add-remove-authentication-methods: backlog
+  1-7-view-active-sessions-remote-logout: backlog
+  1-8-export-all-user-data-lgpd-compliance: backlog
+  1-9-request-permanent-account-deletion-lgpd-compliance: backlog
   epic-1-retrospective: optional
 
   # Epic 2: Subscription & Billing System

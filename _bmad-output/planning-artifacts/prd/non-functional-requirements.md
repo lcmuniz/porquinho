@@ -30,63 +30,62 @@
 **Authentication & Authorization:**
 - **NFR16:** Sessions expiram após 7 dias de inatividade
 - **NFR17:** Rate limiting implementado em endpoints de autenticação (máximo 5 tentativas de login por minuto)
-- **NFR18:** 2FA opcional usa TOTP padrão (compatível com Google Authenticator, Authy)
-- **NFR19:** Password reset tokens expiram após 1 hora
+- **NFR18:** Password reset tokens expiram após 1 hora
 
 **Security Monitoring:**
-- **NFR20:** Todas as operações sensíveis (login, mudança de senha, exclusão de conta, exportação de dados) são registradas em logs de auditoria com timestamp e IP
-- **NFR21:** Tentativas de acesso não autorizado são detectadas e bloqueadas automaticamente
-- **NFR22:** Sistema é testado contra vulnerabilidades OWASP Top 10 (SQL Injection, XSS, CSRF, etc.)
+- **NFR18:** Todas as operações sensíveis (login, mudança de senha, exclusão de conta, exportação de dados) são registradas em logs de auditoria com timestamp e IP
+- **NFR18:** Tentativas de acesso não autorizado são detectadas e bloqueadas automaticamente
+- **NFR18:** Sistema é testado contra vulnerabilidades OWASP Top 10 (SQL Injection, XSS, CSRF, etc.)
 
 **Compliance:**
-- **NFR23:** Sistema atende todos os requisitos da LGPD (consentimento, direito a exclusão, portabilidade)
-- **NFR24:** Backups automáticos são criptografados
-- **NFR25:** Sistema mantém logs de consentimento do usuário
+- **NFR18:** Sistema atende todos os requisitos da LGPD (consentimento, direito a exclusão, portabilidade)
+- **NFR18:** Backups automáticos são criptografados
+- **NFR18:** Sistema mantém logs de consentimento do usuário
 
 ## Scalability
 
 **User Load:**
-- **NFR26:** Sistema suporta 1.000 usuários simultâneos sem degradação de performance > 10%
-- **NFR27:** Sistema escala horizontalmente para suportar 10x crescimento de usuários (10.000) sem refactor arquitetural
-- **NFR28:** Performance de resposta se mantém estável com crescimento de 50% ao mês
+- **NFR18:** Sistema suporta 1.000 usuários simultâneos sem degradação de performance > 10%
+- **NFR18:** Sistema escala horizontalmente para suportar 10x crescimento de usuários (10.000) sem refactor arquitetural
+- **NFR18:** Performance de resposta se mantém estável com crescimento de 50% ao mês
 
 **Data Growth:**
-- **NFR29:** Sistema processa eficientemente queries mesmo com 100.000+ transações por usuário
-- **NFR30:** Storage escalável para suportar crescimento de dados sem limites artificiais
+- **NFR18:** Sistema processa eficientemente queries mesmo com 100.000+ transações por usuário
+- **NFR18:** Storage escalável para suportar crescimento de dados sem limites artificiais
 
 **Infrastructure:**
-- **NFR31:** Arquitetura cloud permite provisionamento automático de recursos baseado em demanda
-- **NFR32:** Sistema pode escalar verticalmente e horizontalmente sem downtime
+- **NFR18:** Arquitetura cloud permite provisionamento automático de recursos baseado em demanda
+- **NFR18:** Sistema pode escalar verticalmente e horizontalmente sem downtime
 
 ## Reliability & Availability
 
 **Uptime:**
-- **NFR33:** Sistema mantém 99.5% uptime mensal (máximo ~3.6 horas de downtime por mês)
-- **NFR34:** Manutenções planejadas ocorrem fora de horários de pico e são comunicadas com 72h de antecedência
+- **NFR18:** Sistema mantém 99.5% uptime mensal (máximo ~3.6 horas de downtime por mês)
+- **NFR18:** Manutenções planejadas ocorrem fora de horários de pico e são comunicadas com 72h de antecedência
 
 **Data Integrity:**
-- **NFR35:** Zero perda de dados em caso de falha (backup automático diário)
-- **NFR36:** Backups são testados mensalmente para garantir recuperação funcional
-- **NFR37:** Retenção de backups de 30 dias mínimo
-- **NFR38:** Recovery Time Objective (RTO): < 4 horas
-- **NFR39:** Recovery Point Objective (RPO): < 24 horas
+- **NFR18:** Zero perda de dados em caso de falha (backup automático diário)
+- **NFR18:** Backups são testados mensalmente para garantir recuperação funcional
+- **NFR18:** Retenção de backups de 30 dias mínimo
+- **NFR18:** Recovery Time Objective (RTO): < 4 horas
+- **NFR18:** Recovery Point Objective (RPO): < 24 horas
 
 **Error Handling:**
-- **NFR40:** Sistema lida gracefully com falhas de serviços externos (bancos, Stripe, OAuth)
-- **NFR41:** Mensagens de erro são claras e incluem sugestões de ação quando possível
-- **NFR42:** Sistema se recupera automaticamente de falhas transientes
+- **NFR18:** Sistema lida gracefully com falhas de serviços externos (bancos, Stripe, OAuth)
+- **NFR18:** Mensagens de erro são claras e incluem sugestões de ação quando possível
+- **NFR18:** Sistema se recupera automaticamente de falhas transientes
 
 ## Accessibility
 
 **WCAG 2.1 Level AA Compliance:**
-- **NFR43:** Contraste de cores mínimo 4.5:1 para texto normal, 3:1 para texto grande
-- **NFR44:** Toda funcionalidade é acessível via teclado sem armadilhas de foco
-- **NFR45:** Ordem de foco (tab order) é lógica e previsível
-- **NFR46:** Markup HTML semântico válido em todas as páginas
-- **NFR47:** Roles ARIA apropriados implementados em componentes customizados
-- **NFR48:** Sistema é compatível com screen readers (NVDA, JAWS, VoiceOver)
-- **NFR49:** Gráficos e visualizações incluem alternativas textuais descritivas
-- **NFR50:** Lighthouse accessibility audit score > 90
+- **NFR18:** Contraste de cores mínimo 4.5:1 para texto normal, 3:1 para texto grande
+- **NFR18:** Toda funcionalidade é acessível via teclado sem armadilhas de foco
+- **NFR18:** Ordem de foco (tab order) é lógica e previsível
+- **NFR18:** Markup HTML semântico válido em todas as páginas
+- **NFR18:** Roles ARIA apropriados implementados em componentes customizados
+- **NFR18:** Sistema é compatível com screen readers (NVDA, JAWS, VoiceOver)
+- **NFR18:** Gráficos e visualizações incluem alternativas textuais descritivas
+- **NFR18:** Lighthouse accessibility audit score > 90
 
 **Usability:**
 - **NFR51:** Linguagem clara e simples, evitando jargão técnico desnecessário
