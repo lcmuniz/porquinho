@@ -1,4 +1,4 @@
-import { api } from './api'
+import { api, publicApi } from './api'
 
 export interface RegisterGoogleRequest {
   email: string
@@ -72,7 +72,7 @@ export const authService = {
    * @throws AccountLockedException (423) if account is locked
    */
   async checkLoginAllowed(email: string): Promise<void> {
-    await api.post('/api/v1/auth/login/check', { email } as LoginRequest)
+    await publicApi.post('/api/v1/auth/login/check', { email } as LoginRequest)
   },
 
   /**
@@ -83,7 +83,7 @@ export const authService = {
    * @param email User's email address
    */
   async recordFailedLogin(email: string): Promise<void> {
-    await api.post('/api/v1/auth/login/failed', { email } as LoginRequest)
+    await publicApi.post('/api/v1/auth/login/failed', { email } as LoginRequest)
   },
 
   /**

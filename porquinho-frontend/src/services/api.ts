@@ -71,3 +71,14 @@ api.interceptors.response.use(
     return Promise.reject(error)
   }
 )
+
+/**
+ * Public API instance without authentication interceptors.
+ * Used for endpoints that don't require JWT token (e.g., /login/check, /login/failed).
+ */
+export const publicApi = axios.create({
+  baseURL: apiBaseURL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+})
