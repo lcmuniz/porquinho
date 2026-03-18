@@ -89,11 +89,11 @@ export const authService = {
   /**
    * Log successful user login for audit purposes.
    * Calls backend to create audit log entry after successful Supabase authentication.
-   * JWT token is automatically included in Authorization header by api interceptor.
+   * TEMPORARY: Using publicApi until JWT validation is properly configured.
    *
    * @param email User's email address
    */
   async logLogin(email: string): Promise<void> {
-    await api.post('/api/v1/auth/login', { email } as LoginRequest)
+    await publicApi.post('/api/v1/auth/login', { email } as LoginRequest)
   },
 }

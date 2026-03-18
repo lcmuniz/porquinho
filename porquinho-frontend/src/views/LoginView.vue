@@ -53,6 +53,9 @@ async function handleEmailLogin() {
       throw new Error('Authentication failed')
     }
 
+    // Wait a moment to ensure session is fully saved
+    await new Promise(resolve => setTimeout(resolve, 100))
+
     // Step 3: Log successful login to backend (audit + reset failed attempts counter)
     try {
       await authService.logLogin(email.value)
