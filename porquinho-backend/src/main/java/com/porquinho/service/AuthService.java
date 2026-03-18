@@ -104,10 +104,10 @@ public class AuthService {
      * If user exists with GOOGLE provider, links email/password method.
      * Otherwise, creates new user with Email provider and logs audit event.
      *
-     * NOTE (2026-03-17): This method is implemented but currently NOT CALLED.
-     * Following simplified architecture (ARQUITETURA-SIMPLIFICADA.md), the frontend
-     * uses Supabase-only approach with no backend user sync during registration.
-     * This method remains available for future use or alternative scenarios.
+     * NOTE (2026-03-17): HYBRID ARCHITECTURE - This method IS CALLED by frontend.
+     * Following hybrid architecture (ARQUITETURA-SIMPLIFICADA.md), users are created
+     * in Supabase Auth (authentication authority) and synced to backend for:
+     * - Account locking, audit logs, rate limiting, business data
      *
      * @param userId User ID from Supabase JWT
      * @param request Registration request with email and name
@@ -166,5 +166,16 @@ public class AuthService {
         } catch (IllegalArgumentException e) {
             return Optional.empty();
         }
+    }
+
+    /**
+     * Find user by email address.
+     * Used by login flow to check if user exists in backend database (hybrid architecture).
+     *
+     * @param email User's email address
+     * @return User entity if found, null otherwise
+     */
+    public User findUserByEmail(String email) {
+        return userRepository.findByEmailAndDeletedAtIsNull(email).orElse(null);
     }
 }

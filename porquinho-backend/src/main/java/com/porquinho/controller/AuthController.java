@@ -76,11 +76,13 @@ public class AuthController {
      * The JWT from Supabase is validated by Spring Security, and user_id is extracted from the "sub" claim.
      * Supabase handles password hashing with bcrypt (NFR13).
      *
-     * NOTE (2026-03-17): This endpoint is implemented but currently NOT CALLED by frontend.
-     * Following simplified architecture decision (ARQUITETURA-SIMPLIFICADA.md), the frontend
-     * registers users directly with Supabase Auth and stores all data in auth.users table
-     * with user_metadata (no backend sync). This endpoint remains available for future use
-     * or alternative architecture scenarios.
+     * NOTE (2026-03-17): HYBRID ARCHITECTURE - This endpoint IS CALLED by frontend.
+     * Following hybrid architecture decision (ARQUITETURA-SIMPLIFICADA.md), users are created
+     * in Supabase Auth (authentication authority) and synced to backend database for:
+     * - Account locking (failed login attempts)
+     * - Audit logs (login history, IP tracking)
+     * - Rate limiting per-user
+     * - Business data (subscriptions, billing, etc)
      *
      * @param userId User ID extracted from JWT sub claim by JwtAuthenticationConverter
      * @param request Request containing email and name
@@ -154,12 +156,15 @@ public class AuthController {
     /**
      * Log successful user login for audit purposes.
      * This endpoint is ONLY for audit logging after successful Supabase authentication.
-     * The JWT from Supabase is validated by Spring Security, and user_id is extracted from the "sub" claim.
+     * TEMPORARY: Endpoint is public (no JWT validation) until JWT configuration is fixed.
      *
-     * @param userId User ID extracted from JWT sub claim by JwtAuthenticationConverter
+     * HYBRID ARCHITECTURE: Returns 404 if user doesn't exist in backend database,
+     * allowing frontend to perform lazy sync (create user in backend on first login).
+     *
+     * @param userId User ID extracted from JWT sub claim (null if endpoint is public)
      * @param request Request containing email
      * @param httpRequest HTTP request to extract client IP address
-     * @return 200 OK (no response body)
+     * @return 200 OK if successful, 404 if user not found in backend
      */
     @PostMapping("/login")
     public ResponseEntity<Void> logLogin(
@@ -167,13 +172,19 @@ public class AuthController {
         @Valid @RequestBody LoginRequest request,
         HttpServletRequest httpRequest
     ) {
+        // Find user by email to verify they exist in backend database
+        User user = authService.findUserByEmail(request.getEmail());
+
+        if (user == null) {
+            // User doesn't exist in backend (Supabase-only) - return 404 for lazy sync
+            return ResponseEntity.notFound().build();
+        }
+
         // Extract client IP address for audit logging
         String ipAddress = getClientIpAddress(httpRequest);
 
-        // Create audit log entry (skip in test mode if userId is null or anonymousUser)
-        if (userId != null && !"anonymousUser".equals(userId)) {
-            auditLogService.log("user_login", java.util.UUID.fromString(userId), ipAddress);
-        }
+        // Create audit log entry
+        auditLogService.log("user_login", user.getId(), ipAddress);
 
         // Reset failed login attempts on successful login
         accountLockService.resetFailedAttempts(request.getEmail());
