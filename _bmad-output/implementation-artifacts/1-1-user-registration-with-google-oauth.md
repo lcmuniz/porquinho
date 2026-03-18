@@ -402,7 +402,7 @@ VITE_API_BASE_URL=http://localhost:8080
 
 2. **Tailwind v4 Configuration:** All config is in `src/assets/main.css` using `@theme inline` directive
 
-3. **JDK 21 is standard:** No need for `mise exec` workarounds
+3. **JDK 21 is standard:** ~~No need for `mise exec` workarounds~~ **⚠️ NOTE (2026-03-17):** JDK 21 is now the system default. Historical references to `mise exec` in older stories are obsolete.
 
 4. **Security issues caught in code review:** Pre-implementation checklist for security critical stories:
    - Verify no endpoints exposed publicly that shouldn't be

@@ -198,8 +198,8 @@ A configuração completa de design tokens é feita na Story 0.7. Esta story ape
 
 ### Learnings da Story 0.3 (Anterior)
 
-- `mise exec` é necessário para garantir a versão correta de ferramentas (Node.js via mise)
-- Sempre usar `mise exec -- npm ...` se comandos npm falharem com versão errada do Node
+- ~~`mise exec` é necessário para garantir a versão correta de ferramentas (Node.js via mise)~~ **⚠️ OBSOLETE (2026-03-17):** Node.js/NPM versions are now managed correctly, no need for `mise exec`
+- ~~Sempre usar `mise exec -- npm ...` se comandos npm falharem com versão errada do Node~~ **⚠️ OBSOLETE:** Just use `npm` directly
 - Arquivos sensíveis devem estar no `.gitignore` antes de serem criados
 - Testar build/typecheck DEPOIS de cada mudança significativa para detectar erros cedo
 

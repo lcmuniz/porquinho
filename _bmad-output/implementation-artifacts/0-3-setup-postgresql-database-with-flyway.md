@@ -307,9 +307,11 @@ export SUPABASE_DB_PASSWORD=your-password
 ./mvnw spring-boot:run
 ```
 
-**Note from Story 0.2:** JDK 21 is configured via `mise.toml`. If running from a new terminal, the shell may default to JDK 17. Use `mise exec -- ./mvnw spring-boot:run` or set `JAVA_HOME` explicitly:
+**⚠️ OBSOLETE (2026-03-17):** JDK 21 is now the system default. No need for `mise exec` workarounds.
+~~Note from Story 0.2: JDK 21 is configured via `mise.toml`. If running from a new terminal, the shell may default to JDK 17. Use `mise exec -- ./mvnw spring-boot:run` or set `JAVA_HOME` explicitly:~~
 ```bash
-export JAVA_HOME=$(mise where java)
+# OBSOLETE - No longer needed
+# export JAVA_HOME=$(mise where java)
 ```
 
 ---
@@ -387,7 +389,7 @@ claude-sonnet-4-6
 
 - Direct connection (`db.vhkjyefwpwtlcyuznqgq.supabase.co`) é IPv6-only — não funciona em redes IPv4.
 - Solução: usar Session Pooler do Supabase (`aws-1-us-east-1.pooler.supabase.com:5432`) com username no formato `postgres.[project-ref]`.
-- `./mvnw` sem `mise exec` falha com "release version 21 not supported" — sempre usar `mise exec -- ./mvnw`.
+- ~~`./mvnw` sem `mise exec` falha com "release version 21 not supported" — sempre usar `mise exec -- ./mvnw`.~~ **⚠️ OBSOLETE:** JDK 21 is now system default, just use `./mvnw` directly.
 
 ### Completion Notes List
 

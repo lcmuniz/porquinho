@@ -236,7 +236,7 @@ Isso desabilita o cache Redis nos testes unitarios. Os testes rodam com H2 in-me
 
 ### Learnings das Stories Anteriores
 
-- **Story 0.3:** `mise exec` e necessario para garantir JDK 21 — sempre usar `mise exec -- ./mvnw ...`
+- ~~**Story 0.3:** `mise exec` e necessario para garantir JDK 21 — sempre usar `mise exec -- ./mvnw ...`~~ **⚠️ OBSOLETE (2026-03-17):** JDK 21 is now system default, just use `./mvnw` directly
 - **Story 0.3:** Session Pooler do Supabase e necessario (direct connection e IPv6-only)
 - **Story 0.3:** Sempre testar `./mvnw clean test` DEPOIS de cada mudanca
 - **Story 0.4:** shadcn-vue usa Tailwind v4 (CSS-first) — irrelevante para esta story backend, mas bom saber
