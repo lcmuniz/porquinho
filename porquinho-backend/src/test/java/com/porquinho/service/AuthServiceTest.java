@@ -19,7 +19,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for AuthService.
@@ -184,23 +189,33 @@ class AuthServiceTest {
     @Test
     void shouldCreateUserFromEmail() {
         // Arrange
-        String userId = UUID.randomUUID().toString();
+        UUID userId = UUID.randomUUID();
         String email = "newuser@example.com";
         String name = "New User";
         String ipAddress = "192.168.1.1";
 
         RegisterEmailRequest request = new RegisterEmailRequest(email, name);
 
+        // Mock findByEmail: user doesn't exist by email (new user)
         when(userRepository.findByEmailAndDeletedAtIsNull(email)).thenReturn(Optional.empty());
 
+        // Mock insertWithId (native query) - returns void
+        doNothing().when(userRepository).insertWithId(
+            any(UUID.class), anyString(), anyString(), any(), any(), any()
+        );
+
+        // Mock findById: first call returns empty (check), second call returns created user (after insert)
         User newUser = new User(email, User.AuthProvider.EMAIL, null);
-        newUser.setId(UUID.fromString(userId));
-        when(userRepository.save(any(User.class))).thenReturn(newUser);
+        newUser.setId(userId);
+        when(userRepository.findById(userId))
+            .thenReturn(Optional.empty())      // First call: check if exists by ID
+            .thenReturn(Optional.of(newUser)); // Second call: fetch after insert
+
         when(auditLogService.log(anyString(), any(UUID.class), anyString(), anyString()))
             .thenReturn(new AuditLog());
 
         // Act
-        AuthService.UserRegistrationResult result = authService.registerOrGetUserFromEmail(userId, request, ipAddress);
+        AuthService.UserRegistrationResult result = authService.registerOrGetUserFromEmail(userId.toString(), request, ipAddress);
 
         // Assert
         assertThat(result).isNotNull();
@@ -209,15 +224,16 @@ class AuthServiceTest {
         assertThat(result.getUser().getEmail()).isEqualTo(email);
         assertThat(result.getUser().getAuthProvider()).isEqualTo(User.AuthProvider.EMAIL);
 
+        verify(userRepository, never()).save(any(User.class)); // Uses insertWithId, not save
         verify(userRepository).findByEmailAndDeletedAtIsNull(email);
-        verify(userRepository).save(any(User.class));
+        verify(userRepository).insertWithId(any(UUID.class), anyString(), anyString(), any(), any(), any());
         verify(auditLogService).log(eq("user_registration"), any(UUID.class), eq(ipAddress), anyString());
     }
 
     @Test
-    void shouldThrowExceptionWhenEmailExists() {
+    void shouldReturnExistingUserWhenEmailExistsWithEmailProvider() {
         // Arrange
-        String userId = UUID.randomUUID().toString();
+        UUID userId = UUID.randomUUID();
         String email = "existing@example.com";
         String name = "Existing User";
         String ipAddress = "192.168.1.1";
@@ -225,24 +241,30 @@ class AuthServiceTest {
         RegisterEmailRequest request = new RegisterEmailRequest(email, name);
 
         User existingUser = new User(email, User.AuthProvider.EMAIL, null);
-        existingUser.setId(UUID.randomUUID());
+        existingUser.setId(userId);
 
+        // Mock: user doesn't exist by ID (first call), but exists by email
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
         when(userRepository.findByEmailAndDeletedAtIsNull(email)).thenReturn(Optional.of(existingUser));
 
-        // Act & Assert
-        assertThatThrownBy(() -> authService.registerOrGetUserFromEmail(userId, request, ipAddress))
-            .isInstanceOf(ConflictException.class)
-            .hasMessage("Email already registered");
+        // Act
+        AuthService.UserRegistrationResult result = authService.registerOrGetUserFromEmail(userId.toString(), request, ipAddress);
 
+        // Assert - HYBRID ARCHITECTURE: Returns existing user (idempotent), doesn't throw exception
+        assertThat(result).isNotNull();
+        assertThat(result.isNewUser()).isFalse();
+        assertThat(result.getUser()).isEqualTo(existingUser);
+
+        verify(userRepository).findById(userId);
         verify(userRepository).findByEmailAndDeletedAtIsNull(email);
-        verify(userRepository, never()).save(any(User.class));
+        verify(userRepository, never()).insertWithId(any(), anyString(), anyString(), any(), any(), any());
         verify(auditLogService, never()).log(anyString(), any(UUID.class), anyString(), anyString());
     }
 
     @Test
     void shouldLinkEmailPasswordWhenGoogleUserExists() {
         // Arrange
-        String userId = UUID.randomUUID().toString();
+        UUID userId = UUID.randomUUID();
         String email = "google@example.com";
         String name = "Google User";
         String ipAddress = "192.168.1.1";
@@ -255,19 +277,22 @@ class AuthServiceTest {
         User updatedUser = new User(email, User.AuthProvider.EMAIL, "google123");
         updatedUser.setId(existingUser.getId());
 
+        // Mock: user doesn't exist by ID (first call), but exists by email with GOOGLE provider
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
         when(userRepository.findByEmailAndDeletedAtIsNull(email)).thenReturn(Optional.of(existingUser));
         when(userRepository.save(any(User.class))).thenReturn(updatedUser);
         when(auditLogService.log(anyString(), any(UUID.class), anyString(), anyString()))
             .thenReturn(new AuditLog());
 
         // Act
-        AuthService.UserRegistrationResult result = authService.registerOrGetUserFromEmail(userId, request, ipAddress);
+        AuthService.UserRegistrationResult result = authService.registerOrGetUserFromEmail(userId.toString(), request, ipAddress);
 
         // Assert
         assertThat(result).isNotNull();
         assertThat(result.isNewUser()).isFalse();
         assertThat(result.getUser()).isNotNull();
 
+        verify(userRepository).findById(userId);
         verify(userRepository).findByEmailAndDeletedAtIsNull(email);
         verify(userRepository).save(any(User.class));
         verify(auditLogService).log(eq("auth_method_linked"), any(UUID.class), eq(ipAddress), anyString());
