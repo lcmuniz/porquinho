@@ -45,11 +45,9 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health").permitAll()
                 .requestMatchers("/api/v1/auth/health").permitAll() // Health check endpoint
-                .requestMatchers("/api/v1/auth/login/check").permitAll() // Login check (rate limit + account lock) - no auth required
-                .requestMatchers("/api/v1/auth/login/failed").permitAll() // Record failed login - no auth required
-                .requestMatchers("/api/v1/auth/login").permitAll() // TEMPORARY: Allow login audit without JWT until JWT validation is fixed
-                .requestMatchers("/api/v1/auth/register/**").permitAll() // TEMPORARY: Allow all registration endpoints without JWT until JWT validation is fixed
-                .requestMatchers("/api/v1/**").authenticated() // All other API endpoints require authentication
+                .requestMatchers("/api/v1/auth/login/check").permitAll() // Login check (rate limit + account lock) - called BEFORE authentication
+                .requestMatchers("/api/v1/auth/login/failed").permitAll() // Record failed login - called AFTER failed authentication attempt
+                .requestMatchers("/api/v1/**").authenticated() // All other API endpoints require JWT authentication
                 .anyRequest().permitAll()
             )
             .oauth2ResourceServer(oauth2 -> oauth2

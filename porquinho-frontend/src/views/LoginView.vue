@@ -61,13 +61,13 @@ async function handleEmailLogin() {
       await authService.logLogin(email.value)
     } catch (backendError: any) {
       // If user doesn't exist in backend (404), create them now (lazy sync)
+      // JWT token is automatically included by api interceptor
       if (backendError.response?.status === 404) {
         try {
-          console.log('User not found in backend, creating record...')
+          console.log('User not found in backend, creating record (lazy sync)...')
           await authService.registerWithEmail({
             email: email.value,
             name: user.user_metadata?.name || email.value,
-            userId: user.id,  // Pass Supabase user ID
           })
           // Retry logging the login
           await authService.logLogin(email.value)

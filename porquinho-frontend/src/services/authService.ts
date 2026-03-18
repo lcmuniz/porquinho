@@ -9,7 +9,6 @@ export interface RegisterGoogleRequest {
 export interface RegisterEmailRequest {
   email: string
   name: string
-  userId?: string  // TEMPORARY: userId in body until JWT validation is fixed
 }
 
 export interface UserResponse {
@@ -31,7 +30,7 @@ export const authService = {
   /**
    * Register or login user with Google OAuth.
    * Calls backend to create user record if needed.
-   * TEMPORARY: Using publicApi until JWT validation is properly configured.
+   * Uses authenticated API (JWT from Supabase session automatically included).
    *
    * @param data User data from Google OAuth
    * @returns User data from backend
@@ -39,7 +38,7 @@ export const authService = {
   async registerWithGoogle(
     data: RegisterGoogleRequest
   ): Promise<UserResponse> {
-    const response = await publicApi.post<UserResponse>(
+    const response = await api.post<UserResponse>(
       '/api/v1/auth/register/google',
       data
     )
@@ -49,15 +48,15 @@ export const authService = {
   /**
    * Register user with email/password.
    * Calls backend to create user record after Supabase Auth registration.
-   * TEMPORARY: Using publicApi and userId in body until JWT validation is fixed.
+   * Uses authenticated API (JWT from Supabase session automatically included).
    *
-   * @param data User data from email/password registration (includes userId)
+   * @param data User data from email/password registration (includes userId from Supabase)
    * @returns User data from backend
    */
   async registerWithEmail(
     data: RegisterEmailRequest
   ): Promise<UserResponse> {
-    const response = await publicApi.post<UserResponse>(
+    const response = await api.post<UserResponse>(
       '/api/v1/auth/register/email',
       data
     )
@@ -91,11 +90,11 @@ export const authService = {
   /**
    * Log successful user login for audit purposes.
    * Calls backend to create audit log entry after successful Supabase authentication.
-   * TEMPORARY: Using publicApi until JWT validation is properly configured.
+   * Uses authenticated API (JWT from Supabase session automatically included).
    *
    * @param email User's email address
    */
   async logLogin(email: string): Promise<void> {
-    await publicApi.post('/api/v1/auth/login', { email } as LoginRequest)
+    await api.post('/api/v1/auth/login', { email } as LoginRequest)
   },
 }

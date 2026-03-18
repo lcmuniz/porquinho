@@ -167,11 +167,9 @@ class AuthControllerTest {
     @Test
     void shouldRegisterUserWithEmail() throws Exception {
         // Arrange
-        String userId = UUID.randomUUID().toString();
         RegisterEmailRequest request = new RegisterEmailRequest(
             "test@example.com",
-            "Test User",
-            userId
+            "Test User"
         );
 
         User newUser = new User("test@example.com", User.AuthProvider.EMAIL, null);
@@ -196,11 +194,9 @@ class AuthControllerTest {
     @Test
     void shouldReturnConflictWhenEmailExists() throws Exception {
         // Arrange
-        String userId = UUID.randomUUID().toString();
         RegisterEmailRequest request = new RegisterEmailRequest(
             "existing@example.com",
-            "Existing User",
-            userId
+            "Existing User"
         );
 
         when(authService.registerOrGetUserFromEmail(nullable(String.class), any(RegisterEmailRequest.class), anyString()))
@@ -217,11 +213,9 @@ class AuthControllerTest {
     @Test
     void shouldLinkEmailPasswordToGoogleUser() throws Exception {
         // Arrange
-        String userId = UUID.randomUUID().toString();
         RegisterEmailRequest request = new RegisterEmailRequest(
             "google@example.com",
-            "Google User",
-            userId
+            "Google User"
         );
 
         User existingUser = new User("google@example.com", User.AuthProvider.EMAIL, "google123");
