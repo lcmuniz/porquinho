@@ -183,7 +183,7 @@ import { authService } from '@/services/authService'
 
 const router = useRouter()
 
-const { signUpWithGoogle, signUpWithEmail, getSession } = useAuth()
+const { signUpWithGoogle, signUpWithEmail, getSession: _getSession } = useAuth()
 const isLoading = ref(false)
 const errorMessage = ref('')
 

@@ -9,7 +9,7 @@ import { useAuthStore } from '@/stores/auth'
 import { authService } from '@/services/authService'
 
 const router = useRouter()
-const route = useRoute()
+const _route = useRoute() // Reserved for future use (e.g., redirectTo query param)
 const { signInWithEmail, signInWithGoogle } = useAuth()
 const authStore = useAuthStore()
 

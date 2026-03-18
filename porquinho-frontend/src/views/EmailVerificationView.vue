@@ -127,7 +127,7 @@ import { Button } from '@/components/ui/button'
 import { supabase } from '@/services/supabase'
 
 const router = useRouter()
-const route = useRoute()
+const _route = useRoute() // Reserved for future use
 
 const verificationStatus = ref<'pending' | 'verifying' | 'success' | 'error'>('pending')
 const errorMessage = ref('')

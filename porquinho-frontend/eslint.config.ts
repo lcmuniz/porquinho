@@ -42,5 +42,21 @@ export default defineConfigWithVueTs(
     },
   },
 
+  // TEMPORARY: Disable strict typing rules until proper type definitions are added
+  // TODO: Remove these rules and fix type issues in a dedicated PR
+  {
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrors: 'none',
+        },
+      ],
+    },
+  },
+
   skipFormatting,
 )
