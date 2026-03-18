@@ -31,6 +31,7 @@ export const authService = {
   /**
    * Register or login user with Google OAuth.
    * Calls backend to create user record if needed.
+   * TEMPORARY: Using publicApi until JWT validation is properly configured.
    *
    * @param data User data from Google OAuth
    * @returns User data from backend
@@ -38,7 +39,7 @@ export const authService = {
   async registerWithGoogle(
     data: RegisterGoogleRequest
   ): Promise<UserResponse> {
-    const response = await api.post<UserResponse>(
+    const response = await publicApi.post<UserResponse>(
       '/api/v1/auth/register/google',
       data
     )
