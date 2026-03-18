@@ -6,6 +6,9 @@ import com.porquinho.dto.RegisterEmailRequest;
 import com.porquinho.entity.User;
 import com.porquinho.exception.ConflictException;
 import com.porquinho.service.AuthService;
+import com.porquinho.service.AuditLogService;
+import com.porquinho.service.RateLimitService;
+import com.porquinho.service.AccountLockService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -19,7 +22,9 @@ import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -46,6 +51,15 @@ class AuthControllerTest {
 
     @MockBean
     private AuthService authService;
+
+    @MockBean
+    private AuditLogService auditLogService;
+
+    @MockBean
+    private RateLimitService rateLimitService;
+
+    @MockBean
+    private AccountLockService accountLockService;
 
     @Test
     void healthEndpointShouldReturnOk() throws Exception {
@@ -219,5 +233,84 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value("google@example.com"))
                 .andExpect(jsonPath("$.authProvider").value("EMAIL"));
+    }
+
+    // ===== LOGIN TESTS (Story 1.3) =====
+
+    @Test
+    void shouldAllowLoginCheckWhenNotRateLimitedOrLocked() throws Exception {
+        // Arrange
+        String loginJson = "{\"email\":\"test@example.com\"}";
+        when(accountLockService.isLocked(anyString())).thenReturn(false);
+        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(true);
+
+        // Act & Assert
+        mockMvc.perform(post("/api/v1/auth/login/check")
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(loginJson))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void shouldReturn429OnLoginCheckWhenRateLimited() throws Exception {
+        // Arrange
+        String loginJson = "{\"email\":\"test@example.com\"}";
+        when(accountLockService.isLocked(anyString())).thenReturn(false);
+        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(false);
+
+        // Act & Assert
+        mockMvc.perform(post("/api/v1/auth/login/check")
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(loginJson))
+                .andExpect(status().isTooManyRequests());
+    }
+
+    @Test
+    void shouldReturn423OnLoginCheckWhenAccountLocked() throws Exception {
+        // Arrange
+        String loginJson = "{\"email\":\"test@example.com\"}";
+        when(accountLockService.isLocked(anyString())).thenReturn(true);
+
+        // Act & Assert
+        mockMvc.perform(post("/api/v1/auth/login/check")
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(loginJson))
+                .andExpect(status().isLocked());
+    }
+
+    @Test
+    void shouldRecordFailedLoginAttempt() throws Exception {
+        // Arrange
+        String loginJson = "{\"email\":\"test@example.com\"}";
+
+        // Act & Assert
+        mockMvc.perform(post("/api/v1/auth/login/failed")
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(loginJson))
+                .andExpect(status().isOk());
+
+        verify(accountLockService).recordFailedAttempt("test@example.com");
+    }
+
+    @Test
+    void shouldLogSuccessfulLogin() throws Exception {
+        // Arrange
+        String loginJson = "{\"email\":\"test@example.com\"}";
+
+        // Note: In test profile, authentication is disabled, so userId will be null.
+        // The endpoint should handle this gracefully.
+
+        // Act & Assert
+        mockMvc.perform(post("/api/v1/auth/login")
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(loginJson))
+                .andExpect(status().isOk());
+
+        verify(accountLockService).resetFailedAttempts("test@example.com");
     }
 }

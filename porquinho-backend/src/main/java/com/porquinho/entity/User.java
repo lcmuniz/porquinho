@@ -48,6 +48,12 @@ public class User {
     @Column(name = "lgpd_consent_at")
     private LocalDateTime lgpdConsentAt;
 
+    @Column(name = "failed_login_attempts", nullable = false)
+    private int failedLoginAttempts = 0;
+
+    @Column(name = "locked_until")
+    private LocalDateTime lockedUntil;
+
     // Constructors
     public User() {
     }
@@ -150,6 +156,22 @@ public class User {
 
     public void setLgpdConsentAt(LocalDateTime lgpdConsentAt) {
         this.lgpdConsentAt = lgpdConsentAt;
+    }
+
+    public int getFailedLoginAttempts() {
+        return failedLoginAttempts;
+    }
+
+    public void setFailedLoginAttempts(int failedLoginAttempts) {
+        this.failedLoginAttempts = failedLoginAttempts;
+    }
+
+    public LocalDateTime getLockedUntil() {
+        return lockedUntil;
+    }
+
+    public void setLockedUntil(LocalDateTime lockedUntil) {
+        this.lockedUntil = lockedUntil;
     }
 
     /**

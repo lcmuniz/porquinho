@@ -2,7 +2,7 @@ import { supabase } from '@/services/supabase'
 
 /**
  * Composable for authentication operations using Supabase Auth.
- * Provides methods for Google OAuth, email/password sign-up and session management.
+ * Provides methods for Google OAuth, email/password sign-up/sign-in and session management.
  * All user data is stored in Supabase auth.users and user_metadata (no backend sync).
  */
 export function useAuth() {
@@ -73,6 +73,47 @@ export function useAuth() {
   }
 
   /**
+   * Sign in with email and password.
+   * Authenticates user with Supabase Auth.
+   *
+   * @param email User's email address
+   * @param password User's password
+   */
+  const signInWithEmail = async (email: string, password: string) => {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+
+    if (error) {
+      console.error('Error signing in with email:', error)
+      throw error
+    }
+
+    return data
+  }
+
+  /**
+   * Sign in with Google OAuth.
+   * Redirects to Google OAuth consent screen and returns to callback URL after authentication.
+   */
+  const signInWithGoogle = async () => {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    })
+
+    if (error) {
+      console.error('Error signing in with Google:', error)
+      throw error
+    }
+
+    return data
+  }
+
+  /**
    * Sign out current user.
    */
   const signOut = async () => {
@@ -87,6 +128,8 @@ export function useAuth() {
   return {
     signUpWithGoogle,
     signUpWithEmail,
+    signInWithEmail,
+    signInWithGoogle,
     getSession,
     signOut,
   }
