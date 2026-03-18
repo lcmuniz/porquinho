@@ -12,7 +12,6 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: ${SUPABASE_JWT_ISSUER_URI}
-          jwk-set-uri: ${SUPABASE_JWT_JWK_SET_URI}
     hikari:
       maximum-pool-size: 20
       minimum-idle: 5

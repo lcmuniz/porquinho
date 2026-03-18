@@ -2,6 +2,9 @@ package com.porquinho.config;
 
 import java.util.List;
 
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -19,6 +22,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 /**
  * Security configuration for Porquinho backend.
  * Configures JWT-based authentication using Supabase Auth as the identity provider.
+ * Uses JWT_SECRET for token validation (HMAC SHA-256).
  * CORS is enabled for local frontend development.
  * Only active in non-test profiles.
  */
@@ -27,8 +31,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @Profile("!test")
 public class SecurityConfig {
 
-    @Value("${spring.security.oauth2.resourceserver.jwt.jwk-set-uri}")
-    private String jwkSetUri;
+    @Value("${SUPABASE_JWT_SECRET}")
+    private String jwtSecret;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -58,7 +62,9 @@ public class SecurityConfig {
 
     @Bean
     public JwtDecoder jwtDecoder() {
-        return NimbusJwtDecoder.withJwkSetUri(jwkSetUri).build();
+        // Create HMAC secret key from JWT_SECRET (Supabase uses HS256)
+        SecretKey secretKey = new SecretKeySpec(jwtSecret.getBytes(), "HmacSHA256");
+        return NimbusJwtDecoder.withSecretKey(secretKey).build();
     }
 
     @Bean
