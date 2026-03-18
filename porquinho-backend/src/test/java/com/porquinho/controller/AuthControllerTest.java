@@ -21,6 +21,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.when;
@@ -166,9 +167,11 @@ class AuthControllerTest {
     @Test
     void shouldRegisterUserWithEmail() throws Exception {
         // Arrange
+        String userId = UUID.randomUUID().toString();
         RegisterEmailRequest request = new RegisterEmailRequest(
             "test@example.com",
-            "Test User"
+            "Test User",
+            userId
         );
 
         User newUser = new User("test@example.com", User.AuthProvider.EMAIL, null);
@@ -176,7 +179,7 @@ class AuthControllerTest {
 
         AuthService.UserRegistrationResult result = new AuthService.UserRegistrationResult(newUser, true);
 
-        when(authService.registerOrGetUserFromEmail(anyString(), any(RegisterEmailRequest.class), anyString()))
+        when(authService.registerOrGetUserFromEmail(nullable(String.class), any(RegisterEmailRequest.class), anyString()))
             .thenReturn(result);
 
         // Act & Assert
@@ -193,12 +196,14 @@ class AuthControllerTest {
     @Test
     void shouldReturnConflictWhenEmailExists() throws Exception {
         // Arrange
+        String userId = UUID.randomUUID().toString();
         RegisterEmailRequest request = new RegisterEmailRequest(
             "existing@example.com",
-            "Existing User"
+            "Existing User",
+            userId
         );
 
-        when(authService.registerOrGetUserFromEmail(anyString(), any(RegisterEmailRequest.class), anyString()))
+        when(authService.registerOrGetUserFromEmail(nullable(String.class), any(RegisterEmailRequest.class), anyString()))
             .thenThrow(new ConflictException("Email already registered"));
 
         // Act & Assert
@@ -212,9 +217,11 @@ class AuthControllerTest {
     @Test
     void shouldLinkEmailPasswordToGoogleUser() throws Exception {
         // Arrange
+        String userId = UUID.randomUUID().toString();
         RegisterEmailRequest request = new RegisterEmailRequest(
             "google@example.com",
-            "Google User"
+            "Google User",
+            userId
         );
 
         User existingUser = new User("google@example.com", User.AuthProvider.EMAIL, "google123");
@@ -222,7 +229,7 @@ class AuthControllerTest {
 
         AuthService.UserRegistrationResult result = new AuthService.UserRegistrationResult(existingUser, false);
 
-        when(authService.registerOrGetUserFromEmail(anyString(), any(RegisterEmailRequest.class), anyString()))
+        when(authService.registerOrGetUserFromEmail(nullable(String.class), any(RegisterEmailRequest.class), anyString()))
             .thenReturn(result);
 
         // Act & Assert
@@ -300,6 +307,11 @@ class AuthControllerTest {
     void shouldLogSuccessfulLogin() throws Exception {
         // Arrange
         String loginJson = "{\"email\":\"test@example.com\"}";
+
+        // Mock findUserByEmail to return a user (so endpoint returns 200, not 404)
+        User mockUser = new User("test@example.com", User.AuthProvider.EMAIL, null);
+        mockUser.setId(UUID.randomUUID());
+        when(authService.findUserByEmail("test@example.com")).thenReturn(mockUser);
 
         // Note: In test profile, authentication is disabled, so userId will be null.
         // The endpoint should handle this gracefully.
