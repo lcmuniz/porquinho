@@ -1,6 +1,6 @@
 # Story 1.4: Password Recovery via Email
 
-Status: review
+Status: done
 
 ## Story
 
@@ -925,6 +925,12 @@ VITE_API_BASE_URL=http://localhost:8080
 - **2026-03-18**: Backend implementation complete - 2 audit endpoints with rate limiting, 3 unit tests passing
 - **2026-03-18**: Frontend implementation complete - ForgotPasswordView and ResetPasswordView with WCAG compliance
 - **2026-03-18**: All tasks complete (1-9), TypeScript check passed, ready for code review
+- **2026-03-18**: Code review complete - 5 issues fixed (3 Medium, 2 Low):
+  - Fixed route inconsistency: `/forgot-password` → `/auth/forgot-password` (consistent with auth routes pattern)
+  - Replaced `alert()` with visual success message in ResetPasswordView (better UX)
+  - Updated File List to include SecurityConfig.java and api.ts
+  - Updated LoginView link to use `/auth/forgot-password`
+  - Updated ResetPasswordView link to use `/auth/forgot-password`
 
 ## Dev Agent Record
 
@@ -979,6 +985,7 @@ No major debugging required. Implementation followed existing patterns from Stor
 **Backend files modified:**
 - porquinho-backend/src/main/java/com/porquinho/controller/AuthController.java
 - porquinho-backend/src/main/java/com/porquinho/service/AuditLogService.java
+- porquinho-backend/src/main/java/com/porquinho/config/SecurityConfig.java
 - porquinho-backend/src/test/java/com/porquinho/controller/AuthControllerTest.java
 
 **Frontend files created:**
@@ -989,4 +996,5 @@ No major debugging required. Implementation followed existing patterns from Stor
 - porquinho-frontend/src/views/LoginView.vue
 - porquinho-frontend/src/composables/useAuth.ts
 - porquinho-frontend/src/services/authService.ts
+- porquinho-frontend/src/services/api.ts
 - porquinho-frontend/src/router/index.ts

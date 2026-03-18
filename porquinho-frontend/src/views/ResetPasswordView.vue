@@ -15,6 +15,7 @@ const newPassword = ref('')
 const confirmPassword = ref('')
 const isLoading = ref(false)
 const errorMessage = ref('')
+const isSuccess = ref(false)
 const showNewPassword = ref(false)
 const showConfirmPassword = ref(false)
 
@@ -63,12 +64,12 @@ async function handleSubmit() {
     }
 
     // Show success message
-    alert('Senha redefinida com sucesso! Redirecionando para login...')
+    isSuccess.value = true
 
-    // Redirect to login after 2 seconds
+    // Redirect to login after 3 seconds
     setTimeout(() => {
       router.push('/login')
-    }, 2000)
+    }, 3000)
   } catch (error: any) {
     if (error.message?.includes('expired') || error.message?.includes('invalid')) {
       errorMessage.value = 'Link de redefinição expirado ou inválido. Solicite um novo.'
@@ -109,6 +110,16 @@ onMounted(() => {
           </CardDescription>
         </CardHeader>
         <CardContent class="space-y-4">
+          <!-- Success message -->
+          <div
+            v-if="isSuccess"
+            role="alert"
+            class="rounded-md border border-green-200 bg-green-50 p-4 text-sm text-green-700"
+          >
+            <p class="font-medium">Senha redefinida com sucesso!</p>
+            <p class="mt-1">Redirecionando para login...</p>
+          </div>
+
           <!-- Error message -->
           <div
             v-if="errorMessage"
@@ -118,7 +129,7 @@ onMounted(() => {
             {{ errorMessage }}
             <router-link
               v-if="errorMessage.includes('expirado')"
-              to="/forgot-password"
+              to="/auth/forgot-password"
               class="mt-2 block text-sm underline"
             >
               Solicitar novo link
@@ -126,7 +137,7 @@ onMounted(() => {
           </div>
 
           <!-- Form -->
-          <form @submit.prevent="handleSubmit" class="space-y-4">
+          <form v-if="!isSuccess" @submit.prevent="handleSubmit" class="space-y-4">
             <div class="space-y-2">
               <label for="new-password" class="text-sm font-medium text-gray-900">
                 Nova senha

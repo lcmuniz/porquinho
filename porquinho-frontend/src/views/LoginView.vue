@@ -232,7 +232,7 @@ function togglePasswordVisibility() {
             <!-- Forgot password link -->
             <div class="flex justify-end">
               <router-link
-                to="/forgot-password"
+                to="/auth/forgot-password"
                 class="text-sm text-purple-600 hover:text-purple-700 focus:outline-none focus:underline"
               >
                 Esqueceu a senha?
