@@ -58,11 +58,15 @@ onMounted(async () => {
       user.user_metadata?.sub || user.user_metadata?.provider_id || user.id
 
     // Call backend to register/verify user
-    const userData = await authService.registerWithGoogle({
-      email: user.email,
-      googleId,
-      name: user.user_metadata?.full_name || user.user_metadata?.name || '',
-    })
+    // Pass access token directly to avoid waiting for localStorage sync
+    const userData = await authService.registerWithGoogle(
+      {
+        email: user.email,
+        googleId,
+        name: user.user_metadata?.full_name || user.user_metadata?.name || '',
+      },
+      session.access_token
+    )
 
     // Update auth store with user data
     authStore.setUser(userData)
