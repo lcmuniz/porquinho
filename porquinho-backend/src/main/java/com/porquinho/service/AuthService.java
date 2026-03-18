@@ -118,16 +118,24 @@ public class AuthService {
     @Transactional
     public UserRegistrationResult registerOrGetUserFromEmail(String userId, RegisterEmailRequest request, String ipAddress) {
         String email = request.getEmail();
+        UUID userUuid = UUID.fromString(userId);
 
-        // Check if user exists by email
+        // Check if user exists by ID (Supabase UUID)
+        Optional<User> existingById = userRepository.findById(userUuid);
+        if (existingById.isPresent()) {
+            // User already exists in backend - return existing (idempotent)
+            return new UserRegistrationResult(existingById.get(), false);
+        }
+
+        // Check if user exists by email (different ID - shouldn't happen but handle it)
         Optional<User> existingByEmail = userRepository.findByEmailAndDeletedAtIsNull(email);
 
         if (existingByEmail.isPresent()) {
             User existingUser = existingByEmail.get();
 
-            // If user already has EMAIL provider, throw conflict
+            // If user already has EMAIL provider, return existing (idempotent)
             if (existingUser.getAuthProvider() == User.AuthProvider.EMAIL) {
-                throw new ConflictException("Email already registered");
+                return new UserRegistrationResult(existingUser, false);
             }
 
             // User exists with GOOGLE provider - link email/password method
@@ -143,7 +151,7 @@ public class AuthService {
 
         // Create new user with LGPD consent timestamp (NFR25)
         User newUser = new User(email, User.AuthProvider.EMAIL, null);
-        newUser.setId(UUID.fromString(userId)); // Use Supabase user ID
+        newUser.setId(userUuid); // Use Supabase user ID
         newUser.setLgpdConsentAt(java.time.LocalDateTime.now());
         User savedUser = userRepository.save(newUser);
 
