@@ -18,6 +18,10 @@ export interface UserResponse {
   createdAt: string
 }
 
+export interface LoginRequest {
+  email: string
+}
+
 /**
  * Authentication service for backend API calls.
  * Handles user registration and authentication operations.
@@ -56,5 +60,40 @@ export const authService = {
       data
     )
     return response.data
+  },
+
+  /**
+   * Check if login attempt is allowed (rate limiting and account lock).
+   * Must be called BEFORE attempting Supabase authentication.
+   * Does not require authentication.
+   *
+   * @param email User's email address
+   * @throws RateLimitExceededException (429) if too many attempts
+   * @throws AccountLockedException (423) if account is locked
+   */
+  async checkLoginAllowed(email: string): Promise<void> {
+    await api.post('/api/v1/auth/login/check', { email } as LoginRequest)
+  },
+
+  /**
+   * Record failed login attempt.
+   * Called when Supabase authentication fails.
+   * Does not require authentication.
+   *
+   * @param email User's email address
+   */
+  async recordFailedLogin(email: string): Promise<void> {
+    await api.post('/api/v1/auth/login/failed', { email } as LoginRequest)
+  },
+
+  /**
+   * Log successful user login for audit purposes.
+   * Calls backend to create audit log entry after successful Supabase authentication.
+   * JWT token is automatically included in Authorization header by api interceptor.
+   *
+   * @param email User's email address
+   */
+  async logLogin(email: string): Promise<void> {
+    await api.post('/api/v1/auth/login', { email } as LoginRequest)
   },
 }

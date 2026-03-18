@@ -1,0 +1,2 @@
+org.springframework.boot.test.autoconfigure.properties.PropertyMapper=\
+com.porquinho.config.TestSecurityConfig

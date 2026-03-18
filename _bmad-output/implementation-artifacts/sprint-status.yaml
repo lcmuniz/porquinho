@@ -59,7 +59,7 @@ development_status:
   epic-1: in-progress
   1-1-user-registration-with-google-oauth: done
   1-2-user-registration-with-email-password: done
-  1-3-user-login-with-any-configured-method: backlog
+  1-3-user-login-with-any-configured-method: done
   1-4-password-recovery-via-email: backlog
   1-5-enable-two-factor-authentication-2fa: backlog
   1-6-change-account-email-address: backlog
