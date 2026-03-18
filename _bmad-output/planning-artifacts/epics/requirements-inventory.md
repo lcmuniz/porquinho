@@ -6,114 +6,113 @@
 - **FR1:** Usuários podem se cadastrar usando Google OAuth
 - **FR2:** Usuários podem se cadastrar usando email e senha
 - **FR3:** Usuários podem fazer login usando qualquer método de autenticação configurado
-- **FR4:** Usuários podem ativar autenticação de dois fatores (2FA) opcional
-- **FR5:** Usuários podem recuperar acesso via reset de senha por email
-- **FR6:** Usuários podem trocar seu email de conta
-- **FR7:** Usuários podem adicionar/remover métodos de autenticação
-- **FR8:** Usuários podem visualizar sessões ativas e fazer logout remoto
-- **FR9:** Usuários podem exportar todos os seus dados (LGPD compliance)
-- **FR10:** Usuários podem solicitar exclusão permanente de conta e dados
+- **FR4:** Usuários podem recuperar acesso via reset de senha por email
+- **FR4:** Usuários podem trocar seu email de conta
+- **FR4:** Usuários podem adicionar/remover métodos de autenticação
+- **FR4:** Usuários podem visualizar sessões ativas e fazer logout remoto
+- **FR4:** Usuários podem exportar todos os seus dados (LGPD compliance)
+- **FR4:** Usuários podem solicitar exclusão permanente de conta e dados
 
 **Subscription & Billing:**
-- **FR11:** Novos usuários recebem automaticamente trial gratuito de 30 dias
-- **FR12:** Usuários podem assinar plano mensal após trial
-- **FR13:** Sistema envia lembretes 7 dias e 1 dia antes do fim do trial
-- **FR14:** Usuários podem cancelar assinatura a qualquer momento (self-service)
-- **FR15:** Usuários podem reativar assinatura cancelada
-- **FR16:** Sistema processa pagamentos recorrentes automaticamente
-- **FR17:** Sistema notifica usuários sobre falhas de pagamento e tenta cobrar novamente
+- **FR4:** Novos usuários recebem automaticamente trial gratuito de 30 dias
+- **FR4:** Usuários podem assinar plano mensal após trial
+- **FR4:** Sistema envia lembretes 7 dias e 1 dia antes do fim do trial
+- **FR4:** Usuários podem cancelar assinatura a qualquer momento (self-service)
+- **FR4:** Usuários podem reativar assinatura cancelada
+- **FR4:** Sistema processa pagamentos recorrentes automaticamente
+- **FR4:** Sistema notifica usuários sobre falhas de pagamento e tenta cobrar novamente
 
 **Onboarding & Setup:**
-- **FR18:** Sistema guia novos usuários através de onboarding explicando conceito de orçamento por envelope
-- **FR19:** Usuários podem adicionar múltiplas contas bancárias durante setup
-- **FR20:** Usuários podem adicionar múltiplos cartões de crédito durante setup
-- **FR21:** Sistema sugere categorias de gastos iniciais baseadas em padrões comuns
-- **FR22:** Usuários podem personalizar categorias sugeridas durante setup
-- **FR23:** Sistema guia primeira importação de arquivo bancário
-- **FR24:** Sistema explica as 3 camadas do Dashboard GPS durante onboarding
-- **FR25:** Usuários podem criar meta inicial (Reserva de Emergência) durante setup
+- **FR4:** Sistema guia novos usuários através de onboarding explicando conceito de orçamento por envelope
+- **FR4:** Usuários podem adicionar múltiplas contas bancárias durante setup
+- **FR4:** Usuários podem adicionar múltiplos cartões de crédito durante setup
+- **FR4:** Sistema sugere categorias de gastos iniciais baseadas em padrões comuns
+- **FR4:** Usuários podem personalizar categorias sugeridas durante setup
+- **FR4:** Sistema guia primeira importação de arquivo bancário
+- **FR4:** Sistema explica as 3 camadas do Dashboard GPS durante onboarding
+- **FR4:** Usuários podem criar meta inicial (Reserva de Emergência) durante setup
 
 **Account & Card Management:**
-- **FR26:** Usuários podem cadastrar múltiplas contas bancárias com nome, tipo (corrente/poupança) e saldo inicial
-- **FR27:** Usuários podem cadastrar múltiplos cartões de crédito com nome, limite e dia de vencimento
-- **FR28:** Usuários podem editar informações de contas e cartões
-- **FR29:** Usuários podem desativar ou remover contas e cartões
-- **FR30:** Usuários podem registrar transferências entre contas próprias
-- **FR31:** Usuários podem reconciliar saldo registrado com saldo real do banco
-- **FR32:** Sistema mantém histórico de saldos por conta ao longo do tempo
+- **FR4:** Usuários podem cadastrar múltiplas contas bancárias com nome, tipo (corrente/poupança) e saldo inicial
+- **FR4:** Usuários podem cadastrar múltiplos cartões de crédito com nome, limite e dia de vencimento
+- **FR4:** Usuários podem editar informações de contas e cartões
+- **FR4:** Usuários podem desativar ou remover contas e cartões
+- **FR4:** Usuários podem registrar transferências entre contas próprias
+- **FR4:** Usuários podem reconciliar saldo registrado com saldo real do banco
+- **FR4:** Sistema mantém histórico de saldos por conta ao longo do tempo
 
 **Transaction Import & Classification:**
-- **FR33:** Usuários podem fazer upload de arquivos OFX dos 5 principais bancos brasileiros (Nubank, BB, Itaú, Bradesco, Caixa)
-- **FR34:** Usuários podem fazer upload de arquivos CSV dos 5 principais bancos brasileiros
-- **FR35:** Sistema detecta automaticamente formato e banco do arquivo importado
-- **FR36:** Sistema faz parsing de transações com tratamento robusto de erros
-- **FR37:** Sistema detecta e sinaliza transações duplicadas
-- **FR38:** Sistema identifica transações Pix e extrai origem/destino quando disponível
-- **FR39:** Sistema detecta compras parceladas e divide corretamente entre meses futuros
-- **FR40:** Sistema classifica transações automaticamente usando IA
-- **FR41:** Sistema apresenta transações classificadas para revisão do usuário
-- **FR42:** Usuários podem revisar e ajustar classificações sugeridas pela IA
-- **FR43:** Sistema aprende com correções do usuário para melhorar classificações futuras
-- **FR44:** Usuários podem editar manualmente qualquer transação (data, valor, descrição, categoria)
-- **FR45:** Usuários podem adicionar transações manualmente (para gastos em dinheiro)
+- **FR4:** Usuários podem fazer upload de arquivos OFX dos 5 principais bancos brasileiros (Nubank, BB, Itaú, Bradesco, Caixa)
+- **FR4:** Usuários podem fazer upload de arquivos CSV dos 5 principais bancos brasileiros
+- **FR4:** Sistema detecta automaticamente formato e banco do arquivo importado
+- **FR4:** Sistema faz parsing de transações com tratamento robusto de erros
+- **FR4:** Sistema detecta e sinaliza transações duplicadas
+- **FR4:** Sistema identifica transações Pix e extrai origem/destino quando disponível
+- **FR4:** Sistema detecta compras parceladas e divide corretamente entre meses futuros
+- **FR4:** Sistema classifica transações automaticamente usando IA
+- **FR4:** Sistema apresenta transações classificadas para revisão do usuário
+- **FR4:** Usuários podem revisar e ajustar classificações sugeridas pela IA
+- **FR4:** Sistema aprende com correções do usuário para melhorar classificações futuras
+- **FR4:** Usuários podem editar manualmente qualquer transação (data, valor, descrição, categoria)
+- **FR4:** Usuários podem adicionar transações manualmente (para gastos em dinheiro)
 
 **Budget & Category Management:**
-- **FR46:** Usuários podem criar categorias personalizadas de gastos
-- **FR47:** Usuários podem organizar categorias em grupos hierárquicos
-- **FR48:** Usuários podem definir quanto dinheiro alocar para cada categoria no início do mês
-- **FR49:** Sistema mostra saldo disponível em cada categoria em tempo real
-- **FR50:** Usuários podem realocar dinheiro entre categorias quando necessário
-- **FR51:** Quando uma transação é classificada, sistema deduz automaticamente da categoria correspondente
-- **FR52:** Sistema sinaliza visualmente categorias com saldo baixo ou negativo
-- **FR53:** Usuários podem visualizar histórico de alocações por categoria
-- **FR54:** Sistema mostra comparação entre planejado e real por categoria
+- **FR4:** Usuários podem criar categorias personalizadas de gastos
+- **FR4:** Usuários podem organizar categorias em grupos hierárquicos
+- **FR4:** Usuários podem definir quanto dinheiro alocar para cada categoria no início do mês
+- **FR4:** Sistema mostra saldo disponível em cada categoria em tempo real
+- **FR4:** Usuários podem realocar dinheiro entre categorias quando necessário
+- **FR4:** Quando uma transação é classificada, sistema deduz automaticamente da categoria correspondente
+- **FR4:** Sistema sinaliza visualmente categorias com saldo baixo ou negativo
+- **FR4:** Usuários podem visualizar histórico de alocações por categoria
+- **FR4:** Sistema mostra comparação entre planejado e real por categoria
 
 **Dashboard GPS - Layer 1 (Overview):**
-- **FR55:** Sistema apresenta 5 métricas essenciais em tela única (Camada 1)
-- **FR56:** Dashboard Camada 1 mostra saldo total disponível em todas as contas
-- **FR57:** Dashboard Camada 1 mostra status visual de categorias (verde/amarelo/vermelho)
-- **FR58:** Dashboard Camada 1 mostra progresso da meta principal (Reserva de Emergência)
-- **FR59:** Dashboard Camada 1 mostra gastos do mês vs planejado
-- **FR60:** Dashboard Camada 1 mostra projeção de fim de mês baseado em ritmo atual
-- **FR61:** Dashboard Camada 1 responde as 3 perguntas: Onde estou? Para onde vou? Preciso ajustar?
+- **FR4:** Sistema apresenta 5 métricas essenciais em tela única (Camada 1)
+- **FR4:** Dashboard Camada 1 mostra saldo total disponível em todas as contas
+- **FR4:** Dashboard Camada 1 mostra status visual de categorias (verde/amarelo/vermelho)
+- **FR4:** Dashboard Camada 1 mostra progresso da meta principal (Reserva de Emergência)
+- **FR4:** Dashboard Camada 1 mostra gastos do mês vs planejado
+- **FR4:** Dashboard Camada 1 mostra projeção de fim de mês baseado em ritmo atual
+- **FR4:** Dashboard Camada 1 responde as 3 perguntas: Onde estou? Para onde vou? Preciso ajustar?
 
 **Dashboard GPS - Layer 2 (Tactical):**
-- **FR62:** Usuários podem acessar Camada 2 para visão tática detalhada
-- **FR63:** Dashboard Camada 2 mostra gráficos de gastos por categoria
-- **FR64:** Dashboard Camada 2 mostra comparação planejado vs real por categoria
-- **FR65:** Dashboard Camada 2 mostra tendências temporais (últimos 3/6/12 meses)
-- **FR66:** Usuários podem fazer drill-down em categorias específicas
+- **FR4:** Usuários podem acessar Camada 2 para visão tática detalhada
+- **FR4:** Dashboard Camada 2 mostra gráficos de gastos por categoria
+- **FR4:** Dashboard Camada 2 mostra comparação planejado vs real por categoria
+- **FR4:** Dashboard Camada 2 mostra tendências temporais (últimos 3/6/12 meses)
+- **FR4:** Usuários podem fazer drill-down em categorias específicas
 
 **Dashboard GPS - Layer 3 (Details):**
-- **FR67:** Usuários podem acessar Camada 3 para detalhes completos
-- **FR68:** Dashboard Camada 3 mostra lista de todas as transações com filtros
-- **FR69:** Usuários podem filtrar transações por período, categoria, conta, ou texto
-- **FR70:** Usuários podem ordenar transações por data, valor, ou categoria
-- **FR71:** Usuários podem editar transações individualmente na Camada 3
-- **FR72:** Usuários podem exportar dados em formato CSV
+- **FR4:** Usuários podem acessar Camada 3 para detalhes completos
+- **FR4:** Dashboard Camada 3 mostra lista de todas as transações com filtros
+- **FR4:** Usuários podem filtrar transações por período, categoria, conta, ou texto
+- **FR4:** Usuários podem ordenar transações por data, valor, ou categoria
+- **FR4:** Usuários podem editar transações individualmente na Camada 3
+- **FR4:** Usuários podem exportar dados em formato CSV
 
 **Financial Goals Management:**
-- **FR73:** Usuários podem criar múltiplas metas financeiras simultâneas
-- **FR74:** Para cada meta, usuários podem definir nome, valor alvo e prazo
-- **FR75:** Usuários podem alocar recursos mensais específicos para cada meta
-- **FR76:** Sistema visualiza progresso de cada meta com barra de preenchimento e curva temporal
-- **FR77:** Sistema projeta data de cumprimento baseada em alocação mensal atual
-- **FR78:** Usuários podem ajustar alocação entre metas
-- **FR79:** Sistema sugere metas pré-configuradas (Reserva de Emergência, Férias, Compra Grande)
-- **FR80:** Usuários podem marcar metas como concluídas
-- **FR81:** Sistema mantém histórico de progresso de metas ao longo do tempo
+- **FR4:** Usuários podem criar múltiplas metas financeiras simultâneas
+- **FR4:** Para cada meta, usuários podem definir nome, valor alvo e prazo
+- **FR4:** Usuários podem alocar recursos mensais específicos para cada meta
+- **FR4:** Sistema visualiza progresso de cada meta com barra de preenchimento e curva temporal
+- **FR4:** Sistema projeta data de cumprimento baseada em alocação mensal atual
+- **FR4:** Usuários podem ajustar alocação entre metas
+- **FR4:** Sistema sugere metas pré-configuradas (Reserva de Emergência, Férias, Compra Grande)
+- **FR4:** Usuários podem marcar metas como concluídas
+- **FR4:** Sistema mantém histórico de progresso de metas ao longo do tempo
 
 **Reports & Data Export:**
-- **FR82:** Usuários podem exportar relatório de transações em formato CSV
-- **FR83:** Usuários podem exportar relatório de categorias e orçamento em formato CSV
-- **FR84:** Usuários podem exportar todos os dados da conta para portabilidade (LGPD)
+- **FR4:** Usuários podem exportar relatório de transações em formato CSV
+- **FR4:** Usuários podem exportar relatório de categorias e orçamento em formato CSV
+- **FR4:** Usuários podem exportar todos os dados da conta para portabilidade (LGPD)
 
 **Admin Operations (Post-MVP v1.1):**
-- **FR85:** Administradores podem visualizar métricas de health do sistema
-- **FR86:** Administradores podem visualizar taxa de erro de importação por banco
-- **FR87:** Administradores podem visualizar precisão da IA por banco
-- **FR88:** Administradores podem visualizar número de usuários ativos
-- **FR89:** Sistema envia alertas automáticos para administradores quando métricas críticas são violadas
+- **FR4:** Administradores podem visualizar métricas de health do sistema
+- **FR4:** Administradores podem visualizar taxa de erro de importação por banco
+- **FR4:** Administradores podem visualizar precisão da IA por banco
+- **FR4:** Administradores podem visualizar número de usuários ativos
+- **FR4:** Sistema envia alertas automáticos para administradores quando métricas críticas são violadas
 
 ## NonFunctional Requirements
 
@@ -126,138 +125,137 @@
 - **NFR4:** Initial page load (first contentful paint) ocorre em < 3 segundos
 
 **Processing Time Requirements:**
-- **NFR5:** Upload de arquivo OFX/CSV (até 10MB) completa em < 5 segundos
-- **NFR6:** Parsing de arquivo OFX/CSV (1 ano de transações) completa em < 30 segundos
-- **NFR7:** IA classifica lote de 100 transações em < 3 segundos
-- **NFR8:** Sistema atualiza feedback de progresso de importação a cada 2 segundos
+- **NFR4:** Upload de arquivo OFX/CSV (até 10MB) completa em < 5 segundos
+- **NFR4:** Parsing de arquivo OFX/CSV (1 ano de transações) completa em < 30 segundos
+- **NFR4:** IA classifica lote de 100 transações em < 3 segundos
+- **NFR4:** Sistema atualiza feedback de progresso de importação a cada 2 segundos
 
 **Database Performance:**
-- **NFR9:** Dashboard GPS mantém performance < 2s mesmo com 5 anos de histórico de transações
-- **NFR10:** Queries de transações com filtros retornam em < 1 segundo para até 10.000 registros
+- **NFR4:** Dashboard GPS mantém performance < 2s mesmo com 5 anos de histórico de transações
+- **NFR4:** Queries de transações com filtros retornam em < 1 segundo para até 10.000 registros
 
 **Security:**
 
 **Data Protection:**
-- **NFR11:** Todos os dados financeiros sensíveis (transações, saldos, contas) são criptografados em repouso usando AES-256
-- **NFR12:** Todas as comunicações HTTPS usam TLS 1.3
-- **NFR13:** Senhas de usuários são hasheadas usando bcrypt com salt
-- **NFR14:** Tokens de sessão são armazenados em httpOnly cookies (não LocalStorage)
-- **NFR15:** Dados de diferentes usuários são completamente segregados (um usuário nunca acessa dados de outro)
+- **NFR4:** Todos os dados financeiros sensíveis (transações, saldos, contas) são criptografados em repouso usando AES-256
+- **NFR4:** Todas as comunicações HTTPS usam TLS 1.3
+- **NFR4:** Senhas de usuários são hasheadas usando bcrypt com salt
+- **NFR4:** Tokens de sessão são armazenados em httpOnly cookies (não LocalStorage)
+- **NFR4:** Dados de diferentes usuários são completamente segregados (um usuário nunca acessa dados de outro)
 
 **Authentication & Authorization:**
-- **NFR16:** Sessions expiram após 7 dias de inatividade
-- **NFR17:** Rate limiting implementado em endpoints de autenticação (máximo 5 tentativas de login por minuto)
-- **NFR18:** 2FA opcional usa TOTP padrão (compatível com Google Authenticator, Authy)
-- **NFR19:** Password reset tokens expiram após 1 hora
+- **NFR4:** Sessions expiram após 7 dias de inatividade
+- **NFR4:** Rate limiting implementado em endpoints de autenticação (máximo 5 tentativas de login por minuto)
+- **NFR4:** Password reset tokens expiram após 1 hora
 
 **Security Monitoring:**
-- **NFR20:** Todas as operações sensíveis (login, mudança de senha, exclusão de conta, exportação de dados) são registradas em logs de auditoria com timestamp e IP
-- **NFR21:** Tentativas de acesso não autorizado são detectadas e bloqueadas automaticamente
-- **NFR22:** Sistema é testado contra vulnerabilidades OWASP Top 10 (SQL Injection, XSS, CSRF, etc.)
+- **NFR4:** Todas as operações sensíveis (login, mudança de senha, exclusão de conta, exportação de dados) são registradas em logs de auditoria com timestamp e IP
+- **NFR4:** Tentativas de acesso não autorizado são detectadas e bloqueadas automaticamente
+- **NFR4:** Sistema é testado contra vulnerabilidades OWASP Top 10 (SQL Injection, XSS, CSRF, etc.)
 
 **Compliance:**
-- **NFR23:** Sistema atende todos os requisitos da LGPD (consentimento, direito a exclusão, portabilidade)
-- **NFR24:** Backups automáticos são criptografados
-- **NFR25:** Sistema mantém logs de consentimento do usuário
+- **NFR4:** Sistema atende todos os requisitos da LGPD (consentimento, direito a exclusão, portabilidade)
+- **NFR4:** Backups automáticos são criptografados
+- **NFR4:** Sistema mantém logs de consentimento do usuário
 
 **Scalability:**
 
 **User Load:**
-- **NFR26:** Sistema suporta 1.000 usuários simultâneos sem degradação de performance > 10%
-- **NFR27:** Sistema escala horizontalmente para suportar 10x crescimento de usuários (10.000) sem refactor arquitetural
-- **NFR28:** Performance de resposta se mantém estável com crescimento de 50% ao mês
+- **NFR4:** Sistema suporta 1.000 usuários simultâneos sem degradação de performance > 10%
+- **NFR4:** Sistema escala horizontalmente para suportar 10x crescimento de usuários (10.000) sem refactor arquitetural
+- **NFR4:** Performance de resposta se mantém estável com crescimento de 50% ao mês
 
 **Data Growth:**
-- **NFR29:** Sistema processa eficientemente queries mesmo com 100.000+ transações por usuário
-- **NFR30:** Storage escalável para suportar crescimento de dados sem limites artificiais
+- **NFR4:** Sistema processa eficientemente queries mesmo com 100.000+ transações por usuário
+- **NFR4:** Storage escalável para suportar crescimento de dados sem limites artificiais
 
 **Infrastructure:**
-- **NFR31:** Arquitetura cloud permite provisionamento automático de recursos baseado em demanda
-- **NFR32:** Sistema pode escalar verticalmente e horizontalmente sem downtime
+- **NFR4:** Arquitetura cloud permite provisionamento automático de recursos baseado em demanda
+- **NFR4:** Sistema pode escalar verticalmente e horizontalmente sem downtime
 
 **Reliability & Availability:**
 
 **Uptime:**
-- **NFR33:** Sistema mantém 99.5% uptime mensal (máximo ~3.6 horas de downtime por mês)
-- **NFR34:** Manutenções planejadas ocorrem fora de horários de pico e são comunicadas com 72h de antecedência
+- **NFR4:** Sistema mantém 99.5% uptime mensal (máximo ~3.6 horas de downtime por mês)
+- **NFR4:** Manutenções planejadas ocorrem fora de horários de pico e são comunicadas com 72h de antecedência
 
 **Data Integrity:**
-- **NFR35:** Zero perda de dados em caso de falha (backup automático diário)
-- **NFR36:** Backups são testados mensalmente para garantir recuperação funcional
-- **NFR37:** Retenção de backups de 30 dias mínimo
-- **NFR38:** Recovery Time Objective (RTO): < 4 horas
-- **NFR39:** Recovery Point Objective (RPO): < 24 horas
+- **NFR4:** Zero perda de dados em caso de falha (backup automático diário)
+- **NFR4:** Backups são testados mensalmente para garantir recuperação funcional
+- **NFR4:** Retenção de backups de 30 dias mínimo
+- **NFR4:** Recovery Time Objective (RTO): < 4 horas
+- **NFR4:** Recovery Point Objective (RPO): < 24 horas
 
 **Error Handling:**
-- **NFR40:** Sistema lida gracefully com falhas de serviços externos (bancos, Stripe, OAuth)
-- **NFR41:** Mensagens de erro são claras e incluem sugestões de ação quando possível
-- **NFR42:** Sistema se recupera automaticamente de falhas transientes
+- **NFR4:** Sistema lida gracefully com falhas de serviços externos (bancos, Stripe, OAuth)
+- **NFR4:** Mensagens de erro são claras e incluem sugestões de ação quando possível
+- **NFR4:** Sistema se recupera automaticamente de falhas transientes
 
 **Accessibility:**
 
 **WCAG 2.1 Level AA Compliance:**
-- **NFR43:** Contraste de cores mínimo 4.5:1 para texto normal, 3:1 para texto grande
-- **NFR44:** Toda funcionalidade é acessível via teclado sem armadilhas de foco
-- **NFR45:** Ordem de foco (tab order) é lógica e previsível
-- **NFR46:** Markup HTML semântico válido em todas as páginas
-- **NFR47:** Roles ARIA apropriados implementados em componentes customizados
-- **NFR48:** Sistema é compatível com screen readers (NVDA, JAWS, VoiceOver)
-- **NFR49:** Gráficos e visualizações incluem alternativas textuais descritivas
-- **NFR50:** Lighthouse accessibility audit score > 90
+- **NFR4:** Contraste de cores mínimo 4.5:1 para texto normal, 3:1 para texto grande
+- **NFR4:** Toda funcionalidade é acessível via teclado sem armadilhas de foco
+- **NFR4:** Ordem de foco (tab order) é lógica e previsível
+- **NFR4:** Markup HTML semântico válido em todas as páginas
+- **NFR4:** Roles ARIA apropriados implementados em componentes customizados
+- **NFR4:** Sistema é compatível com screen readers (NVDA, JAWS, VoiceOver)
+- **NFR4:** Gráficos e visualizações incluem alternativas textuais descritivas
+- **NFR4:** Lighthouse accessibility audit score > 90
 
 **Usability:**
-- **NFR51:** Linguagem clara e simples, evitando jargão técnico desnecessário
-- **NFR52:** Labels claros em todos os campos de formulário
-- **NFR53:** Mensagens de erro claras com sugestões de correção
-- **NFR54:** Navegação consistente entre páginas
+- **NFR4:** Linguagem clara e simples, evitando jargão técnico desnecessário
+- **NFR4:** Labels claros em todos os campos de formulário
+- **NFR4:** Mensagens de erro claras com sugestões de correção
+- **NFR4:** Navegação consistente entre páginas
 
 **Integration:**
 
 **Banking File Formats:**
-- **NFR55:** Sistema suporta formatos OFX e CSV dos 5 principais bancos brasileiros com parsing robusto
-- **NFR56:** Detecção automática de formato de arquivo com 95%+ de precisão
-- **NFR57:** Sistema trata gracefully arquivos malformados com mensagens de erro claras
+- **NFR4:** Sistema suporta formatos OFX e CSV dos 5 principais bancos brasileiros com parsing robusto
+- **NFR4:** Detecção automática de formato de arquivo com 95%+ de precisão
+- **NFR4:** Sistema trata gracefully arquivos malformados com mensagens de erro claras
 
 **Payment Processing:**
-- **NFR58:** Integração com Stripe processa pagamentos com 99.9% de confiabilidade
-- **NFR59:** Webhooks de pagamento são processados com retry automático em caso de falha
+- **NFR4:** Integração com Stripe processa pagamentos com 99.9% de confiabilidade
+- **NFR4:** Webhooks de pagamento são processados com retry automático em caso de falha
 
 **Authentication Providers:**
-- **NFR60:** OAuth integrations (Google) seguem padrões oficiais e best practices
-- **NFR61:** Falhas de OAuth providers são tratadas com fallback para login tradicional
+- **NFR4:** OAuth integrations (Google) seguem padrões oficiais e best practices
+- **NFR4:** Falhas de OAuth providers são tratadas com fallback para login tradicional
 
 **API Design (futuro):**
-- **NFR62:** APIs futuras seguem padrões REST com documentação OpenAPI
-- **NFR63:** Rate limiting implementado para proteger infraestrutura
+- **NFR4:** APIs futuras seguem padrões REST com documentação OpenAPI
+- **NFR4:** Rate limiting implementado para proteger infraestrutura
 
 **Maintainability:**
 
 **Code Quality:**
-- **NFR64:** Código segue style guides definidos para cada linguagem
-- **NFR65:** Cobertura de testes unitários > 70% para lógica crítica (IA classificação, cálculos financeiros)
-- **NFR66:** Testes de integração cobrem fluxos principais (onboarding, importação, classificação)
+- **NFR4:** Código segue style guides definidos para cada linguagem
+- **NFR4:** Cobertura de testes unitários > 70% para lógica crítica (IA classificação, cálculos financeiros)
+- **NFR4:** Testes de integração cobrem fluxos principais (onboarding, importação, classificação)
 
 **Monitoring & Observability:**
-- **NFR67:** Sistema envia métricas de performance para monitoring (Datadog, Sentry ou similar)
-- **NFR68:** Erros críticos geram alertas automáticos para equipe
-- **NFR69:** Logs estruturados permitem debugging eficiente
-- **NFR70:** Dashboard de métricas de negócio (usuários ativos, precisão IA, taxa de erro por banco)
+- **NFR4:** Sistema envia métricas de performance para monitoring (Datadog, Sentry ou similar)
+- **NFR4:** Erros críticos geram alertas automáticos para equipe
+- **NFR4:** Logs estruturados permitem debugging eficiente
+- **NFR4:** Dashboard de métricas de negócio (usuários ativos, precisão IA, taxa de erro por banco)
 
 **Deployment:**
-- **NFR71:** CI/CD pipeline automatizado para deploy contínuo
-- **NFR72:** Rollback de deploy pode ser executado em < 15 minutos
-- **NFR73:** Zero-downtime deployments quando possível
+- **NFR4:** CI/CD pipeline automatizado para deploy contínuo
+- **NFR4:** Rollback de deploy pode ser executado em < 15 minutos
+- **NFR4:** Zero-downtime deployments quando possível
 
 **Usability:**
 
 **Onboarding:**
-- **NFR74:** 70%+ dos novos usuários completam onboarding completo
-- **NFR75:** Tempo médio de onboarding < 20 minutos
+- **NFR4:** 70%+ dos novos usuários completam onboarding completo
+- **NFR4:** Tempo médio de onboarding < 20 minutos
 
 **Core User Experience:**
-- **NFR76:** Check-in semanal completo (importar + revisar + ver dashboard) é completável em < 5 minutos
-- **NFR77:** Interface é responsiva e funcional em desktop (1280px+), tablet (768px+) e mobile (< 768px)
-- **NFR78:** Sistema funciona nos 4 principais navegadores modernos (Chrome, Firefox, Safari, Edge - últimas 2 versões)
+- **NFR4:** Check-in semanal completo (importar + revisar + ver dashboard) é completável em < 5 minutos
+- **NFR4:** Interface é responsiva e funcional em desktop (1280px+), tablet (768px+) e mobile (< 768px)
+- **NFR4:** Sistema funciona nos 4 principais navegadores modernos (Chrome, Firefox, Safari, Edge - últimas 2 versões)
 
 ## Additional Requirements
 
@@ -388,108 +386,107 @@
 - FR1: Cadastro com Google OAuth
 - FR2: Cadastro com email e senha
 - FR3: Login com qualquer método configurado
-- FR4: Autenticação de dois fatores (2FA) opcional
-- FR5: Recuperação de senha por email
-- FR6: Troca de email de conta
-- FR7: Adicionar/remover métodos de autenticação
-- FR8: Visualizar sessões ativas e logout remoto
-- FR9: Exportar dados (LGPD compliance)
-- FR10: Solicitar exclusão permanente de conta e dados
+- FR4: Recuperação de senha por email
+- FR4: Troca de email de conta
+- FR4: Adicionar/remover métodos de autenticação
+- FR4: Visualizar sessões ativas e logout remoto
+- FR4: Exportar dados (LGPD compliance)
+- FR4: Solicitar exclusão permanente de conta e dados
 
 **Epic 2: Subscription & Billing System**
-- FR11: Trial gratuito automático de 30 dias
-- FR12: Assinatura de plano mensal
-- FR13: Lembretes antes do fim do trial
-- FR14: Cancelamento self-service de assinatura
-- FR15: Reativação de assinatura cancelada
-- FR16: Processamento automático de pagamentos recorrentes
-- FR17: Notificações de falhas de pagamento e retry
+- FR4: Trial gratuito automático de 30 dias
+- FR4: Assinatura de plano mensal
+- FR4: Lembretes antes do fim do trial
+- FR4: Cancelamento self-service de assinatura
+- FR4: Reativação de assinatura cancelada
+- FR4: Processamento automático de pagamentos recorrentes
+- FR4: Notificações de falhas de pagamento e retry
 
 **Epic 3: Guided Onboarding Experience**
-- FR18: Onboarding com explicação de orçamento por envelope
-- FR19: Adicionar múltiplas contas bancárias durante setup
-- FR20: Adicionar múltiplos cartões durante setup
-- FR21: Sugestão de categorias iniciais
-- FR22: Personalização de categorias sugeridas
-- FR23: Primeira importação guiada de arquivo bancário
-- FR24: Explicação das 3 camadas do Dashboard GPS
-- FR25: Criação de meta inicial (Reserva de Emergência)
+- FR4: Onboarding com explicação de orçamento por envelope
+- FR4: Adicionar múltiplas contas bancárias durante setup
+- FR4: Adicionar múltiplos cartões durante setup
+- FR4: Sugestão de categorias iniciais
+- FR4: Personalização de categorias sugeridas
+- FR4: Primeira importação guiada de arquivo bancário
+- FR4: Explicação das 3 camadas do Dashboard GPS
+- FR4: Criação de meta inicial (Reserva de Emergência)
 
 **Epic 4: Financial Accounts & Cards Management**
-- FR26: Cadastrar múltiplas contas bancárias
-- FR27: Cadastrar múltiplos cartões de crédito
-- FR28: Editar informações de contas e cartões
-- FR29: Desativar ou remover contas e cartões
-- FR30: Registrar transferências entre contas próprias
-- FR31: Reconciliar saldo registrado com saldo real
-- FR32: Manter histórico de saldos ao longo do tempo
+- FR4: Cadastrar múltiplas contas bancárias
+- FR4: Cadastrar múltiplos cartões de crédito
+- FR4: Editar informações de contas e cartões
+- FR4: Desativar ou remover contas e cartões
+- FR4: Registrar transferências entre contas próprias
+- FR4: Reconciliar saldo registrado com saldo real
+- FR4: Manter histórico de saldos ao longo do tempo
 
 **Epic 5: Transaction Import & AI Classification**
-- FR33: Upload de arquivos OFX dos 5 principais bancos brasileiros
-- FR34: Upload de arquivos CSV dos 5 principais bancos brasileiros
-- FR35: Detecção automática de formato e banco
-- FR36: Parsing de transações com tratamento de erros
-- FR37: Detecção e sinalização de duplicatas
-- FR38: Identificação de transações Pix
-- FR39: Detecção de compras parceladas
-- FR40: Classificação automática de transações usando IA
-- FR41: Apresentação de transações classificadas para revisão
-- FR42: Revisão e ajuste de classificações pela IA
-- FR43: Aprendizado com correções do usuário
-- FR44: Edição manual de qualquer transação
-- FR45: Adição manual de transações (dinheiro)
+- FR4: Upload de arquivos OFX dos 5 principais bancos brasileiros
+- FR4: Upload de arquivos CSV dos 5 principais bancos brasileiros
+- FR4: Detecção automática de formato e banco
+- FR4: Parsing de transações com tratamento de erros
+- FR4: Detecção e sinalização de duplicatas
+- FR4: Identificação de transações Pix
+- FR4: Detecção de compras parceladas
+- FR4: Classificação automática de transações usando IA
+- FR4: Apresentação de transações classificadas para revisão
+- FR4: Revisão e ajuste de classificações pela IA
+- FR4: Aprendizado com correções do usuário
+- FR4: Edição manual de qualquer transação
+- FR4: Adição manual de transações (dinheiro)
 
 **Epic 6: Budget & Category System (Envelope Method)**
-- FR46: Criação de categorias personalizadas
-- FR47: Organização de categorias em hierarquia
-- FR48: Definição de alocação mensal por categoria
-- FR49: Visualização de saldo disponível em tempo real
-- FR50: Realocação de dinheiro entre categorias
-- FR51: Dedução automática ao classificar transações
-- FR52: Sinalização visual de categorias com saldo baixo/negativo
-- FR53: Visualização de histórico de alocações
-- FR54: Comparação entre planejado e real por categoria
+- FR4: Criação de categorias personalizadas
+- FR4: Organização de categorias em hierarquia
+- FR4: Definição de alocação mensal por categoria
+- FR4: Visualização de saldo disponível em tempo real
+- FR4: Realocação de dinheiro entre categorias
+- FR4: Dedução automática ao classificar transações
+- FR4: Sinalização visual de categorias com saldo baixo/negativo
+- FR4: Visualização de histórico de alocações
+- FR4: Comparação entre planejado e real por categoria
 
 **Epic 7: Dashboard GPS - Complete Financial Overview**
-- FR55: Apresentação de 5 métricas essenciais (Camada 1)
-- FR56: Saldo total disponível em todas as contas
-- FR57: Status visual de categorias (verde/amarelo/vermelho)
-- FR58: Progresso da meta principal (Reserva de Emergência)
-- FR59: Gastos do mês vs planejado
-- FR60: Projeção de fim de mês baseado em ritmo atual
-- FR61: Resposta às 3 perguntas GPS
-- FR62: Acesso a Camada 2 para visão tática
-- FR63: Gráficos de gastos por categoria
-- FR64: Comparação planejado vs real por categoria
-- FR65: Tendências temporais (3/6/12 meses)
-- FR66: Drill-down em categorias específicas
-- FR67: Acesso a Camada 3 para detalhes completos
-- FR68: Lista de todas as transações com filtros
-- FR69: Filtros por período, categoria, conta, texto
-- FR70: Ordenação por data, valor, categoria
-- FR71: Edição individual de transações na Camada 3
-- FR72: Exportação de dados em CSV
+- FR4: Apresentação de 5 métricas essenciais (Camada 1)
+- FR4: Saldo total disponível em todas as contas
+- FR4: Status visual de categorias (verde/amarelo/vermelho)
+- FR4: Progresso da meta principal (Reserva de Emergência)
+- FR4: Gastos do mês vs planejado
+- FR4: Projeção de fim de mês baseado em ritmo atual
+- FR4: Resposta às 3 perguntas GPS
+- FR4: Acesso a Camada 2 para visão tática
+- FR4: Gráficos de gastos por categoria
+- FR4: Comparação planejado vs real por categoria
+- FR4: Tendências temporais (3/6/12 meses)
+- FR4: Drill-down em categorias específicas
+- FR4: Acesso a Camada 3 para detalhes completos
+- FR4: Lista de todas as transações com filtros
+- FR4: Filtros por período, categoria, conta, texto
+- FR4: Ordenação por data, valor, categoria
+- FR4: Edição individual de transações na Camada 3
+- FR4: Exportação de dados em CSV
 - UX-DR-28 a UX-DR-38: Componentes customizados do Dashboard GPS
 
 **Epic 8: Financial Goals Management**
-- FR73: Criação de múltiplas metas financeiras
-- FR74: Definição de nome, valor alvo e prazo por meta
-- FR75: Alocação de recursos mensais específicos por meta
-- FR76: Visualização de progresso com barra e curva temporal
-- FR77: Projeção de data de cumprimento
-- FR78: Ajuste de alocação entre metas
-- FR79: Sugestão de metas pré-configuradas
-- FR80: Marcação de metas como concluídas
-- FR81: Histórico de progresso de metas
+- FR4: Criação de múltiplas metas financeiras
+- FR4: Definição de nome, valor alvo e prazo por meta
+- FR4: Alocação de recursos mensais específicos por meta
+- FR4: Visualização de progresso com barra e curva temporal
+- FR4: Projeção de data de cumprimento
+- FR4: Ajuste de alocação entre metas
+- FR4: Sugestão de metas pré-configuradas
+- FR4: Marcação de metas como concluídas
+- FR4: Histórico de progresso de metas
 
 **Epic 9: Reports & Data Export**
-- FR82: Exportação de relatório de transações em CSV
-- FR83: Exportação de relatório de categorias e orçamento em CSV
-- FR84: Exportação completa de dados da conta (LGPD)
+- FR4: Exportação de relatório de transações em CSV
+- FR4: Exportação de relatório de categorias e orçamento em CSV
+- FR4: Exportação completa de dados da conta (LGPD)
 
 **Epic 10: Admin Operations & System Monitoring**
-- FR85: Visualização de métricas de health do sistema
-- FR86: Visualização de taxa de erro de importação por banco
-- FR87: Visualização de precisão da IA por banco
-- FR88: Visualização de número de usuários ativos
-- FR89: Alertas automáticos para métricas críticas
+- FR4: Visualização de métricas de health do sistema
+- FR4: Visualização de taxa de erro de importação por banco
+- FR4: Visualização de precisão da IA por banco
+- FR4: Visualização de número de usuários ativos
+- FR4: Alertas automáticos para métricas críticas

@@ -1,6 +1,6 @@
 # Epic 1: User Authentication & Account Management
 
-Usuários podem se cadastrar usando Google OAuth ou email/senha, fazer login de forma segura, habilitar 2FA opcional, recuperar senha, gerenciar sessões ativas, e exercer seus direitos LGPD (exportar e excluir dados).
+Usuários podem se cadastrar usando Google OAuth ou email/senha, fazer login de forma segura, recuperar senha, gerenciar sessões ativas, e exercer seus direitos LGPD (exportar e excluir dados).
 
 ## Story 1.1: User Registration with Google OAuth
 
@@ -90,30 +90,7 @@ So that I can regain access if I forget my password.
 
 ---
 
-## Story 1.5: Enable Two-Factor Authentication (2FA)
-
-As a logged-in user,
-I want to enable optional 2FA on my account,
-So that I have additional security protection.
-
-**Acceptance Criteria:**
-
-**Given** I am logged in and on account settings page
-**When** I click "Enable 2FA"
-**Then** A TOTP secret is generated
-**And** QR code is displayed for scanning with Google Authenticator or Authy (NFR18)
-**And** I scan the QR code with my authenticator app
-**And** I enter the 6-digit verification code to confirm setup
-**And** If code is valid, 2FA is enabled and secret is saved to `users` table (new field: totp_secret)
-**And** Backup codes are generated (10 single-use codes) and displayed once
-**And** Backup codes are hashed and stored in `user_backup_codes` table
-**And** Audit log entry is created for "2fa_enabled" event
-**And** On next login, I am prompted for 6-digit code after password
-**And** If code is invalid, access is denied
-
----
-
-## Story 1.6: Change Account Email Address
+## Story 1.5: Change Account Email Address
 
 As a logged-in user,
 I want to change my account email address,
@@ -134,7 +111,7 @@ So that I can update my contact information.
 
 ---
 
-## Story 1.7: Add/Remove Authentication Methods
+## Story 1.6: Add/Remove Authentication Methods
 
 As a logged-in user,
 I want to add or remove authentication methods (Google OAuth, email/password),
@@ -157,7 +134,7 @@ So that I can manage how I access my account.
 
 ---
 
-## Story 1.8: View Active Sessions & Remote Logout
+## Story 1.7: View Active Sessions & Remote Logout
 
 As a logged-in user,
 I want to view all my active sessions and perform remote logout,
@@ -181,7 +158,7 @@ So that I can secure my account if I suspect unauthorized access.
 
 ---
 
-## Story 1.9: Export All User Data (LGPD Compliance)
+## Story 1.8: Export All User Data (LGPD Compliance)
 
 As a logged-in user,
 I want to export all my data in a portable format,
@@ -203,7 +180,7 @@ So that I can exercise my LGPD right to data portability.
 
 ---
 
-## Story 1.10: Request Permanent Account Deletion (LGPD Compliance)
+## Story 1.9: Request Permanent Account Deletion (LGPD Compliance)
 
 As a logged-in user,
 I want to request permanent deletion of my account and all associated data,
