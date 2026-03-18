@@ -7,112 +7,110 @@
 - **FR2:** Usuários podem se cadastrar usando email e senha
 - **FR3:** Usuários podem fazer login usando qualquer método de autenticação configurado
 - **FR4:** Usuários podem recuperar acesso via reset de senha por email
-- **FR4:** Usuários podem trocar seu email de conta
-- **FR4:** Usuários podem adicionar/remover métodos de autenticação
-- **FR4:** Usuários podem visualizar sessões ativas e fazer logout remoto
-- **FR4:** Usuários podem exportar todos os seus dados (LGPD compliance)
-- **FR4:** Usuários podem solicitar exclusão permanente de conta e dados
+- **FR5:** Usuários podem visualizar sessões ativas e fazer logout remoto
+- **FR6:** Usuários podem exportar todos os seus dados (LGPD compliance)
+- **FR7:** Usuários podem solicitar exclusão permanente de conta e dados
 
 **Subscription & Billing:**
-- **FR4:** Novos usuários recebem automaticamente trial gratuito de 30 dias
-- **FR4:** Usuários podem assinar plano mensal após trial
-- **FR4:** Sistema envia lembretes 7 dias e 1 dia antes do fim do trial
-- **FR4:** Usuários podem cancelar assinatura a qualquer momento (self-service)
-- **FR4:** Usuários podem reativar assinatura cancelada
-- **FR4:** Sistema processa pagamentos recorrentes automaticamente
-- **FR4:** Sistema notifica usuários sobre falhas de pagamento e tenta cobrar novamente
+- **FR8:** Novos usuários recebem automaticamente trial gratuito de 30 dias
+- **FR9:** Usuários podem assinar plano mensal após trial
+- **FR10:** Sistema envia lembretes 7 dias e 1 dia antes do fim do trial
+- **FR11:** Usuários podem cancelar assinatura a qualquer momento (self-service)
+- **FR12:** Usuários podem reativar assinatura cancelada
+- **FR13:** Sistema processa pagamentos recorrentes automaticamente
+- **FR14:** Sistema notifica usuários sobre falhas de pagamento e tenta cobrar novamente
 
 **Onboarding & Setup:**
-- **FR4:** Sistema guia novos usuários através de onboarding explicando conceito de orçamento por envelope
-- **FR4:** Usuários podem adicionar múltiplas contas bancárias durante setup
-- **FR4:** Usuários podem adicionar múltiplos cartões de crédito durante setup
-- **FR4:** Sistema sugere categorias de gastos iniciais baseadas em padrões comuns
-- **FR4:** Usuários podem personalizar categorias sugeridas durante setup
-- **FR4:** Sistema guia primeira importação de arquivo bancário
-- **FR4:** Sistema explica as 3 camadas do Dashboard GPS durante onboarding
-- **FR4:** Usuários podem criar meta inicial (Reserva de Emergência) durante setup
+- **FR15:** Sistema guia novos usuários através de onboarding explicando conceito de orçamento por envelope
+- **FR16:** Usuários podem adicionar múltiplas contas bancárias durante setup
+- **FR17:** Usuários podem adicionar múltiplos cartões de crédito durante setup
+- **FR18:** Sistema sugere categorias de gastos iniciais baseadas em padrões comuns
+- **FR19:** Usuários podem personalizar categorias sugeridas durante setup
+- **FR20:** Sistema guia primeira importação de arquivo bancário
+- **FR21:** Sistema explica as 3 camadas do Dashboard GPS durante onboarding
+- **FR22:** Usuários podem criar meta inicial (Reserva de Emergência) durante setup
 
 **Account & Card Management:**
-- **FR4:** Usuários podem cadastrar múltiplas contas bancárias com nome, tipo (corrente/poupança) e saldo inicial
-- **FR4:** Usuários podem cadastrar múltiplos cartões de crédito com nome, limite e dia de vencimento
-- **FR4:** Usuários podem editar informações de contas e cartões
-- **FR4:** Usuários podem desativar ou remover contas e cartões
-- **FR4:** Usuários podem registrar transferências entre contas próprias
-- **FR4:** Usuários podem reconciliar saldo registrado com saldo real do banco
-- **FR4:** Sistema mantém histórico de saldos por conta ao longo do tempo
+- **FR23:** Usuários podem cadastrar múltiplas contas bancárias com nome, tipo (corrente/poupança) e saldo inicial
+- **FR24:** Usuários podem cadastrar múltiplos cartões de crédito com nome, limite e dia de vencimento
+- **FR25:** Usuários podem editar informações de contas e cartões
+- **FR26:** Usuários podem desativar ou remover contas e cartões
+- **FR27:** Usuários podem registrar transferências entre contas próprias
+- **FR28:** Usuários podem reconciliar saldo registrado com saldo real do banco
+- **FR29:** Sistema mantém histórico de saldos por conta ao longo do tempo
 
 **Transaction Import & Classification:**
-- **FR4:** Usuários podem fazer upload de arquivos OFX dos 5 principais bancos brasileiros (Nubank, BB, Itaú, Bradesco, Caixa)
-- **FR4:** Usuários podem fazer upload de arquivos CSV dos 5 principais bancos brasileiros
-- **FR4:** Sistema detecta automaticamente formato e banco do arquivo importado
-- **FR4:** Sistema faz parsing de transações com tratamento robusto de erros
-- **FR4:** Sistema detecta e sinaliza transações duplicadas
-- **FR4:** Sistema identifica transações Pix e extrai origem/destino quando disponível
-- **FR4:** Sistema detecta compras parceladas e divide corretamente entre meses futuros
-- **FR4:** Sistema classifica transações automaticamente usando IA
-- **FR4:** Sistema apresenta transações classificadas para revisão do usuário
-- **FR4:** Usuários podem revisar e ajustar classificações sugeridas pela IA
-- **FR4:** Sistema aprende com correções do usuário para melhorar classificações futuras
-- **FR4:** Usuários podem editar manualmente qualquer transação (data, valor, descrição, categoria)
-- **FR4:** Usuários podem adicionar transações manualmente (para gastos em dinheiro)
+- **FR30:** Usuários podem fazer upload de arquivos OFX dos 5 principais bancos brasileiros (Nubank, BB, Itaú, Bradesco, Caixa)
+- **FR31:** Usuários podem fazer upload de arquivos CSV dos 5 principais bancos brasileiros
+- **FR32:** Sistema detecta automaticamente formato e banco do arquivo importado
+- **FR33:** Sistema faz parsing de transações com tratamento robusto de erros
+- **FR34:** Sistema detecta e sinaliza transações duplicadas
+- **FR35:** Sistema identifica transações Pix e extrai origem/destino quando disponível
+- **FR36:** Sistema detecta compras parceladas e divide corretamente entre meses futuros
+- **FR37:** Sistema classifica transações automaticamente usando IA
+- **FR38:** Sistema apresenta transações classificadas para revisão do usuário
+- **FR39:** Usuários podem revisar e ajustar classificações sugeridas pela IA
+- **FR40:** Sistema aprende com correções do usuário para melhorar classificações futuras
+- **FR41:** Usuários podem editar manualmente qualquer transação (data, valor, descrição, categoria)
+- **FR42:** Usuários podem adicionar transações manualmente (para gastos em dinheiro)
 
 **Budget & Category Management:**
-- **FR4:** Usuários podem criar categorias personalizadas de gastos
-- **FR4:** Usuários podem organizar categorias em grupos hierárquicos
-- **FR4:** Usuários podem definir quanto dinheiro alocar para cada categoria no início do mês
-- **FR4:** Sistema mostra saldo disponível em cada categoria em tempo real
-- **FR4:** Usuários podem realocar dinheiro entre categorias quando necessário
-- **FR4:** Quando uma transação é classificada, sistema deduz automaticamente da categoria correspondente
-- **FR4:** Sistema sinaliza visualmente categorias com saldo baixo ou negativo
-- **FR4:** Usuários podem visualizar histórico de alocações por categoria
-- **FR4:** Sistema mostra comparação entre planejado e real por categoria
+- **FR43:** Usuários podem criar categorias personalizadas de gastos
+- **FR44:** Usuários podem organizar categorias em grupos hierárquicos
+- **FR45:** Usuários podem definir quanto dinheiro alocar para cada categoria no início do mês
+- **FR46:** Sistema mostra saldo disponível em cada categoria em tempo real
+- **FR47:** Usuários podem realocar dinheiro entre categorias quando necessário
+- **FR48:** Quando uma transação é classificada, sistema deduz automaticamente da categoria correspondente
+- **FR49:** Sistema sinaliza visualmente categorias com saldo baixo ou negativo
+- **FR50:** Usuários podem visualizar histórico de alocações por categoria
+- **FR51:** Sistema mostra comparação entre planejado e real por categoria
 
 **Dashboard GPS - Layer 1 (Overview):**
-- **FR4:** Sistema apresenta 5 métricas essenciais em tela única (Camada 1)
-- **FR4:** Dashboard Camada 1 mostra saldo total disponível em todas as contas
-- **FR4:** Dashboard Camada 1 mostra status visual de categorias (verde/amarelo/vermelho)
-- **FR4:** Dashboard Camada 1 mostra progresso da meta principal (Reserva de Emergência)
-- **FR4:** Dashboard Camada 1 mostra gastos do mês vs planejado
-- **FR4:** Dashboard Camada 1 mostra projeção de fim de mês baseado em ritmo atual
-- **FR4:** Dashboard Camada 1 responde as 3 perguntas: Onde estou? Para onde vou? Preciso ajustar?
+- **FR52:** Sistema apresenta 5 métricas essenciais em tela única (Camada 1)
+- **FR53:** Dashboard Camada 1 mostra saldo total disponível em todas as contas
+- **FR54:** Dashboard Camada 1 mostra status visual de categorias (verde/amarelo/vermelho)
+- **FR55:** Dashboard Camada 1 mostra progresso da meta principal (Reserva de Emergência)
+- **FR56:** Dashboard Camada 1 mostra gastos do mês vs planejado
+- **FR57:** Dashboard Camada 1 mostra projeção de fim de mês baseado em ritmo atual
+- **FR58:** Dashboard Camada 1 responde as 3 perguntas: Onde estou? Para onde vou? Preciso ajustar?
 
 **Dashboard GPS - Layer 2 (Tactical):**
-- **FR4:** Usuários podem acessar Camada 2 para visão tática detalhada
-- **FR4:** Dashboard Camada 2 mostra gráficos de gastos por categoria
-- **FR4:** Dashboard Camada 2 mostra comparação planejado vs real por categoria
-- **FR4:** Dashboard Camada 2 mostra tendências temporais (últimos 3/6/12 meses)
-- **FR4:** Usuários podem fazer drill-down em categorias específicas
+- **FR59:** Usuários podem acessar Camada 2 para visão tática detalhada
+- **FR60:** Dashboard Camada 2 mostra gráficos de gastos por categoria
+- **FR61:** Dashboard Camada 2 mostra comparação planejado vs real por categoria
+- **FR62:** Dashboard Camada 2 mostra tendências temporais (últimos 3/6/12 meses)
+- **FR63:** Usuários podem fazer drill-down em categorias específicas
 
 **Dashboard GPS - Layer 3 (Details):**
-- **FR4:** Usuários podem acessar Camada 3 para detalhes completos
-- **FR4:** Dashboard Camada 3 mostra lista de todas as transações com filtros
-- **FR4:** Usuários podem filtrar transações por período, categoria, conta, ou texto
-- **FR4:** Usuários podem ordenar transações por data, valor, ou categoria
-- **FR4:** Usuários podem editar transações individualmente na Camada 3
-- **FR4:** Usuários podem exportar dados em formato CSV
+- **FR64:** Usuários podem acessar Camada 3 para detalhes completos
+- **FR65:** Dashboard Camada 3 mostra lista de todas as transações com filtros
+- **FR66:** Usuários podem filtrar transações por período, categoria, conta, ou texto
+- **FR67:** Usuários podem ordenar transações por data, valor, ou categoria
+- **FR68:** Usuários podem editar transações individualmente na Camada 3
+- **FR69:** Usuários podem exportar dados em formato CSV
 
 **Financial Goals Management:**
-- **FR4:** Usuários podem criar múltiplas metas financeiras simultâneas
-- **FR4:** Para cada meta, usuários podem definir nome, valor alvo e prazo
-- **FR4:** Usuários podem alocar recursos mensais específicos para cada meta
-- **FR4:** Sistema visualiza progresso de cada meta com barra de preenchimento e curva temporal
-- **FR4:** Sistema projeta data de cumprimento baseada em alocação mensal atual
-- **FR4:** Usuários podem ajustar alocação entre metas
-- **FR4:** Sistema sugere metas pré-configuradas (Reserva de Emergência, Férias, Compra Grande)
-- **FR4:** Usuários podem marcar metas como concluídas
-- **FR4:** Sistema mantém histórico de progresso de metas ao longo do tempo
+- **FR70:** Usuários podem criar múltiplas metas financeiras simultâneas
+- **FR71:** Para cada meta, usuários podem definir nome, valor alvo e prazo
+- **FR72:** Usuários podem alocar recursos mensais específicos para cada meta
+- **FR73:** Sistema visualiza progresso de cada meta com barra de preenchimento e curva temporal
+- **FR74:** Sistema projeta data de cumprimento baseada em alocação mensal atual
+- **FR75:** Usuários podem ajustar alocação entre metas
+- **FR76:** Sistema sugere metas pré-configuradas (Reserva de Emergência, Férias, Compra Grande)
+- **FR77:** Usuários podem marcar metas como concluídas
+- **FR78:** Sistema mantém histórico de progresso de metas ao longo do tempo
 
 **Reports & Data Export:**
-- **FR4:** Usuários podem exportar relatório de transações em formato CSV
-- **FR4:** Usuários podem exportar relatório de categorias e orçamento em formato CSV
-- **FR4:** Usuários podem exportar todos os dados da conta para portabilidade (LGPD)
+- **FR79:** Usuários podem exportar relatório de transações em formato CSV
+- **FR80:** Usuários podem exportar relatório de categorias e orçamento em formato CSV
+- **FR81:** Usuários podem exportar todos os dados da conta para portabilidade (LGPD)
 
 **Admin Operations (Post-MVP v1.1):**
-- **FR4:** Administradores podem visualizar métricas de health do sistema
-- **FR4:** Administradores podem visualizar taxa de erro de importação por banco
-- **FR4:** Administradores podem visualizar precisão da IA por banco
-- **FR4:** Administradores podem visualizar número de usuários ativos
-- **FR4:** Sistema envia alertas automáticos para administradores quando métricas críticas são violadas
+- **FR82:** Administradores podem visualizar métricas de health do sistema
+- **FR83:** Administradores podem visualizar taxa de erro de importação por banco
+- **FR84:** Administradores podem visualizar precisão da IA por banco
+- **FR85:** Administradores podem visualizar número de usuários ativos
+- **FR86:** Sistema envia alertas automáticos para administradores quando métricas críticas são violadas
 
 ## NonFunctional Requirements
 
@@ -383,110 +381,108 @@
 - UX-DR-1 a UX-DR-27: Foundation de design system, cores, tipografia, acessibilidade
 
 **Epic 1: User Authentication & Account Management**
-- FR1: Cadastro com Google OAuth
-- FR2: Cadastro com email e senha
-- FR3: Login com qualquer método configurado
-- FR4: Recuperação de senha por email
-- FR4: Troca de email de conta
-- FR4: Adicionar/remover métodos de autenticação
-- FR4: Visualizar sessões ativas e logout remoto
-- FR4: Exportar dados (LGPD compliance)
-- FR4: Solicitar exclusão permanente de conta e dados
+- FR87: Cadastro com Google OAuth
+- FR88: Cadastro com email e senha
+- FR89: Login com qualquer método configurado
+- FR90: Recuperação de senha por email
+- FR91: Visualizar sessões ativas e logout remoto
+- FR92: Exportar dados (LGPD compliance)
+- FR93: Solicitar exclusão permanente de conta e dados
 
 **Epic 2: Subscription & Billing System**
-- FR4: Trial gratuito automático de 30 dias
-- FR4: Assinatura de plano mensal
-- FR4: Lembretes antes do fim do trial
-- FR4: Cancelamento self-service de assinatura
-- FR4: Reativação de assinatura cancelada
-- FR4: Processamento automático de pagamentos recorrentes
-- FR4: Notificações de falhas de pagamento e retry
+- FR94: Trial gratuito automático de 30 dias
+- FR95: Assinatura de plano mensal
+- FR96: Lembretes antes do fim do trial
+- FR97: Cancelamento self-service de assinatura
+- FR98: Reativação de assinatura cancelada
+- FR99: Processamento automático de pagamentos recorrentes
+- FR100: Notificações de falhas de pagamento e retry
 
 **Epic 3: Guided Onboarding Experience**
-- FR4: Onboarding com explicação de orçamento por envelope
-- FR4: Adicionar múltiplas contas bancárias durante setup
-- FR4: Adicionar múltiplos cartões durante setup
-- FR4: Sugestão de categorias iniciais
-- FR4: Personalização de categorias sugeridas
-- FR4: Primeira importação guiada de arquivo bancário
-- FR4: Explicação das 3 camadas do Dashboard GPS
-- FR4: Criação de meta inicial (Reserva de Emergência)
+- FR101: Onboarding com explicação de orçamento por envelope
+- FR102: Adicionar múltiplas contas bancárias durante setup
+- FR103: Adicionar múltiplos cartões durante setup
+- FR104: Sugestão de categorias iniciais
+- FR105: Personalização de categorias sugeridas
+- FR106: Primeira importação guiada de arquivo bancário
+- FR107: Explicação das 3 camadas do Dashboard GPS
+- FR108: Criação de meta inicial (Reserva de Emergência)
 
 **Epic 4: Financial Accounts & Cards Management**
-- FR4: Cadastrar múltiplas contas bancárias
-- FR4: Cadastrar múltiplos cartões de crédito
-- FR4: Editar informações de contas e cartões
-- FR4: Desativar ou remover contas e cartões
-- FR4: Registrar transferências entre contas próprias
-- FR4: Reconciliar saldo registrado com saldo real
-- FR4: Manter histórico de saldos ao longo do tempo
+- FR109: Cadastrar múltiplas contas bancárias
+- FR110: Cadastrar múltiplos cartões de crédito
+- FR111: Editar informações de contas e cartões
+- FR112: Desativar ou remover contas e cartões
+- FR113: Registrar transferências entre contas próprias
+- FR114: Reconciliar saldo registrado com saldo real
+- FR115: Manter histórico de saldos ao longo do tempo
 
 **Epic 5: Transaction Import & AI Classification**
-- FR4: Upload de arquivos OFX dos 5 principais bancos brasileiros
-- FR4: Upload de arquivos CSV dos 5 principais bancos brasileiros
-- FR4: Detecção automática de formato e banco
-- FR4: Parsing de transações com tratamento de erros
-- FR4: Detecção e sinalização de duplicatas
-- FR4: Identificação de transações Pix
-- FR4: Detecção de compras parceladas
-- FR4: Classificação automática de transações usando IA
-- FR4: Apresentação de transações classificadas para revisão
-- FR4: Revisão e ajuste de classificações pela IA
-- FR4: Aprendizado com correções do usuário
-- FR4: Edição manual de qualquer transação
-- FR4: Adição manual de transações (dinheiro)
+- FR116: Upload de arquivos OFX dos 5 principais bancos brasileiros
+- FR117: Upload de arquivos CSV dos 5 principais bancos brasileiros
+- FR118: Detecção automática de formato e banco
+- FR119: Parsing de transações com tratamento de erros
+- FR120: Detecção e sinalização de duplicatas
+- FR121: Identificação de transações Pix
+- FR122: Detecção de compras parceladas
+- FR123: Classificação automática de transações usando IA
+- FR124: Apresentação de transações classificadas para revisão
+- FR125: Revisão e ajuste de classificações pela IA
+- FR126: Aprendizado com correções do usuário
+- FR127: Edição manual de qualquer transação
+- FR128: Adição manual de transações (dinheiro)
 
 **Epic 6: Budget & Category System (Envelope Method)**
-- FR4: Criação de categorias personalizadas
-- FR4: Organização de categorias em hierarquia
-- FR4: Definição de alocação mensal por categoria
-- FR4: Visualização de saldo disponível em tempo real
-- FR4: Realocação de dinheiro entre categorias
-- FR4: Dedução automática ao classificar transações
-- FR4: Sinalização visual de categorias com saldo baixo/negativo
-- FR4: Visualização de histórico de alocações
-- FR4: Comparação entre planejado e real por categoria
+- FR129: Criação de categorias personalizadas
+- FR130: Organização de categorias em hierarquia
+- FR131: Definição de alocação mensal por categoria
+- FR132: Visualização de saldo disponível em tempo real
+- FR133: Realocação de dinheiro entre categorias
+- FR134: Dedução automática ao classificar transações
+- FR135: Sinalização visual de categorias com saldo baixo/negativo
+- FR136: Visualização de histórico de alocações
+- FR137: Comparação entre planejado e real por categoria
 
 **Epic 7: Dashboard GPS - Complete Financial Overview**
-- FR4: Apresentação de 5 métricas essenciais (Camada 1)
-- FR4: Saldo total disponível em todas as contas
-- FR4: Status visual de categorias (verde/amarelo/vermelho)
-- FR4: Progresso da meta principal (Reserva de Emergência)
-- FR4: Gastos do mês vs planejado
-- FR4: Projeção de fim de mês baseado em ritmo atual
-- FR4: Resposta às 3 perguntas GPS
-- FR4: Acesso a Camada 2 para visão tática
-- FR4: Gráficos de gastos por categoria
-- FR4: Comparação planejado vs real por categoria
-- FR4: Tendências temporais (3/6/12 meses)
-- FR4: Drill-down em categorias específicas
-- FR4: Acesso a Camada 3 para detalhes completos
-- FR4: Lista de todas as transações com filtros
-- FR4: Filtros por período, categoria, conta, texto
-- FR4: Ordenação por data, valor, categoria
-- FR4: Edição individual de transações na Camada 3
-- FR4: Exportação de dados em CSV
+- FR138: Apresentação de 5 métricas essenciais (Camada 1)
+- FR139: Saldo total disponível em todas as contas
+- FR140: Status visual de categorias (verde/amarelo/vermelho)
+- FR141: Progresso da meta principal (Reserva de Emergência)
+- FR142: Gastos do mês vs planejado
+- FR143: Projeção de fim de mês baseado em ritmo atual
+- FR144: Resposta às 3 perguntas GPS
+- FR145: Acesso a Camada 2 para visão tática
+- FR146: Gráficos de gastos por categoria
+- FR147: Comparação planejado vs real por categoria
+- FR148: Tendências temporais (3/6/12 meses)
+- FR149: Drill-down em categorias específicas
+- FR150: Acesso a Camada 3 para detalhes completos
+- FR151: Lista de todas as transações com filtros
+- FR152: Filtros por período, categoria, conta, texto
+- FR153: Ordenação por data, valor, categoria
+- FR154: Edição individual de transações na Camada 3
+- FR155: Exportação de dados em CSV
 - UX-DR-28 a UX-DR-38: Componentes customizados do Dashboard GPS
 
 **Epic 8: Financial Goals Management**
-- FR4: Criação de múltiplas metas financeiras
-- FR4: Definição de nome, valor alvo e prazo por meta
-- FR4: Alocação de recursos mensais específicos por meta
-- FR4: Visualização de progresso com barra e curva temporal
-- FR4: Projeção de data de cumprimento
-- FR4: Ajuste de alocação entre metas
-- FR4: Sugestão de metas pré-configuradas
-- FR4: Marcação de metas como concluídas
-- FR4: Histórico de progresso de metas
+- FR156: Criação de múltiplas metas financeiras
+- FR157: Definição de nome, valor alvo e prazo por meta
+- FR158: Alocação de recursos mensais específicos por meta
+- FR159: Visualização de progresso com barra e curva temporal
+- FR160: Projeção de data de cumprimento
+- FR161: Ajuste de alocação entre metas
+- FR162: Sugestão de metas pré-configuradas
+- FR163: Marcação de metas como concluídas
+- FR164: Histórico de progresso de metas
 
 **Epic 9: Reports & Data Export**
-- FR4: Exportação de relatório de transações em CSV
-- FR4: Exportação de relatório de categorias e orçamento em CSV
-- FR4: Exportação completa de dados da conta (LGPD)
+- FR165: Exportação de relatório de transações em CSV
+- FR166: Exportação de relatório de categorias e orçamento em CSV
+- FR167: Exportação completa de dados da conta (LGPD)
 
 **Epic 10: Admin Operations & System Monitoring**
-- FR4: Visualização de métricas de health do sistema
-- FR4: Visualização de taxa de erro de importação por banco
-- FR4: Visualização de precisão da IA por banco
-- FR4: Visualização de número de usuários ativos
-- FR4: Alertas automáticos para métricas críticas
+- FR168: Visualização de métricas de health do sistema
+- FR169: Visualização de taxa de erro de importação por banco
+- FR170: Visualização de precisão da IA por banco
+- FR171: Visualização de número de usuários ativos
+- FR172: Alertas automáticos para métricas críticas
