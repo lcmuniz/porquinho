@@ -27,9 +27,10 @@ class SecurityConfigTest {
 
     @Test
     void healthEndpointShouldBePublic() throws Exception {
-        // Health endpoint may return 503 if Redis is down, but should still be accessible (not 401/403)
+        // Health endpoint should be accessible without authentication (not 401/403)
+        // Returns 200 OK in tests because Redis is disabled (spring.cache.type: none)
         mockMvc.perform(get("/actuator/health"))
-                .andExpect(status().is5xxServerError()); // 503 Service Unavailable is expected without Redis
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -56,9 +57,9 @@ class SecurityConfigTest {
     @Test
     void corsShouldBeConfigured() throws Exception {
         // CORS headers should be present for allowed origins
-        // May return 503 if Redis is down, but CORS should still work
+        // Returns 200 OK in tests because Redis is disabled (spring.cache.type: none)
         mockMvc.perform(get("/actuator/health")
                 .header("Origin", "http://localhost:5173"))
-                .andExpect(status().is5xxServerError()); // 503 Service Unavailable is expected without Redis
+                .andExpect(status().isOk());
     }
 }
