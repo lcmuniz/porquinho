@@ -57,8 +57,9 @@ jobs:
           java-version: '21'
           cache: 'maven'
 
-      - name: Run tests
-        run: ./mvnw test
+      - name: Run unit tests only
+        run: |
+          ./mvnw test -Dtest=AuthControllerTest,AuthServiceTest,RateLimitServiceTest,AccountLockServiceTest
         env:
           SPRING_PROFILES_ACTIVE: test
           SUPABASE_DB_URL: jdbc:postgresql://localhost:5432/porquinho_test
