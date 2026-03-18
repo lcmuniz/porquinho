@@ -33,14 +33,21 @@ export const authService = {
    * Uses authenticated API (JWT from Supabase session automatically included).
    *
    * @param data User data from Google OAuth
+   * @param accessToken Optional access token to use directly (for immediate post-OAuth calls)
    * @returns User data from backend
    */
   async registerWithGoogle(
-    data: RegisterGoogleRequest
+    data: RegisterGoogleRequest,
+    accessToken?: string
   ): Promise<UserResponse> {
+    const config = accessToken
+      ? { headers: { Authorization: `Bearer ${accessToken}` } }
+      : undefined
+
     const response = await api.post<UserResponse>(
       '/api/v1/auth/register/google',
-      data
+      data,
+      config
     )
     return response.data
   },
