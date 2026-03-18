@@ -72,8 +72,7 @@ public class AuthController {
 
     /**
      * Register user with email/password.
-     * TEMPORARY: Endpoint is public (no JWT validation) until JWT configuration is fixed.
-     * Frontend sends userId in request body from Supabase session.
+     * Called by frontend after Supabase creates user to sync to backend database.
      *
      * HYBRID ARCHITECTURE - This endpoint IS CALLED by frontend for user sync.
      * Following hybrid architecture decision (ARQUITETURA-SIMPLIFICADA.md), users are created
@@ -83,22 +82,21 @@ public class AuthController {
      * - Rate limiting per-user
      * - Business data (subscriptions, billing, etc)
      *
-     * @param request Request containing email, name, and userId (from Supabase)
+     * @param userId User ID extracted from JWT sub claim by JwtAuthenticationConverter
+     * @param request Request containing email and name
      * @param httpRequest HTTP request to extract client IP address
      * @return UserResponse with user data
      */
     @PostMapping("/register/email")
     public ResponseEntity<UserResponse> registerWithEmail(
+        @AuthenticationPrincipal String userId,
         @Valid @RequestBody RegisterEmailRequest request,
         HttpServletRequest httpRequest
     ) {
         // Extract client IP address for audit logging
         String ipAddress = getClientIpAddress(httpRequest);
 
-        // TEMPORARY: Get userId from request body until JWT validation is fixed
-        String userId = request.getUserId();
-
-        // Register or retrieve user
+        // Register or retrieve user (userId from JWT)
         AuthService.UserRegistrationResult result = authService.registerOrGetUserFromEmail(
             userId, request, ipAddress);
 
@@ -156,12 +154,11 @@ public class AuthController {
     /**
      * Log successful user login for audit purposes.
      * This endpoint is ONLY for audit logging after successful Supabase authentication.
-     * TEMPORARY: Endpoint is public (no JWT validation) until JWT configuration is fixed.
      *
      * HYBRID ARCHITECTURE: Returns 404 if user doesn't exist in backend database,
      * allowing frontend to perform lazy sync (create user in backend on first login).
      *
-     * @param userId User ID extracted from JWT sub claim (null if endpoint is public)
+     * @param userId User ID extracted from JWT sub claim by JwtAuthenticationConverter
      * @param request Request containing email
      * @param httpRequest HTTP request to extract client IP address
      * @return 200 OK if successful, 404 if user not found in backend

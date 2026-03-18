@@ -231,12 +231,12 @@ const handleEmailSubmit = async () => {
     // Registration successful!
     if (result.user) {
       // Step 2: Sync user to backend database (for audit logs, account locking, etc.)
+      // JWT token is automatically included by api interceptor
       try {
         if (result.user?.id) {
           await authService.registerWithEmail({
             email: email.value,
             name: name.value,
-            userId: result.user.id,  // Pass Supabase user ID
           })
         }
       } catch (backendError: any) {
