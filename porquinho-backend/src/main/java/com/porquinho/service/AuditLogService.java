@@ -47,4 +47,20 @@ public class AuditLogService {
         AuditLog auditLog = new AuditLog(userId, eventType, ipAddress, metadata);
         return auditLogRepository.save(auditLog);
     }
+
+    /**
+     * Log an anonymous event (without user_id).
+     * Used for security-sensitive operations like password reset requests where we don't want to reveal
+     * if an email exists in the database.
+     *
+     * @param eventType Type of event (e.g., "password_reset_requested")
+     * @param ipAddress IP address of the client
+     * @param metadata Additional event metadata (e.g., email, user_agent)
+     * @return Created AuditLog entity
+     */
+    @Transactional
+    public AuditLog logAnonymous(String eventType, String ipAddress, String metadata) {
+        AuditLog auditLog = new AuditLog(null, eventType, ipAddress, metadata);
+        return auditLogRepository.save(auditLog);
+    }
 }

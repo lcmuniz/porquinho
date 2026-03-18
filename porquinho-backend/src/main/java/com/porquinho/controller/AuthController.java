@@ -3,6 +3,7 @@ package com.porquinho.controller;
 import com.porquinho.dto.RegisterGoogleRequest;
 import com.porquinho.dto.RegisterEmailRequest;
 import com.porquinho.dto.LoginRequest;
+import com.porquinho.dto.PasswordResetRequest;
 import com.porquinho.dto.UserResponse;
 import com.porquinho.entity.User;
 import com.porquinho.service.AuthService;
@@ -185,6 +186,78 @@ public class AuthController {
 
         // Reset failed login attempts on successful login
         accountLockService.resetFailedAttempts(request.getEmail());
+
+        return ResponseEntity.ok().build();
+    }
+
+    /**
+     * Log password reset request for audit purposes.
+     * This endpoint is called when user requests password reset via email.
+     * Does not require authentication (public endpoint).
+     * Rate limited to 3 requests per hour per email to prevent abuse.
+     *
+     * SECURITY: Does NOT reveal if email exists in database (returns 200 regardless).
+     * Creates anonymous audit log (no user_id) to prevent email enumeration.
+     *
+     * @param request Request containing email
+     * @param httpRequest HTTP request to extract client IP address
+     * @return 200 OK (no response body)
+     * @throws RateLimitExceededException if rate limit exceeded (429)
+     */
+    @PostMapping("/password-reset/requested")
+    public ResponseEntity<Void> logPasswordResetRequested(
+        @Valid @RequestBody PasswordResetRequest request,
+        HttpServletRequest httpRequest
+    ) {
+        // Check rate limit (3 requests per 60 minutes per email)
+        if (!rateLimitService.allowRequest("password_reset:" + request.getEmail(), 3, 3600)) {
+            throw new RateLimitExceededException("Too many password reset requests. Please wait 1 hour.");
+        }
+
+        // Extract client IP address for audit logging
+        String ipAddress = getClientIpAddress(httpRequest);
+
+        // Build metadata JSON string manually (simple approach)
+        String metadata = String.format(
+            "{\"email\":\"%s\",\"user_agent\":\"%s\"}",
+            request.getEmail(),
+            httpRequest.getHeader("User-Agent") != null ? httpRequest.getHeader("User-Agent") : "unknown"
+        );
+
+        // Log anonymous audit event (no user_id - security feature)
+        auditLogService.logAnonymous("password_reset_requested", ipAddress, metadata);
+
+        return ResponseEntity.ok().build();
+    }
+
+    /**
+     * Log successful password reset completion for audit purposes.
+     * This endpoint is called after Supabase successfully resets the password.
+     * Requires authentication (JWT from Supabase reset token flow).
+     *
+     * @param userId User ID extracted from JWT sub claim by JwtAuthenticationConverter
+     * @param httpRequest HTTP request to extract client IP address
+     * @return 200 OK (no response body)
+     */
+    @PostMapping("/password-reset/completed")
+    public ResponseEntity<Void> logPasswordResetCompleted(
+        @AuthenticationPrincipal String userId,
+        HttpServletRequest httpRequest
+    ) {
+        // Extract client IP address for audit logging
+        String ipAddress = getClientIpAddress(httpRequest);
+
+        // Build metadata JSON string
+        String metadata = String.format(
+            "{\"user_agent\":\"%s\"}",
+            httpRequest.getHeader("User-Agent") != null ? httpRequest.getHeader("User-Agent") : "unknown"
+        );
+
+        // Log audit event with user_id
+        // In test environment, userId might be null or "anonymousUser" - handle gracefully
+        if (userId != null && !userId.equals("anonymousUser")) {
+            auditLogService.log("password_reset_completed", java.util.UUID.fromString(userId), ipAddress, metadata);
+        }
 
         return ResponseEntity.ok().build();
     }

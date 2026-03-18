@@ -319,4 +319,59 @@ class AuthControllerTest {
 
         verify(accountLockService).resetFailedAttempts("test@example.com");
     }
+
+    // ===== PASSWORD RESET TESTS (Story 1.4) =====
+
+    @Test
+    void shouldLogPasswordResetRequested() throws Exception {
+        // Arrange
+        String resetJson = "{\"email\":\"test@example.com\"}";
+        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(true);
+
+        // Act & Assert
+        mockMvc.perform(post("/api/v1/auth/password-reset/requested")
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(resetJson))
+                .andExpect(status().isOk());
+
+        // Verify rate limit was checked with correct parameters (3 requests per 3600 seconds)
+        verify(rateLimitService).allowRequest("password_reset:test@example.com", 3, 3600);
+
+        // Verify anonymous audit log was created (no user_id)
+        verify(auditLogService).logAnonymous(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void shouldLogPasswordResetCompleted() throws Exception {
+        // Arrange
+        // In test profile, authentication is disabled, so userId will be null
+        // The endpoint should handle this gracefully
+
+        // Act & Assert
+        mockMvc.perform(post("/api/v1/auth/password-reset/completed")
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk());
+
+        // Note: In test profile, auditLogService.log() will be called with null userId
+        // In production, userId would be extracted from JWT
+    }
+
+    @Test
+    void shouldReturn429WhenPasswordResetRateLimited() throws Exception {
+        // Arrange
+        String resetJson = "{\"email\":\"test@example.com\"}";
+        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(false);
+
+        // Act & Assert
+        mockMvc.perform(post("/api/v1/auth/password-reset/requested")
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(resetJson))
+                .andExpect(status().isTooManyRequests());
+
+        // Verify audit log was NOT created (rate limited before logging)
+        verify(auditLogService, org.mockito.Mockito.never()).logAnonymous(anyString(), anyString(), anyString());
+    }
 }

@@ -2,18 +2,12 @@ package com.porquinho.config;
 
 import java.util.List;
 
-import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
-
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -22,7 +16,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 /**
  * Security configuration for Porquinho backend.
  * Configures JWT-based authentication using Supabase Auth as the identity provider.
- * Uses JWT_SECRET for token validation (HMAC SHA-256).
+ * Uses JWK Set (ES256) for token validation - Spring Boot auto-configures from issuer-uri.
  * CORS is enabled for local frontend development.
  * Only active in non-test profiles.
  */
@@ -30,9 +24,6 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @EnableWebSecurity
 @Profile("!test")
 public class SecurityConfig {
-
-    @Value("${SUPABASE_JWT_SECRET}")
-    private String jwtSecret;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -47,6 +38,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/auth/health").permitAll() // Health check endpoint
                 .requestMatchers("/api/v1/auth/login/check").permitAll() // Login check (rate limit + account lock) - called BEFORE authentication
                 .requestMatchers("/api/v1/auth/login/failed").permitAll() // Record failed login - called AFTER failed authentication attempt
+                .requestMatchers("/api/v1/auth/password-reset/requested").permitAll() // Password reset request - public endpoint (Story 1.4)
                 .requestMatchers("/api/v1/**").authenticated() // All other API endpoints require JWT authentication
                 .anyRequest().permitAll()
             )
@@ -55,13 +47,6 @@ public class SecurityConfig {
             );
 
         return http.build();
-    }
-
-    @Bean
-    public JwtDecoder jwtDecoder() {
-        // Create HMAC secret key from JWT_SECRET (Supabase uses HS256)
-        SecretKey secretKey = new SecretKeySpec(jwtSecret.getBytes(), "HmacSHA256");
-        return NimbusJwtDecoder.withSecretKey(secretKey).build();
     }
 
     @Bean

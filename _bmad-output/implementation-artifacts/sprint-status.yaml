@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-13
-last_updated: 2026-03-17
+last_updated: 2026-03-18
 project: porquinho
 project_key: NOKEY
 tracking_system: file-system
@@ -60,7 +60,7 @@ development_status:
   1-1-user-registration-with-google-oauth: done
   1-2-user-registration-with-email-password: done
   1-3-user-login-with-any-configured-method: done
-  1-4-password-recovery-via-email: backlog
+  1-4-password-recovery-via-email: review
   1-5-enable-two-factor-authentication-2fa: backlog
   1-6-change-account-email-address: backlog
   1-7-add-remove-authentication-methods: backlog
