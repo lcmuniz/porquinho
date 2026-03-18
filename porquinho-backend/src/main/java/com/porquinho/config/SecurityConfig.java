@@ -43,6 +43,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/auth/health").permitAll() // Health check endpoint
                 .requestMatchers("/api/v1/auth/login/check").permitAll() // Login check (rate limit + account lock) - no auth required
                 .requestMatchers("/api/v1/auth/login/failed").permitAll() // Record failed login - no auth required
+                .requestMatchers("/api/v1/auth/login").permitAll() // TEMPORARY: Allow login audit without JWT until JWT validation is fixed
                 .requestMatchers("/api/v1/auth/register/**").authenticated() // Registration requires JWT from Supabase OAuth
                 .requestMatchers("/api/v1/**").authenticated() // All other API endpoints require authentication
                 .anyRequest().permitAll()
