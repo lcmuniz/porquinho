@@ -1,6 +1,6 @@
 # Epic 1: User Authentication & Account Management
 
-Usuários podem se cadastrar usando Google OAuth ou email/senha, fazer login de forma segura, recuperar senha, gerenciar sessões ativas, e exercer seus direitos LGPD (exportar e excluir dados).
+Usuários podem se cadastrar usando Google OAuth ou email/senha, fazer login de forma segura, recuperar senha, visualizar sessões ativas e exercer seus direitos LGPD (exportar e excluir dados).
 
 ## Story 1.1: User Registration with Google OAuth
 
@@ -90,51 +90,7 @@ So that I can regain access if I forget my password.
 
 ---
 
-## Story 1.5: Change Account Email Address
-
-As a logged-in user,
-I want to change my account email address,
-So that I can update my contact information.
-
-**Acceptance Criteria:**
-
-**Given** I am logged in and on account settings page
-**When** I enter a new email address and click "Change Email"
-**Then** Verification email is sent to the new email address
-**And** Clicking verification link confirms the email change
-**And** User record in `users` table is updated with new email
-**And** JWT token is regenerated with new email
-**And** Audit log entry is created for "email_changed" event
-**And** Notification is sent to old email address informing of change (security)
-**And** If new email is already in use, error message is shown
-**And** If verification link expires (24 hours), change request is cancelled
-
----
-
-## Story 1.6: Add/Remove Authentication Methods
-
-As a logged-in user,
-I want to add or remove authentication methods (Google OAuth, email/password),
-So that I can manage how I access my account.
-
-**Acceptance Criteria:**
-
-**Given** I am logged in and on account settings page
-**When** I click "Add Google OAuth" and I currently only have email/password
-**Then** I am redirected to Google OAuth consent screen
-**And** After granting permissions, `users` table is updated with google_id
-**And** I can now login with either method
-**And** Audit log entry is created for "auth_method_added" event
-**And** When I click "Remove Google OAuth"
-**Then** Confirmation dialog is shown
-**And** After confirming, google_id is set to NULL in `users` table
-**And** Audit log entry is created for "auth_method_removed" event
-**And** Cannot remove last authentication method (validation error)
-**And** If email/password is not set, cannot remove Google OAuth
-
----
-
-## Story 1.7: View Active Sessions & Remote Logout
+## Story 1.5: View Active Sessions & Remote Logout
 
 As a logged-in user,
 I want to view all my active sessions and perform remote logout,
@@ -158,7 +114,7 @@ So that I can secure my account if I suspect unauthorized access.
 
 ---
 
-## Story 1.8: Export All User Data (LGPD Compliance)
+## Story 1.6: Export All User Data (LGPD Compliance)
 
 As a logged-in user,
 I want to export all my data in a portable format,
@@ -180,7 +136,7 @@ So that I can exercise my LGPD right to data portability.
 
 ---
 
-## Story 1.9: Request Permanent Account Deletion (LGPD Compliance)
+## Story 1.7: Request Permanent Account Deletion (LGPD Compliance)
 
 As a logged-in user,
 I want to request permanent deletion of my account and all associated data,
