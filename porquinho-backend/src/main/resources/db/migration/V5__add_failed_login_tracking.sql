@@ -8,4 +8,6 @@ ALTER TABLE users
 ADD COLUMN locked_until TIMESTAMP NULL;
 
 -- Create index for locked_until to optimize locking checks
-CREATE INDEX idx_users_locked_until ON users(locked_until) WHERE locked_until IS NOT NULL;
+-- Note: H2 doesn't support partial indexes (WHERE clause), so we create a full index
+-- In production PostgreSQL, this could be optimized with: WHERE locked_until IS NOT NULL
+CREATE INDEX idx_users_locked_until ON users(locked_until);
