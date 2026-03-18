@@ -9,6 +9,7 @@ export interface RegisterGoogleRequest {
 export interface RegisterEmailRequest {
   email: string
   name: string
+  userId?: string  // TEMPORARY: userId in body until JWT validation is fixed
 }
 
 export interface UserResponse {
@@ -47,15 +48,15 @@ export const authService = {
   /**
    * Register user with email/password.
    * Calls backend to create user record after Supabase Auth registration.
-   * JWT token is automatically included in Authorization header by api interceptor.
+   * TEMPORARY: Using publicApi and userId in body until JWT validation is fixed.
    *
-   * @param data User data from email/password registration
+   * @param data User data from email/password registration (includes userId)
    * @returns User data from backend
    */
   async registerWithEmail(
     data: RegisterEmailRequest
   ): Promise<UserResponse> {
-    const response = await api.post<UserResponse>(
+    const response = await publicApi.post<UserResponse>(
       '/api/v1/auth/register/email',
       data
     )

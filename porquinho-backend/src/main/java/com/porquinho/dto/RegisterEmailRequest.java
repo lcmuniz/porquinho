@@ -8,6 +8,9 @@ import jakarta.validation.constraints.Size;
  * Request DTO for email/password registration.
  * Contains user information for email/password registration.
  * Password is NOT included - Supabase manages password hashing.
+ *
+ * NOTE: userId added for hybrid architecture (TEMPORARY until JWT validation is fixed).
+ * Frontend sends Supabase user UUID in request body.
  */
 public class RegisterEmailRequest {
 
@@ -19,6 +22,9 @@ public class RegisterEmailRequest {
     @Size(min = 1, max = 100, message = "Name must be between 1 and 100 characters")
     private String name;
 
+    // TEMPORARY: userId in body until JWT validation is fixed
+    private String userId;
+
     // Constructors
     public RegisterEmailRequest() {
     }
@@ -26,6 +32,12 @@ public class RegisterEmailRequest {
     public RegisterEmailRequest(String email, String name) {
         this.email = email;
         this.name = name;
+    }
+
+    public RegisterEmailRequest(String email, String name, String userId) {
+        this.email = email;
+        this.name = name;
+        this.userId = userId;
     }
 
     // Getters and Setters
@@ -43,5 +55,13 @@ public class RegisterEmailRequest {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public void setUserId(String userId) {
+        this.userId = userId;
     }
 }

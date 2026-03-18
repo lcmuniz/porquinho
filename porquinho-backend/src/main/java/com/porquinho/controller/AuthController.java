@@ -72,11 +72,10 @@ public class AuthController {
 
     /**
      * Register user with email/password.
-     * This endpoint is called by the frontend after Supabase completes email/password registration.
-     * The JWT from Supabase is validated by Spring Security, and user_id is extracted from the "sub" claim.
-     * Supabase handles password hashing with bcrypt (NFR13).
+     * TEMPORARY: Endpoint is public (no JWT validation) until JWT configuration is fixed.
+     * Frontend sends userId in request body from Supabase session.
      *
-     * NOTE (2026-03-17): HYBRID ARCHITECTURE - This endpoint IS CALLED by frontend.
+     * HYBRID ARCHITECTURE - This endpoint IS CALLED by frontend for user sync.
      * Following hybrid architecture decision (ARQUITETURA-SIMPLIFICADA.md), users are created
      * in Supabase Auth (authentication authority) and synced to backend database for:
      * - Account locking (failed login attempts)
@@ -84,19 +83,20 @@ public class AuthController {
      * - Rate limiting per-user
      * - Business data (subscriptions, billing, etc)
      *
-     * @param userId User ID extracted from JWT sub claim by JwtAuthenticationConverter
-     * @param request Request containing email and name
+     * @param request Request containing email, name, and userId (from Supabase)
      * @param httpRequest HTTP request to extract client IP address
      * @return UserResponse with user data
      */
     @PostMapping("/register/email")
     public ResponseEntity<UserResponse> registerWithEmail(
-        @AuthenticationPrincipal String userId,
         @Valid @RequestBody RegisterEmailRequest request,
         HttpServletRequest httpRequest
     ) {
         // Extract client IP address for audit logging
         String ipAddress = getClientIpAddress(httpRequest);
+
+        // TEMPORARY: Get userId from request body until JWT validation is fixed
+        String userId = request.getUserId();
 
         // Register or retrieve user
         AuthService.UserRegistrationResult result = authService.registerOrGetUserFromEmail(

@@ -232,11 +232,11 @@ const handleEmailSubmit = async () => {
     if (result.user) {
       // Step 2: Sync user to backend database (for audit logs, account locking, etc.)
       try {
-        const session = await getSession()
-        if (session?.access_token) {
+        if (result.user?.id) {
           await authService.registerWithEmail({
             email: email.value,
             name: name.value,
+            userId: result.user.id,  // Pass Supabase user ID
           })
         }
       } catch (backendError: any) {

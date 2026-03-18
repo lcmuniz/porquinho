@@ -67,6 +67,7 @@ async function handleEmailLogin() {
           await authService.registerWithEmail({
             email: email.value,
             name: user.user_metadata?.name || email.value,
+            userId: user.id,  // Pass Supabase user ID
           })
           // Retry logging the login
           await authService.logLogin(email.value)
