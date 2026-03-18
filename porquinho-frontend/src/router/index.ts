@@ -84,7 +84,8 @@ const router = createRouter({
 
 // Navigation guard: redireciona para /login se rota requer auth e usuario nao esta logado
 router.beforeEach((to) => {
-  const isAuthenticated = !!localStorage.getItem('auth_token')
+  // Check if user is authenticated (authStore saves user in localStorage with key 'user')
+  const isAuthenticated = !!localStorage.getItem('user')
 
   if (to.meta.requiresAuth && !isAuthenticated) {
     return { name: 'login' }
