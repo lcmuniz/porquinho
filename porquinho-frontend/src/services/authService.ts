@@ -51,14 +51,21 @@ export const authService = {
    * Uses authenticated API (JWT from Supabase session automatically included).
    *
    * @param data User data from email/password registration (includes userId from Supabase)
+   * @param accessToken Optional access token to use directly (for immediate post-registration calls)
    * @returns User data from backend
    */
   async registerWithEmail(
-    data: RegisterEmailRequest
+    data: RegisterEmailRequest,
+    accessToken?: string
   ): Promise<UserResponse> {
+    const config = accessToken
+      ? { headers: { Authorization: `Bearer ${accessToken}` } }
+      : undefined
+
     const response = await api.post<UserResponse>(
       '/api/v1/auth/register/email',
-      data
+      data,
+      config
     )
     return response.data
   },
@@ -93,8 +100,34 @@ export const authService = {
    * Uses authenticated API (JWT from Supabase session automatically included).
    *
    * @param email User's email address
+   * @param accessToken Optional access token to use directly (for immediate post-login calls)
    */
-  async logLogin(email: string): Promise<void> {
-    await api.post('/api/v1/auth/login', { email } as LoginRequest)
+  async logLogin(email: string, accessToken?: string): Promise<void> {
+    const config = accessToken
+      ? { headers: { Authorization: `Bearer ${accessToken}` } }
+      : undefined
+
+    await api.post('/api/v1/auth/login', { email } as LoginRequest, config)
+  },
+
+  /**
+   * Log password reset request for audit purposes.
+   * Called when user requests password reset via email.
+   * Does not require authentication (public endpoint).
+   *
+   * @param email User's email address
+   * @throws RateLimitExceededException (429) if too many attempts
+   */
+  async logPasswordResetRequested(email: string): Promise<void> {
+    await publicApi.post('/api/v1/auth/password-reset/requested', { email })
+  },
+
+  /**
+   * Log successful password reset completion for audit purposes.
+   * Called after Supabase successfully resets the password.
+   * Uses authenticated API (JWT from Supabase reset token automatically included).
+   */
+  async logPasswordResetCompleted(): Promise<void> {
+    await api.post('/api/v1/auth/password-reset/completed')
   },
 }

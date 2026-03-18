@@ -53,24 +53,21 @@ async function handleEmailLogin() {
       throw new Error('Authentication failed')
     }
 
-    // Wait a moment to ensure session is fully saved
-    await new Promise(resolve => setTimeout(resolve, 100))
-
     // Step 3: Log successful login to backend (audit + reset failed attempts counter)
+    // Pass access token directly to avoid waiting for localStorage sync
     try {
-      await authService.logLogin(email.value)
+      await authService.logLogin(email.value, session.access_token)
     } catch (backendError: any) {
       // If user doesn't exist in backend (404), create them now (lazy sync)
-      // JWT token is automatically included by api interceptor
       if (backendError.response?.status === 404) {
         try {
           console.log('User not found in backend, creating record (lazy sync)...')
           await authService.registerWithEmail({
             email: email.value,
             name: user.user_metadata?.name || email.value,
-          })
+          }, session.access_token)
           // Retry logging the login
-          await authService.logLogin(email.value)
+          await authService.logLogin(email.value, session.access_token)
         } catch (syncError: any) {
           console.warn('Failed to sync user to backend:', syncError)
         }
@@ -88,9 +85,9 @@ async function handleEmailLogin() {
       createdAt: new Date().toISOString(),
     })
 
-    // Step 5: Redirect to dashboard or original page
+    // Step 5: Redirect to onboarding or original page
     const redirectTo = _route.query.redirectTo as string
-    router.push(redirectTo || '/dashboard')
+    router.push(redirectTo || '/onboarding')
   } catch (error: any) {
     // Step 6: Record failed login attempt (increment counter)
     try {
@@ -232,16 +229,15 @@ function togglePasswordVisibility() {
               </div>
             </div>
 
-            <!-- Forgot password link (Story 1.4 - not yet implemented)
+            <!-- Forgot password link -->
             <div class="flex justify-end">
               <router-link
-                to="/auth/forgot-password"
+                to="/forgot-password"
                 class="text-sm text-purple-600 hover:text-purple-700 focus:outline-none focus:underline"
               >
                 Esqueceu a senha?
               </router-link>
             </div>
-            -->
 
             <Button
               type="submit"

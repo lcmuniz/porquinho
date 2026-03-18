@@ -22,9 +22,21 @@ export const api = axios.create({
 api.interceptors.request.use(
   async (config) => {
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
+      // Try to get session, with retry logic for recently authenticated users
+      let session = null
+      let attempts = 0
+      const maxAttempts = 3
+
+      while (!session && attempts < maxAttempts) {
+        const { data } = await supabase.auth.getSession()
+        session = data.session
+
+        if (!session && attempts < maxAttempts - 1) {
+          // Wait a bit before retrying (session might be persisting to storage)
+          await new Promise(resolve => setTimeout(resolve, 200))
+        }
+        attempts++
+      }
 
       if (session?.access_token) {
         config.headers.Authorization = `Bearer ${session.access_token}`

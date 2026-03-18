@@ -30,6 +30,12 @@ const router = createRouter({
       meta: { requiresAuth: false },
     },
     {
+      path: '/auth/reset-password',
+      name: 'reset-password',
+      component: () => import('../views/ResetPasswordView.vue'),
+      meta: { requiresAuth: false },
+    },
+    {
       path: '/auth/callback',
       name: 'auth-callback',
       component: () => import('../views/AuthCallbackView.vue'),

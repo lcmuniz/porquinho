@@ -125,6 +125,45 @@ export function useAuth() {
     }
   }
 
+  /**
+   * Request password reset via email.
+   * Supabase will send an email with a reset link.
+   *
+   * @param email User's email address
+   */
+  const requestPasswordReset = async (email: string) => {
+    const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/auth/reset-password`,
+    })
+
+    if (error) {
+      console.error('Error requesting password reset:', error)
+      throw error
+    }
+
+    return data
+  }
+
+  /**
+   * Update user password.
+   * Called after user clicks reset link in email.
+   * Supabase validates the token automatically.
+   *
+   * @param newPassword New password for the user
+   */
+  const updatePassword = async (newPassword: string) => {
+    const { data, error } = await supabase.auth.updateUser({
+      password: newPassword,
+    })
+
+    if (error) {
+      console.error('Error updating password:', error)
+      throw error
+    }
+
+    return data
+  }
+
   return {
     signUpWithGoogle,
     signUpWithEmail,
@@ -132,5 +171,7 @@ export function useAuth() {
     signInWithGoogle,
     getSession,
     signOut,
+    requestPasswordReset,
+    updatePassword,
   }
 }
