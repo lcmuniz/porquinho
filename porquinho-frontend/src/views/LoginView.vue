@@ -84,11 +84,12 @@ async function handleEmailLogin() {
     authStore.setUser({
       id: user.id,
       email: user.email!,
-      name: user.user_metadata?.name || email.value,
+      authProvider: 'EMAIL', // TODO: Get from backend or Supabase metadata
+      createdAt: new Date().toISOString(),
     })
 
     // Step 5: Redirect to dashboard or original page
-    const redirectTo = route.query.redirectTo as string
+    const redirectTo = _route.query.redirectTo as string
     router.push(redirectTo || '/dashboard')
   } catch (error: any) {
     // Step 6: Record failed login attempt (increment counter)
