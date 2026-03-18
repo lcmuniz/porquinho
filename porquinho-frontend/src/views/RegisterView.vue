@@ -179,10 +179,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import PasswordStrengthIndicator from '@/components/PasswordStrengthIndicator.vue'
 import { useAuth } from '@/composables/useAuth'
+import { authService } from '@/services/authService'
 
 const router = useRouter()
 
-const { signUpWithGoogle, signUpWithEmail } = useAuth()
+const { signUpWithGoogle, signUpWithEmail, getSession } = useAuth()
 const isLoading = ref(false)
 const errorMessage = ref('')
 
@@ -224,11 +225,26 @@ const handleEmailSubmit = async () => {
   errorMessage.value = ''
 
   try {
+    // Step 1: Create user in Supabase Auth
     const result = await signUpWithEmail(email.value, password.value, name.value)
 
     // Registration successful!
     if (result.user) {
-      // Redirect to onboarding page (AC requirement)
+      // Step 2: Sync user to backend database (for audit logs, account locking, etc.)
+      try {
+        const session = await getSession()
+        if (session?.access_token) {
+          await authService.registerWithEmail({
+            email: email.value,
+            name: name.value,
+          })
+        }
+      } catch (backendError: any) {
+        // If backend sync fails, log but don't block user (they can continue with Supabase-only)
+        console.warn('Backend user sync failed (non-critical):', backendError)
+      }
+
+      // Step 3: Redirect to onboarding page (AC requirement)
       router.push('/onboarding')
     }
   } catch (error: any) {

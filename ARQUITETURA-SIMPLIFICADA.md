@@ -1,41 +1,49 @@
-# 🏗️ Arquitetura Simplificada - Só Supabase (Opção B)
+# 🏗️ Arquitetura Híbrida - Supabase Auth + Backend Sync
 
-**Data da Mudança:** 2026-03-16
-**Decisão:** Usar apenas Supabase para gerenciamento de usuários
+**Data da Mudança:** 2026-03-17
+**Decisão:** Usar Supabase para autenticação + Backend para features de segurança/negócio
 
 ---
 
-## 🎯 Mudança Arquitetural
+## 🎯 Arquitetura Híbrida (DECISÃO FINAL)
 
-### ❌ Antes (Dual Tables - Complexo)
-
-```
-Frontend → Supabase Auth → Backend → Database users table
-              ↓
-          auth.users
-```
-
-**Problemas:**
-- Duplicação de dados (auth.users + backend users)
-- Sincronização complexa
-- Dois pontos de falha
-- Mais código para manter
-
-### ✅ Depois (Só Supabase - Simples)
+### ✅ Arquitetura Atual
 
 ```
-Frontend → Supabase Auth
-              ↓
-          auth.users (única fonte da verdade)
-              ↓
-          user_metadata (dados extras)
+Frontend
+   ↓
+Supabase Auth (auth.users)  ←── Autoridade para autenticação
+   ↓                             - JWT tokens
+   ↓                             - Password hashing (bcrypt)
+   ↓                             - Email verification
+   ↓                             - OAuth providers
+   ↓
+Backend Database (users)     ←── Features de segurança/negócio
+                                 - Account locking (failed attempts)
+                                 - Audit logs (login history)
+                                 - Rate limiting per-user
+                                 - Business data
 ```
+
+**Responsabilidades:**
+
+| Responsabilidade | Supabase Auth | Backend DB |
+|-----------------|---------------|------------|
+| **Autenticação** | ✅ Autoridade | ❌ Não |
+| **JWT Tokens** | ✅ Emite e valida | ❌ Apenas valida |
+| **Password Hash** | ✅ bcrypt | ❌ Nunca vê senha |
+| **Email Verification** | ✅ Automático | ❌ Não |
+| **OAuth (Google)** | ✅ Nativo | ❌ Não |
+| **Account Locking** | ❌ Não | ✅ failed_login_attempts |
+| **Audit Logs** | ⚠️ Básico | ✅ Customizado |
+| **Rate Limiting** | ❌ Não | ✅ Por usuário |
+| **Business Data** | ⚠️ user_metadata | ✅ Tabelas dedicadas |
 
 **Benefícios:**
-- ✅ Sem duplicação
-- ✅ Sem sincronização
-- ✅ Menos código (50% redução)
-- ✅ Mais confiável
+- ✅ Autenticação robusta (Supabase)
+- ✅ Segurança avançada (backend)
+- ✅ Audit logs detalhados
+- ✅ Sincronização leve (lazy)
 
 ---
 
@@ -77,18 +85,41 @@ console.log(user.user_metadata.lgpd_consent_at)
 
 ---
 
-## 🔧 O Que Foi Removido
+## 🔄 Sincronização de Usuários
 
-### Frontend
-- ❌ `authService.registerWithEmail()` - Não precisa mais chamar backend
-- ❌ Sincronização backend após signup
-- ✅ Mantém apenas `supabase.auth.signUp()`
+### Quando Ocorre
 
-### Backend
-- ⚠️ Tabela `users` do backend ainda existe mas **NÃO é mais usada**
-- ⚠️ Endpoint `/api/v1/auth/register/email` ainda existe mas **NÃO é mais chamado**
+1. **No Registro (RegisterView.vue):**
+   ```typescript
+   // Após Supabase criar usuário
+   await supabase.auth.signUp(...)
 
-**Próxima etapa:** Limpar código morto (opcional)
+   // Sincroniza para backend (com JWT no header)
+   await authService.registerWithEmail({ email, name })
+   ```
+
+2. **No Primeiro Login (LoginView.vue):**
+   ```typescript
+   // Se usuário não existe no backend (404)
+   if (backendError.response?.status === 404) {
+     // Lazy sync: cria usuário no backend
+     await authService.registerWithEmail({ email, name })
+   }
+   ```
+
+### Por Que Sincronizar?
+
+✅ **Account Locking** - 5 tentativas falhas → 15 min bloqueio
+✅ **Audit Logs** - Rastreio completo de logins/ações
+✅ **Rate Limiting** - Proteção por usuário (não só IP)
+✅ **Business Data** - Subscriptions, billing, preferences
+
+### Tabelas Backend
+
+- ✅ `users` - **USADA** para account locking e referências
+- ✅ `audit_logs` - **USADA** para logs de segurança
+- ✅ Sincronização **leve** (apenas email + name)
+- ✅ Falha na sincronização **não bloqueia** usuário
 
 ---
 
@@ -146,7 +177,7 @@ const { data, error } = await supabase.auth.signUp({
     emailRedirectTo: 'http://localhost:5173/auth/verify-email',
     data: {
       name: 'João Silva',
-      lgpd_consent_at: '2026-03-16T12:00:00Z'
+      lgpd_consent_at: '2026-03-17T12:00:00Z'
     }
   }
 })
@@ -158,12 +189,33 @@ const { data, error } = await supabase.auth.signUp({
 - ✅ Retorna JWT token
 - ✅ Armazena user_metadata
 
-### 4. Frontend Redireciona
+### 4. Frontend Sincroniza Backend
+```typescript
+// Com JWT no Authorization header
+await authService.registerWithEmail({
+  email: 'joao@example.com',
+  name: 'João Silva'
+})
+```
+
+### 5. Backend Cria Registro
+```sql
+INSERT INTO users (id, email, name, auth_provider, created_at)
+VALUES (
+  'supabase-uuid',  -- Mesmo UUID do Supabase
+  'joao@example.com',
+  'João Silva',
+  'EMAIL',
+  NOW()
+)
+```
+
+### 6. Frontend Redireciona
 ```typescript
 router.push('/auth/verify-email')
 ```
 
-### 5. Usuário Verifica Email
+### 7. Usuário Verifica Email
 - Clica no link recebido por email
 - Supabase marca `email_confirmed_at`
 - Redirect para aplicação
@@ -172,10 +224,9 @@ router.push('/auth/verify-email')
 
 ## 🚀 Próximos Passos (Futuro)
 
-### Se Precisar de Dados Específicos do Negócio
+### Adicionar Dados de Negócio
 
-Criar tabela `profiles` no Supabase (não no backend):
-
+**Opção A:** Supabase `public.profiles` (dados simples, acesso direto)
 ```sql
 -- No Supabase SQL Editor
 CREATE TABLE public.profiles (
@@ -184,53 +235,66 @@ CREATE TABLE public.profiles (
   trial_ends_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT NOW()
 );
-
--- Row Level Security (RLS)
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-
--- Policy: Usuário só vê próprio perfil
-CREATE POLICY "Users can view own profile"
-  ON public.profiles
-  FOR SELECT
-  USING (auth.uid() = id);
-
--- Policy: Usuário pode atualizar próprio perfil
-CREATE POLICY "Users can update own profile"
-  ON public.profiles
-  FOR UPDATE
-  USING (auth.uid() = id);
 ```
 
-### Backend Será Usado Para Quê?
+**Opção B:** Backend tables (lógica complexa, segurança)
+```sql
+-- No backend Spring Boot + Flyway
+CREATE TABLE subscriptions (
+  id UUID PRIMARY KEY,
+  user_id UUID REFERENCES users(id),
+  plan TEXT NOT NULL,
+  status TEXT NOT NULL,
+  billing_cycle TEXT,
+  next_billing_date DATE,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+```
 
-- ✅ Lógica de negócio complexa (subscriptions, billing)
-- ✅ Integrações externas (email, analytics)
-- ✅ Operações batch/admin
-- ❌ **NÃO** para gerenciar usuários básicos
+**Decisão:** Depende da complexidade
+- Preferências UI → Supabase profiles
+- Billing/payments → Backend tables
 
 ---
 
 ## 📊 Comparação Final
 
-| Item | Antes (Dual) | Depois (Só Supabase) |
-|------|--------------|----------------------|
-| **Tabelas de usuário** | 2 (auth.users + backend users) | 1 (auth.users) |
-| **Linhas de código** | ~500 | ~250 |
-| **Endpoints backend** | 2 (Google + Email) | 0 (só JWT validation) |
-| **Sincronização** | Sim (complexa) | Não |
-| **Pontos de falha** | 2 | 1 |
+| Item | Supabase-Only | Híbrido (ATUAL) |
+|------|---------------|-----------------|
+| **Tabelas de usuário** | 1 (auth.users) | 2 (auth.users + backend users) |
+| **Autoridade de auth** | ✅ Supabase | ✅ Supabase |
+| **Account locking** | ❌ Não | ✅ Sim (backend) |
+| **Audit logs detalhados** | ⚠️ Básico | ✅ Completo (backend) |
+| **Rate limiting per-user** | ❌ Não | ✅ Sim (backend) |
+| **Sincronização** | Não | Sim (leve, lazy) |
+| **Complexidade** | Baixa | Média |
+| **Segurança** | Boa | ✅ Excelente |
 | **LGPD compliance** | ✅ Sim | ✅ Sim |
-| **Audit logs** | ✅ Sim | ✅ Sim (Supabase) |
-| **Tempo de registro** | ~500ms | ~200ms |
+| **Tempo de registro** | ~200ms | ~300ms |
 
 ---
 
 ## ✅ Conclusão
 
-A arquitetura simplificada:
-- É **mais simples** de manter
-- É **mais confiável** (menos moving parts)
-- É **mais rápida** (sem sync)
-- **Mantém compliance** (LGPD, audit, security)
+A arquitetura híbrida oferece o melhor dos dois mundos:
 
-**Resultado:** Código melhor com menos esforço! 🎉
+**Do Supabase:**
+- ✅ Autenticação robusta e confiável
+- ✅ JWT token management
+- ✅ Password hashing automático (bcrypt)
+- ✅ Email verification nativo
+- ✅ OAuth providers (Google, etc)
+
+**Do Backend:**
+- ✅ Account locking (brute force protection)
+- ✅ Audit logs customizados
+- ✅ Rate limiting avançado
+- ✅ Business logic complexa
+- ✅ Integrações externas
+
+**Trade-offs Aceitos:**
+- ⚠️ Sincronização leve (não-bloqueante)
+- ⚠️ ~100ms extra no registro (aceitável)
+- ⚠️ Dois sistemas para manter (mas separação clara)
+
+**Resultado:** Segurança máxima + Flexibilidade + Compliance! 🎉
