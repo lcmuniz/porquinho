@@ -24,13 +24,18 @@ public class AccountLockService {
     /**
      * Record a failed login attempt for the user.
      * Locks the account for 15 minutes after 5 failed attempts.
+     * Does nothing if user doesn't exist (Supabase-only architecture).
      *
      * @param email User's email address
      */
     @Transactional
     public void recordFailedAttempt(String email) {
-        User user = userRepository.findByEmailAndDeletedAtIsNull(email)
-            .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        User user = userRepository.findByEmailAndDeletedAtIsNull(email).orElse(null);
+
+        if (user == null) {
+            // User doesn't exist in backend (Supabase-only architecture) - skip recording
+            return;
+        }
 
         int failedAttempts = user.getFailedLoginAttempts() + 1;
         user.setFailedLoginAttempts(failedAttempts);
@@ -64,13 +69,18 @@ public class AccountLockService {
     /**
      * Reset failed login attempts counter and unlock the account.
      * Called after a successful login.
+     * Does nothing if user doesn't exist (Supabase-only architecture).
      *
      * @param email User's email address
      */
     @Transactional
     public void resetFailedAttempts(String email) {
-        User user = userRepository.findByEmailAndDeletedAtIsNull(email)
-            .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        User user = userRepository.findByEmailAndDeletedAtIsNull(email).orElse(null);
+
+        if (user == null) {
+            // User doesn't exist in backend (Supabase-only architecture) - skip reset
+            return;
+        }
 
         user.setFailedLoginAttempts(0);
         user.setLockedUntil(null);
