@@ -212,6 +212,7 @@ function togglePasswordVisibility() {
               </div>
             </div>
 
+            <!-- Forgot password link (Story 1.4 - not yet implemented)
             <div class="flex justify-end">
               <router-link
                 to="/auth/forgot-password"
@@ -220,6 +221,7 @@ function togglePasswordVisibility() {
                 Esqueceu a senha?
               </router-link>
             </div>
+            -->
 
             <Button
               type="submit"
