@@ -150,16 +150,26 @@ public class AuthService {
         }
 
         // Create new user with LGPD consent timestamp (NFR25)
-        User newUser = new User(email, User.AuthProvider.EMAIL, null);
-        newUser.setId(userUuid); // Use Supabase user ID
-        newUser.setLgpdConsentAt(java.time.LocalDateTime.now());
-        User savedUser = userRepository.save(newUser);
+        // Use native query to insert with pre-defined ID (from Supabase)
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        userRepository.insertWithId(
+            userUuid,
+            email,
+            User.AuthProvider.EMAIL.name(),
+            now,  // lgpdConsentAt
+            now,  // createdAt
+            now   // updatedAt
+        );
+
+        // Fetch the created user to return
+        User createdUser = userRepository.findById(userUuid)
+            .orElseThrow(() -> new RuntimeException("Failed to create user"));
 
         // Log audit event for user registration (NFR20)
-        auditLogService.log("user_registration", savedUser.getId(), ipAddress,
+        auditLogService.log("user_registration", createdUser.getId(), ipAddress,
             String.format("{\"provider\":\"email\",\"email\":\"%s\"}", email));
 
-        return new UserRegistrationResult(savedUser, true);
+        return new UserRegistrationResult(createdUser, true);
     }
 
     /**
