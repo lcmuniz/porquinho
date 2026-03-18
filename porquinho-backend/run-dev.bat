@@ -1,33 +1,24 @@
 @echo off
 REM Script para rodar o backend em desenvolvimento no Windows
-REM Carrega variaveis do .env e inicia o Spring Boot
 
 echo.
-echo [BACKEND] Iniciando Spring Boot (perfil: dev)...
+echo [BACKEND] Carregando variaveis de .env e iniciando Spring Boot...
 echo.
 
-REM Ler e exportar variaveis do .env (se existir)
-if exist ".env" (
-    echo [ENV] Carregando variaveis de ambiente de .env
-    echo.
-    for /f "usebackq tokens=1,* delims==" %%a in (".env") do (
-        REM Pular comentarios (linhas que comecam com #)
-        echo %%a | findstr /r "^#" >/dev/null
-        if errorlevel 1 (
-            REM Nao e comentario - definir variavel
-            if not "%%a"=="" if not "%%b"=="" (
-                set "%%a=%%b"
-                echo [ENV] %%a definido
-            )
-        )
-    )
-    echo.
-) else (
-    echo [AVISO] Arquivo .env nao encontrado.
-    echo.
-)
+REM Definir variaveis manualmente (conteudo do .env)
+set SUPABASE_DB_URL=jdbc:postgresql://aws-1-us-east-1.pooler.supabase.com:5432/postgres
+set SUPABASE_DB_USERNAME=postgres.vhkjyefwpwtlcyuznqgq
+set SUPABASE_DB_PASSWORD=Lc@280475
+set SUPABASE_JWT_SECRET=aBAyKZ+87900WIQ9sB+WlZwsbzxCuX2BcPmFEMmLVZWcbpnB3LqSKnqWlXyQQndjpx5yxQQQKiVJv2OnsEzaGA==
+set SUPABASE_JWT_ISSUER_URI=https://vhkjyefwpwtlcyuznqgq.supabase.co/auth/v1
+set REDIS_HOST=localhost
+set REDIS_PORT=6379
+set REDIS_PASSWORD=
 
-REM Iniciar Maven com Spring Boot
+echo [ENV] Variaveis de ambiente definidas!
+echo.
 echo Iniciando Spring Boot...
 echo.
+
+REM Iniciar Maven com Spring Boot
 mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=dev
