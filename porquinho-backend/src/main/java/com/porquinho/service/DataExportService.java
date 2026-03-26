@@ -1,0 +1,306 @@
+package com.porquinho.service;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.porquinho.dto.DataExportResponse;
+import com.porquinho.entity.AuditLog;
+import com.porquinho.entity.DataExport;
+import com.porquinho.entity.DataExport.ExportStatus;
+import com.porquinho.entity.User;
+import com.porquinho.entity.UserSession;
+import com.porquinho.exception.RateLimitExceededException;
+import com.porquinho.exception.ResourceNotFoundException;
+import com.porquinho.repository.AuditLogRepository;
+import com.porquinho.repository.DataExportRepository;
+import com.porquinho.repository.UserRepository;
+import com.porquinho.repository.UserSessionRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+
+/**
+ * Service for managing user data exports (LGPD compliance).
+ * Handles export request, async processing, file generation, download, and cleanup.
+ */
+@Service
+public class DataExportService {
+
+    private static final Logger log = LoggerFactory.getLogger(DataExportService.class);
+
+    private final DataExportRepository dataExportRepository;
+    private final UserRepository userRepository;
+    private final UserSessionRepository userSessionRepository;
+    private final AuditLogRepository auditLogRepository;
+    private final RateLimitService rateLimitService;
+    private final EmailService emailService;
+    private final AuditLogService auditLogService;
+    private final ObjectMapper objectMapper;
+
+    @Value("${app.export.directory:./exports}")
+    private String exportDirectory;
+
+    @Value("${app.export.expiration-hours:24}")
+    private int expirationHours;
+
+    @Value("${app.export.base-url:http://localhost:8080}")
+    private String baseUrl;
+
+    public DataExportService(
+            DataExportRepository dataExportRepository,
+            UserRepository userRepository,
+            UserSessionRepository userSessionRepository,
+            AuditLogRepository auditLogRepository,
+            RateLimitService rateLimitService,
+            EmailService emailService,
+            AuditLogService auditLogService) {
+        this.dataExportRepository = dataExportRepository;
+        this.userRepository = userRepository;
+        this.userSessionRepository = userSessionRepository;
+        this.auditLogRepository = auditLogRepository;
+        this.rateLimitService = rateLimitService;
+        this.emailService = emailService;
+        this.auditLogService = auditLogService;
+        this.objectMapper = new ObjectMapper();
+        this.objectMapper.registerModule(new JavaTimeModule());
+        this.objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
+        this.objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+    }
+
+    /**
+     * Request a new data export for the user.
+     * Rate limited to 1 export per hour per user.
+     */
+    @Transactional
+    public DataExportResponse requestExport(UUID userId, String ipAddress) {
+        if (!rateLimitService.allowRequest("data_export:" + userId, 1, 3600)) {
+            throw new RateLimitExceededException("Data export rate limit exceeded. Maximum 1 export per hour.");
+        }
+
+        DataExport export = new DataExport(userId);
+        export.setDownloadToken(UUID.randomUUID());
+        export.setExpiresAt(LocalDateTime.now().plusHours(expirationHours));
+        export = dataExportRepository.save(export);
+
+        processExport(export.getId());
+
+        return DataExportResponse.fromEntity(export);
+    }
+
+    /**
+     * Process the data export asynchronously.
+     * Collects user data, generates JSON file, updates status.
+     */
+    @Async
+    public void processExport(UUID exportId) {
+        DataExport export = dataExportRepository.findById(exportId)
+                .orElseThrow(() -> new ResourceNotFoundException("Export not found: " + exportId));
+
+        try {
+            Map<String, Object> userData = collectUserData(export.getUserId());
+            String json = objectMapper.writeValueAsString(userData);
+
+            Path exportDir = Paths.get(exportDirectory);
+            Files.createDirectories(exportDir);
+
+            String filename = "export_" + export.getUserId() + "_" +
+                    LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")) + ".json";
+            Path filePath = exportDir.resolve(filename);
+            Files.writeString(filePath, json);
+
+            export.setFilePath(filePath.toString());
+            export.setStatus(ExportStatus.READY);
+            dataExportRepository.save(export);
+
+            // Send email notification (best-effort)
+            User user = userRepository.findById(export.getUserId()).orElse(null);
+            if (user != null) {
+                String downloadUrl = baseUrl + "/api/v1/data-export/download/" + export.getDownloadToken();
+                emailService.sendDataExportReady(user.getEmail(), downloadUrl);
+            }
+
+            log.info("Data export completed for user {}: {}", export.getUserId(), filePath);
+        } catch (IOException e) {
+            log.error("Failed to process data export {}: {}", exportId, e.getMessage());
+            export.setStatus(ExportStatus.FAILED);
+            dataExportRepository.save(export);
+        }
+    }
+
+    /**
+     * Collect all user data for export, sanitizing sensitive fields.
+     */
+    public Map<String, Object> collectUserData(UUID userId) {
+        Map<String, Object> data = new LinkedHashMap<>();
+
+        // Metadata
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("export_date", LocalDateTime.now().toString());
+        metadata.put("user_id", userId.toString());
+        metadata.put("data_version", "1.0");
+        metadata.put("exported_tables", List.of("users", "user_sessions", "audit_logs"));
+        data.put("metadata", metadata);
+
+        // User profile (sanitized)
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
+        Map<String, Object> userProfile = new LinkedHashMap<>();
+        userProfile.put("id", user.getId().toString());
+        userProfile.put("email", user.getEmail());
+        userProfile.put("auth_provider", user.getAuthProvider().name());
+        userProfile.put("google_id", user.getGoogleId());
+        userProfile.put("created_at", user.getCreatedAt() != null ? user.getCreatedAt().toString() : null);
+        userProfile.put("updated_at", user.getUpdatedAt() != null ? user.getUpdatedAt().toString() : null);
+        userProfile.put("lgpd_consent_at", user.getLgpdConsentAt() != null ? user.getLgpdConsentAt().toString() : null);
+        // Excluded: deleted_at, deleted_by, failed_login_attempts, locked_until
+        data.put("user_profile", userProfile);
+
+        // Sessions (sanitized - exclude jwt_token_hash)
+        List<UserSession> sessions = userSessionRepository.findAllByUserId(userId);
+        List<Map<String, Object>> sessionList = new ArrayList<>();
+        for (UserSession session : sessions) {
+            Map<String, Object> sessionMap = new LinkedHashMap<>();
+            sessionMap.put("id", session.getId().toString());
+            sessionMap.put("device_info", session.getDeviceInfo());
+            sessionMap.put("ip_address", session.getIpAddress());
+            sessionMap.put("created_at", session.getCreatedAt() != null ? session.getCreatedAt().toString() : null);
+            sessionMap.put("last_activity", session.getLastActivity() != null ? session.getLastActivity().toString() : null);
+            sessionMap.put("expires_at", session.getExpiresAt() != null ? session.getExpiresAt().toString() : null);
+            // Excluded: jwt_token_hash
+            sessionList.add(sessionMap);
+        }
+        data.put("sessions", sessionList);
+
+        // Audit logs
+        List<AuditLog> auditLogs = auditLogRepository.findByUserIdOrderByTimestampDesc(userId);
+        List<Map<String, Object>> auditLogList = new ArrayList<>();
+        for (AuditLog auditLog : auditLogs) {
+            Map<String, Object> logMap = new LinkedHashMap<>();
+            logMap.put("id", auditLog.getId().toString());
+            logMap.put("event_type", auditLog.getEventType());
+            logMap.put("ip_address", auditLog.getIpAddress());
+            logMap.put("metadata", auditLog.getMetadata());
+            logMap.put("created_at", auditLog.getTimestamp() != null ? auditLog.getTimestamp().toString() : null);
+            auditLogList.add(logMap);
+        }
+        data.put("audit_logs", auditLogList);
+
+        return data;
+    }
+
+    /**
+     * Get the most recent export status for the user.
+     */
+    public DataExportResponse getExportStatus(UUID userId) {
+        DataExport export = dataExportRepository.findFirstByUserIdOrderByCreatedAtDesc(userId)
+                .orElse(null);
+        if (export == null) {
+            return null;
+        }
+        return DataExportResponse.fromEntity(export);
+    }
+
+    /**
+     * Download an export by its download token.
+     * Validates token, checks expiration, returns file content, marks as downloaded, deletes file.
+     */
+    @Transactional
+    public Resource downloadExport(String downloadToken, String ipAddress) {
+        UUID token = UUID.fromString(downloadToken);
+        DataExport export = dataExportRepository.findByDownloadToken(token)
+                .orElseThrow(() -> new ResourceNotFoundException("Export not found for token"));
+
+        if (export.getStatus() == ExportStatus.EXPIRED) {
+            throw new ResourceNotFoundException("Export has expired");
+        }
+
+        if (export.getStatus() == ExportStatus.DOWNLOADED) {
+            throw new ResourceNotFoundException("Export has already been downloaded");
+        }
+
+        if (export.getStatus() != ExportStatus.READY) {
+            throw new ResourceNotFoundException("Export is not ready for download");
+        }
+
+        if (export.getExpiresAt() != null && export.getExpiresAt().isBefore(LocalDateTime.now())) {
+            export.setStatus(ExportStatus.EXPIRED);
+            dataExportRepository.save(export);
+            throw new ResourceNotFoundException("Export has expired");
+        }
+
+        Path filePath = Paths.get(export.getFilePath());
+        if (!Files.exists(filePath)) {
+            throw new ResourceNotFoundException("Export file not found");
+        }
+
+        // Read file into memory and delete from filesystem (AC4: single-use download)
+        byte[] content;
+        try {
+            content = Files.readAllBytes(filePath);
+            Files.deleteIfExists(filePath);
+        } catch (IOException e) {
+            log.error("Failed to read/delete export file {}: {}", filePath, e.getMessage());
+            throw new ResourceNotFoundException("Export file could not be read");
+        }
+
+        export.setStatus(ExportStatus.DOWNLOADED);
+        export.setDownloadedAt(LocalDateTime.now());
+        dataExportRepository.save(export);
+
+        auditLogService.log("data_export_downloaded", export.getUserId(), ipAddress);
+
+        return new ByteArrayResource(content);
+    }
+
+    /**
+     * Cleanup expired exports: delete files and update status.
+     * Runs every hour.
+     */
+    @Scheduled(fixedRate = 3600000)
+    @Transactional
+    public void cleanupExpiredExports() {
+        LocalDateTime now = LocalDateTime.now();
+
+        // Clean READY exports that have expired
+        List<DataExport> expiredReady = dataExportRepository
+                .findByStatusAndExpiresAtBefore(ExportStatus.READY, now);
+
+        // Clean stuck PROCESSING exports that have expired
+        List<DataExport> stuckProcessing = dataExportRepository
+                .findByStatusAndExpiresAtBefore(ExportStatus.PROCESSING, now);
+
+        List<DataExport> toCleanup = new ArrayList<>();
+        toCleanup.addAll(expiredReady);
+        toCleanup.addAll(stuckProcessing);
+
+        for (DataExport export : toCleanup) {
+            if (export.getFilePath() != null) {
+                try {
+                    Files.deleteIfExists(Paths.get(export.getFilePath()));
+                } catch (IOException e) {
+                    log.warn("Failed to delete export file {}: {}", export.getFilePath(), e.getMessage());
+                }
+            }
+            export.setStatus(ExportStatus.EXPIRED);
+            dataExportRepository.save(export);
+        }
+
+        if (!toCleanup.isEmpty()) {
+            log.info("Cleaned up {} expired/stuck data exports", toCleanup.size());
+        }
+    }
+}

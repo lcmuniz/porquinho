@@ -62,7 +62,7 @@ development_status:
   1-3-user-login-with-any-configured-method: done
   1-4-password-recovery-via-email: done
   1-5-view-active-sessions-remote-logout: done
-  1-6-export-all-user-data-lgpd-compliance: backlog
+  1-6-export-all-user-data-lgpd-compliance: done
   1-7-request-permanent-account-deletion-lgpd-compliance: backlog
   epic-1-retrospective: optional
 

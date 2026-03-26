@@ -46,6 +46,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/auth/login/check").permitAll()
                 .requestMatchers("/api/v1/auth/login/failed").permitAll()
                 .requestMatchers("/api/v1/auth/password-reset/requested").permitAll()
+                .requestMatchers("/api/v1/data-export/download/**").permitAll()  // Download via UUID token (no JWT needed)
                 .requestMatchers("/api/v1/auth/sessions/**").authenticated()  // Session management endpoints (Story 1.5)
                 .requestMatchers("/api/v1/**").authenticated()
                 .anyRequest().permitAll()
@@ -69,6 +70,7 @@ public class SecurityConfig {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowedOrigins(List.of(
             "http://localhost:5173",  // Vite dev server
+            "http://localhost:5175",  // Vite dev server (alternate port)
             "http://localhost:4173"   // Vite preview server
         ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
