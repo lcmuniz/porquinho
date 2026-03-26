@@ -14,3 +14,6 @@ Thumbs.db
 
 # SSL certificates
 ssl/
+
+# Runtime data export files
+porquinho-backend/exports/
