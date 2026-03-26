@@ -9,6 +9,7 @@ import com.porquinho.service.AuthService;
 import com.porquinho.service.AuditLogService;
 import com.porquinho.service.RateLimitService;
 import com.porquinho.service.AccountLockService;
+import com.porquinho.service.SessionService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -61,6 +62,9 @@ class AuthControllerTest {
 
     @MockBean
     private AccountLockService accountLockService;
+
+    @MockBean
+    private SessionService sessionService;
 
     @Test
     void healthEndpointShouldReturnOk() throws Exception {

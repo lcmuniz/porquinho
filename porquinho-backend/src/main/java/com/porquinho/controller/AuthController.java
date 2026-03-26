@@ -4,20 +4,27 @@ import com.porquinho.dto.RegisterGoogleRequest;
 import com.porquinho.dto.RegisterEmailRequest;
 import com.porquinho.dto.LoginRequest;
 import com.porquinho.dto.PasswordResetRequest;
+import com.porquinho.dto.SessionResponse;
 import com.porquinho.dto.UserResponse;
 import com.porquinho.entity.User;
+import com.porquinho.entity.UserSession;
 import com.porquinho.service.AuthService;
 import com.porquinho.service.AuditLogService;
 import com.porquinho.service.RateLimitService;
 import com.porquinho.service.AccountLockService;
+import com.porquinho.service.SessionService;
 import com.porquinho.exception.RateLimitExceededException;
 import com.porquinho.exception.AccountLockedException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.UUID;
 
 /**
  * REST controller for authentication operations.
@@ -31,12 +38,14 @@ public class AuthController {
     private final AuditLogService auditLogService;
     private final RateLimitService rateLimitService;
     private final AccountLockService accountLockService;
+    private final SessionService sessionService;
 
-    public AuthController(AuthService authService, AuditLogService auditLogService, RateLimitService rateLimitService, AccountLockService accountLockService) {
+    public AuthController(AuthService authService, AuditLogService auditLogService, RateLimitService rateLimitService, AccountLockService accountLockService, SessionService sessionService) {
         this.authService = authService;
         this.auditLogService = auditLogService;
         this.rateLimitService = rateLimitService;
         this.accountLockService = accountLockService;
+        this.sessionService = sessionService;
     }
 
     /**
@@ -61,6 +70,14 @@ public class AuthController {
         // Register or retrieve user
         AuthService.UserRegistrationResult result = authService.registerOrGetUserFromGoogle(
             request.getEmail(), request.getGoogleId(), ipAddress);
+
+        // Register session if JWT token is available (AC5: session tracking on login)
+        String authHeader = httpRequest.getHeader("Authorization");
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            String jwtToken = authHeader.substring(7);
+            String deviceInfo = httpRequest.getHeader("User-Agent");
+            sessionService.createSession(result.getUser().getId(), jwtToken, deviceInfo, ipAddress);
+        }
 
         // Convert to response DTO
         UserResponse response = UserResponse.fromEntity(result.getUser());
@@ -187,6 +204,14 @@ public class AuthController {
         // Reset failed login attempts on successful login
         accountLockService.resetFailedAttempts(request.getEmail());
 
+        // Register session if JWT token is available
+        String authHeader = httpRequest.getHeader("Authorization");
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            String jwtToken = authHeader.substring(7);
+            String deviceInfo = httpRequest.getHeader("User-Agent");
+            sessionService.createSession(user.getId(), jwtToken, deviceInfo, ipAddress);
+        }
+
         return ResponseEntity.ok().build();
     }
 
@@ -262,6 +287,83 @@ public class AuthController {
         return ResponseEntity.ok().build();
     }
 
+    // ===== SESSION MANAGEMENT ENDPOINTS (Story 1.5) =====
+
+    @GetMapping("/sessions")
+    public ResponseEntity<List<SessionResponse>> getActiveSessions(
+        Authentication authentication,
+        HttpServletRequest httpRequest
+    ) {
+        String userId = resolveUserId(authentication);
+        if (userId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        if (!rateLimitService.allowRequest("sessions:" + userId, 10, 60)) {
+            throw new RateLimitExceededException("Too many requests. Please wait 1 minute.");
+        }
+
+        String jwtToken = extractJwtToken(httpRequest);
+        String currentTokenHash = jwtToken != null ? SessionService.hashToken(jwtToken) : "";
+        List<UserSession> sessions = sessionService.getActiveSessions(UUID.fromString(userId));
+        List<SessionResponse> response = sessions.stream()
+            .map(s -> SessionResponse.fromEntity(s, currentTokenHash))
+            .toList();
+
+        return ResponseEntity.ok(response);
+    }
+
+    @DeleteMapping("/sessions/{sessionId}")
+    public ResponseEntity<Void> revokeSession(
+        @PathVariable UUID sessionId,
+        Authentication authentication,
+        HttpServletRequest httpRequest
+    ) {
+        String userId = resolveUserId(authentication);
+        if (userId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        if (!rateLimitService.allowRequest("sessions:" + userId, 10, 60)) {
+            throw new RateLimitExceededException("Too many requests. Please wait 1 minute.");
+        }
+
+        UUID userUuid = UUID.fromString(userId);
+        sessionService.revokeSession(sessionId, userUuid);
+
+        String ipAddress = getClientIpAddress(httpRequest);
+        auditLogService.log("remote_logout", userUuid, ipAddress,
+            String.format("{\"revoked_session_id\":\"%s\"}", sessionId));
+
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/sessions")
+    public ResponseEntity<Void> revokeAllOtherSessions(
+        Authentication authentication,
+        HttpServletRequest httpRequest
+    ) {
+        String userId = resolveUserId(authentication);
+        if (userId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        if (!rateLimitService.allowRequest("sessions:" + userId, 10, 60)) {
+            throw new RateLimitExceededException("Too many requests. Please wait 1 minute.");
+        }
+
+        UUID userUuid = UUID.fromString(userId);
+        String jwtToken = extractJwtToken(httpRequest);
+        String currentTokenHash = jwtToken != null ? SessionService.hashToken(jwtToken) : "";
+        int revokedCount = sessionService.revokeAllOtherSessions(userUuid, currentTokenHash);
+
+        String ipAddress = getClientIpAddress(httpRequest);
+        auditLogService.log("remote_logout_all", userUuid, ipAddress,
+            String.format("{\"revoked_count\":%d}", revokedCount));
+
+        return ResponseEntity.noContent().build();
+    }
+
     /**
      * Health check endpoint for testing.
      */
@@ -271,12 +373,35 @@ public class AuthController {
     }
 
     /**
-     * Extract client IP address from HTTP request.
-     * Checks X-Forwarded-For header first (for proxied requests), then falls back to remote address.
+     * Extract JWT token from the Authorization header.
      *
      * @param request HTTP request
-     * @return Client IP address
+     * @return JWT token string, or null if not present
      */
+    private String extractJwtToken(HttpServletRequest request) {
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            return authHeader.substring(7);
+        }
+        return null;
+    }
+
+    /**
+     * Resolve user ID from Authentication.
+     * Uses Authentication.getName() which returns the JWT subject claim
+     * from JwtAuthenticationToken (set by JwtAuthenticationConverter).
+     */
+    private String resolveUserId(Authentication authentication) {
+        if (authentication == null) {
+            return null;
+        }
+        String name = authentication.getName();
+        if (name == null || name.equals("anonymousUser")) {
+            return null;
+        }
+        return name;
+    }
+
     private String getClientIpAddress(HttpServletRequest request) {
         String xForwardedFor = request.getHeader("X-Forwarded-For");
         if (xForwardedFor != null && !xForwardedFor.isEmpty()) {

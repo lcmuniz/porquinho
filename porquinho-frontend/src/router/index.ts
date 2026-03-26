@@ -73,6 +73,12 @@ const router = createRouter({
       component: () => import('../views/OnboardingView.vue'),
       meta: { requiresAuth: true },
     },
+    {
+      path: '/auth/sessions',
+      name: 'sessions',
+      component: () => import('../views/SessionsView.vue'),
+      meta: { requiresAuth: true },
+    },
 
     // Rotas de desenvolvimento (sem restricao)
     {

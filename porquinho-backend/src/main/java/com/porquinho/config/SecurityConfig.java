@@ -2,6 +2,7 @@ package com.porquinho.config;
 
 import java.util.List;
 
+import com.porquinho.service.JwtBlacklistService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -25,6 +26,12 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @Profile("!test")
 public class SecurityConfig {
 
+    private final JwtBlacklistService jwtBlacklistService;
+
+    public SecurityConfig(JwtBlacklistService jwtBlacklistService) {
+        this.jwtBlacklistService = jwtBlacklistService;
+    }
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
@@ -35,11 +42,12 @@ public class SecurityConfig {
             )
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/actuator/health").permitAll()
-                .requestMatchers("/api/v1/auth/health").permitAll() // Health check endpoint
-                .requestMatchers("/api/v1/auth/login/check").permitAll() // Login check (rate limit + account lock) - called BEFORE authentication
-                .requestMatchers("/api/v1/auth/login/failed").permitAll() // Record failed login - called AFTER failed authentication attempt
-                .requestMatchers("/api/v1/auth/password-reset/requested").permitAll() // Password reset request - public endpoint (Story 1.4)
-                .requestMatchers("/api/v1/**").authenticated() // All other API endpoints require JWT authentication
+                .requestMatchers("/api/v1/auth/health").permitAll()
+                .requestMatchers("/api/v1/auth/login/check").permitAll()
+                .requestMatchers("/api/v1/auth/login/failed").permitAll()
+                .requestMatchers("/api/v1/auth/password-reset/requested").permitAll()
+                .requestMatchers("/api/v1/auth/sessions/**").authenticated()  // Session management endpoints (Story 1.5)
+                .requestMatchers("/api/v1/**").authenticated()
                 .anyRequest().permitAll()
             )
             .oauth2ResourceServer(oauth2 -> oauth2
@@ -51,7 +59,9 @@ public class SecurityConfig {
 
     @Bean
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
-        return new JwtAuthenticationConverter();
+        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
+        converter.setJwtBlacklistService(jwtBlacklistService);
+        return converter;
     }
 
     @Bean
