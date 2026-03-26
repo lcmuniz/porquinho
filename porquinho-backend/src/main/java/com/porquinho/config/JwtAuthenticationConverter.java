@@ -1,11 +1,14 @@
 package com.porquinho.config;
 
+import com.porquinho.service.JwtBlacklistService;
+import com.porquinho.service.SessionService;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.security.oauth2.server.resource.InvalidBearerTokenException;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -14,11 +17,26 @@ import java.util.Collections;
  * Converter that extracts user_id from Supabase JWT "sub" claim.
  * The sub claim in Supabase contains the user's UUID.
  * This allows controllers to use @AuthenticationPrincipal String userId.
+ * Also checks JWT blacklist for revoked sessions.
  */
 public class JwtAuthenticationConverter implements Converter<Jwt, AbstractAuthenticationToken> {
 
+    private JwtBlacklistService jwtBlacklistService;
+
+    public void setJwtBlacklistService(JwtBlacklistService jwtBlacklistService) {
+        this.jwtBlacklistService = jwtBlacklistService;
+    }
+
     @Override
     public AbstractAuthenticationToken convert(Jwt jwt) {
+        // Check if token is blacklisted (revoked session)
+        if (jwtBlacklistService != null) {
+            String tokenHash = SessionService.hashToken(jwt.getTokenValue());
+            if (jwtBlacklistService.isBlacklisted(tokenHash)) {
+                throw new InvalidBearerTokenException("Token has been revoked");
+            }
+        }
+
         // Extract user_id from "sub" claim (Supabase stores user UUID in sub)
         String userId = jwt.getSubject();
 
@@ -34,8 +52,6 @@ public class JwtAuthenticationConverter implements Converter<Jwt, AbstractAuthen
      * Can be extended to support role-based access control using custom claims.
      */
     private Collection<GrantedAuthority> extractAuthorities(Jwt jwt) {
-        // Default: all authenticated users have USER role
-        // In the future, can extract roles from custom claims like jwt.getClaim("roles")
         return Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER"));
     }
 }
