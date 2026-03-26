@@ -79,6 +79,12 @@ const router = createRouter({
       component: () => import('../views/SessionsView.vue'),
       meta: { requiresAuth: true },
     },
+    {
+      path: '/auth/data-export',
+      name: 'data-export',
+      component: () => import('../views/DataExportView.vue'),
+      meta: { requiresAuth: true },
+    },
 
     // Rotas de desenvolvimento (sem restricao)
     {

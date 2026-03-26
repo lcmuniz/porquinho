@@ -36,8 +36,30 @@ spring:
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
       timeout: 2000ms
+  threads:
+    virtual:
+      enabled: true
+  mail:
+    host: ${SMTP_HOST:}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enabled: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
   cache:
     type: redis
+app:
+  export:
+    directory: ${EXPORT_DIR:./exports}
+    expiration-hours: 24
+    base-url: ${APP_BASE_URL:http://localhost:8080}
 server:
   port: 8080
 management:

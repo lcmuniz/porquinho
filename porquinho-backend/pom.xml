@@ -85,6 +85,12 @@
 			<artifactId>flyway-database-postgresql</artifactId>
 		</dependency>
 
+		<!-- Mail - Email notifications -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-mail</artifactId>
+		</dependency>
+
 		<!-- Redis - Caching -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

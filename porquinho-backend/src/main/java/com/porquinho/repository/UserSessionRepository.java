@@ -13,6 +13,9 @@ import java.util.UUID;
 
 public interface UserSessionRepository extends JpaRepository<UserSession, UUID> {
 
+    @Query("SELECT s FROM UserSession s WHERE s.userId = :userId")
+    List<UserSession> findAllByUserId(@Param("userId") UUID userId);
+
     List<UserSession> findByUserIdAndRevokedAtIsNullAndExpiresAtAfter(UUID userId, OffsetDateTime now);
 
     Optional<UserSession> findByJwtTokenHash(String jwtTokenHash);
