@@ -30,4 +30,16 @@ public interface UserSessionRepository extends JpaRepository<UserSession, UUID> 
 
     @Query("SELECT s FROM UserSession s WHERE s.userId = :userId AND s.revokedAt IS NULL AND s.expiresAt > :now AND s.lastActivity < :inactivityThreshold")
     List<UserSession> findExpiredByInactivity(@Param("userId") UUID userId, @Param("now") OffsetDateTime now, @Param("inactivityThreshold") OffsetDateTime inactivityThreshold);
+
+    /**
+     * Hard-delete ALL sessions for a user, including revoked ones (Story 1.7 - account purge).
+     *
+     * CRITICAL: uses native SQL to bypass the @Where(revoked_at IS NULL) filter on UserSession.
+     * A JPQL DELETE could apply that filter and silently leave revoked sessions in the table.
+     * By the time this runs (during purge, 30 days after request), all sessions for the user
+     * have revoked_at != NULL, so a JPQL DELETE would be a no-op.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = "DELETE FROM user_sessions WHERE user_id = :userId", nativeQuery = true)
+    int deleteByUserId(@Param("userId") UUID userId);
 }

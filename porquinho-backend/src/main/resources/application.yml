@@ -60,6 +60,9 @@ app:
     directory: ${EXPORT_DIR:./exports}
     expiration-hours: 24
     base-url: ${APP_BASE_URL:http://localhost:8080}
+supabase:
+  project-url: ${SUPABASE_PROJECT_URL:}
+  service-role-key: ${SUPABASE_SERVICE_ROLE_KEY:}
 server:
   port: 8080
 management:

@@ -85,6 +85,12 @@ const router = createRouter({
       component: () => import('../views/DataExportView.vue'),
       meta: { requiresAuth: true },
     },
+    {
+      path: '/auth/account-deletion',
+      name: 'account-deletion',
+      component: () => import('../views/AccountDeletionView.vue'),
+      meta: { requiresAuth: true },
+    },
 
     // Rotas de desenvolvimento (sem restricao)
     {
