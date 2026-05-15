@@ -9,7 +9,7 @@ import { useAuthStore } from '@/stores/auth'
 import { authService } from '@/services/authService'
 
 const router = useRouter()
-const _route = useRoute() // Reserved for future use (e.g., redirectTo query param)
+const route = useRoute()
 const { signInWithEmail, signInWithGoogle } = useAuth()
 const authStore = useAuthStore()
 
@@ -18,6 +18,14 @@ const password = ref('')
 const isLoading = ref(false)
 const errorMessage = ref('')
 const showPassword = ref(false)
+
+// Flash messages from redirects (e.g., post-account-deletion confirmation)
+const infoMessage = computed(() => {
+  if (route.query.msg === 'account-deletion-scheduled') {
+    return 'Sua conta foi marcada para exclusao. Os dados serao removidos definitivamente em 30 dias.'
+  }
+  return ''
+})
 
 const isFormValid = computed(() => {
   return email.value.length > 0 && password.value.length > 0
@@ -86,7 +94,7 @@ async function handleEmailLogin() {
     })
 
     // Step 5: Redirect to onboarding or original page
-    const redirectTo = _route.query.redirectTo as string
+    const redirectTo = route.query.redirectTo as string
     router.push(redirectTo || '/onboarding')
   } catch (error: any) {
     // Step 6: Record failed login attempt (increment counter)
@@ -143,6 +151,15 @@ function togglePasswordVisibility() {
           </CardDescription>
         </CardHeader>
         <CardContent class="space-y-4">
+          <!-- Info message (e.g., post account deletion redirect) -->
+          <div
+            v-if="infoMessage"
+            role="status"
+            class="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700"
+          >
+            {{ infoMessage }}
+          </div>
+
           <!-- Error message -->
           <div
             v-if="errorMessage"

@@ -7,6 +7,10 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
+
 /**
  * Service for sending emails.
  * All email sending is best-effort: failures are logged as warnings, never propagated.
@@ -52,6 +56,41 @@ public class EmailService {
             log.info("Data export notification email sent to {}", email);
         } catch (Exception e) {
             log.warn("Failed to send data export notification email to {}: {}", email, e.getMessage());
+        }
+    }
+
+    /**
+     * Send confirmation that account deletion was scheduled (Story 1.7).
+     * Best-effort: if SMTP is not configured or sending fails, logs warning and continues.
+     *
+     * @param email Recipient email address
+     * @param scheduledPurgeAt Date when the account data will be permanently purged
+     */
+    public void sendAccountDeletionConfirmation(String email, OffsetDateTime scheduledPurgeAt) {
+        if (mailSender == null) {
+            log.warn("SMTP not configured - skipping account deletion confirmation email to {}", email);
+            return;
+        }
+
+        try {
+            String formattedDate = scheduledPurgeAt
+                .format(DateTimeFormatter.ofPattern("dd/MM/yyyy", new Locale("pt", "BR")));
+
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setTo(email);
+            message.setSubject("Porquinho - Confirmação de exclusão de conta");
+            message.setText(
+                "Olá,\n\n" +
+                "Recebemos sua solicitação de exclusão de conta no Porquinho.\n\n" +
+                "Sua conta foi marcada para exclusão e seus dados serão permanentemente removidos em " + formattedDate + " (30 dias).\n\n" +
+                "Durante este período de retenção, sua conta permanecerá inativa e você não poderá fazer login.\n\n" +
+                "IMPORTANTE: Se você não solicitou esta exclusão, entre em contato imediatamente com nosso suporte para reverter a solicitação.\n\n" +
+                "Atenciosamente,\nEquipe Porquinho"
+            );
+            mailSender.send(message);
+            log.info("Account deletion confirmation email sent to {}", email);
+        } catch (Exception e) {
+            log.warn("Failed to send account deletion confirmation email to {}: {}", email, e.getMessage());
         }
     }
 }

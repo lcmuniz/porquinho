@@ -54,4 +54,19 @@ public interface UserRepository extends JpaRepository<User, UUID> {
                      @Param("lgpdConsentAt") LocalDateTime lgpdConsentAt,
                      @Param("createdAt") LocalDateTime createdAt,
                      @Param("updatedAt") LocalDateTime updatedAt);
+
+    /**
+     * Hard-delete a user by id, bypassing the @Where(deleted_at IS NULL) filter (Story 1.7 - account purge).
+     * The default deleteById/findById would silently no-op for soft-deleted users.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = "DELETE FROM users WHERE id = :id", nativeQuery = true)
+    int deleteByIdNative(@Param("id") UUID id);
+
+    /**
+     * Find a user by id including soft-deleted ones (Story 1.7 - idempotent deletion request lookup).
+     * The default findById applies @Where(deleted_at IS NULL) and would miss soft-deleted users.
+     */
+    @Query(value = "SELECT * FROM users WHERE id = :id", nativeQuery = true)
+    Optional<User> findByIdIncludingDeleted(@Param("id") UUID id);
 }

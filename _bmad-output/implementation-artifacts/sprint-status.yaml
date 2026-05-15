@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-13
-last_updated: 2026-03-26
+last_updated: 2026-05-14
 project: porquinho
 project_key: NOKEY
 tracking_system: file-system
@@ -63,7 +63,7 @@ development_status:
   1-4-password-recovery-via-email: done
   1-5-view-active-sessions-remote-logout: done
   1-6-export-all-user-data-lgpd-compliance: done
-  1-7-request-permanent-account-deletion-lgpd-compliance: backlog
+  1-7-request-permanent-account-deletion-lgpd-compliance: done
   epic-1-retrospective: optional
 
   # Epic 2: Subscription & Billing System

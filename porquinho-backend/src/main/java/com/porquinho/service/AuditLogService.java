@@ -3,6 +3,7 @@ package com.porquinho.service;
 import com.porquinho.entity.AuditLog;
 import com.porquinho.repository.AuditLogRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
@@ -49,16 +50,22 @@ public class AuditLogService {
     }
 
     /**
-     * Log an anonymous event (without user_id).
-     * Used for security-sensitive operations like password reset requests where we don't want to reveal
-     * if an email exists in the database.
+     * Log an anonymous event (without user_id) in a NEW transaction.
      *
-     * @param eventType Type of event (e.g., "password_reset_requested")
+     * Uses REQUIRES_NEW propagation so the log is committed independently of the caller's
+     * transaction. Critical for the LGPD account-purge flow (Story 1.7): the "account_purged"
+     * audit row must survive even if the surrounding purge transaction rolls back, providing
+     * a durable trail that the purge was attempted.
+     *
+     * Also used for security-sensitive operations like password reset requests where we don't
+     * want to reveal whether an email exists in the database.
+     *
+     * @param eventType Type of event (e.g., "password_reset_requested", "account_purged")
      * @param ipAddress IP address of the client
-     * @param metadata Additional event metadata (e.g., email, user_agent)
+     * @param metadata Additional event metadata (e.g., email, user_agent, deletion_id)
      * @return Created AuditLog entity
      */
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public AuditLog logAnonymous(String eventType, String ipAddress, String metadata) {
         AuditLog auditLog = new AuditLog(null, eventType, ipAddress, metadata);
         return auditLogRepository.save(auditLog);
