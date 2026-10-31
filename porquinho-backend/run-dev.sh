@@ -5,10 +5,10 @@
 # Carregar variáveis do .env (se existir - procura na pasta atual primeiro)
 if [ -f ".env" ]; then
   echo "📦 Carregando variáveis de ambiente de .env"
-  export $(cat .env | grep -v '^#' | xargs)
+  set -a; . ./.env; set +a  # respeita aspas (xargs quebrava valores com espaço)
 elif [ -f "../.env" ]; then
   echo "📦 Carregando variáveis de ambiente de ../.env"
-  export $(cat ../.env | grep -v '^#' | xargs)
+  set -a; . ../.env; set +a
 else
   echo "⚠️  Arquivo .env não encontrado. Usando valores padrão."
 fi
