@@ -9,6 +9,8 @@ import com.porquinho.service.StripeBillingService;
 import com.porquinho.service.StripeBillingService.SubscriptionDetails;
 import com.porquinho.service.StripeBillingService.WebhookEvent;
 import com.porquinho.service.SubscriptionService;
+import com.porquinho.service.SubscriptionService.InvoicePayment;
+import com.porquinho.service.SubscriptionService.PaymentOutcome;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -105,7 +107,7 @@ class StripeWebhookControllerTest {
     @Test
     void otherEventTypesAreAcknowledgedAndIgnored() throws Exception {
         when(stripeBillingService.verifyWebhook(anyString(), anyString()))
-            .thenReturn(new WebhookEvent("evt_2", "invoice.paid", JSON.readTree("{}")));
+            .thenReturn(new WebhookEvent("evt_2", "invoice.created", JSON.readTree("{}")));
 
         mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content("{}").header("Stripe-Signature", "sig"))
             .andExpect(status().isOk());
@@ -212,5 +214,125 @@ class StripeWebhookControllerTest {
         postWebhook();
 
         verifyNoInteractions(subscriptionService);
+    }
+
+    // ---- Story 2.6: invoice.paid ----
+
+    private static final OffsetDateTime PAID_AT = OffsetDateTime.parse("2026-11-30T12:00:05Z");
+    private static final OffsetDateTime PERIOD_END = OffsetDateTime.parse("2026-12-30T12:00:00Z");
+
+    private void givenInvoicePaid(String json) throws Exception {
+        when(stripeBillingService.verifyWebhook(anyString(), anyString()))
+            .thenReturn(new WebhookEvent("evt_7", "invoice.paid", JSON.readTree(json)));
+    }
+
+    // API 2026 shape: subscription id under parent.subscription_details
+    private static String invoiceJson(String billingReason, long amountPaid) {
+        return "{\"id\":\"in_1\",\"object\":\"invoice\",\"amount_paid\":" + amountPaid + ",\"currency\":\"brl\","
+            + "\"billing_reason\":\"" + billingReason + "\","
+            + "\"parent\":{\"type\":\"subscription_details\",\"subscription_details\":{\"subscription\":\"sub_1\"}},"
+            + "\"status_transitions\":{\"paid_at\":" + PAID_AT.toEpochSecond() + "},"
+            + "\"lines\":{\"data\":[{\"period\":{\"start\":1,\"end\":" + PERIOD_END.toEpochSecond() + "}}]}}";
+    }
+
+    private static final InvoicePayment EXPECTED_PAYMENT =
+        new InvoicePayment("in_1", "sub_1", 1990, "brl", PAID_AT, PERIOD_END);
+
+    private void postWebhookExpecting(int status) throws Exception {
+        mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content("{}").header("Stripe-Signature", "sig"))
+            .andExpect(status().is(status));
+    }
+
+    @Test
+    void invoicePaidRecordsRenewalPayment() throws Exception {
+        givenInvoicePaid(invoiceJson("subscription_cycle", 1990));
+        when(subscriptionService.recordPayment(EXPECTED_PAYMENT)).thenReturn(PaymentOutcome.RECORDED);
+
+        postWebhook();
+
+        verify(subscriptionService).recordPayment(EXPECTED_PAYMENT);
+        // The period is fetched by the service (with fallback), not by the controller
+        verify(stripeBillingService, never()).retrieveSubscription(anyString());
+    }
+
+    @Test
+    void invoicePaidReadsLegacyTopLevelSubscriptionField() throws Exception {
+        givenInvoicePaid("{\"id\":\"in_1\",\"subscription\":\"sub_1\",\"amount_paid\":1990,\"currency\":\"brl\","
+            + "\"billing_reason\":\"subscription_cycle\","
+            + "\"status_transitions\":{\"paid_at\":" + PAID_AT.toEpochSecond() + "},"
+            + "\"lines\":{\"data\":[{\"period\":{\"end\":" + PERIOD_END.toEpochSecond() + "}}]}}");
+        when(subscriptionService.recordPayment(EXPECTED_PAYMENT)).thenReturn(PaymentOutcome.RECORDED);
+
+        postWebhook();
+
+        verify(subscriptionService).recordPayment(EXPECTED_PAYMENT);
+    }
+
+    @Test
+    void invoicePaidWithoutPaidAtOrLinesPassesNulls() throws Exception {
+        givenInvoicePaid("{\"id\":\"in_1\",\"subscription\":\"sub_1\",\"amount_paid\":1990,\"currency\":\"brl\","
+            + "\"status_transitions\":{\"paid_at\":null},\"lines\":{\"data\":[]}}");
+        InvoicePayment expected = new InvoicePayment("in_1", "sub_1", 1990, "brl", null, null);
+        when(subscriptionService.recordPayment(expected)).thenReturn(PaymentOutcome.RECORDED);
+
+        postWebhook();
+
+        verify(subscriptionService).recordPayment(expected);
+    }
+
+    @Test
+    void zeroAmountInvoiceIsIgnored() throws Exception {
+        // Subscribed during the trial: Stripe issues a R$ 0 invoice on subscription_create
+        givenInvoicePaid(invoiceJson("subscription_create", 0));
+
+        postWebhook();
+
+        verifyNoInteractions(subscriptionService);
+    }
+
+    @Test
+    void invoiceWithoutSubscriptionIsIgnored() throws Exception {
+        givenInvoicePaid("{\"id\":\"in_1\",\"amount_paid\":5000,\"currency\":\"brl\",\"parent\":null}");
+
+        postWebhook();
+
+        verifyNoInteractions(subscriptionService);
+    }
+
+    @Test
+    void invoiceWithoutIdIsIgnored() throws Exception {
+        givenInvoicePaid("{\"subscription\":\"sub_1\",\"amount_paid\":1990,\"currency\":\"brl\"}");
+
+        postWebhook();
+
+        verifyNoInteractions(subscriptionService);
+    }
+
+    @Test
+    void replayedInvoiceIsAcknowledgedWith200() throws Exception {
+        givenInvoicePaid(invoiceJson("subscription_cycle", 1990));
+        when(subscriptionService.recordPayment(EXPECTED_PAYMENT)).thenReturn(PaymentOutcome.DUPLICATE);
+
+        postWebhook();
+
+        verify(subscriptionService).recordPayment(EXPECTED_PAYMENT);
+    }
+
+    @Test
+    void firstInvoiceBeforeCheckoutReturns503SoStripeRetries() throws Exception {
+        givenInvoicePaid(invoiceJson("subscription_create", 1990));
+        when(subscriptionService.recordPayment(EXPECTED_PAYMENT)).thenReturn(PaymentOutcome.UNKNOWN_SUBSCRIPTION);
+
+        postWebhookExpecting(503);
+    }
+
+    @Test
+    void unknownSubscriptionForOtherBillingReasonIsAcknowledgedWith200() throws Exception {
+        givenInvoicePaid(invoiceJson("subscription_cycle", 1990));
+        when(subscriptionService.recordPayment(EXPECTED_PAYMENT)).thenReturn(PaymentOutcome.UNKNOWN_SUBSCRIPTION);
+
+        postWebhook();
+
+        verify(subscriptionService).recordPayment(EXPECTED_PAYMENT);
     }
 }

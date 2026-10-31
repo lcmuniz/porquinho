@@ -8,6 +8,7 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -255,5 +256,56 @@ public class EmailService {
         } catch (Exception e) {
             log.warn("Failed to send subscription cancelled email to {}: {}", email, e.getMessage());
         }
+    }
+
+    /**
+     * Send the "Pagamento confirmado" receipt after Stripe charged the monthly plan (Story 2.6).
+     * Dates are Sao Paulo local dates.
+     * Best-effort: if SMTP is not configured or sending fails, logs warning and continues.
+     *
+     * @param email Recipient email address
+     * @param amount Amount paid in reais (19.90 -> "R$ 19,90")
+     * @param paidAt When Stripe confirmed the payment
+     * @param nextBillingDate Date of the next charge; may be null
+     */
+    public void sendPaymentReceipt(String email, BigDecimal amount, OffsetDateTime paidAt,
+                                   OffsetDateTime nextBillingDate) {
+        if (mailSender == null) {
+            log.warn("SMTP not configured - skipping payment receipt email to {}", email);
+            return;
+        }
+
+        try {
+            String paidLine = paidAt == null ? "" : "Data do pagamento: " + saoPauloDate(paidAt) + ".\n";
+            String billingLine = nextBillingDate == null
+                ? ""
+                : "Próxima cobrança: " + saoPauloDate(nextBillingDate) + ".\n";
+
+            SimpleMailMessage message = newMessage(email, "Porquinho - Pagamento confirmado");
+            message.setText(
+                "Olá!\n\n" +
+                "Recebemos o pagamento da sua assinatura mensal do Porquinho.\n\n" +
+                "Valor: " + formatBrl(amount) + "\n" +
+                paidLine +
+                billingLine + "\n" +
+                "A cobrança é feita automaticamente no cartão cadastrado.\n\n" +
+                "Atenciosamente,\nEquipe Porquinho"
+            );
+            mailSender.send(message);
+            log.info("Payment receipt email sent to {}", email);
+        } catch (Exception e) {
+            log.warn("Failed to send payment receipt email to {}: {}", email, e.getMessage());
+        }
+    }
+
+    // Brazil local date: a UTC instant between 00:00 and 03:00 is still the previous day here
+    private static String saoPauloDate(OffsetDateTime value) {
+        return value.atZoneSameInstant(ZoneId.of("America/Sao_Paulo"))
+            .format(DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.of("pt", "BR")));
+    }
+
+    // "R$ 19,90" / "R$ 1.234,56" with a plain space (NumberFormat's currency uses a no-break space)
+    static String formatBrl(BigDecimal amount) {
+        return "R$ " + String.format(Locale.of("pt", "BR"), "%,.2f", amount);
     }
 }

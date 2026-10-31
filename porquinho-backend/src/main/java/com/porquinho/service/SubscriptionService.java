@@ -2,12 +2,15 @@ package com.porquinho.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.porquinho.entity.BillingTransaction;
 import com.porquinho.entity.Subscription;
 import com.porquinho.entity.Subscription.PlanType;
 import com.porquinho.entity.Subscription.Status;
 import com.porquinho.entity.User;
 import com.porquinho.exception.ConflictException;
+import com.porquinho.exception.PaymentProviderUnavailableException;
 import com.porquinho.exception.ResourceNotFoundException;
+import com.porquinho.repository.BillingTransactionRepository;
 import com.porquinho.repository.SubscriptionRepository;
 import com.porquinho.repository.UserRepository;
 import org.slf4j.Logger;
@@ -17,11 +20,13 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -29,7 +34,8 @@ import java.util.UUID;
 
 /**
  * Subscription rules (Story 2.1), monthly-plan activation via Stripe (Story 2.2) and
- * self-service cancellation at period end (Story 2.4) and reactivation (Story 2.5).
+ * self-service cancellation at period end (Story 2.4) and reactivation (Story 2.5), and recording of
+ * the monthly payments Stripe charges (Story 2.6, invoice.paid webhook).
  *
  * Trial expiration is computed on read (hasAccess compares now with trial_end_date).
  * Trial-end reminder e-mails are sent by TrialReminderService (Story 2.3).
@@ -57,19 +63,46 @@ public class SubscriptionService {
     private final StripeBillingService stripeBillingService;
     private final UserRepository userRepository;
     private final EmailService emailService;
+    private final BillingTransactionRepository billingTransactionRepository;
 
     public SubscriptionService(SubscriptionRepository subscriptionRepository,
                                AuditLogService auditLogService,
                                Clock clock,
                                StripeBillingService stripeBillingService,
                                UserRepository userRepository,
-                               EmailService emailService) {
+                               EmailService emailService,
+                               BillingTransactionRepository billingTransactionRepository) {
         this.subscriptionRepository = subscriptionRepository;
         this.auditLogService = auditLogService;
         this.clock = clock;
         this.stripeBillingService = stripeBillingService;
         this.userRepository = userRepository;
         this.emailService = emailService;
+        this.billingTransactionRepository = billingTransactionRepository;
+    }
+
+    /**
+     * A paid Stripe invoice, as read from the invoice.paid webhook (Story 2.6).
+     *
+     * @param invoiceId Stripe invoice id (in_...), the idempotency key
+     * @param stripeSubscriptionId Stripe subscription the invoice belongs to
+     * @param amountPaid amount_paid in cents (1990 = R$ 19,90)
+     * @param currency ISO 4217 code as Stripe sends it (stored lower-case)
+     * @param paidAt status_transitions.paid_at; null -> now
+     * @param linePeriodEnd lines.data[0].period.end, fallback for next_billing_date; may be null
+     */
+    public record InvoicePayment(String invoiceId, String stripeSubscriptionId, long amountPaid, String currency,
+                                 OffsetDateTime paidAt, OffsetDateTime linePeriodEnd) {
+    }
+
+    /** What {@link #recordPayment(InvoicePayment)} did with the invoice. */
+    public enum PaymentOutcome {
+        /** New billing_transactions row, next_billing_date updated, audit and receipt e-mail. */
+        RECORDED,
+        /** Invoice already recorded (webhook replay): nothing changed. */
+        DUPLICATE,
+        /** No local row with this Stripe subscription id: nothing changed. */
+        UNKNOWN_SUBSCRIPTION
     }
 
     /**
@@ -383,6 +416,81 @@ public class SubscriptionService {
         metadata.put("previous_status", previous.name());
         auditLogService.log("subscription_expired", subscription.getUserId(), null, toJson(metadata));
         return true;
+    }
+
+    /**
+     * Record a monthly payment Stripe already charged (invoice.paid webhook, Story 2.6). Stripe is the
+     * one charging; this only writes billing_transactions, moves next_billing_date to the end of the
+     * new period (only forward), audits payment_success and e-mails the receipt after commit.
+     *
+     * The row is locked directly by Stripe subscription id (no prior read, so the lock re-reads it),
+     * which serializes concurrent deliveries of the same invoice; the invoice id makes replays no-ops.
+     * The new period end comes from Stripe; if Stripe is down, the invoice line's period end is used.
+     */
+    @Transactional
+    public PaymentOutcome recordPayment(InvoicePayment payment) {
+        Optional<Subscription> found = payment.stripeSubscriptionId() == null
+            ? Optional.empty()
+            : subscriptionRepository.findByStripeSubscriptionIdForUpdate(payment.stripeSubscriptionId());
+        if (found.isEmpty()) {
+            return PaymentOutcome.UNKNOWN_SUBSCRIPTION;
+        }
+        Subscription subscription = found.get();
+
+        if (billingTransactionRepository.existsByStripeTransactionId(payment.invoiceId())) {
+            return PaymentOutcome.DUPLICATE;
+        }
+
+        OffsetDateTime periodEnd = currentPeriodEnd(payment);
+        OffsetDateTime current = subscription.getNextBillingDate();
+        if (periodEnd == null) {
+            log.warn("next_billing_date not advanced for invoice {}: no period end from Stripe nor invoice line",
+                payment.invoiceId());
+        } else if (current == null || periodEnd.isAfter(current)) {
+            subscription.setNextBillingDate(periodEnd);
+            subscriptionRepository.save(subscription);
+        }
+        OffsetDateTime nextBillingDate = subscription.getNextBillingDate();
+
+        BigDecimal amount = BigDecimal.valueOf(payment.amountPaid(), 2);
+        // currency is NOT NULL; the single plan is priced in BRL, so a missing field defaults to it
+        String currency = payment.currency() == null ? "brl" : payment.currency().toLowerCase(Locale.ROOT);
+        OffsetDateTime paidAt = payment.paidAt() != null ? payment.paidAt() : OffsetDateTime.now(clock);
+        UUID userId = subscription.getUserId();
+
+        billingTransactionRepository.save(new BillingTransaction(subscription.getId(), userId, amount, currency,
+            BillingTransaction.Status.PAID, subscription.getPaymentMethodId(), payment.invoiceId(), paidAt));
+
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("amount", amount);
+        metadata.put("currency", currency);
+        metadata.put("invoice_id", payment.invoiceId());
+        metadata.put("next_billing_date", nextBillingDate == null ? null : nextBillingDate.toString());
+        auditLogService.log("payment_success", userId, null, toJson(metadata));
+
+        afterCommit(() -> userRepository.findById(userId)
+            .map(User::getEmail)
+            .ifPresentOrElse(
+                email -> emailService.sendPaymentReceipt(email, amount, paidAt, nextBillingDate),
+                () -> log.warn("No user {} to email the payment receipt", userId)));
+
+        return PaymentOutcome.RECORDED;
+    }
+
+    // Stripe's current_period_end is the source of truth; the invoice line is the fallback when Stripe is down
+    private OffsetDateTime currentPeriodEnd(InvoicePayment payment) {
+        try {
+            OffsetDateTime periodEnd = stripeBillingService
+                .retrieveSubscription(payment.stripeSubscriptionId())
+                .currentPeriodEnd();
+            if (periodEnd != null) {
+                return periodEnd;
+            }
+        } catch (PaymentProviderUnavailableException e) {
+            log.warn("Stripe unavailable fetching period of subscription {} for invoice {}; using invoice line period end",
+                payment.stripeSubscriptionId(), payment.invoiceId());
+        }
+        return payment.linePeriodEnd();
     }
 
     private static String toJson(Map<String, Object> value) {

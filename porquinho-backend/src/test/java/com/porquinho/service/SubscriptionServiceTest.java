@@ -1,14 +1,19 @@
 package com.porquinho.service;
 
 import com.porquinho.entity.AuditLog;
+import com.porquinho.entity.BillingTransaction;
 import com.porquinho.entity.Subscription;
+import com.porquinho.entity.Subscription.PlanType;
+import com.porquinho.entity.Subscription.Status;
 import com.porquinho.entity.User;
 import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.PaymentProviderUnavailableException;
-import com.porquinho.repository.UserRepository;
-import com.porquinho.entity.Subscription.PlanType;
-import com.porquinho.entity.Subscription.Status;
+import com.porquinho.repository.BillingTransactionRepository;
 import com.porquinho.repository.SubscriptionRepository;
+import com.porquinho.repository.UserRepository;
+import com.porquinho.service.StripeBillingService.SubscriptionDetails;
+import com.porquinho.service.SubscriptionService.InvoicePayment;
+import com.porquinho.service.SubscriptionService.PaymentOutcome;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,6 +23,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -57,13 +63,16 @@ class SubscriptionServiceTest {
     @Mock
     private EmailService emailService;
 
+    @Mock
+    private BillingTransactionRepository billingTransactionRepository;
+
     private SubscriptionService service;
     private UUID userId;
 
     @BeforeEach
     void setUp() {
         service = new SubscriptionService(subscriptionRepository, auditLogService, Clock.fixed(NOW, ZoneOffset.UTC),
-            stripeBillingService, userRepository, emailService);
+            stripeBillingService, userRepository, emailService, billingTransactionRepository);
         userId = UUID.randomUUID();
     }
 
@@ -684,5 +693,185 @@ class SubscriptionServiceTest {
         service.activateMonthly(userId, "cus_1", "sub_2", "pm_2", NOW_UTC.plusDays(30));
 
         verify(auditLogService).log(eq("subscription_reactivated"), eq(userId), isNull(), anyString());
+    }
+
+    // ---- Story 2.6: recurring payments (invoice.paid) ----
+
+    private Subscription activeMonthlyWithId(OffsetDateTime nextBilling) {
+        Subscription s = monthly(Status.ACTIVE, nextBilling);
+        s.setId(UUID.randomUUID());
+        return s;
+    }
+
+    private InvoicePayment invoice(OffsetDateTime paidAt, OffsetDateTime linePeriodEnd) {
+        return new InvoicePayment("in_1", "sub_1", 1990, "BRL", paidAt, linePeriodEnd);
+    }
+
+    @Test
+    void recordPaymentStoresPaidTransactionAdvancesBillingAuditsAndEmailsReceiptAfterCommit() {
+        Subscription sub = activeMonthlyWithId(NOW_UTC);
+        OffsetDateTime newPeriodEnd = NOW_UTC.plusMonths(1);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+        when(billingTransactionRepository.existsByStripeTransactionId("in_1")).thenReturn(false);
+        when(stripeBillingService.retrieveSubscription("sub_1"))
+            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", newPeriodEnd));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            PaymentOutcome outcome = service.recordPayment(invoice(NOW_UTC, NOW_UTC.plusDays(29)));
+
+            assertThat(outcome).isEqualTo(PaymentOutcome.RECORDED);
+            ArgumentCaptor<BillingTransaction> tx = ArgumentCaptor.forClass(BillingTransaction.class);
+            verify(billingTransactionRepository).save(tx.capture());
+            assertThat(tx.getValue().getAmount()).isEqualByComparingTo("19.90");
+            assertThat(tx.getValue().getAmount().scale()).isEqualTo(2);
+            assertThat(tx.getValue().getCurrency()).isEqualTo("brl");
+            assertThat(tx.getValue().getStatus()).isEqualTo(BillingTransaction.Status.PAID);
+            assertThat(tx.getValue().getStripeTransactionId()).isEqualTo("in_1");
+            assertThat(tx.getValue().getPaymentMethod()).isEqualTo("pm_1");
+            assertThat(tx.getValue().getSubscriptionId()).isEqualTo(sub.getId());
+            assertThat(tx.getValue().getUserId()).isEqualTo(userId);
+            assertThat(tx.getValue().getPaidAt()).isEqualTo(NOW_UTC);
+
+            assertThat(sub.getNextBillingDate()).isEqualTo(newPeriodEnd);
+            verify(subscriptionRepository).save(sub);
+            verify(auditLogService).log(eq("payment_success"), eq(userId), isNull(),
+                eq("{\"amount\":19.90,\"currency\":\"brl\",\"invoice_id\":\"in_1\","
+                    + "\"next_billing_date\":\"" + newPeriodEnd + "\"}"));
+
+            verify(emailService, never()).sendPaymentReceipt(any(), any(), any(), any());
+            TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
+            verify(emailService).sendPaymentReceipt(eq("ana@example.com"),
+                eq(new BigDecimal("19.90")), eq(NOW_UTC), eq(newPeriodEnd));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+
+        // Locked straight by Stripe id: no unlocked read that would pin a stale instance (identity map)
+        verify(subscriptionRepository, never()).findByUserIdForUpdate(any());
+        verify(subscriptionRepository, never()).findByUserId(any());
+    }
+
+    @Test
+    void recordPaymentForFirstChargeAtTrialEndIsRecordedTheSameWay() {
+        // Subscribed during the trial: next_billing_date was the trial end, the first real charge happens there
+        Subscription sub = activeMonthlyWithId(NOW_UTC);
+        sub.setTrialEndDate(NOW_UTC);
+        OffsetDateTime newPeriodEnd = NOW_UTC.plusMonths(1);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+        when(stripeBillingService.retrieveSubscription("sub_1"))
+            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", newPeriodEnd));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
+
+        assertThat(service.recordPayment(invoice(NOW_UTC, null))).isEqualTo(PaymentOutcome.RECORDED);
+
+        assertThat(sub.getNextBillingDate()).isEqualTo(newPeriodEnd);
+        verify(billingTransactionRepository).save(any(BillingTransaction.class));
+        verify(emailService).sendPaymentReceipt("ana@example.com", new BigDecimal("19.90"), NOW_UTC, newPeriodEnd);
+    }
+
+    @Test
+    void recordPaymentReplayChangesNothing() {
+        Subscription sub = activeMonthlyWithId(NOW_UTC.plusDays(30));
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+        when(billingTransactionRepository.existsByStripeTransactionId("in_1")).thenReturn(true);
+
+        assertThat(service.recordPayment(invoice(NOW_UTC, NOW_UTC.plusDays(30)))).isEqualTo(PaymentOutcome.DUPLICATE);
+
+        verify(billingTransactionRepository, never()).save(any());
+        verify(subscriptionRepository, never()).save(any());
+        verify(stripeBillingService, never()).retrieveSubscription(anyString());
+        verify(auditLogService, never()).log(anyString(), any(), any(), any());
+        verify(emailService, never()).sendPaymentReceipt(any(), any(), any(), any());
+    }
+
+    @Test
+    void recordPaymentForUnknownStripeSubscriptionChangesNothing() {
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.empty());
+
+        assertThat(service.recordPayment(invoice(NOW_UTC, null))).isEqualTo(PaymentOutcome.UNKNOWN_SUBSCRIPTION);
+
+        verify(billingTransactionRepository, never()).existsByStripeTransactionId(any());
+        verify(billingTransactionRepository, never()).save(any());
+        verify(stripeBillingService, never()).retrieveSubscription(anyString());
+        verify(auditLogService, never()).log(anyString(), any(), any(), any());
+        verify(emailService, never()).sendPaymentReceipt(any(), any(), any(), any());
+    }
+
+    @Test
+    void recordPaymentWithoutStripeSubscriptionIdIsUnknown() {
+        InvoicePayment payment = new InvoicePayment("in_1", null, 1990, "brl", NOW_UTC, null);
+
+        assertThat(service.recordPayment(payment)).isEqualTo(PaymentOutcome.UNKNOWN_SUBSCRIPTION);
+
+        verify(subscriptionRepository, never()).findByStripeSubscriptionIdForUpdate(any());
+        verify(billingTransactionRepository, never()).save(any());
+    }
+
+    @Test
+    void recordPaymentWhenStripeDownUsesInvoiceLinePeriodEnd() {
+        Subscription sub = activeMonthlyWithId(NOW_UTC);
+        OffsetDateTime linePeriodEnd = NOW_UTC.plusDays(30);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+        when(stripeBillingService.retrieveSubscription("sub_1")).thenThrow(new PaymentProviderUnavailableException("down"));
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+
+        assertThat(service.recordPayment(invoice(NOW_UTC, linePeriodEnd))).isEqualTo(PaymentOutcome.RECORDED);
+
+        assertThat(sub.getNextBillingDate()).isEqualTo(linePeriodEnd);
+        verify(billingTransactionRepository).save(any(BillingTransaction.class));
+        verify(auditLogService).log(eq("payment_success"), eq(userId), isNull(), anyString());
+    }
+
+    @Test
+    void recordPaymentNeverMovesNextBillingDateBackwards() {
+        // A late invoice.paid of an older period: Stripe says the period ends before what we already have
+        OffsetDateTime current = NOW_UTC.plusDays(40);
+        Subscription sub = activeMonthlyWithId(current);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+        when(stripeBillingService.retrieveSubscription("sub_1"))
+            .thenThrow(new PaymentProviderUnavailableException("down"));
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+
+        assertThat(service.recordPayment(invoice(NOW_UTC.minusDays(30), NOW_UTC.plusDays(10))))
+            .isEqualTo(PaymentOutcome.RECORDED);
+
+        assertThat(sub.getNextBillingDate()).isEqualTo(current);
+        verify(subscriptionRepository, never()).save(any());
+        verify(billingTransactionRepository).save(any(BillingTransaction.class));
+        verify(auditLogService).log(eq("payment_success"), eq(userId), isNull(),
+            eq("{\"amount\":19.90,\"currency\":\"brl\",\"invoice_id\":\"in_1\","
+                + "\"next_billing_date\":\"" + current + "\"}"));
+    }
+
+    @Test
+    void recordPaymentWithoutPaidAtUsesNow() {
+        Subscription sub = activeMonthlyWithId(NOW_UTC);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+        when(stripeBillingService.retrieveSubscription("sub_1"))
+            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", NOW_UTC.plusMonths(1)));
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+
+        service.recordPayment(invoice(null, null));
+
+        ArgumentCaptor<BillingTransaction> tx = ArgumentCaptor.forClass(BillingTransaction.class);
+        verify(billingTransactionRepository).save(tx.capture());
+        assertThat(tx.getValue().getPaidAt()).isEqualTo(NOW_UTC);
+    }
+
+    @Test
+    void recordPaymentWithoutCurrencyDefaultsToBrl() {
+        Subscription sub = activeMonthlyWithId(NOW_UTC);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+        when(stripeBillingService.retrieveSubscription("sub_1"))
+            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", NOW_UTC.plusMonths(1)));
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+
+        service.recordPayment(new InvoicePayment("in_1", "sub_1", 1990, null, NOW_UTC, null));
+
+        ArgumentCaptor<BillingTransaction> tx = ArgumentCaptor.forClass(BillingTransaction.class);
+        verify(billingTransactionRepository).save(tx.capture());
+        assertThat(tx.getValue().getCurrency()).isEqualTo("brl");
     }
 }

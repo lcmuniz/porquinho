@@ -7,25 +7,33 @@ import com.porquinho.service.StripeBillingService;
 import com.porquinho.service.StripeBillingService.SubscriptionDetails;
 import com.porquinho.service.StripeBillingService.WebhookEvent;
 import com.porquinho.service.SubscriptionService;
+import com.porquinho.service.SubscriptionService.InvoicePayment;
+import com.porquinho.service.SubscriptionService.PaymentOutcome;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Set;
 import java.util.UUID;
 
 /**
  * Stripe webhook (Story 2.2). Public in SecurityConfig: trust comes from the Stripe-Signature
  * header, verified against STRIPE_WEBHOOK_SECRET. Handles checkout.session.completed (Story 2.2) and
- * customer.subscription.deleted (Story 2.4: subscription ended -> EXPIRED); other events get 200
- * so Stripe stops retrying them.
+ * customer.subscription.deleted (Story 2.4: subscription ended -> EXPIRED) and invoice.paid (Story 2.6:
+ * record the monthly payment Stripe charged); other events get 200 so Stripe stops retrying them.
  *
  * Errors: bad signature -> 400 (nothing changes); Stripe API down while fetching the
- * subscription -> 503 (Stripe retries the delivery).
+ * subscription on checkout -> 503 (Stripe retries the delivery); first invoice of a subscription
+ * (billing_reason=subscription_create) arriving before checkout.session.completed -> 503, so the
+ * retry records it once the subscription is known.
  */
 @RestController
 public class StripeWebhookController {
@@ -34,6 +42,9 @@ public class StripeWebhookController {
 
     static final String CHECKOUT_COMPLETED = "checkout.session.completed";
     static final String SUBSCRIPTION_DELETED = "customer.subscription.deleted";
+    static final String INVOICE_PAID = "invoice.paid";
+
+    private static final String BILLING_REASON_SUBSCRIPTION_CREATE = "subscription_create";
 
     // "no_payment_required": subscribed during the trial, first charge on trial_end
     private static final Set<String> SETTLED_PAYMENT_STATUSES = Set.of("paid", "no_payment_required");
@@ -62,6 +73,8 @@ public class StripeWebhookController {
             handleCheckoutCompleted(event);
         } else if (SUBSCRIPTION_DELETED.equals(event.type())) {
             handleSubscriptionDeleted(event);
+        } else if (INVOICE_PAID.equals(event.type())) {
+            return handleInvoicePaid(event);
         } else {
             log.debug("Ignoring Stripe event {} ({})", event.id(), event.type());
         }
@@ -79,6 +92,55 @@ public class StripeWebhookController {
             log.info("Stripe subscription {} ended; local subscription expired (event {})",
                 stripeSubscriptionId, event.id());
         }
+    }
+
+    private ResponseEntity<Void> handleInvoicePaid(WebhookEvent event) {
+        JsonNode invoice = event.object();
+        String invoiceId = text(invoice, "id");
+        // API 2026: parent.subscription_details.subscription; older API versions: top-level subscription
+        String stripeSubscriptionId = text(path(invoice, "parent", "subscription_details"), "subscription");
+        if (stripeSubscriptionId == null) {
+            stripeSubscriptionId = text(invoice, "subscription");
+        }
+        long amountPaid = invoice == null ? 0 : invoice.path("amount_paid").asLong(0);
+
+        if (invoiceId == null) {
+            log.warn("Ignoring {} {}: no invoice id", INVOICE_PAID, event.id());
+            return ResponseEntity.ok().build();
+        }
+        if (stripeSubscriptionId == null) {
+            log.debug("Ignoring {} {}: invoice {} has no subscription", INVOICE_PAID, event.id(), invoiceId);
+            return ResponseEntity.ok().build();
+        }
+        if (amountPaid <= 0) {
+            // Subscribed during the trial: Stripe issues a R$ 0 invoice on creation
+            log.debug("Ignoring {} {}: invoice {} amount_paid={}", INVOICE_PAID, event.id(), invoiceId, amountPaid);
+            return ResponseEntity.ok().build();
+        }
+
+        InvoicePayment payment = new InvoicePayment(invoiceId, stripeSubscriptionId, amountPaid,
+            text(invoice, "currency"),
+            epochSeconds(path(invoice, "status_transitions"), "paid_at"),
+            epochSeconds(path(path(invoice, "lines", "data"), 0, "period"), "end"));
+        PaymentOutcome outcome = subscriptionService.recordPayment(payment);
+
+        if (outcome == PaymentOutcome.UNKNOWN_SUBSCRIPTION) {
+            String billingReason = text(invoice, "billing_reason");
+            if (BILLING_REASON_SUBSCRIPTION_CREATE.equals(billingReason)) {
+                // First invoice raced ahead of checkout.session.completed: 503 so Stripe re-delivers it
+                log.info("{} {}: first invoice {} for Stripe subscription {} arrived before checkout; asking Stripe to retry",
+                    INVOICE_PAID, event.id(), invoiceId, stripeSubscriptionId);
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();
+            }
+            log.warn("Ignoring {} {}: unknown Stripe subscription {} (invoice {}, billing_reason={})",
+                INVOICE_PAID, event.id(), stripeSubscriptionId, invoiceId, billingReason);
+        } else if (outcome == PaymentOutcome.DUPLICATE) {
+            log.debug("Ignoring {} {}: invoice {} already recorded", INVOICE_PAID, event.id(), invoiceId);
+        } else if (outcome == PaymentOutcome.RECORDED) {
+            log.info("Payment recorded for Stripe subscription {} (invoice {}, event {})",
+                stripeSubscriptionId, invoiceId, event.id());
+        }
+        return ResponseEntity.ok().build();
     }
 
     private void handleCheckoutCompleted(WebhookEvent event) {
@@ -124,5 +186,27 @@ public class StripeWebhookController {
     private static String text(JsonNode node, String field) {
         JsonNode value = node == null ? null : node.get(field);
         return value == null || value.isNull() ? null : value.asText();
+    }
+
+    private static JsonNode path(JsonNode node, String... fields) {
+        JsonNode current = node;
+        for (String field : fields) {
+            current = current == null ? null : current.get(field);
+        }
+        return current;
+    }
+
+    private static JsonNode path(JsonNode array, int index, String field) {
+        JsonNode item = array == null || !array.isArray() ? null : array.get(index);
+        return item == null ? null : item.get(field);
+    }
+
+    // Stripe timestamps are Unix epoch seconds
+    private static OffsetDateTime epochSeconds(JsonNode node, String field) {
+        JsonNode value = node == null ? null : node.get(field);
+        if (value == null || !value.canConvertToLong()) {
+            return null;
+        }
+        return OffsetDateTime.ofInstant(Instant.ofEpochSecond(value.asLong()), ZoneOffset.UTC);
     }
 }

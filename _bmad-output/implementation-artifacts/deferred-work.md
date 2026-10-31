@@ -72,3 +72,11 @@
 - source_spec: `_bmad-output/implementation-artifacts/2-5-reactivate-cancelled-subscription.md`
   summary: Checkout antigo concluído enquanto a linha está MONTHLY/CANCELLED com acesso cria segunda assinatura paga sobreposta à antiga (cancelamento agendado).
   evidence: `activateMonthly` só cancela a assinatura duplicada quando a linha está ACTIVE; `createCheckout` bloqueia novos checkouts nesse estado, mas uma sessão aberta antes (no trial) ainda pode ser concluída. Pré-existente desde a 2.4.
+
+- source_spec: `_bmad-output/implementation-artifacts/2-6-process-recurring-monthly-payments.md`
+  summary: Em produção, o webhook endpoint do Stripe (test e live) precisa assinar `invoice.paid`, além de `checkout.session.completed` e `customer.subscription.deleted`.
+  evidence: Só o comando `stripe listen` do `.env.example` foi atualizado; sem o evento no endpoint, nenhum pagamento recorrente é registrado.
+
+- source_spec: `_bmad-output/implementation-artifacts/2-6-process-recurring-monthly-payments.md`
+  summary: Decidir a retenção de `billing_transactions` no purge da conta. Hoje a tabela é apagada; a legislação fiscal pode exigir guardar registros de cobrança por cerca de 5 anos (LGPD art. 16, I), por exemplo anonimizando `user_id`.
+  evidence: O purge (Story 1.7 + 2.6) faz hard delete da tabela, e `user_id NOT NULL` impede anonimizar sem uma migration. É uma questão jurídica e de produto.
