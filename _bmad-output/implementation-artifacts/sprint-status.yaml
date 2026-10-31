@@ -68,7 +68,7 @@ development_status:
 
   # Epic 2: Subscription & Billing System
   epic-2: in-progress
-  2-1-automatically-activate-30-day-free-trial: ready-for-dev
+  2-1-automatically-activate-30-day-free-trial: review
   2-2-subscribe-to-monthly-plan-after-trial: backlog
   2-3-send-trial-expiration-reminders: backlog
   2-4-self-service-subscription-cancellation: backlog

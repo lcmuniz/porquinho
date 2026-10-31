@@ -2,7 +2,10 @@
   <main class="min-h-screen bg-gray-50 px-4 py-8">
     <div class="mx-auto max-w-3xl space-y-8">
       <div>
-        <h1 class="text-2xl font-semibold text-gray-900">Dashboard</h1>
+        <div class="flex flex-wrap items-center gap-3">
+          <h1 class="text-2xl font-semibold text-gray-900">Dashboard</h1>
+          <TrialBadge v-if="subscription" :subscription="subscription" />
+        </div>
         <p class="text-gray-600">Em desenvolvimento — Epic 7</p>
       </div>
 
@@ -50,5 +53,20 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import TrialBadge from '@/components/subscription/TrialBadge.vue'
+import { getMySubscription } from '@/services/subscriptionService'
+import type { Subscription } from '@/types/subscription'
+
+const subscription = ref<Subscription | null>(null)
+
+onMounted(async () => {
+  try {
+    subscription.value = await getMySubscription()
+  } catch {
+    // AC5: falha ou 404 esconde o badge, o dashboard continua funcionando
+    subscription.value = null
+  }
+})
 </script>

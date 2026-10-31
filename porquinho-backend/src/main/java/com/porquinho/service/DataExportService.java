@@ -49,6 +49,7 @@ public class DataExportService {
     private final RateLimitService rateLimitService;
     private final EmailService emailService;
     private final AuditLogService auditLogService;
+    private final SubscriptionService subscriptionService;
     private final ObjectMapper objectMapper;
 
     @Value("${app.export.directory:./exports}")
@@ -67,7 +68,8 @@ public class DataExportService {
             AuditLogRepository auditLogRepository,
             RateLimitService rateLimitService,
             EmailService emailService,
-            AuditLogService auditLogService) {
+            AuditLogService auditLogService,
+            SubscriptionService subscriptionService) {
         this.dataExportRepository = dataExportRepository;
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -75,6 +77,7 @@ public class DataExportService {
         this.rateLimitService = rateLimitService;
         this.emailService = emailService;
         this.auditLogService = auditLogService;
+        this.subscriptionService = subscriptionService;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
         this.objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
@@ -152,7 +155,7 @@ public class DataExportService {
         metadata.put("export_date", LocalDateTime.now().toString());
         metadata.put("user_id", userId.toString());
         metadata.put("data_version", "1.0");
-        metadata.put("exported_tables", List.of("users", "user_sessions", "audit_logs"));
+        metadata.put("exported_tables", List.of("users", "user_sessions", "audit_logs", "subscriptions"));
         data.put("metadata", metadata);
 
         // User profile (sanitized)
@@ -198,6 +201,26 @@ public class DataExportService {
             auditLogList.add(logMap);
         }
         data.put("audit_logs", auditLogList);
+
+        // Subscription (Story 2.1) - 0..1 item: every stored column plus computed days_remaining/has_access
+        List<Map<String, Object>> subscriptionList = new ArrayList<>();
+        subscriptionService.findByUserId(userId).ifPresent(sub -> {
+            Map<String, Object> subMap = new LinkedHashMap<>();
+            subMap.put("id", sub.getId() != null ? sub.getId().toString() : null);
+            subMap.put("plan_type", sub.getPlanType().name());
+            subMap.put("status", sub.getStatus().name());
+            subMap.put("trial_start_date", sub.getTrialStartDate() != null ? sub.getTrialStartDate().toString() : null);
+            subMap.put("trial_end_date", sub.getTrialEndDate() != null ? sub.getTrialEndDate().toString() : null);
+            subMap.put("next_billing_date", sub.getNextBillingDate() != null ? sub.getNextBillingDate().toString() : null);
+            subMap.put("payment_method_id", sub.getPaymentMethodId());
+            subMap.put("created_at", sub.getCreatedAt() != null ? sub.getCreatedAt().toString() : null);
+            subMap.put("updated_at", sub.getUpdatedAt() != null ? sub.getUpdatedAt().toString() : null);
+            subMap.put("deleted_at", sub.getDeletedAt() != null ? sub.getDeletedAt().toString() : null);
+            subMap.put("days_remaining", subscriptionService.daysRemaining(sub));
+            subMap.put("has_access", subscriptionService.hasAccess(sub));
+            subscriptionList.add(subMap);
+        });
+        data.put("subscriptions", subscriptionList);
 
         return data;
     }

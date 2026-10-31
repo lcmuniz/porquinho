@@ -11,6 +11,7 @@ import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountDeletionRepository;
 import com.porquinho.repository.AuditLogRepository;
 import com.porquinho.repository.DataExportRepository;
+import com.porquinho.repository.SubscriptionRepository;
 import com.porquinho.repository.UserRepository;
 import com.porquinho.repository.UserSessionRepository;
 import org.slf4j.Logger;
@@ -43,7 +44,7 @@ import java.util.UUID;
  * Daily scheduled purge (03:00 UTC):
  * - Each AccountDeletion is processed in its own transaction (REQUIRES_NEW) so a single
  *   failure does not block the queue.
- * - Hard-deletes data_exports, user_sessions, audit_logs, users (in that order, native SQL
+ * - Hard-deletes data_exports, user_sessions, audit_logs, subscriptions, users (in that order, native SQL
  *   to bypass @Where filters on User and UserSession).
  * - Calls Supabase Admin API best-effort.
  */
@@ -66,6 +67,7 @@ public class AccountDeletionService {
     private final AuditLogService auditLogService;
     private final SupabaseAdminClient supabaseAdminClient;
     private final RateLimitService rateLimitService;
+    private final SubscriptionRepository subscriptionRepository;
 
     @Value("${app.export.directory:./exports}")
     private String exportDirectory;
@@ -89,6 +91,7 @@ public class AccountDeletionService {
             AuditLogService auditLogService,
             SupabaseAdminClient supabaseAdminClient,
             RateLimitService rateLimitService,
+            SubscriptionRepository subscriptionRepository,
             @Lazy AccountDeletionService self) {
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -100,6 +103,7 @@ public class AccountDeletionService {
         this.auditLogService = auditLogService;
         this.supabaseAdminClient = supabaseAdminClient;
         this.rateLimitService = rateLimitService;
+        this.subscriptionRepository = subscriptionRepository;
         this.self = self;
     }
 
@@ -296,6 +300,7 @@ public class AccountDeletionService {
         dataExportRepository.deleteByUserId(userId);
         userSessionRepository.deleteByUserId(userId);
         auditLogRepository.deleteByUserId(userId);
+        subscriptionRepository.deleteByUserId(userId);  // Story 2.1: FK to users, must go first
         userRepository.deleteByIdNative(userId);
 
         // 4. Best-effort Supabase removal (SupabaseAdminClient already swallows failures).

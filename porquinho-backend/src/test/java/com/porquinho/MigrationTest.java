@@ -72,4 +72,25 @@ class MigrationTest {
         );
         assertThat(count).isGreaterThan(0);
     }
+
+    @Test
+    void v9ShouldCreateSubscriptionsTable() {
+        Integer count = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM information_schema.tables " +
+            "WHERE UPPER(table_name) = 'SUBSCRIPTIONS' AND table_schema = 'PUBLIC'",
+            Integer.class
+        );
+        assertThat(count).isEqualTo(1);
+    }
+
+    @Test
+    void v9SubscriptionsShouldHaveUniqueConstraintOnUserId() {
+        Integer count = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM information_schema.table_constraints " +
+            "WHERE UPPER(table_name) = 'SUBSCRIPTIONS' " +
+            "AND UPPER(constraint_name) = 'SUBSCRIPTIONS_USER_ID_UNIQUE' AND constraint_type = 'UNIQUE'",
+            Integer.class
+        );
+        assertThat(count).isEqualTo(1);
+    }
 }

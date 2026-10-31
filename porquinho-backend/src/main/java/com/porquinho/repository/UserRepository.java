@@ -40,17 +40,19 @@ public interface UserRepository extends JpaRepository<User, UUID> {
      * @param id Supabase user UUID
      * @param email User's email address
      * @param authProvider Authentication provider (EMAIL, GOOGLE, etc)
+     * @param googleId Google OAuth ID (required for GOOGLE by users_google_id_check, null for EMAIL)
      * @param lgpdConsentAt LGPD consent timestamp
      * @param createdAt Creation timestamp
      * @param updatedAt Update timestamp
      */
     @Modifying
-    @Query(value = "INSERT INTO users (id, email, auth_provider, lgpd_consent_at, failed_login_attempts, created_at, updated_at) " +
-                   "VALUES (:id, :email, :authProvider, :lgpdConsentAt, 0, :createdAt, :updatedAt)",
+    @Query(value = "INSERT INTO users (id, email, auth_provider, google_id, lgpd_consent_at, failed_login_attempts, created_at, updated_at) " +
+                   "VALUES (:id, :email, :authProvider, :googleId, :lgpdConsentAt, 0, :createdAt, :updatedAt)",
            nativeQuery = true)
     void insertWithId(@Param("id") UUID id,
                      @Param("email") String email,
                      @Param("authProvider") String authProvider,
+                     @Param("googleId") String googleId,
                      @Param("lgpdConsentAt") LocalDateTime lgpdConsentAt,
                      @Param("createdAt") LocalDateTime createdAt,
                      @Param("updatedAt") LocalDateTime updatedAt);

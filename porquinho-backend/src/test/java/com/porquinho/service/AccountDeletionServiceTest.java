@@ -10,6 +10,7 @@ import com.porquinho.entity.UserSession;
 import com.porquinho.exception.RateLimitExceededException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountDeletionRepository;
+import com.porquinho.repository.SubscriptionRepository;
 import com.porquinho.repository.AuditLogRepository;
 import com.porquinho.repository.DataExportRepository;
 import com.porquinho.repository.UserRepository;
@@ -58,6 +59,8 @@ class AccountDeletionServiceTest {
     private SupabaseAdminClient supabaseAdminClient;
     @Mock
     private RateLimitService rateLimitService;
+    @Mock
+    private SubscriptionRepository subscriptionRepository;
 
     private AccountDeletionService service;
 
@@ -81,11 +84,11 @@ class AccountDeletionServiceTest {
         AccountDeletionService temp = new AccountDeletionService(
             userRepository, userSessionRepository, auditLogRepository, dataExportRepository,
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
-            supabaseAdminClient, rateLimitService, null);
+            supabaseAdminClient, rateLimitService, subscriptionRepository, null);
         service = new AccountDeletionService(
             userRepository, userSessionRepository, auditLogRepository, dataExportRepository,
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
-            supabaseAdminClient, rateLimitService, temp);
+            supabaseAdminClient, rateLimitService, subscriptionRepository, temp);
         // After construction, swap in the real reference so self == service (recursive ref ok
         // for tests because Spring's proxy would similarly route the call into this same bean).
         try {
@@ -252,6 +255,11 @@ class AccountDeletionServiceTest {
         verify(userSessionRepository).deleteByUserId(userId);
         verify(auditLogRepository).deleteByUserId(userId);
         verify(userRepository).deleteByIdNative(userId);
+
+        // Story 2.1: subscription deleted BEFORE the user (FK subscriptions.user_id -> users.id)
+        org.mockito.InOrder fkOrder = inOrder(subscriptionRepository, userRepository);
+        fkOrder.verify(subscriptionRepository).deleteByUserId(userId);
+        fkOrder.verify(userRepository).deleteByIdNative(userId);
 
         // Supabase admin called
         verify(supabaseAdminClient).deleteUser(userId);

@@ -3,6 +3,7 @@ package com.porquinho.service;
 import com.porquinho.entity.AuditLog;
 import com.porquinho.entity.DataExport;
 import com.porquinho.entity.DataExport.ExportStatus;
+import com.porquinho.entity.Subscription;
 import com.porquinho.entity.User;
 import com.porquinho.entity.User.AuthProvider;
 import com.porquinho.entity.UserSession;
@@ -56,6 +57,9 @@ class DataExportServiceTest {
 
     @Mock
     private AuditLogService auditLogService;
+
+    @Mock
+    private SubscriptionService subscriptionService;
 
     @InjectMocks
     private DataExportService dataExportService;
@@ -154,6 +158,60 @@ class DataExportServiceTest {
         List<Map<String, Object>> auditLogs = (List<Map<String, Object>>) data.get("audit_logs");
         assertEquals(1, auditLogs.size());
         assertEquals("user_login", auditLogs.get(0).get("event_type"));
+    }
+
+    @Test
+    void collectUserDataShouldIncludeSubscription() {
+        // Story 2.1 AC6: export includes the user's subscription
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        when(userSessionRepository.findAllByUserId(userId)).thenReturn(List.of());
+        when(auditLogRepository.findByUserIdOrderByTimestampDesc(userId)).thenReturn(List.of());
+
+        OffsetDateTime start = OffsetDateTime.parse("2026-10-01T00:00:00Z");
+        Subscription sub = new Subscription(userId, Subscription.PlanType.TRIAL, Subscription.Status.ACTIVE,
+            start, start.plusDays(30));
+        sub.setId(UUID.randomUUID());
+        sub.setCreatedAt(start);
+        sub.setUpdatedAt(start);
+        when(subscriptionService.findByUserId(userId)).thenReturn(Optional.of(sub));
+        when(subscriptionService.daysRemaining(sub)).thenReturn(12L);
+        when(subscriptionService.hasAccess(sub)).thenReturn(true);
+
+        Map<String, Object> data = dataExportService.collectUserData(userId);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
+        assertTrue(((List<?>) metadata.get("exported_tables")).contains("subscriptions"));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> subs = (List<Map<String, Object>>) data.get("subscriptions");
+        assertEquals(1, subs.size());
+        assertEquals("TRIAL", subs.get(0).get("plan_type"));
+        assertEquals("ACTIVE", subs.get(0).get("status"));
+        assertEquals(start.plusDays(30).toString(), subs.get(0).get("trial_end_date"));
+        assertEquals(12L, subs.get(0).get("days_remaining"));
+        assertEquals(true, subs.get(0).get("has_access"));
+        // All stored columns exported (LGPD portability)
+        assertEquals(sub.getId().toString(), subs.get(0).get("id"));
+        assertEquals(start.toString(), subs.get(0).get("created_at"));
+        assertEquals(start.toString(), subs.get(0).get("updated_at"));
+        assertTrue(subs.get(0).containsKey("next_billing_date"));
+        assertTrue(subs.get(0).containsKey("payment_method_id"));
+        assertTrue(subs.get(0).containsKey("deleted_at"));
+        assertNull(subs.get(0).get("next_billing_date"));
+        assertNull(subs.get(0).get("payment_method_id"));
+    }
+
+    @Test
+    void collectUserDataShouldExportEmptySubscriptionListWhenNone() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        when(userSessionRepository.findAllByUserId(userId)).thenReturn(List.of());
+        when(auditLogRepository.findByUserIdOrderByTimestampDesc(userId)).thenReturn(List.of());
+        when(subscriptionService.findByUserId(userId)).thenReturn(Optional.empty());
+
+        Map<String, Object> data = dataExportService.collectUserData(userId);
+
+        assertEquals(List.of(), data.get("subscriptions"));
     }
 
     @Test
