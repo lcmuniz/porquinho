@@ -108,6 +108,30 @@ class UserRepositoryTest {
     }
 
     @Test
+    void insertWithIdShouldPersistGoogleIdForGoogleUser() {
+        // Story 2.1 (Task 0): Google users are created with id = JWT sub; the native INSERT must
+        // write google_id, otherwise users_google_id_check rejects the row.
+        UUID sub = UUID.randomUUID();
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+
+        userRepository.insertWithId(sub, "g@example.com", "GOOGLE", "google-sub-1", now, now, now);
+
+        User found = userRepository.findById(sub).orElseThrow();
+        assertThat(found.getGoogleId()).isEqualTo("google-sub-1");
+        assertThat(found.getAuthProvider()).isEqualTo(User.AuthProvider.GOOGLE);
+    }
+
+    @Test
+    void insertWithIdShouldAllowNullGoogleIdForEmailUser() {
+        UUID sub = UUID.randomUUID();
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+
+        userRepository.insertWithId(sub, "e@example.com", "EMAIL", null, now, now, now);
+
+        assertThat(userRepository.findById(sub)).isPresent();
+    }
+
+    @Test
     void shouldHaveUniqueEmailConstraint() {
         User duplicate = new User("test@example.com", User.AuthProvider.EMAIL, null);
 
