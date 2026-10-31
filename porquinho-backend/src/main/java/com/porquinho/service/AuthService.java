@@ -19,10 +19,13 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final AuditLogService auditLogService;
+    private final SubscriptionService subscriptionService;
 
-    public AuthService(UserRepository userRepository, AuditLogService auditLogService) {
+    public AuthService(UserRepository userRepository, AuditLogService auditLogService,
+                       SubscriptionService subscriptionService) {
         this.userRepository = userRepository;
         this.auditLogService = auditLogService;
+        this.subscriptionService = subscriptionService;
     }
 
     /**
@@ -51,13 +54,17 @@ public class AuthService {
      * If user already exists by google_id or email, returns existing user.
      * Otherwise, creates new user with Google provider and logs audit event.
      *
+     * The new user's id is the Supabase JWT "sub" (Story 2.1, Task 0): every endpoint resolves
+     * the user via jwt.getSubject(), so users.id must match it.
+     *
+     * @param userId User ID from Supabase JWT (sub claim)
      * @param email User's email from Google
      * @param googleId User's Google OAuth ID
      * @param ipAddress Client IP address for audit logging
      * @return UserRegistrationResult with user entity and isNewUser flag
      */
     @Transactional
-    public UserRegistrationResult registerOrGetUserFromGoogle(String email, String googleId, String ipAddress) {
+    public UserRegistrationResult registerOrGetUserFromGoogle(String userId, String email, String googleId, String ipAddress) {
         // Check if user exists by Google ID
         Optional<User> existingByGoogleId = userRepository.findByGoogleIdAndDeletedAtIsNull(googleId);
         if (existingByGoogleId.isPresent()) {
@@ -86,10 +93,28 @@ public class AuthService {
             return new UserRegistrationResult(existingUser, false);
         }
 
-        // Create new user with LGPD consent timestamp (NFR25)
-        User newUser = new User(email, User.AuthProvider.GOOGLE, googleId);
-        newUser.setLgpdConsentAt(java.time.LocalDateTime.now());
-        User savedUser = userRepository.save(newUser);
+        if (userId == null) {
+            throw new IllegalArgumentException("User ID (JWT sub) is required to create a user");
+        }
+        UUID userUuid = UUID.fromString(userId);
+
+        // Create new user with LGPD consent timestamp (NFR25), using the Supabase id
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        userRepository.insertWithId(
+            userUuid,
+            email,
+            User.AuthProvider.GOOGLE.name(),
+            googleId,
+            now,  // lgpdConsentAt
+            now,  // createdAt
+            now   // updatedAt
+        );
+
+        User savedUser = userRepository.findById(userUuid)
+            .orElseThrow(() -> new RuntimeException("Failed to create user"));
+
+        // Story 2.1: 30-day trial in the same transaction (failure rolls back the registration)
+        subscriptionService.startTrial(savedUser.getId(), ipAddress);
 
         // Log audit event for user registration (NFR20)
         auditLogService.log("user_registration", savedUser.getId(), ipAddress,
@@ -156,6 +181,7 @@ public class AuthService {
             userUuid,
             email,
             User.AuthProvider.EMAIL.name(),
+            null, // googleId
             now,  // lgpdConsentAt
             now,  // createdAt
             now   // updatedAt
@@ -164,6 +190,9 @@ public class AuthService {
         // Fetch the created user to return
         User createdUser = userRepository.findById(userUuid)
             .orElseThrow(() -> new RuntimeException("Failed to create user"));
+
+        // Story 2.1: 30-day trial in the same transaction (failure rolls back the registration)
+        subscriptionService.startTrial(createdUser.getId(), ipAddress);
 
         // Log audit event for user registration (NFR20)
         auditLogService.log("user_registration", createdUser.getId(), ipAddress,

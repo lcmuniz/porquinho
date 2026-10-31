@@ -3,12 +3,14 @@ package com.porquinho.config;
 import java.util.List;
 
 import com.porquinho.service.JwtBlacklistService;
+import com.porquinho.service.SubscriptionService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -27,9 +29,11 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 public class SecurityConfig {
 
     private final JwtBlacklistService jwtBlacklistService;
+    private final SubscriptionService subscriptionService;
 
-    public SecurityConfig(JwtBlacklistService jwtBlacklistService) {
+    public SecurityConfig(JwtBlacklistService jwtBlacklistService, SubscriptionService subscriptionService) {
         this.jwtBlacklistService = jwtBlacklistService;
+        this.subscriptionService = subscriptionService;
     }
 
     @Bean
@@ -53,7 +57,9 @@ public class SecurityConfig {
             )
             .oauth2ResourceServer(oauth2 -> oauth2
                 .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
-            );
+            )
+            // Story 2.1 (AC4): 402 when the subscription gives no access. Runs after the JWT is authenticated.
+            .addFilterAfter(new SubscriptionAccessFilter(subscriptionService), BearerTokenAuthenticationFilter.class);
 
         return http.build();
     }

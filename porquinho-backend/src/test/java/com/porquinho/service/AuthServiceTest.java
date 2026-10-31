@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.never;
@@ -39,18 +40,22 @@ class AuthServiceTest {
     @Mock
     private AuditLogService auditLogService;
 
+    @Mock
+    private SubscriptionService subscriptionService;
+
     @InjectMocks
     private AuthService authService;
 
     @BeforeEach
     void setUp() {
         // Reset mock interactions
-        reset(userRepository, auditLogService);
+        reset(userRepository, auditLogService, subscriptionService);
     }
 
     @Test
     void shouldCreateNewUserWhenNotExists() {
         // Arrange
+        UUID userId = UUID.randomUUID();
         String email = "newuser@example.com";
         String googleId = "google123";
         String ipAddress = "192.168.1.1";
@@ -59,13 +64,13 @@ class AuthServiceTest {
         when(userRepository.findByEmailAndDeletedAtIsNull(email)).thenReturn(Optional.empty());
 
         User newUser = new User(email, User.AuthProvider.GOOGLE, googleId);
-        newUser.setId(UUID.randomUUID());
-        when(userRepository.save(any(User.class))).thenReturn(newUser);
+        newUser.setId(userId);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(newUser));
         when(auditLogService.log(anyString(), any(UUID.class), anyString(), anyString()))
             .thenReturn(new AuditLog());
 
         // Act
-        AuthService.UserRegistrationResult result = authService.registerOrGetUserFromGoogle(email, googleId, ipAddress);
+        AuthService.UserRegistrationResult result = authService.registerOrGetUserFromGoogle(userId.toString(), email, googleId, ipAddress);
 
         // Assert
         assertThat(result).isNotNull();
@@ -77,8 +82,12 @@ class AuthServiceTest {
 
         verify(userRepository).findByGoogleIdAndDeletedAtIsNull(googleId);
         verify(userRepository).findByEmailAndDeletedAtIsNull(email);
-        verify(userRepository).save(any(User.class));
-        verify(auditLogService).log(eq("user_registration"), eq(newUser.getId()), eq(ipAddress), anyString());
+        // Story 2.1 Task 0: user id = JWT sub, inserted with google_id (users_google_id_check)
+        verify(userRepository, never()).save(any(User.class));
+        verify(userRepository).insertWithId(eq(userId), eq(email), eq("GOOGLE"), eq(googleId), any(), any(), any());
+        // Story 2.1: trial started for the new user
+        verify(subscriptionService).startTrial(userId, ipAddress);
+        verify(auditLogService).log(eq("user_registration"), eq(userId), eq(ipAddress), anyString());
     }
 
     @Test
@@ -94,7 +103,7 @@ class AuthServiceTest {
         when(userRepository.findByGoogleIdAndDeletedAtIsNull(googleId)).thenReturn(Optional.of(existingUser));
 
         // Act
-        AuthService.UserRegistrationResult result = authService.registerOrGetUserFromGoogle(email, googleId, ipAddress);
+        AuthService.UserRegistrationResult result = authService.registerOrGetUserFromGoogle(UUID.randomUUID().toString(), email, googleId, ipAddress);
 
         // Assert
         assertThat(result).isNotNull();
@@ -105,6 +114,7 @@ class AuthServiceTest {
         verify(userRepository, never()).findByEmailAndDeletedAtIsNull(anyString());
         verify(userRepository, never()).save(any(User.class));
         verify(auditLogService, never()).log(anyString(), any(UUID.class), anyString(), anyString());
+        verify(subscriptionService, never()).startTrial(any(), any());
     }
 
     @Test
@@ -127,7 +137,7 @@ class AuthServiceTest {
             .thenReturn(new AuditLog());
 
         // Act
-        AuthService.UserRegistrationResult result = authService.registerOrGetUserFromGoogle(email, googleId, ipAddress);
+        AuthService.UserRegistrationResult result = authService.registerOrGetUserFromGoogle(UUID.randomUUID().toString(), email, googleId, ipAddress);
 
         // Assert
         assertThat(result).isNotNull();
@@ -138,6 +148,7 @@ class AuthServiceTest {
         verify(userRepository).findByEmailAndDeletedAtIsNull(email);
         verify(userRepository).save(any(User.class));
         verify(auditLogService).log(eq("google_account_linked"), any(UUID.class), eq(ipAddress), anyString());
+        verify(subscriptionService, never()).startTrial(any(), any());
     }
 
     @Test
@@ -201,7 +212,7 @@ class AuthServiceTest {
 
         // Mock insertWithId (native query) - returns void
         doNothing().when(userRepository).insertWithId(
-            any(UUID.class), anyString(), anyString(), any(), any(), any()
+            any(UUID.class), anyString(), anyString(), any(), any(), any(), any()
         );
 
         // Mock findById: first call returns empty (check), second call returns created user (after insert)
@@ -226,7 +237,8 @@ class AuthServiceTest {
 
         verify(userRepository, never()).save(any(User.class)); // Uses insertWithId, not save
         verify(userRepository).findByEmailAndDeletedAtIsNull(email);
-        verify(userRepository).insertWithId(any(UUID.class), anyString(), anyString(), any(), any(), any());
+        verify(userRepository).insertWithId(eq(userId), eq(email), eq("EMAIL"), isNull(), any(), any(), any());
+        verify(subscriptionService).startTrial(userId, ipAddress);
         verify(auditLogService).log(eq("user_registration"), any(UUID.class), eq(ipAddress), anyString());
     }
 
@@ -257,8 +269,9 @@ class AuthServiceTest {
 
         verify(userRepository).findById(userId);
         verify(userRepository).findByEmailAndDeletedAtIsNull(email);
-        verify(userRepository, never()).insertWithId(any(), anyString(), anyString(), any(), any(), any());
+        verify(userRepository, never()).insertWithId(any(), anyString(), anyString(), any(), any(), any(), any());
         verify(auditLogService, never()).log(anyString(), any(UUID.class), anyString(), anyString());
+        verify(subscriptionService, never()).startTrial(any(), any());
     }
 
     @Test
@@ -296,5 +309,35 @@ class AuthServiceTest {
         verify(userRepository).findByEmailAndDeletedAtIsNull(email);
         verify(userRepository).save(any(User.class));
         verify(auditLogService).log(eq("auth_method_linked"), any(UUID.class), eq(ipAddress), anyString());
+        verify(subscriptionService, never()).startTrial(any(), any());
+    }
+
+    @Test
+    void shouldNotStartTrialOnIdempotentEmailRegistration() {
+        // Story 2.1 AC2: repeated calls (user already exists by id) must not create or restart the trial
+        UUID userId = UUID.randomUUID();
+        RegisterEmailRequest request = new RegisterEmailRequest("again@example.com", "Again");
+        User existing = new User("again@example.com", User.AuthProvider.EMAIL, null);
+        existing.setId(userId);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(existing));
+
+        AuthService.UserRegistrationResult result =
+            authService.registerOrGetUserFromEmail(userId.toString(), request, "1.1.1.1");
+
+        assertThat(result.isNewUser()).isFalse();
+        verify(subscriptionService, never()).startTrial(any(), any());
+        verify(userRepository, never()).insertWithId(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void googleRegistrationShouldRequireJwtSubForNewUser() {
+        when(userRepository.findByGoogleIdAndDeletedAtIsNull("g1")).thenReturn(Optional.empty());
+        when(userRepository.findByEmailAndDeletedAtIsNull("x@example.com")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.registerOrGetUserFromGoogle(null, "x@example.com", "g1", "1.1.1.1"))
+            .isInstanceOf(IllegalArgumentException.class);
+
+        verify(userRepository, never()).insertWithId(any(), any(), any(), any(), any(), any(), any());
+        verify(subscriptionService, never()).startTrial(any(), any());
     }
 }

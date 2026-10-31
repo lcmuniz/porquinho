@@ -87,7 +87,7 @@ class AuthControllerTest {
 
         AuthService.UserRegistrationResult result = new AuthService.UserRegistrationResult(newUser, true);
 
-        when(authService.registerOrGetUserFromGoogle(anyString(), anyString(), anyString()))
+        when(authService.registerOrGetUserFromGoogle(nullable(String.class), anyString(), anyString(), anyString()))
             .thenReturn(result);
 
         // Act & Assert
@@ -115,7 +115,7 @@ class AuthControllerTest {
 
         AuthService.UserRegistrationResult result = new AuthService.UserRegistrationResult(existingUser, false);
 
-        when(authService.registerOrGetUserFromGoogle(anyString(), anyString(), anyString()))
+        when(authService.registerOrGetUserFromGoogle(nullable(String.class), anyString(), anyString(), anyString()))
             .thenReturn(result);
 
         // Act & Assert
@@ -157,7 +157,7 @@ class AuthControllerTest {
         newUser.setId(UUID.randomUUID());
         AuthService.UserRegistrationResult result = new AuthService.UserRegistrationResult(newUser, true);
 
-        when(authService.registerOrGetUserFromGoogle(anyString(), anyString(), anyString()))
+        when(authService.registerOrGetUserFromGoogle(nullable(String.class), anyString(), anyString(), anyString()))
             .thenReturn(result);
 
         // Act & Assert - In test profile, authentication is not required
@@ -166,6 +166,69 @@ class AuthControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated());
+    }
+
+    @Test
+    void registerWithGoogleShouldPassJwtSubAsUserId() throws Exception {
+        // Story 2.1 Task 0: users.id must equal the Supabase JWT sub
+        UUID sub = UUID.randomUUID();
+        org.springframework.security.oauth2.jwt.Jwt jwt = org.springframework.security.oauth2.jwt.Jwt.withTokenValue("t")
+            .header("alg", "ES256")
+            .subject(sub.toString())
+            .issuedAt(java.time.Instant.now())
+            .expiresAt(java.time.Instant.now().plusSeconds(3600))
+            .build();
+        var authToken = new org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken(
+            jwt, java.util.List.of(), sub.toString());
+
+        User newUser = new User("sub@example.com", User.AuthProvider.GOOGLE, "google-sub");
+        newUser.setId(sub);
+        when(authService.registerOrGetUserFromGoogle(anyString(), anyString(), anyString(), anyString()))
+            .thenReturn(new AuthService.UserRegistrationResult(newUser, true));
+
+        mockMvc.perform(post("/api/v1/auth/register/google")
+                .with(csrf())
+                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new RegisterGoogleRequest("sub@example.com", "google-sub", "Sub"))))
+                .andExpect(status().isCreated());
+
+        verify(authService).registerOrGetUserFromGoogle(
+            org.mockito.ArgumentMatchers.eq(sub.toString()),
+            org.mockito.ArgumentMatchers.eq("sub@example.com"),
+            org.mockito.ArgumentMatchers.eq("google-sub"),
+            anyString());
+    }
+
+    @Test
+    void registerWithEmailShouldPassJwtSubAsUserId() throws Exception {
+        // Story 2.1 Task 0: guards against regressing to @AuthenticationPrincipal String (null with JwtAuthenticationToken)
+        UUID sub = UUID.randomUUID();
+        org.springframework.security.oauth2.jwt.Jwt jwt = org.springframework.security.oauth2.jwt.Jwt.withTokenValue("t")
+            .header("alg", "ES256")
+            .subject(sub.toString())
+            .issuedAt(java.time.Instant.now())
+            .expiresAt(java.time.Instant.now().plusSeconds(3600))
+            .build();
+        var authToken = new org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken(
+            jwt, java.util.List.of(), sub.toString());
+
+        User newUser = new User("sub@example.com", User.AuthProvider.EMAIL, null);
+        newUser.setId(sub);
+        when(authService.registerOrGetUserFromEmail(anyString(), any(RegisterEmailRequest.class), anyString()))
+            .thenReturn(new AuthService.UserRegistrationResult(newUser, true));
+
+        mockMvc.perform(post("/api/v1/auth/register/email")
+                .with(csrf())
+                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new RegisterEmailRequest("sub@example.com", "Sub"))))
+                .andExpect(status().isCreated());
+
+        verify(authService).registerOrGetUserFromEmail(
+            org.mockito.ArgumentMatchers.eq(sub.toString()),
+            any(RegisterEmailRequest.class),
+            anyString());
     }
 
     @Test

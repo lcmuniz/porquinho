@@ -53,23 +53,27 @@ public class AuthController {
      * This endpoint is called by the frontend after Supabase completes Google OAuth.
      * The JWT from Supabase is validated by Spring Security, and user_id is extracted from the "sub" claim.
      *
-     * @param userId User ID extracted from JWT sub claim by JwtAuthenticationConverter
+     * @param authentication Authenticated JWT (user id = sub claim)
      * @param request Request containing email and googleId from Supabase JWT
      * @param httpRequest HTTP request to extract client IP address
      * @return UserResponse with user data
      */
     @PostMapping("/register/google")
     public ResponseEntity<UserResponse> registerWithGoogle(
-        @AuthenticationPrincipal String userId,
+        Authentication authentication,
         @Valid @RequestBody RegisterGoogleRequest request,
         HttpServletRequest httpRequest
     ) {
+        // JWT sub. Resolved via Authentication.getName(): with JwtAuthenticationToken the
+        // principal is the Jwt object, so @AuthenticationPrincipal String would resolve to null.
+        String userId = resolveUserId(authentication);
+
         // Extract client IP address for audit logging
         String ipAddress = getClientIpAddress(httpRequest);
 
-        // Register or retrieve user
+        // Register or retrieve user (new users get id = JWT sub, Story 2.1)
         AuthService.UserRegistrationResult result = authService.registerOrGetUserFromGoogle(
-            request.getEmail(), request.getGoogleId(), ipAddress);
+            userId, request.getEmail(), request.getGoogleId(), ipAddress);
 
         // Register session if JWT token is available (AC5: session tracking on login)
         String authHeader = httpRequest.getHeader("Authorization");
@@ -100,17 +104,20 @@ public class AuthController {
      * - Rate limiting per-user
      * - Business data (subscriptions, billing, etc)
      *
-     * @param userId User ID extracted from JWT sub claim by JwtAuthenticationConverter
+     * @param authentication Authenticated JWT (user id = sub claim)
      * @param request Request containing email and name
      * @param httpRequest HTTP request to extract client IP address
      * @return UserResponse with user data
      */
     @PostMapping("/register/email")
     public ResponseEntity<UserResponse> registerWithEmail(
-        @AuthenticationPrincipal String userId,
+        Authentication authentication,
         @Valid @RequestBody RegisterEmailRequest request,
         HttpServletRequest httpRequest
     ) {
+        // JWT sub (see registerWithGoogle for why not @AuthenticationPrincipal String)
+        String userId = resolveUserId(authentication);
+
         // Extract client IP address for audit logging
         String ipAddress = getClientIpAddress(httpRequest);
 
