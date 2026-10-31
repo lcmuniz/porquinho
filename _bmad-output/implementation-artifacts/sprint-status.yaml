@@ -71,7 +71,7 @@ development_status:
   2-1-automatically-activate-30-day-free-trial: done
   2-2-subscribe-to-monthly-plan-after-trial: done
   2-3-send-trial-expiration-reminders: review
-  2-4-self-service-subscription-cancellation: review
+  2-4-self-service-subscription-cancellation: done
   2-5-reactivate-cancelled-subscription: backlog
   2-6-process-recurring-monthly-payments: backlog
   2-7-handle-payment-failures-with-retry-notifications: backlog
