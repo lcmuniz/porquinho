@@ -3,6 +3,7 @@ package com.porquinho.service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
@@ -22,11 +23,24 @@ public class EmailService {
     private static final Logger log = LoggerFactory.getLogger(EmailService.class);
 
     private final JavaMailSender mailSender;
+    private final String from;
 
     // ObjectProvider: JavaMailSender only exists when spring.mail.host is set (e.g. absent in tests).
     // @Autowired(required = false) on a single constructor does NOT make the parameter optional.
-    public EmailService(ObjectProvider<JavaMailSender> mailSender) {
+    // from: providers like Resend reject messages without a From on a verified domain.
+    public EmailService(ObjectProvider<JavaMailSender> mailSender, @Value("${app.mail.from:}") String from) {
         this.mailSender = mailSender.getIfAvailable();
+        this.from = from;
+    }
+
+    private SimpleMailMessage newMessage(String to, String subject) {
+        SimpleMailMessage message = new SimpleMailMessage();
+        if (from != null && !from.isBlank()) {
+            message.setFrom(from);
+        }
+        message.setTo(to);
+        message.setSubject(subject);
+        return message;
     }
 
     /**
@@ -43,9 +57,7 @@ public class EmailService {
         }
 
         try {
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setTo(email);
-            message.setSubject("Porquinho - Sua exportação de dados está pronta");
+            SimpleMailMessage message = newMessage(email, "Porquinho - Sua exportação de dados está pronta");
             message.setText(
                 "Olá!\n\n" +
                 "Sua exportação de dados do Porquinho está pronta para download.\n\n" +
@@ -78,9 +90,7 @@ public class EmailService {
             String formattedDate = scheduledPurgeAt
                 .format(DateTimeFormatter.ofPattern("dd/MM/yyyy", new Locale("pt", "BR")));
 
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setTo(email);
-            message.setSubject("Porquinho - Confirmação de exclusão de conta");
+            SimpleMailMessage message = newMessage(email, "Porquinho - Confirmação de exclusão de conta");
             message.setText(
                 "Olá,\n\n" +
                 "Recebemos sua solicitação de exclusão de conta no Porquinho.\n\n" +
@@ -117,9 +127,7 @@ public class EmailService {
                     .atZoneSameInstant(ZoneId.of("America/Sao_Paulo"))
                     .format(DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.of("pt", "BR"))) + ".\n\n";
 
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setTo(email);
-            message.setSubject("Porquinho - Assinatura ativada");
+            SimpleMailMessage message = newMessage(email, "Porquinho - Assinatura ativada");
             message.setText(
                 "Olá!\n\n" +
                 "Sua assinatura mensal do Porquinho (R$ 19,90/mês) está ativa.\n\n" +
