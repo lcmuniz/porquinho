@@ -2,9 +2,11 @@ package com.porquinho.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.InvalidWebhookSignatureException;
 import com.porquinho.exception.PaymentProviderUnavailableException;
 import com.stripe.StripeClient;
+import com.stripe.exception.InvalidRequestException;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.exception.StripeException;
 import com.stripe.model.Subscription;
@@ -220,6 +222,50 @@ public class StripeBillingService {
             return toOffsetDateTime(periodEnd(updated));
         } catch (StripeException e) {
             log.warn("Failed to schedule cancel of Stripe subscription {}: {}", stripeSubscriptionId, e.getMessage());
+            throw new PaymentProviderUnavailableException("Stripe unavailable", e);
+        }
+    }
+
+    /**
+     * Undo a scheduled cancel (Story 2.5): {@code cancel_at_period_end=false}. No charge now; the next
+     * charge happens on the date Stripe already had. Synchronous, NOT best-effort: the caller only
+     * marks the local row ACTIVE after Stripe accepted.
+     *
+     * @return end of the current period (next charge) per Stripe's response; null if Stripe returned none
+     * @throws ConflictException Stripe refused (e.g. the subscription already ended): subscribe again
+     * @throws PaymentProviderUnavailableException Stripe not configured or the call failed
+     */
+    public OffsetDateTime resumeSubscription(String stripeSubscriptionId) {
+        if (isBlank(stripeSubscriptionId)) {
+            throw new PaymentProviderUnavailableException("No Stripe subscription id to resume");
+        }
+        if (client == null) {
+            log.warn("STRIPE_SECRET_KEY not configured - cannot resume Stripe subscription {}", stripeSubscriptionId);
+            throw new PaymentProviderUnavailableException("STRIPE_SECRET_KEY not configured");
+        }
+        try {
+            Subscription updated = client.subscriptions().update(stripeSubscriptionId,
+                SubscriptionUpdateParams.builder().setCancelAtPeriodEnd(false).build());
+            log.info("Stripe subscription {} resumed (scheduled cancel removed)", stripeSubscriptionId);
+            return toOffsetDateTime(periodEnd(updated));
+        } catch (InvalidRequestException e) {
+            // Only an ended subscription is "subscribe again"; a wrong id, bad param or key mismatch is ours
+            String status = null;
+            try {
+                status = client.subscriptions().retrieve(stripeSubscriptionId).getStatus();
+            } catch (Exception retrieveFailure) {
+                log.error("Could not retrieve Stripe subscription {} after resume was refused: {}",
+                    stripeSubscriptionId, retrieveFailure.getMessage());
+            }
+            if ("canceled".equals(status)) {
+                log.warn("Stripe refused to resume ended subscription {}: {}", stripeSubscriptionId, e.getMessage());
+                throw new ConflictException("Sua assinatura já terminou. Assine novamente para reativar.");
+            }
+            log.error("Stripe refused to resume subscription {} (status {}): {}",
+                stripeSubscriptionId, status, e.getMessage());
+            throw new PaymentProviderUnavailableException("Stripe refused resume", e);
+        } catch (StripeException e) {
+            log.warn("Failed to resume Stripe subscription {}: {}", stripeSubscriptionId, e.getMessage());
             throw new PaymentProviderUnavailableException("Stripe unavailable", e);
         }
     }

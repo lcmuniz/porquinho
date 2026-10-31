@@ -55,14 +55,22 @@
             Cancelar assinatura
           </Button>
         </template>
-        <p
-          v-else-if="isCancelledWithAccess"
-          role="status"
-          data-testid="cancelled-notice"
-          class="text-gray-700"
-        >
-          Assinatura cancelada — ativa até {{ accessUntil }}. Nenhuma nova cobrança será feita.
-        </p>
+        <template v-else-if="isCancelledWithAccess">
+          <p role="status" data-testid="cancelled-notice" class="text-gray-700">
+            Assinatura cancelada — ativa até {{ accessUntil }}. Nenhuma nova cobrança será feita.
+          </p>
+          <p class="text-sm text-gray-600">
+            Reativando agora, nada é cobrado hoje: a próxima cobrança acontece em {{ accessUntil }}.
+          </p>
+          <Button
+            class="min-h-[44px]"
+            data-testid="reactivate-button"
+            :disabled="reactivating"
+            @click="reactivate"
+          >
+            {{ reactivating ? 'Reativando...' : 'Reativar assinatura' }}
+          </Button>
+        </template>
         <template v-else-if="returnStatus !== 'sucesso'">
           <p v-if="inTrial" class="text-sm text-gray-600">
             Assinando agora, você mantém os dias grátis do trial: a primeira cobrança só acontece
@@ -75,7 +83,7 @@
             :disabled="loading"
             @click="subscribe"
           >
-            {{ loading ? 'Redirecionando...' : 'Assinar' }}
+            {{ loading ? 'Redirecionando...' : isFormerSubscriber ? 'Reativar assinatura' : 'Assinar' }}
           </button>
         </template>
 
@@ -84,6 +92,14 @@
         </p>
         <p v-if="cancelError" role="alert" data-testid="cancel-error" class="text-sm text-red-700">
           {{ cancelError }}
+        </p>
+        <p
+          v-if="reactivateError"
+          role="alert"
+          data-testid="reactivate-error"
+          class="text-sm text-red-700"
+        >
+          {{ reactivateError }}
         </p>
       </section>
 
@@ -139,6 +155,7 @@ import {
   cancelSubscription,
   createCheckout,
   getMySubscription,
+  reactivateSubscription,
 } from '@/services/subscriptionService'
 import type { Subscription } from '@/types/subscription'
 
@@ -155,12 +172,20 @@ const returnStatus = computed(() => route.query.status)
 const isActiveMonthly = computed(
   () => subscription.value?.planType === 'MONTHLY' && subscription.value.status === 'ACTIVE',
 )
-// Story 2.4: cancelada e ainda dentro do período pago (reativar fica para a Story 2.5)
+// Story 2.4: cancelada e ainda dentro do período pago (Story 2.5: reativa sem Checkout)
 const isCancelledWithAccess = computed(
   () =>
     subscription.value?.planType === 'MONTHLY' &&
     subscription.value.status === 'CANCELLED' &&
     subscription.value.hasAccess,
+)
+// Story 2.5: já foi assinante e perdeu o acesso (expirada, ou cancelada com o período encerrado):
+// volta pelo Checkout, com o rótulo "Reativar assinatura"
+const isFormerSubscriber = computed(
+  () =>
+    subscription.value?.planType === 'MONTHLY' &&
+    subscription.value.status !== 'ACTIVE' &&
+    !isCancelledWithAccess.value,
 )
 const accessUntil = computed(() => formatDateBR(subscription.value?.nextBillingDate))
 
@@ -199,6 +224,41 @@ async function confirmCancel() {
     }
   } finally {
     cancelling.value = false
+  }
+}
+
+const reactivating = ref(false)
+const reactivateError = ref<string | null>(null)
+
+async function reactivate() {
+  reactivating.value = true
+  reactivateError.value = null
+  cancelError.value = null
+  try {
+    subscription.value = await reactivateSubscription()
+  } catch (err) {
+    const status = (err as { response?: { status?: number } }).response?.status
+    if (status === 409) {
+      // Já reativada (outra aba) ou o Stripe já encerrou a assinatura: mostra o estado atual
+      await loadSubscription()
+      if (!isActiveMonthly.value) {
+        reactivateError.value =
+          'Não foi possível reativar esta assinatura. Assine novamente para voltar a ter acesso.'
+      }
+    } else if (status === 503) {
+      // O backend só marca ACTIVE depois que o Stripe aceita: 503 garante que nada mudou
+      reactivateError.value =
+        'Não foi possível reativar agora. Nada foi alterado; tente novamente em alguns minutos.'
+    } else {
+      // Timeout/sem resposta/outro erro: a reativação pode ter acontecido; mostra o estado real
+      await loadSubscription()
+      if (!isActiveMonthly.value) {
+        reactivateError.value =
+          'Não foi possível confirmar a reativação. Verifique o status e tente novamente.'
+      }
+    }
+  } finally {
+    reactivating.value = false
   }
 }
 

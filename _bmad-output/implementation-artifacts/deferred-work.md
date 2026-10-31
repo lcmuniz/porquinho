@@ -68,3 +68,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/2-4-self-service-subscription-cancellation.md`
   summary: ACTIVE→EXPIRED por cobranças recusadas sem e-mail/aviso ao usuário.
   evidence: Escopo da Story 2.7.
+
+- source_spec: `_bmad-output/implementation-artifacts/2-5-reactivate-cancelled-subscription.md`
+  summary: Checkout antigo concluído enquanto a linha está MONTHLY/CANCELLED com acesso cria segunda assinatura paga sobreposta à antiga (cancelamento agendado).
+  evidence: `activateMonthly` só cancela a assinatura duplicada quando a linha está ACTIVE; `createCheckout` bloqueia novos checkouts nesse estado, mas uma sessão aberta antes (no trial) ainda pode ser concluída. Pré-existente desde a 2.4.

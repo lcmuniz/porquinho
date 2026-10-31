@@ -12,7 +12,7 @@
               data-testid="subscribe-cta"
               class="text-sm font-medium text-gray-700 underline hover:text-gray-900"
             >
-              Assinar
+              {{ isFormerSubscriber ? 'Reativar' : 'Assinar' }}
             </RouterLink>
           </div>
           <p class="text-gray-600">Em desenvolvimento — Epic 7</p>
@@ -89,6 +89,10 @@ const showSubscribeCta = computed(() => {
     (sub.status === 'CANCELLED' && !sub.hasAccess)
   )
 })
+// Story 2.5: ex-assinante (expirada ou cancelada sem acesso) vê "Reativar"
+const isFormerSubscriber = computed(
+  () => subscription.value?.planType === 'MONTHLY' && showSubscribeCta.value,
+)
 const router = useRouter()
 const authStore = useAuthStore()
 

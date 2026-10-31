@@ -148,4 +148,47 @@ class EmailServiceTest {
         doThrow(new org.springframework.mail.MailSendException("down")).when(sender).send(any(SimpleMailMessage.class));
         serviceWith(sender, "x@example.com").sendSubscriptionCancelled("user@example.com", null);
     }
+
+    // ---- Story 2.5 ----
+
+    @Test
+    void subscriptionReactivatedTextHasNextBillingInSaoPauloDate() {
+        JavaMailSender sender = mock(JavaMailSender.class);
+        EmailService service = serviceWith(sender, "x@example.com");
+
+        // 01/12 01:00Z is still 30/11 in Brazil
+        service.sendSubscriptionReactivated("user@example.com", OffsetDateTime.of(2026, 12, 1, 1, 0, 0, 0, ZoneOffset.UTC));
+
+        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(sender).send(captor.capture());
+        SimpleMailMessage message = captor.getValue();
+        assertThat(message.getSubject()).isEqualTo("Porquinho - Assinatura reativada");
+        assertThat(message.getTo()).containsExactly("user@example.com");
+        assertThat(message.getText())
+            .contains("foi reativada")
+            .contains("Próxima cobrança: 30/11/2026")
+            .doesNotContain("01/12/2026");
+    }
+
+    @Test
+    void subscriptionReactivatedWithoutNextBillingOmitsBillingLine() {
+        JavaMailSender sender = mock(JavaMailSender.class);
+
+        serviceWith(sender, "x@example.com").sendSubscriptionReactivated("user@example.com", null);
+
+        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(sender).send(captor.capture());
+        assertThat(captor.getValue().getText())
+            .contains("foi reativada")
+            .doesNotContain("Próxima cobrança");
+    }
+
+    @Test
+    void subscriptionReactivatedWithoutSmtpOrWithFailureNeverThrows() {
+        serviceWith(null, "x@example.com").sendSubscriptionReactivated("user@example.com", null);
+
+        JavaMailSender sender = mock(JavaMailSender.class);
+        doThrow(new org.springframework.mail.MailSendException("down")).when(sender).send(any(SimpleMailMessage.class));
+        serviceWith(sender, "x@example.com").sendSubscriptionReactivated("user@example.com", null);
+    }
 }

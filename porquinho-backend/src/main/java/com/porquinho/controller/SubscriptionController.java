@@ -62,6 +62,18 @@ public class SubscriptionController {
         return ResponseEntity.ok(toResponse(cancelled));
     }
 
+    /**
+     * Story 2.5: undo the scheduled cancel while the paid period is still running (no charge now).
+     * 200 with the updated status (MONTHLY/ACTIVE); 409 if not cancelled-with-access (active, trial,
+     * expired: those use Checkout) or Stripe says the subscription already ended; 503 if Stripe fails.
+     */
+    @PostMapping("/reactivate")
+    public ResponseEntity<SubscriptionResponse> reactivate(@AuthenticationPrincipal Jwt jwt, HttpServletRequest request) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        Subscription reactivated = subscriptionService.reactivate(userId, request.getRemoteAddr());
+        return ResponseEntity.ok(toResponse(reactivated));
+    }
+
     private SubscriptionResponse toResponse(Subscription subscription) {
         return SubscriptionResponse.of(
             subscription,

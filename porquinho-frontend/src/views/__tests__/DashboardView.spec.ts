@@ -90,7 +90,7 @@ describe('DashboardView', () => {
   })
 
   // Story 2.4
-  it('mostra o CTA Assinar para assinatura expirada', async () => {
+  it('mostra o CTA Reativar para assinatura expirada (Story 2.5)', async () => {
     mockGetMySubscription.mockResolvedValue({
       planType: 'MONTHLY',
       status: 'EXPIRED',
@@ -105,7 +105,7 @@ describe('DashboardView', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-testid="subscription-expired-badge"]').text()).toBe('Assinatura expirada')
-    expect(wrapper.get('[data-testid="subscribe-cta"]').text()).toBe('Assinar')
+    expect(wrapper.get('[data-testid="subscribe-cta"]').text()).toBe('Reativar')
   })
 
   it('cancelada dentro do período mostra a data e não oferece o CTA', async () => {
@@ -128,7 +128,7 @@ describe('DashboardView', () => {
     expect(wrapper.find('[data-testid="subscribe-cta"]').exists()).toBe(false)
   })
 
-  it('cancelada já sem acesso mostra o CTA Assinar', async () => {
+  it('cancelada já sem acesso mostra o CTA Reativar', async () => {
     mockGetMySubscription.mockResolvedValue({
       planType: 'MONTHLY',
       status: 'CANCELLED',
@@ -142,6 +142,6 @@ describe('DashboardView', () => {
     const wrapper = mountView()
     await flushPromises()
 
-    expect(wrapper.get('[data-testid="subscribe-cta"]').text()).toBe('Assinar')
+    expect(wrapper.get('[data-testid="subscribe-cta"]').text()).toBe('Reativar')
   })
 })

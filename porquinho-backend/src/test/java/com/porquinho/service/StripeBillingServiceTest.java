@@ -223,4 +223,82 @@ class StripeBillingServiceTest {
             .isInstanceOf(PaymentProviderUnavailableException.class)
             .hasCauseInstanceOf(ApiConnectionException.class);
     }
+
+    // ---- Story 2.5 ----
+
+    @Test
+    void resumeWithoutSecretKeyOrIdThrowsUnavailable() {
+        assertThatThrownBy(() -> service.resumeSubscription("sub_1"))
+            .isInstanceOf(PaymentProviderUnavailableException.class);
+        assertThatThrownBy(() -> service.resumeSubscription(null))
+            .isInstanceOf(PaymentProviderUnavailableException.class);
+    }
+
+    @Test
+    void resumeClearsCancelAtPeriodEndAndReturnsPeriodEnd() throws Exception {
+        com.stripe.service.SubscriptionService subscriptions = mock(com.stripe.service.SubscriptionService.class);
+        long periodEnd = Instant.parse("2026-11-30T12:00:00Z").getEpochSecond();
+        org.mockito.ArgumentCaptor<SubscriptionUpdateParams> params =
+            org.mockito.ArgumentCaptor.forClass(SubscriptionUpdateParams.class);
+        when(subscriptions.update(eq("sub_1"), params.capture())).thenReturn(stripeSubscription(periodEnd, null));
+
+        assertThat(serviceWithSubscriptions(subscriptions).resumeSubscription("sub_1"))
+            .isEqualTo(OffsetDateTime.of(2026, 11, 30, 12, 0, 0, 0, ZoneOffset.UTC));
+        assertThat(params.getValue().getCancelAtPeriodEnd()).isFalse();
+    }
+
+    @Test
+    void resumeWrapsStripeExceptionAsUnavailable() throws Exception {
+        com.stripe.service.SubscriptionService subscriptions = mock(com.stripe.service.SubscriptionService.class);
+        when(subscriptions.update(eq("sub_1"), any(SubscriptionUpdateParams.class)))
+            .thenThrow(new ApiConnectionException("timeout"));
+
+        assertThatThrownBy(() -> serviceWithSubscriptions(subscriptions).resumeSubscription("sub_1"))
+            .isInstanceOf(PaymentProviderUnavailableException.class)
+            .hasCauseInstanceOf(ApiConnectionException.class);
+    }
+
+    @Test
+    void resumeOfEndedSubscriptionIsConflict() throws Exception {
+        com.stripe.service.SubscriptionService subscriptions = mock(com.stripe.service.SubscriptionService.class);
+        when(subscriptions.update(eq("sub_1"), any(SubscriptionUpdateParams.class)))
+            .thenThrow(new com.stripe.exception.InvalidRequestException(
+                "A canceled subscription can only update its cancellation_details and metadata.",
+                null, "req_1", null, 400, null));
+        Subscription ended = new Subscription();
+        ended.setStatus("canceled");
+        when(subscriptions.retrieve("sub_1")).thenReturn(ended);
+
+        assertThatThrownBy(() -> serviceWithSubscriptions(subscriptions).resumeSubscription("sub_1"))
+            .isInstanceOf(com.porquinho.exception.ConflictException.class)
+            .hasMessageContaining("Assine novamente");
+    }
+
+    @Test
+    void resumeRefusedForNotEndedSubscriptionIsUnavailable() throws Exception {
+        com.stripe.service.SubscriptionService subscriptions = mock(com.stripe.service.SubscriptionService.class);
+        when(subscriptions.update(eq("sub_1"), any(SubscriptionUpdateParams.class)))
+            .thenThrow(new com.stripe.exception.InvalidRequestException(
+                "Invalid cancel_at_period_end", "cancel_at_period_end", "req_1", null, 400, null));
+        Subscription active = new Subscription();
+        active.setStatus("active");
+        when(subscriptions.retrieve("sub_1")).thenReturn(active);
+
+        assertThatThrownBy(() -> serviceWithSubscriptions(subscriptions).resumeSubscription("sub_1"))
+            .isInstanceOf(PaymentProviderUnavailableException.class)
+            .hasCauseInstanceOf(com.stripe.exception.InvalidRequestException.class);
+    }
+
+    @Test
+    void resumeRefusedAndRetrieveFailingIsUnavailable() throws Exception {
+        com.stripe.service.SubscriptionService subscriptions = mock(com.stripe.service.SubscriptionService.class);
+        com.stripe.exception.InvalidRequestException missing = new com.stripe.exception.InvalidRequestException(
+            "No such subscription: 'sub_1'", "id", "req_1", "resource_missing", 404, null);
+        when(subscriptions.update(eq("sub_1"), any(SubscriptionUpdateParams.class))).thenThrow(missing);
+        when(subscriptions.retrieve("sub_1")).thenThrow(missing);
+
+        assertThatThrownBy(() -> serviceWithSubscriptions(subscriptions).resumeSubscription("sub_1"))
+            .isInstanceOf(PaymentProviderUnavailableException.class)
+            .hasCauseInstanceOf(com.stripe.exception.InvalidRequestException.class);
+    }
 }

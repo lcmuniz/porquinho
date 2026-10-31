@@ -552,4 +552,137 @@ class SubscriptionServiceTest {
         assertThat(result.getStripeSubscriptionId()).isEqualTo("sub_2");
         assertThat(result.getCancellationDate()).isNull();
     }
+
+    // ---- Story 2.5: reactivate ----
+
+    @Test
+    void reactivateCancelledWithAccessResumesStripeMarksActiveAuditsAndEmailsAfterCommit() {
+        Subscription cancelled = monthly(Status.CANCELLED, NOW_UTC.plusDays(12));
+        cancelled.setCancellationDate(NOW_UTC.minusDays(2));
+        OffsetDateTime stripePeriodEnd = NOW_UTC.plusDays(12).plusHours(1);
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(cancelled));
+        when(stripeBillingService.resumeSubscription("sub_1")).thenReturn(stripePeriodEnd);
+        when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            Subscription result = service.reactivate(userId, "10.0.0.1");
+
+            assertThat(result.getPlanType()).isEqualTo(PlanType.MONTHLY);
+            assertThat(result.getStatus()).isEqualTo(Status.ACTIVE);
+            assertThat(result.getCancellationDate()).isNull();
+            assertThat(result.getNextBillingDate()).isEqualTo(stripePeriodEnd);
+            assertThat(result.getStripeSubscriptionId()).isEqualTo("sub_1");
+            verify(stripeBillingService, never()).createCheckoutSession(any(), any(), any());
+            ArgumentCaptor<String> metadata = ArgumentCaptor.forClass(String.class);
+            verify(auditLogService).log(eq("subscription_reactivated"), eq(userId), eq("10.0.0.1"), metadata.capture());
+            assertThat(metadata.getValue()).contains("\"stripe_subscription_id\":\"sub_1\"")
+                .contains("\"next_billing_date\":\"" + stripePeriodEnd + "\"")
+                .contains("\"via\":\"resume\"")
+                .contains("\"previous_cancellation_date\":\"" + NOW_UTC.minusDays(2) + "\"");
+            verify(emailService, never()).sendSubscriptionReactivated(any(), any());
+
+            TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
+
+            verify(emailService).sendSubscriptionReactivated("ana@example.com", stripePeriodEnd);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
+    void reactivateKeepsLocalNextBillingWhenStripeReturnsNoPeriodEnd() {
+        OffsetDateTime nextBilling = NOW_UTC.plusDays(5);
+        when(subscriptionRepository.findByUserIdForUpdate(userId))
+            .thenReturn(Optional.of(monthly(Status.CANCELLED, nextBilling)));
+        when(stripeBillingService.resumeSubscription("sub_1")).thenReturn(null);
+        when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Subscription result = service.reactivate(userId, null);
+
+        assertThat(result.getStatus()).isEqualTo(Status.ACTIVE);
+        assertThat(result.getNextBillingDate()).isEqualTo(nextBilling);
+    }
+
+    @Test
+    void reactivateActiveTrialExpiredOrCancelledWithoutAccessThrowsConflictWithoutCallingStripe() {
+        when(subscriptionRepository.findByUserIdForUpdate(userId))
+            .thenReturn(Optional.of(monthly(Status.ACTIVE, NOW_UTC.plusDays(12))))
+            .thenReturn(Optional.of(trialEndingAt(NOW_UTC.plusDays(10))))
+            .thenReturn(Optional.of(monthly(Status.EXPIRED, NOW_UTC.minusDays(1))))
+            .thenReturn(Optional.of(monthly(Status.CANCELLED, NOW_UTC)));
+
+        for (int i = 0; i < 4; i++) {
+            assertThatThrownBy(() -> service.reactivate(userId, null)).isInstanceOf(ConflictException.class);
+        }
+
+        verify(stripeBillingService, never()).resumeSubscription(any());
+        verify(subscriptionRepository, never()).save(any());
+        verify(auditLogService, never()).log(anyString(), any(), any(), any());
+        verify(emailService, never()).sendSubscriptionReactivated(any(), any());
+    }
+
+    @Test
+    void reactivateWithoutSubscriptionRowThrowsNotFound() {
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.reactivate(userId, null))
+            .isInstanceOf(com.porquinho.exception.ResourceNotFoundException.class);
+    }
+
+    @Test
+    void reactivateWhenStripeFailsOrRefusesLeavesRowUntouched() {
+        Subscription cancelled = monthly(Status.CANCELLED, NOW_UTC.plusDays(12));
+        cancelled.setCancellationDate(NOW_UTC.minusDays(2));
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(cancelled));
+        when(stripeBillingService.resumeSubscription("sub_1"))
+            .thenThrow(new PaymentProviderUnavailableException("down"))
+            .thenThrow(new ConflictException("Sua assinatura já terminou. Assine novamente para reativar."));
+
+        assertThatThrownBy(() -> service.reactivate(userId, null)).isInstanceOf(PaymentProviderUnavailableException.class);
+        assertThatThrownBy(() -> service.reactivate(userId, null)).isInstanceOf(ConflictException.class);
+
+        assertThat(cancelled.getStatus()).isEqualTo(Status.CANCELLED);
+        assertThat(cancelled.getCancellationDate()).isEqualTo(NOW_UTC.minusDays(2));
+        assertThat(cancelled.getNextBillingDate()).isEqualTo(NOW_UTC.plusDays(12));
+        verify(subscriptionRepository, never()).save(any());
+        verify(auditLogService, never()).log(anyString(), any(), any(), any());
+        verify(emailService, never()).sendSubscriptionReactivated(any(), any());
+    }
+
+    @Test
+    void activateMonthlyForExpiredFormerSubscriberAuditsReactivationAndSendsReactivatedEmail() {
+        Subscription expired = monthly(Status.EXPIRED, NOW_UTC.minusDays(3));
+        expired.setCancellationDate(NOW_UTC.minusDays(33));
+        OffsetDateTime nextBilling = NOW_UTC.plusDays(30);
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(expired));
+        when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
+
+        Subscription result = service.activateMonthly(userId, "cus_1", "sub_2", "pm_2", nextBilling);
+
+        assertThat(result.getStatus()).isEqualTo(Status.ACTIVE);
+        assertThat(result.getStripeSubscriptionId()).isEqualTo("sub_2");
+        assertThat(result.getCancellationDate()).isNull();
+        assertThat(result.getNextBillingDate()).isEqualTo(nextBilling);
+        ArgumentCaptor<String> metadata = ArgumentCaptor.forClass(String.class);
+        verify(auditLogService).log(eq("subscription_reactivated"), eq(userId), isNull(), metadata.capture());
+        assertThat(metadata.getValue()).contains("\"via\":\"checkout\"");
+        verify(auditLogService, never()).log(eq("subscription_activated"), any(), any(), any());
+        verify(emailService).sendSubscriptionReactivated("ana@example.com", nextBilling);
+        verify(emailService, never()).sendSubscriptionActivated(any(), any());
+    }
+
+    @Test
+    void activateMonthlyForCancelledWithoutAccessIsAReactivation() {
+        when(subscriptionRepository.findByUserIdForUpdate(userId))
+            .thenReturn(Optional.of(monthly(Status.CANCELLED, NOW_UTC.minusDays(1))));
+        when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+
+        service.activateMonthly(userId, "cus_1", "sub_2", "pm_2", NOW_UTC.plusDays(30));
+
+        verify(auditLogService).log(eq("subscription_reactivated"), eq(userId), isNull(), anyString());
+    }
 }
