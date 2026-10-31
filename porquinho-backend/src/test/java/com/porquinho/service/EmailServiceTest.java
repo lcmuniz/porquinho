@@ -6,6 +6,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 
@@ -190,5 +191,59 @@ class EmailServiceTest {
         JavaMailSender sender = mock(JavaMailSender.class);
         doThrow(new org.springframework.mail.MailSendException("down")).when(sender).send(any(SimpleMailMessage.class));
         serviceWith(sender, "x@example.com").sendSubscriptionReactivated("user@example.com", null);
+    }
+
+    // ---- Story 2.6: payment receipt ----
+
+    @Test
+    void paymentReceiptShowsAmountPaymentDateAndNextBillingInSaoPaulo() {
+        JavaMailSender sender = mock(JavaMailSender.class);
+
+        // paid 01/11 02:00Z = 31/10 in Brazil; next billing 01/12 01:00Z = 30/11 in Brazil
+        serviceWith(sender, "x@example.com").sendPaymentReceipt("user@example.com", new BigDecimal("19.90"),
+            OffsetDateTime.of(2026, 11, 1, 2, 0, 0, 0, ZoneOffset.UTC),
+            OffsetDateTime.of(2026, 12, 1, 1, 0, 0, 0, ZoneOffset.UTC));
+
+        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(sender).send(captor.capture());
+        SimpleMailMessage message = captor.getValue();
+        assertThat(message.getSubject()).isEqualTo("Porquinho - Pagamento confirmado");
+        assertThat(message.getTo()).containsExactly("user@example.com");
+        assertThat(message.getText())
+            .contains("Valor: R$ 19,90")
+            .contains("Data do pagamento: 31/10/2026")
+            .contains("Próxima cobrança: 30/11/2026")
+            .doesNotContain("01/11/2026")
+            .doesNotContain("01/12/2026");
+    }
+
+    @Test
+    void paymentReceiptWithoutNextBillingOmitsBillingLine() {
+        JavaMailSender sender = mock(JavaMailSender.class);
+
+        serviceWith(sender, "x@example.com").sendPaymentReceipt("user@example.com", new BigDecimal("19.90"),
+            OffsetDateTime.of(2026, 11, 1, 12, 0, 0, 0, ZoneOffset.UTC), null);
+
+        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(sender).send(captor.capture());
+        assertThat(captor.getValue().getText())
+            .contains("Valor: R$ 19,90")
+            .doesNotContain("Próxima cobrança");
+    }
+
+    @Test
+    void formatBrlUsesCommaDecimalsAndDotThousands() {
+        assertThat(EmailService.formatBrl(new BigDecimal("19.90"))).isEqualTo("R$ 19,90");
+        assertThat(EmailService.formatBrl(new BigDecimal("1234.5"))).isEqualTo("R$ 1.234,50");
+    }
+
+    @Test
+    void paymentReceiptWithoutSmtpOrWithFailureNeverThrows() {
+        OffsetDateTime paidAt = OffsetDateTime.of(2026, 11, 1, 12, 0, 0, 0, ZoneOffset.UTC);
+        serviceWith(null, "x@example.com").sendPaymentReceipt("user@example.com", new BigDecimal("19.90"), paidAt, null);
+
+        JavaMailSender sender = mock(JavaMailSender.class);
+        doThrow(new org.springframework.mail.MailSendException("down")).when(sender).send(any(SimpleMailMessage.class));
+        serviceWith(sender, "x@example.com").sendPaymentReceipt("user@example.com", new BigDecimal("19.90"), paidAt, null);
     }
 }

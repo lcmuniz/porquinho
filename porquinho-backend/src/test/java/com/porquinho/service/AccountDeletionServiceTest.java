@@ -12,6 +12,7 @@ import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountDeletionRepository;
 import com.porquinho.repository.SubscriptionRepository;
 import com.porquinho.repository.AuditLogRepository;
+import com.porquinho.repository.BillingTransactionRepository;
 import com.porquinho.repository.DataExportRepository;
 import com.porquinho.repository.UserRepository;
 import com.porquinho.repository.UserSessionRepository;
@@ -64,6 +65,8 @@ class AccountDeletionServiceTest {
 
     @Mock
     private StripeBillingService stripeBillingService;
+    @Mock
+    private BillingTransactionRepository billingTransactionRepository;
 
     private AccountDeletionService service;
 
@@ -87,11 +90,13 @@ class AccountDeletionServiceTest {
         AccountDeletionService temp = new AccountDeletionService(
             userRepository, userSessionRepository, auditLogRepository, dataExportRepository,
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
-            supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService, null);
+            supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService,
+            billingTransactionRepository, null);
         service = new AccountDeletionService(
             userRepository, userSessionRepository, auditLogRepository, dataExportRepository,
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
-            supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService, temp);
+            supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService,
+            billingTransactionRepository, temp);
         // After construction, swap in the real reference so self == service (recursive ref ok
         // for tests because Spring's proxy would similarly route the call into this same bean).
         try {
@@ -426,5 +431,25 @@ class AccountDeletionServiceTest {
 
         verifyNoInteractions(userRepository);
         verifyNoInteractions(supabaseAdminClient);
+    }
+
+    @Test
+    void purgeDeletesBillingTransactionsBeforeSubscriptionsAndUser() {
+        // Story 2.6: billing_transactions has FKs to subscriptions and users
+        AccountDeletion deletion = new AccountDeletion(userId,
+            OffsetDateTime.now().minusDays(1), "127.0.0.1");
+        deletion.setId(UUID.randomUUID());
+
+        when(accountDeletionRepository.findAllByStatusAndScheduledPurgeAtBefore(
+            eq(DeletionStatus.PENDING_PURGE), any())).thenReturn(List.of(deletion));
+        when(dataExportRepository.findAllByUserId(userId)).thenReturn(List.of());
+
+        service.purgeScheduledDeletions();
+
+        org.mockito.InOrder order = inOrder(billingTransactionRepository, subscriptionRepository, userRepository);
+        order.verify(billingTransactionRepository).deleteByUserId(userId);
+        order.verify(subscriptionRepository).deleteByUserId(userId);
+        order.verify(userRepository).deleteByIdNative(userId);
+        assertEquals(DeletionStatus.PURGED, deletion.getStatus());
     }
 }

@@ -102,4 +102,65 @@ class MigrationTest {
                 .isEqualTo("timestamp with time zone");
         }
     }
+
+    @Test
+    void v13ShouldCreateBillingTransactionsTable() {
+        java.util.Map<String, String> expected = new java.util.LinkedHashMap<>();
+        expected.put("id", "uuid");
+        expected.put("subscription_id", "uuid");
+        expected.put("user_id", "uuid");
+        expected.put("amount", "numeric");
+        expected.put("currency", "character varying");
+        expected.put("status", "character varying");
+        expected.put("payment_method", "character varying");
+        expected.put("stripe_transaction_id", "character varying");
+        expected.put("paid_at", "timestamp with time zone");
+        expected.put("created_at", "timestamp with time zone");
+
+        expected.forEach((column, type) -> {
+            String actual = jdbcTemplate.queryForObject(
+                "SELECT data_type FROM information_schema.columns " +
+                "WHERE table_name = 'billing_transactions' AND column_name = ?",
+                String.class,
+                column
+            );
+            assertThat(actual)
+                .withFailMessage("Column '%s' should be %s in billing_transactions, got %s", column, type, actual)
+                .isEqualTo(type);
+        });
+
+        Integer precision = jdbcTemplate.queryForObject(
+            "SELECT numeric_precision FROM information_schema.columns " +
+            "WHERE table_name = 'billing_transactions' AND column_name = 'amount'", Integer.class);
+        Integer scale = jdbcTemplate.queryForObject(
+            "SELECT numeric_scale FROM information_schema.columns " +
+            "WHERE table_name = 'billing_transactions' AND column_name = 'amount'", Integer.class);
+        assertThat(precision).isEqualTo(15);
+        assertThat(scale).isEqualTo(2);
+    }
+
+    @Test
+    void v13BillingTransactionsShouldHaveUniqueStripeIdAndIndexedForeignKeys() {
+        Integer unique = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM information_schema.table_constraints " +
+            "WHERE table_name = 'billing_transactions' " +
+            "AND constraint_name = 'billing_transactions_stripe_transaction_id_unique' AND constraint_type = 'UNIQUE'",
+            Integer.class
+        );
+        assertThat(unique).isEqualTo(1);
+
+        Integer foreignKeys = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM information_schema.table_constraints " +
+            "WHERE table_name = 'billing_transactions' AND constraint_type = 'FOREIGN KEY'",
+            Integer.class
+        );
+        assertThat(foreignKeys).isEqualTo(2);
+
+        for (String index : new String[] {"idx_billing_transactions_subscription_id", "idx_billing_transactions_user_id"}) {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM pg_indexes WHERE tablename = 'billing_transactions' AND indexname = ?",
+                Integer.class, index);
+            assertThat(count).withFailMessage("Index '%s' should exist", index).isEqualTo(1);
+        }
+    }
 }

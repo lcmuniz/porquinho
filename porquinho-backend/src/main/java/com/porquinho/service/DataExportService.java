@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.porquinho.dto.DataExportResponse;
 import com.porquinho.entity.AuditLog;
+import com.porquinho.entity.BillingTransaction;
 import com.porquinho.entity.DataExport;
 import com.porquinho.entity.DataExport.ExportStatus;
 import com.porquinho.entity.User;
@@ -12,6 +13,7 @@ import com.porquinho.entity.UserSession;
 import com.porquinho.exception.RateLimitExceededException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AuditLogRepository;
+import com.porquinho.repository.BillingTransactionRepository;
 import com.porquinho.repository.DataExportRepository;
 import com.porquinho.repository.UserRepository;
 import com.porquinho.repository.UserSessionRepository;
@@ -50,6 +52,7 @@ public class DataExportService {
     private final EmailService emailService;
     private final AuditLogService auditLogService;
     private final SubscriptionService subscriptionService;
+    private final BillingTransactionRepository billingTransactionRepository;
     private final ObjectMapper objectMapper;
 
     @Value("${app.export.directory:./exports}")
@@ -69,7 +72,8 @@ public class DataExportService {
             RateLimitService rateLimitService,
             EmailService emailService,
             AuditLogService auditLogService,
-            SubscriptionService subscriptionService) {
+            SubscriptionService subscriptionService,
+            BillingTransactionRepository billingTransactionRepository) {
         this.dataExportRepository = dataExportRepository;
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -78,6 +82,7 @@ public class DataExportService {
         this.emailService = emailService;
         this.auditLogService = auditLogService;
         this.subscriptionService = subscriptionService;
+        this.billingTransactionRepository = billingTransactionRepository;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
         this.objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
@@ -155,7 +160,8 @@ public class DataExportService {
         metadata.put("export_date", LocalDateTime.now().toString());
         metadata.put("user_id", userId.toString());
         metadata.put("data_version", "1.0");
-        metadata.put("exported_tables", List.of("users", "user_sessions", "audit_logs", "subscriptions"));
+        metadata.put("exported_tables", List.of("users", "user_sessions", "audit_logs", "subscriptions",
+            "billing_transactions"));
         data.put("metadata", metadata);
 
         // User profile (sanitized)
@@ -221,6 +227,23 @@ public class DataExportService {
             subscriptionList.add(subMap);
         });
         data.put("subscriptions", subscriptionList);
+
+        // Payments (Story 2.6) - newest first; amount as a JSON number
+        List<Map<String, Object>> paymentList = new ArrayList<>();
+        for (BillingTransaction tx : billingTransactionRepository.findByUserIdOrderByPaidAtDesc(userId)) {
+            Map<String, Object> txMap = new LinkedHashMap<>();
+            txMap.put("id", tx.getId() != null ? tx.getId().toString() : null);
+            txMap.put("subscription_id", tx.getSubscriptionId() != null ? tx.getSubscriptionId().toString() : null);
+            txMap.put("amount", tx.getAmount());
+            txMap.put("currency", tx.getCurrency());
+            txMap.put("status", tx.getStatus() != null ? tx.getStatus().name() : null);
+            txMap.put("payment_method", tx.getPaymentMethod());
+            txMap.put("stripe_transaction_id", tx.getStripeTransactionId());
+            txMap.put("paid_at", tx.getPaidAt() != null ? tx.getPaidAt().toString() : null);
+            txMap.put("created_at", tx.getCreatedAt() != null ? tx.getCreatedAt().toString() : null);
+            paymentList.add(txMap);
+        }
+        data.put("billing_transactions", paymentList);
 
         return data;
     }

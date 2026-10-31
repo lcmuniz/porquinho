@@ -1,6 +1,7 @@
 package com.porquinho.service;
 
 import com.porquinho.entity.AuditLog;
+import com.porquinho.entity.BillingTransaction;
 import com.porquinho.entity.DataExport;
 import com.porquinho.entity.DataExport.ExportStatus;
 import com.porquinho.entity.Subscription;
@@ -10,6 +11,7 @@ import com.porquinho.entity.UserSession;
 import com.porquinho.exception.RateLimitExceededException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AuditLogRepository;
+import com.porquinho.repository.BillingTransactionRepository;
 import com.porquinho.repository.DataExportRepository;
 import com.porquinho.repository.UserRepository;
 import com.porquinho.repository.UserSessionRepository;
@@ -60,6 +62,9 @@ class DataExportServiceTest {
 
     @Mock
     private SubscriptionService subscriptionService;
+
+    @Mock
+    private BillingTransactionRepository billingTransactionRepository;
 
     @InjectMocks
     private DataExportService dataExportService;
@@ -314,5 +319,52 @@ class DataExportServiceTest {
         export.setCreatedAt(LocalDateTime.now());
         export.setExpiresAt(LocalDateTime.now().plusHours(24));
         return export;
+    }
+
+    @Test
+    void collectUserDataShouldIncludeBillingTransactions() {
+        // Story 2.6: payments exported (LGPD portability), in the repository's newest-first order
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        OffsetDateTime paidAt = OffsetDateTime.parse("2026-11-30T12:00:00Z");
+        UUID subscriptionId = UUID.randomUUID();
+        BillingTransaction newer = new BillingTransaction(subscriptionId, userId, new java.math.BigDecimal("19.90"),
+            "brl", BillingTransaction.Status.PAID, "pm_1", "in_2", paidAt);
+        newer.setId(UUID.randomUUID());
+        newer.setCreatedAt(paidAt);
+        BillingTransaction older = new BillingTransaction(subscriptionId, userId, new java.math.BigDecimal("19.90"),
+            "brl", BillingTransaction.Status.PAID, "pm_1", "in_1", paidAt.minusMonths(1));
+        older.setId(UUID.randomUUID());
+        when(billingTransactionRepository.findByUserIdOrderByPaidAtDesc(userId)).thenReturn(List.of(newer, older));
+
+        Map<String, Object> data = dataExportService.collectUserData(userId);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
+        assertTrue(((List<?>) metadata.get("exported_tables")).contains("billing_transactions"));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> payments = (List<Map<String, Object>>) data.get("billing_transactions");
+        assertEquals(2, payments.size());
+        Map<String, Object> first = payments.get(0);
+        assertEquals(newer.getId().toString(), first.get("id"));
+        assertEquals(subscriptionId.toString(), first.get("subscription_id"));
+        assertEquals(new java.math.BigDecimal("19.90"), first.get("amount"));
+        assertEquals("brl", first.get("currency"));
+        assertEquals("PAID", first.get("status"));
+        assertEquals("pm_1", first.get("payment_method"));
+        assertEquals("in_2", first.get("stripe_transaction_id"));
+        assertEquals(paidAt.toString(), first.get("paid_at"));
+        assertEquals(paidAt.toString(), first.get("created_at"));
+        assertEquals("in_1", payments.get(1).get("stripe_transaction_id"));
+        assertNull(payments.get(1).get("created_at"));
+    }
+
+    @Test
+    void collectUserDataShouldExportEmptyBillingTransactionsWhenNone() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+
+        Map<String, Object> data = dataExportService.collectUserData(userId);
+
+        assertEquals(List.of(), data.get("billing_transactions"));
     }
 }
