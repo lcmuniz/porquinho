@@ -421,8 +421,34 @@ class AuthControllerTest {
                 .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk());
 
-        // Note: In test profile, auditLogService.log() will be called with null userId
-        // In production, userId would be extracted from JWT
+        // Unauthenticated (test profile): no user id, so no audit entry
+        verify(auditLogService, org.mockito.Mockito.never()).log(anyString(), any(UUID.class), anyString(), anyString());
+    }
+
+    @Test
+    void passwordResetCompletedShouldAuditWithJwtSub() throws Exception {
+        // Guards against regressing to @AuthenticationPrincipal String (null with JwtAuthenticationToken)
+        UUID sub = UUID.randomUUID();
+        org.springframework.security.oauth2.jwt.Jwt jwt = org.springframework.security.oauth2.jwt.Jwt.withTokenValue("t")
+            .header("alg", "ES256")
+            .subject(sub.toString())
+            .issuedAt(java.time.Instant.now())
+            .expiresAt(java.time.Instant.now().plusSeconds(3600))
+            .build();
+        var authToken = new org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken(
+            jwt, java.util.List.of(), sub.toString());
+
+        mockMvc.perform(post("/api/v1/auth/password-reset/completed")
+                .with(csrf())
+                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk());
+
+        verify(auditLogService).log(
+            org.mockito.ArgumentMatchers.eq("password_reset_completed"),
+            org.mockito.ArgumentMatchers.eq(sub),
+            anyString(),
+            anyString());
     }
 
     @Test
