@@ -28,7 +28,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Subscription rules (Story 2.1) and monthly-plan activation via Stripe (Story 2.2).
+ * Subscription rules (Story 2.1), monthly-plan activation via Stripe (Story 2.2) and
+ * self-service cancellation at period end (Story 2.4).
  *
  * Trial expiration is computed on read (hasAccess compares now with trial_end_date).
  * Trial-end reminder e-mails are sent by TrialReminderService (Story 2.3).
@@ -100,6 +101,8 @@ public class SubscriptionService {
 
     /**
      * Access rule: status ACTIVE and, for TRIAL, now strictly before trial_end_date.
+     * MONTHLY/CANCELLED keeps access while now is strictly before next_billing_date (end of the paid
+     * period), even if Stripe's customer.subscription.deleted has not arrived yet (Story 2.4).
      * No subscription means no access.
      */
     public boolean hasAccess(UUID userId) {
@@ -109,6 +112,10 @@ public class SubscriptionService {
     }
 
     public boolean hasAccess(Subscription subscription) {
+        if (subscription.getStatus() == Status.CANCELLED && subscription.getPlanType() == PlanType.MONTHLY) {
+            OffsetDateTime accessUntil = subscription.getNextBillingDate();
+            return accessUntil != null && OffsetDateTime.now(clock).isBefore(accessUntil);
+        }
         if (subscription.getStatus() != Status.ACTIVE) {
             return false;
         }
@@ -156,6 +163,10 @@ public class SubscriptionService {
         if (subscription.getPlanType() == PlanType.MONTHLY && subscription.getStatus() == Status.ACTIVE) {
             throw new ConflictException("Você já possui uma assinatura ativa.");
         }
+        // Cancelled but still in the paid period: a new Checkout would charge now on top of it (Story 2.4)
+        if (subscription.getStatus() == Status.CANCELLED && hasAccess(subscription)) {
+            throw new ConflictException("Sua assinatura cancelada ainda está ativa até o fim do período.");
+        }
 
         String email = userRepository.findById(userId).map(User::getEmail).orElse(null);
         return stripeBillingService.createCheckoutSession(userId, email, firstChargeAt(subscription));
@@ -175,7 +186,9 @@ public class SubscriptionService {
 
     /**
      * Switch the user to MONTHLY/ACTIVE after Stripe confirmed the Checkout (webhook only).
-     * Idempotent: replaying the same Stripe subscription changes nothing and logs no new audit.
+     * Idempotent: replaying the same Stripe subscription changes nothing and logs no new audit,
+     * whatever the local status. An old checkout.session.completed re-delivered after the user
+     * cancelled (or it expired) never reactivates the row (Story 2.4).
      *
      * @throws ResourceNotFoundException user has no subscription row
      */
@@ -185,8 +198,7 @@ public class SubscriptionService {
         Subscription subscription = subscriptionRepository.findByUserIdForUpdate(userId)
             .orElseThrow(() -> new ResourceNotFoundException("Subscription not found"));
 
-        if (subscription.getPlanType() == PlanType.MONTHLY
-            && subscription.getStatus() == Status.ACTIVE
+        if (stripeSubscriptionId != null
             && Objects.equals(subscription.getStripeSubscriptionId(), stripeSubscriptionId)) {
             return subscription;
         }
@@ -208,6 +220,7 @@ public class SubscriptionService {
         subscription.setStripeSubscriptionId(stripeSubscriptionId);
         subscription.setPaymentMethodId(paymentMethodId);
         subscription.setNextBillingDate(nextBillingDate);
+        subscription.setCancellationDate(null);
         Subscription saved = subscriptionRepository.save(subscription);
 
         Map<String, Object> metadata = new LinkedHashMap<>();
@@ -222,6 +235,85 @@ public class SubscriptionService {
                 () -> log.warn("No user {} to email about subscription activation", userId)));
 
         return saved;
+    }
+
+    /**
+     * Self-service cancel of the monthly plan (Story 2.4). Stripe is asked synchronously to end the
+     * subscription at period end (no further charge); only after Stripe accepted the row becomes
+     * CANCELLED with cancellation_date. Access continues until next_billing_date.
+     *
+     * @throws ResourceNotFoundException user has no subscription row
+     * @throws ConflictException not MONTHLY/ACTIVE (trial, already cancelled, expired)
+     * @throws PaymentProviderUnavailableException Stripe failed (nothing changes locally)
+     */
+    @Transactional
+    public Subscription cancel(UUID userId, String ipAddress) {
+        Subscription subscription = subscriptionRepository.findByUserIdForUpdate(userId)
+            .orElseThrow(() -> new ResourceNotFoundException("Subscription not found"));
+
+        if (subscription.getPlanType() != PlanType.MONTHLY || subscription.getStatus() != Status.ACTIVE) {
+            throw new ConflictException(subscription.getStatus() == Status.CANCELLED
+                ? "Sua assinatura já está cancelada."
+                : "Não há assinatura mensal ativa para cancelar.");
+        }
+
+        // Throws PaymentProviderUnavailableException -> 503; the row is untouched (nothing set yet).
+        // Stripe's period end is the source of truth: next_billing_date is not refreshed on renewals.
+        OffsetDateTime periodEnd = stripeBillingService.cancelAtPeriodEnd(subscription.getStripeSubscriptionId());
+
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        if (periodEnd != null) {
+            subscription.setNextBillingDate(periodEnd);
+        }
+        OffsetDateTime accessUntil = subscription.getNextBillingDate();
+        subscription.setStatus(Status.CANCELLED);
+        subscription.setCancellationDate(now);
+        Subscription saved = subscriptionRepository.save(subscription);
+
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("stripe_subscription_id", subscription.getStripeSubscriptionId());
+        metadata.put("cancellation_date", now.toString());
+        metadata.put("access_until", accessUntil == null ? null : accessUntil.toString());
+        auditLogService.log("subscription_cancelled", userId, ipAddress, toJson(metadata));
+
+        afterCommit(() -> userRepository.findById(userId)
+            .map(User::getEmail)
+            .ifPresentOrElse(
+                email -> emailService.sendSubscriptionCancelled(email, accessUntil),
+                () -> log.warn("No user {} to email about subscription cancellation", userId)));
+
+        return saved;
+    }
+
+    /**
+     * Stripe ended the subscription (customer.subscription.deleted webhook, Story 2.4): mark the row
+     * EXPIRED. Unknown id -> nothing changes (warn). Already EXPIRED -> no-op (webhook replay).
+     *
+     * @return true if a row was expired by this call
+     */
+    @Transactional
+    public boolean expireByStripeSubscriptionId(String stripeSubscriptionId) {
+        Optional<Subscription> found = stripeSubscriptionId == null
+            ? Optional.empty()
+            : subscriptionRepository.findByStripeSubscriptionIdForUpdate(stripeSubscriptionId);
+        if (found.isEmpty()) {
+            log.warn("customer.subscription.deleted for unknown Stripe subscription {}", stripeSubscriptionId);
+            return false;
+        }
+        Subscription subscription = found.get();
+        if (subscription.getStatus() == Status.EXPIRED) {
+            return false;
+        }
+
+        Status previous = subscription.getStatus();
+        subscription.setStatus(Status.EXPIRED);
+        subscriptionRepository.save(subscription);
+
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("stripe_subscription_id", stripeSubscriptionId);
+        metadata.put("previous_status", previous.name());
+        auditLogService.log("subscription_expired", subscription.getUserId(), null, toJson(metadata));
+        return true;
     }
 
     private static String toJson(Map<String, Object> value) {

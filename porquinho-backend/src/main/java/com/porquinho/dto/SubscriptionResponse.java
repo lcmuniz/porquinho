@@ -5,13 +5,16 @@ import com.porquinho.entity.Subscription;
 import java.time.OffsetDateTime;
 
 /**
- * Subscription status returned by GET /api/v1/subscriptions/me (Story 2.1).
+ * Subscription status returned by GET /api/v1/subscriptions/me (Story 2.1;
+ * nextBillingDate/cancellationDate added in Story 2.4).
  */
 public record SubscriptionResponse(
     String planType,
     String status,
     OffsetDateTime trialStartDate,
     OffsetDateTime trialEndDate,
+    OffsetDateTime nextBillingDate,
+    OffsetDateTime cancellationDate,
     long daysRemaining,
     boolean hasAccess
 ) {
@@ -22,6 +25,8 @@ public record SubscriptionResponse(
             subscription.getStatus().name(),
             subscription.getTrialStartDate(),
             subscription.getTrialEndDate(),
+            subscription.getNextBillingDate(),
+            subscription.getCancellationDate(),
             daysRemaining,
             hasAccess
         );

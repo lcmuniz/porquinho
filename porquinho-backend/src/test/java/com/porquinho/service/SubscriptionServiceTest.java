@@ -332,4 +332,224 @@ class SubscriptionServiceTest {
             TransactionSynchronizationManager.clearSynchronization();
         }
     }
+
+    // ---- Story 2.4: cancel / expire / access ----
+
+    private Subscription monthly(Status status, OffsetDateTime nextBilling) {
+        Subscription s = trialEndingAt(NOW_UTC.minusDays(40));
+        s.setPlanType(PlanType.MONTHLY);
+        s.setStatus(status);
+        s.setStripeCustomerId("cus_1");
+        s.setStripeSubscriptionId("sub_1");
+        s.setPaymentMethodId("pm_1");
+        s.setNextBillingDate(nextBilling);
+        return s;
+    }
+
+    @Test
+    void cancelActiveMonthlyAsksStripeMarksCancelledAuditsAndEmailsAfterCommit() {
+        OffsetDateTime nextBilling = NOW_UTC.plusDays(12);
+        Subscription active = monthly(Status.ACTIVE, nextBilling);
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(active));
+        when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            Subscription result = service.cancel(userId, "10.0.0.1");
+
+            assertThat(result.getStatus()).isEqualTo(Status.CANCELLED);
+            assertThat(result.getPlanType()).isEqualTo(PlanType.MONTHLY);
+            assertThat(result.getCancellationDate()).isEqualTo(NOW_UTC);
+            assertThat(result.getNextBillingDate()).isEqualTo(nextBilling);
+            assertThat(result.getStripeSubscriptionId()).isEqualTo("sub_1");
+            verify(stripeBillingService).cancelAtPeriodEnd("sub_1");
+            verify(stripeBillingService, never()).cancelSubscription(anyString());
+            ArgumentCaptor<String> metadata = ArgumentCaptor.forClass(String.class);
+            verify(auditLogService).log(eq("subscription_cancelled"), eq(userId), eq("10.0.0.1"), metadata.capture());
+            assertThat(metadata.getValue()).contains("\"stripe_subscription_id\":\"sub_1\"")
+                .contains("\"access_until\":\"" + nextBilling + "\"");
+            verify(emailService, never()).sendSubscriptionCancelled(any(), any());
+
+            TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
+
+            verify(emailService).sendSubscriptionCancelled("ana@example.com", nextBilling);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
+    void cancelAlreadyCancelledThrowsConflictWithoutCallingStripe() {
+        when(subscriptionRepository.findByUserIdForUpdate(userId))
+            .thenReturn(Optional.of(monthly(Status.CANCELLED, NOW_UTC.plusDays(5))));
+
+        assertThatThrownBy(() -> service.cancel(userId, "10.0.0.1")).isInstanceOf(ConflictException.class);
+
+        verify(stripeBillingService, never()).cancelAtPeriodEnd(any());
+        verify(subscriptionRepository, never()).save(any());
+        verify(auditLogService, never()).log(anyString(), any(), any(), any());
+    }
+
+    @Test
+    void cancelTrialOrExpiredThrowsConflictWithoutCallingStripe() {
+        when(subscriptionRepository.findByUserIdForUpdate(userId))
+            .thenReturn(Optional.of(trialEndingAt(NOW_UTC.plusDays(10))))
+            .thenReturn(Optional.of(monthly(Status.EXPIRED, NOW_UTC.minusDays(1))));
+
+        assertThatThrownBy(() -> service.cancel(userId, null)).isInstanceOf(ConflictException.class);
+        assertThatThrownBy(() -> service.cancel(userId, null)).isInstanceOf(ConflictException.class);
+
+        verify(stripeBillingService, never()).cancelAtPeriodEnd(any());
+        verify(subscriptionRepository, never()).save(any());
+    }
+
+    @Test
+    void cancelWithoutSubscriptionRowThrowsNotFound() {
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.cancel(userId, null))
+            .isInstanceOf(com.porquinho.exception.ResourceNotFoundException.class);
+    }
+
+    @Test
+    void cancelWhenStripeFailsLeavesRowUntouched() {
+        Subscription active = monthly(Status.ACTIVE, NOW_UTC.plusDays(12));
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(active));
+        org.mockito.Mockito.doThrow(new PaymentProviderUnavailableException("down"))
+            .when(stripeBillingService).cancelAtPeriodEnd("sub_1");
+
+        assertThatThrownBy(() -> service.cancel(userId, null)).isInstanceOf(PaymentProviderUnavailableException.class);
+
+        assertThat(active.getStatus()).isEqualTo(Status.ACTIVE);
+        assertThat(active.getCancellationDate()).isNull();
+        verify(subscriptionRepository, never()).save(any());
+        verify(auditLogService, never()).log(anyString(), any(), any(), any());
+        verify(emailService, never()).sendSubscriptionCancelled(any(), any());
+    }
+
+    @Test
+    void cancelledMonthlyHasAccessUntilNextBillingDateOnly() {
+        assertThat(service.hasAccess(monthly(Status.CANCELLED, NOW_UTC.plusSeconds(1)))).isTrue();
+        assertThat(service.hasAccess(monthly(Status.CANCELLED, NOW_UTC))).isFalse();
+        assertThat(service.hasAccess(monthly(Status.CANCELLED, NOW_UTC.minusDays(1)))).isFalse();
+        assertThat(service.hasAccess(monthly(Status.CANCELLED, null))).isFalse();
+    }
+
+    @Test
+    void expiredMonthlyHasNoAccessEvenBeforeNextBillingDate() {
+        assertThat(service.hasAccess(monthly(Status.EXPIRED, NOW_UTC.plusDays(5)))).isFalse();
+    }
+
+    @Test
+    void expireByStripeSubscriptionIdMarksExpiredAndAudits() {
+        Subscription cancelled = monthly(Status.CANCELLED, NOW_UTC.minusDays(1));
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(cancelled));
+        when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        assertThat(service.expireByStripeSubscriptionId("sub_1")).isTrue();
+
+        assertThat(cancelled.getStatus()).isEqualTo(Status.EXPIRED);
+        ArgumentCaptor<String> metadata = ArgumentCaptor.forClass(String.class);
+        verify(auditLogService).log(eq("subscription_expired"), eq(userId), isNull(), metadata.capture());
+        assertThat(metadata.getValue()).isEqualTo("{\"stripe_subscription_id\":\"sub_1\",\"previous_status\":\"CANCELLED\"}");
+    }
+
+    @Test
+    void expireIsIdempotentForReplayedWebhook() {
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1"))
+            .thenReturn(Optional.of(monthly(Status.EXPIRED, NOW_UTC.minusDays(1))));
+
+        assertThat(service.expireByStripeSubscriptionId("sub_1")).isFalse();
+
+        verify(subscriptionRepository, never()).save(any());
+        verify(auditLogService, never()).log(anyString(), any(), any(), any());
+    }
+
+    @Test
+    void expireUnknownStripeSubscriptionChangesNothing() {
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_unknown")).thenReturn(Optional.empty());
+
+        assertThat(service.expireByStripeSubscriptionId("sub_unknown")).isFalse();
+        assertThat(service.expireByStripeSubscriptionId(null)).isFalse();
+
+        verify(subscriptionRepository, never()).save(any());
+        verify(auditLogService, never()).log(anyString(), any(), any(), any());
+    }
+
+    @Test
+    void replayedCheckoutNeverReactivatesCancelledOrExpired() {
+        for (Status status : new Status[] { Status.CANCELLED, Status.EXPIRED }) {
+            OffsetDateTime nextBilling = NOW_UTC.plusDays(3);
+            Subscription row = monthly(status, nextBilling);
+            row.setCancellationDate(NOW_UTC.minusDays(2));
+            when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(row));
+
+            Subscription result = service.activateMonthly(userId, "cus_1", "sub_1", "pm_1", NOW_UTC.plusDays(30));
+
+            assertThat(result.getStatus()).isEqualTo(status);
+            assertThat(result.getNextBillingDate()).isEqualTo(nextBilling);
+            assertThat(result.getCancellationDate()).isEqualTo(NOW_UTC.minusDays(2));
+        }
+        verify(subscriptionRepository, never()).save(any());
+        verify(stripeBillingService, never()).cancelSubscription(anyString());
+        verify(auditLogService, never()).log(anyString(), any(), any(), any());
+        verify(emailService, never()).sendSubscriptionActivated(any(), any());
+    }
+
+    @Test
+    void cancelStoresStripePeriodEndAsAccessUntil() {
+        // next_billing_date is stale (set at activation, not refreshed on renewals): Stripe's period end wins
+        OffsetDateTime stale = NOW_UTC.minusDays(18);
+        OffsetDateTime periodEnd = NOW_UTC.plusDays(12);
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(monthly(Status.ACTIVE, stale)));
+        when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(stripeBillingService.cancelAtPeriodEnd("sub_1")).thenReturn(periodEnd);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
+
+        Subscription result = service.cancel(userId, null);
+
+        assertThat(result.getNextBillingDate()).isEqualTo(periodEnd);
+        assertThat(service.hasAccess(result)).isTrue();
+        ArgumentCaptor<String> metadata = ArgumentCaptor.forClass(String.class);
+        verify(auditLogService).log(eq("subscription_cancelled"), eq(userId), isNull(), metadata.capture());
+        assertThat(metadata.getValue()).contains("\"access_until\":\"" + periodEnd + "\"");
+        verify(emailService).sendSubscriptionCancelled("ana@example.com", periodEnd);
+    }
+
+    @Test
+    void cancelKeepsLocalNextBillingDateWhenStripeReturnsNoPeriodEnd() {
+        OffsetDateTime nextBilling = NOW_UTC.plusDays(12);
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(monthly(Status.ACTIVE, nextBilling)));
+        when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(stripeBillingService.cancelAtPeriodEnd("sub_1")).thenReturn(null);
+
+        Subscription result = service.cancel(userId, null);
+
+        assertThat(result.getNextBillingDate()).isEqualTo(nextBilling);
+        assertThat(service.hasAccess(result)).isTrue();
+    }
+
+    @Test
+    void createCheckoutForCancelledStillInPaidPeriodThrowsConflict() {
+        when(subscriptionRepository.findByUserId(userId)).thenReturn(Optional.of(monthly(Status.CANCELLED, NOW_UTC.plusDays(5))));
+
+        assertThatThrownBy(() -> service.createCheckout(userId)).isInstanceOf(ConflictException.class);
+
+        verify(stripeBillingService, never()).createCheckoutSession(any(), any(), any());
+    }
+
+    @Test
+    void activateMonthlyWithNewStripeIdClearsCancellationDate() {
+        Subscription expired = monthly(Status.EXPIRED, NOW_UTC.minusDays(3));
+        expired.setCancellationDate(NOW_UTC.minusDays(20));
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(expired));
+        when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Subscription result = service.activateMonthly(userId, "cus_1", "sub_2", "pm_2", NOW_UTC.plusDays(30));
+
+        assertThat(result.getStatus()).isEqualTo(Status.ACTIVE);
+        assertThat(result.getStripeSubscriptionId()).isEqualTo("sub_2");
+        assertThat(result.getCancellationDate()).isNull();
+    }
 }

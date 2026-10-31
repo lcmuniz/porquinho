@@ -11,9 +11,11 @@ import com.stripe.model.Subscription;
 import com.stripe.model.SubscriptionItem;
 import com.stripe.model.checkout.Session;
 import com.stripe.net.Webhook;
+import com.stripe.param.SubscriptionUpdateParams;
 import com.stripe.param.checkout.SessionCreateParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -46,11 +48,18 @@ public class StripeBillingService {
     private final String frontendUrl;
     private final ObjectMapper objectMapper;
 
+    // @Autowired: with a second (test) constructor Spring would otherwise look for a no-arg one
+    @Autowired
     public StripeBillingService(@Value("${stripe.secret-key:}") String secretKey,
                                 @Value("${stripe.webhook-secret:}") String webhookSecret,
                                 @Value("${app.frontend-url:http://localhost:5173}") String frontendUrl,
                                 ObjectMapper objectMapper) {
-        this.client = isBlank(secretKey) ? null : new StripeClient(secretKey);
+        this(isBlank(secretKey) ? null : new StripeClient(secretKey), webhookSecret, frontendUrl, objectMapper);
+    }
+
+    // Tests: inject a mocked StripeClient (null = Stripe not configured)
+    StripeBillingService(StripeClient client, String webhookSecret, String frontendUrl, ObjectMapper objectMapper) {
+        this.client = client;
         this.webhookSecret = webhookSecret;
         this.frontendUrl = stripTrailingSlash(frontendUrl);
         this.objectMapper = objectMapper;
@@ -186,6 +195,35 @@ public class StripeBillingService {
         }
     }
 
+    /**
+     * Schedule a Stripe subscription to end at the current period end (Story 2.4 self-service cancel).
+     * No further charge; Stripe sends customer.subscription.deleted when the period is over.
+     * Unlike {@link #cancelSubscription}, this is synchronous and NOT best-effort: the caller only
+     * marks the local row CANCELLED after Stripe accepted.
+     *
+     * @return end of the current period per Stripe's response (when access ends): item current_period_end,
+     *         else cancel_at, else trial_end; null if Stripe returned none
+     * @throws PaymentProviderUnavailableException Stripe not configured or the call failed
+     */
+    public OffsetDateTime cancelAtPeriodEnd(String stripeSubscriptionId) {
+        if (isBlank(stripeSubscriptionId)) {
+            throw new PaymentProviderUnavailableException("No Stripe subscription id to cancel");
+        }
+        if (client == null) {
+            log.warn("STRIPE_SECRET_KEY not configured - cannot cancel Stripe subscription {}", stripeSubscriptionId);
+            throw new PaymentProviderUnavailableException("STRIPE_SECRET_KEY not configured");
+        }
+        try {
+            Subscription updated = client.subscriptions().update(stripeSubscriptionId,
+                SubscriptionUpdateParams.builder().setCancelAtPeriodEnd(true).build());
+            log.info("Stripe subscription {} scheduled to cancel at period end", stripeSubscriptionId);
+            return toOffsetDateTime(periodEnd(updated));
+        } catch (StripeException e) {
+            log.warn("Failed to schedule cancel of Stripe subscription {}: {}", stripeSubscriptionId, e.getMessage());
+            throw new PaymentProviderUnavailableException("Stripe unavailable", e);
+        }
+    }
+
     static SubscriptionDetails toDetails(Subscription subscription) {
         return new SubscriptionDetails(
             subscription.getCustomer(),
@@ -195,6 +233,20 @@ public class StripeBillingService {
 
     // Since API 2025-03-31 current_period_end lives on the subscription item, not the subscription.
     private static Long currentPeriodEnd(Subscription subscription) {
+        Long itemEnd = itemPeriodEnd(subscription);
+        return itemEnd != null ? itemEnd : subscription.getTrialEnd();
+    }
+
+    // Same as currentPeriodEnd, but a scheduled cancel_at wins over trial_end (Story 2.4)
+    static Long periodEnd(Subscription subscription) {
+        Long itemEnd = itemPeriodEnd(subscription);
+        if (itemEnd != null) {
+            return itemEnd;
+        }
+        return subscription.getCancelAt() != null ? subscription.getCancelAt() : subscription.getTrialEnd();
+    }
+
+    private static Long itemPeriodEnd(Subscription subscription) {
         if (subscription.getItems() != null && subscription.getItems().getData() != null) {
             for (SubscriptionItem item : subscription.getItems().getData()) {
                 if (item.getCurrentPeriodEnd() != null) {
@@ -202,7 +254,7 @@ public class StripeBillingService {
                 }
             }
         }
-        return subscription.getTrialEnd();
+        return null;
     }
 
     private static OffsetDateTime toOffsetDateTime(Long epochSeconds) {

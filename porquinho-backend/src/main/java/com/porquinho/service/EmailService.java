@@ -182,4 +182,41 @@ public class EmailService {
             log.warn("Failed to send trial reminder email to {}: {}", email, e.getMessage());
         }
     }
+
+    /**
+     * Send "Assinatura cancelada" after a self-service cancel (Story 2.4), with the date until which
+     * access is still valid (end of the paid period).
+     * Best-effort: if SMTP is not configured or sending fails, logs warning and continues.
+     *
+     * @param email Recipient email address
+     * @param accessUntil End of the current paid period (next_billing_date); may be null
+     */
+    public void sendSubscriptionCancelled(String email, OffsetDateTime accessUntil) {
+        if (mailSender == null) {
+            log.warn("SMTP not configured - skipping subscription cancelled email to {}", email);
+            return;
+        }
+
+        try {
+            String accessLine = accessUntil == null
+                ? ""
+                // Brazil local date: a UTC instant between 00:00 and 03:00 is still the previous day here
+                : "Você continua com acesso completo até " + accessUntil
+                    .atZoneSameInstant(ZoneId.of("America/Sao_Paulo"))
+                    .format(DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.of("pt", "BR"))) + ".\n\n";
+
+            SimpleMailMessage message = newMessage(email, "Porquinho - Assinatura cancelada");
+            message.setText(
+                "Olá!\n\n" +
+                "Sua assinatura mensal do Porquinho foi cancelada. Nenhuma nova cobrança será feita.\n\n" +
+                accessLine +
+                "Seus dados continuam preservados.\n\n" +
+                "Atenciosamente,\nEquipe Porquinho"
+            );
+            mailSender.send(message);
+            log.info("Subscription cancelled email sent to {}", email);
+        } catch (Exception e) {
+            log.warn("Failed to send subscription cancelled email to {}: {}", email, e.getMessage());
+        }
+    }
 }

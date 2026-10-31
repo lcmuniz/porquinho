@@ -118,4 +118,34 @@ class EmailServiceTest {
         EmailService service = serviceWith(null, "");
         service.sendDataExportReady("user@example.com", "http://x");  // must not throw
     }
+
+    // ---- Story 2.4 ----
+
+    @Test
+    void subscriptionCancelledTextHasAccessUntilInSaoPauloDate() {
+        JavaMailSender sender = mock(JavaMailSender.class);
+        EmailService service = serviceWith(sender, "x@example.com");
+
+        // 01/12 01:00Z is still 30/11 in Brazil
+        service.sendSubscriptionCancelled("user@example.com", OffsetDateTime.of(2026, 12, 1, 1, 0, 0, 0, ZoneOffset.UTC));
+
+        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(sender).send(captor.capture());
+        SimpleMailMessage message = captor.getValue();
+        assertThat(message.getSubject()).isEqualTo("Porquinho - Assinatura cancelada");
+        assertThat(message.getTo()).containsExactly("user@example.com");
+        assertThat(message.getText())
+            .contains("acesso completo até 30/11/2026")
+            .contains("Nenhuma nova cobrança")
+            .doesNotContain("01/12/2026");
+    }
+
+    @Test
+    void subscriptionCancelledWithoutSmtpOrWithFailureNeverThrows() {
+        serviceWith(null, "x@example.com").sendSubscriptionCancelled("user@example.com", null);
+
+        JavaMailSender sender = mock(JavaMailSender.class);
+        doThrow(new org.springframework.mail.MailSendException("down")).when(sender).send(any(SimpleMailMessage.class));
+        serviceWith(sender, "x@example.com").sendSubscriptionCancelled("user@example.com", null);
+    }
 }

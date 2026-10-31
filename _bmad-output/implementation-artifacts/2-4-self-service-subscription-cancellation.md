@@ -2,7 +2,8 @@
 title: 'Cancelamento self-service da assinatura mensal'
 type: 'feature'
 created: '2026-10-31'
-status: 'ready-for-dev'
+status: 'done'
+baseline_commit: 615d2e463bc835d901493e716e9dba61b4e13f66
 route: 'dispatch'
 story_key: 2-4-self-service-subscription-cancellation
 review_loop_iteration: 0
@@ -80,6 +81,24 @@ context:
 ## Spec Change Log
 
 ## Review Triage Log
+
+Revisão em 3 camadas (Blind Hunter, Edge Case Hunter, Verification Gap) — 2026-10-31.
+
+| # | Origem | Achado | Veredito | Evidência | Rota |
+|---|---|---|---|---|---|
+| 1 | Blind, Edge | `next_billing_date` desatualizado após renovações → cancelamento corta acesso cedo; null corta na hora | high | Só `activateMonthly` grava o campo; `hasAccess` de CANCELLED depende dele | patch (data do Stripe no cancel) |
+| 2 | Blind, Edge, VG | Checkout aceito para CANCELLED com acesso → cobrança imediata sobreposta | high | Guard só bloqueia MONTHLY/ACTIVE | patch |
+| 3 | Blind, Edge, VG | `cancellationDate` não limpo ao reativar | medium | `activateMonthly` não zera | patch |
+| 4 | VG, Edge | Polling para na hora ao reassinar a partir de EXPIRED | medium | Condição `planType==='MONTHLY'` | patch |
+| 5 | Blind, Edge | Erro de rede no cancelamento diz "nada foi alterado"; falha no reload pós-409 some com a tela | medium | catch genérico | patch |
+| 6 | Blind | JSDoc deslocado em subscriptionService.ts | low | Correção direta | patch |
+| 7 | Blind, VG | Testes faltando: cancelAtPeriodEnd, valores do DTO, 404 do /cancel, CANCELLED sem acesso (dashboard/view) | medium | VG pré-verificado | patch |
+| 8 | Blind, Edge | `customer.subscription.updated` não tratado (desfazer cancelamento fora do app; datas de renovação) | medium | Só deleted/checkout roteados | defer (2.5/2.6) |
+| 9 | Blind, Edge | Stripe aceitou e commit falhou → divergência | low | Janela pequena; sem reconciliação | defer |
+| 10 | Blind, Edge | IP do audit via `getRemoteAddr` atrás de proxy | low | Mesmo padrão do DataExportController | defer |
+| 11 | Blind | Webhook de produção precisa assinar `customer.subscription.deleted` | low | Acesso termina pelo `hasAccess` mesmo assim | defer (deploy) |
+| 12 | Blind | ACTIVE→EXPIRED por cobrança falha sem aviso | low | Escopo da 2.7 | defer |
+| 13 | Blind | Comentário da coluna na V12 impreciso | low | V12 já aplicada; editar quebra checksum Flyway | reject |
 
 ## Design Notes
 

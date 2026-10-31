@@ -20,8 +20,9 @@ import java.util.UUID;
 
 /**
  * Stripe webhook (Story 2.2). Public in SecurityConfig: trust comes from the Stripe-Signature
- * header, verified against STRIPE_WEBHOOK_SECRET. Only checkout.session.completed is handled;
- * other events get 200 so Stripe stops retrying them.
+ * header, verified against STRIPE_WEBHOOK_SECRET. Handles checkout.session.completed (Story 2.2) and
+ * customer.subscription.deleted (Story 2.4: subscription ended -> EXPIRED); other events get 200
+ * so Stripe stops retrying them.
  *
  * Errors: bad signature -> 400 (nothing changes); Stripe API down while fetching the
  * subscription -> 503 (Stripe retries the delivery).
@@ -32,6 +33,7 @@ public class StripeWebhookController {
     private static final Logger log = LoggerFactory.getLogger(StripeWebhookController.class);
 
     static final String CHECKOUT_COMPLETED = "checkout.session.completed";
+    static final String SUBSCRIPTION_DELETED = "customer.subscription.deleted";
 
     // "no_payment_required": subscribed during the trial, first charge on trial_end
     private static final Set<String> SETTLED_PAYMENT_STATUSES = Set.of("paid", "no_payment_required");
@@ -56,13 +58,27 @@ public class StripeWebhookController {
             throw e;
         }
 
-        if (!CHECKOUT_COMPLETED.equals(event.type())) {
+        if (CHECKOUT_COMPLETED.equals(event.type())) {
+            handleCheckoutCompleted(event);
+        } else if (SUBSCRIPTION_DELETED.equals(event.type())) {
+            handleSubscriptionDeleted(event);
+        } else {
             log.debug("Ignoring Stripe event {} ({})", event.id(), event.type());
-            return ResponseEntity.ok().build();
         }
-
-        handleCheckoutCompleted(event);
         return ResponseEntity.ok().build();
+    }
+
+    private void handleSubscriptionDeleted(WebhookEvent event) {
+        String stripeSubscriptionId = text(event.object(), "id");
+        if (stripeSubscriptionId == null) {
+            log.warn("Ignoring {} {}: no subscription id", SUBSCRIPTION_DELETED, event.id());
+            return;
+        }
+        // Unknown id / replay: service logs and changes nothing; always 200 so Stripe stops retrying
+        if (subscriptionService.expireByStripeSubscriptionId(stripeSubscriptionId)) {
+            log.info("Stripe subscription {} ended; local subscription expired (event {})",
+                stripeSubscriptionId, event.id());
+        }
     }
 
     private void handleCheckoutCompleted(WebhookEvent event) {

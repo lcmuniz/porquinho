@@ -42,8 +42,26 @@
 
         <TrialBadge v-if="subscription" :subscription="subscription" />
 
-        <p v-if="isActiveMonthly" data-testid="already-subscribed" class="text-gray-700">
-          Sua assinatura está ativa. Obrigado por apoiar o Porquinho!
+        <template v-if="isActiveMonthly">
+          <p data-testid="already-subscribed" class="text-gray-700">
+            Sua assinatura está ativa. Obrigado por apoiar o Porquinho!
+          </p>
+          <Button
+            variant="outline"
+            class="min-h-[44px]"
+            data-testid="cancel-button"
+            @click="openCancelDialog"
+          >
+            Cancelar assinatura
+          </Button>
+        </template>
+        <p
+          v-else-if="isCancelledWithAccess"
+          role="status"
+          data-testid="cancelled-notice"
+          class="text-gray-700"
+        >
+          Assinatura cancelada — ativa até {{ accessUntil }}. Nenhuma nova cobrança será feita.
         </p>
         <template v-else-if="returnStatus !== 'sucesso'">
           <p v-if="inTrial" class="text-sm text-gray-600">
@@ -64,7 +82,41 @@
         <p v-if="error" role="alert" data-testid="checkout-error" class="text-sm text-red-700">
           {{ error }}
         </p>
+        <p v-if="cancelError" role="alert" data-testid="cancel-error" class="text-sm text-red-700">
+          {{ cancelError }}
+        </p>
       </section>
+
+      <Dialog v-model:open="showCancelDialog">
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancelar assinatura?</DialogTitle>
+            <DialogDescription data-testid="cancel-dialog-description">
+              Tem certeza? Você perde o acesso ao fim do período atual ({{ accessUntil }}). Nenhuma
+              nova cobrança será feita.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              class="min-h-[44px]"
+              :disabled="cancelling"
+              @click="showCancelDialog = false"
+            >
+              Manter assinatura
+            </Button>
+            <Button
+              variant="destructive"
+              class="min-h-[44px]"
+              data-testid="confirm-cancel-button"
+              :disabled="cancelling"
+              @click="confirmCancel"
+            >
+              {{ cancelling ? 'Cancelando...' : 'Cancelar assinatura' }}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   </main>
 </template>
@@ -73,10 +125,24 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import TrialBadge from '@/components/subscription/TrialBadge.vue'
-import { createCheckout, getMySubscription } from '@/services/subscriptionService'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { formatDateBR } from '@/lib/date'
+import {
+  cancelSubscription,
+  createCheckout,
+  getMySubscription,
+} from '@/services/subscriptionService'
 import type { Subscription } from '@/types/subscription'
 
-// Após o retorno do Checkout o webhook pode levar alguns segundos: recarrega até virar MONTHLY
+// Após o retorno do Checkout o webhook pode levar alguns segundos: recarrega até virar MONTHLY/ACTIVE
 const POLL_INTERVAL_MS = 2000
 const POLL_MAX_ATTEMPTS = 5
 
@@ -89,6 +155,53 @@ const returnStatus = computed(() => route.query.status)
 const isActiveMonthly = computed(
   () => subscription.value?.planType === 'MONTHLY' && subscription.value.status === 'ACTIVE',
 )
+// Story 2.4: cancelada e ainda dentro do período pago (reativar fica para a Story 2.5)
+const isCancelledWithAccess = computed(
+  () =>
+    subscription.value?.planType === 'MONTHLY' &&
+    subscription.value.status === 'CANCELLED' &&
+    subscription.value.hasAccess,
+)
+const accessUntil = computed(() => formatDateBR(subscription.value?.nextBillingDate))
+
+const showCancelDialog = ref(false)
+const cancelling = ref(false)
+const cancelError = ref<string | null>(null)
+
+function openCancelDialog() {
+  cancelError.value = null
+  showCancelDialog.value = true
+}
+
+async function confirmCancel() {
+  cancelling.value = true
+  cancelError.value = null
+  try {
+    subscription.value = await cancelSubscription()
+    showCancelDialog.value = false
+  } catch (err) {
+    const status = (err as { response?: { status?: number } }).response?.status
+    showCancelDialog.value = false
+    if (status === 409) {
+      // Já cancelada (ex.: outra aba): mostra o estado atual
+      await loadSubscription()
+    } else if (status === 503) {
+      // O backend só marca CANCELLED depois que o Stripe aceita: 503 garante que nada mudou
+      cancelError.value =
+        'Não foi possível cancelar agora. Nada foi alterado; tente novamente em alguns minutos.'
+    } else {
+      // Timeout/sem resposta/outro erro: o cancelamento pode ter acontecido; mostra o estado real
+      await loadSubscription()
+      if (!isCancelledWithAccess.value) {
+        cancelError.value =
+          'Não foi possível confirmar o cancelamento. Verifique o status e tente novamente.'
+      }
+    }
+  } finally {
+    cancelling.value = false
+  }
+}
+
 const inTrial = computed(
   () => subscription.value?.planType === 'TRIAL' && subscription.value.hasAccess,
 )
@@ -115,12 +228,13 @@ async function loadSubscription() {
   try {
     subscription.value = await getMySubscription()
   } catch {
-    subscription.value = null
+    // Mantém o estado anterior (na carga inicial já é null): um reload que falha não pode sumir com a tela
   }
 }
 
 function pollUntilMonthly(attempt = 1) {
-  if (subscription.value?.planType === 'MONTHLY' || attempt > POLL_MAX_ATTEMPTS) return
+  // MONTHLY/EXPIRED (assinando de novo) continua até o webhook ativar
+  if (isActiveMonthly.value || attempt > POLL_MAX_ATTEMPTS) return
   pollTimer = setTimeout(async () => {
     await loadSubscription()
     pollUntilMonthly(attempt + 1)

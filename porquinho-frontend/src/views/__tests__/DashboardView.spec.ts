@@ -88,4 +88,60 @@ describe('DashboardView', () => {
     expect(wrapper.get('[data-testid="subscription-active-badge"]').text()).toBe('Assinatura ativa')
     expect(wrapper.find('[data-testid="subscribe-cta"]').exists()).toBe(false)
   })
+
+  // Story 2.4
+  it('mostra o CTA Assinar para assinatura expirada', async () => {
+    mockGetMySubscription.mockResolvedValue({
+      planType: 'MONTHLY',
+      status: 'EXPIRED',
+      trialStartDate: '2026-09-01T12:00:00Z',
+      trialEndDate: '2026-10-01T12:00:00Z',
+      nextBillingDate: '2026-10-30T12:00:00Z',
+      cancellationDate: '2026-10-10T12:00:00Z',
+      daysRemaining: 0,
+      hasAccess: false,
+    })
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="subscription-expired-badge"]').text()).toBe('Assinatura expirada')
+    expect(wrapper.get('[data-testid="subscribe-cta"]').text()).toBe('Assinar')
+  })
+
+  it('cancelada dentro do período mostra a data e não oferece o CTA', async () => {
+    mockGetMySubscription.mockResolvedValue({
+      planType: 'MONTHLY',
+      status: 'CANCELLED',
+      trialStartDate: '2026-09-01T12:00:00Z',
+      trialEndDate: '2026-10-01T12:00:00Z',
+      nextBillingDate: '2026-11-30T12:00:00Z',
+      cancellationDate: '2026-10-31T12:00:00Z',
+      daysRemaining: 0,
+      hasAccess: true,
+    })
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="subscription-cancelled-badge"]').text()).toBe(
+      'Assinatura cancelada (ativa até 30/11/2026)',
+    )
+    expect(wrapper.find('[data-testid="subscribe-cta"]').exists()).toBe(false)
+  })
+
+  it('cancelada já sem acesso mostra o CTA Assinar', async () => {
+    mockGetMySubscription.mockResolvedValue({
+      planType: 'MONTHLY',
+      status: 'CANCELLED',
+      trialStartDate: '2026-09-01T12:00:00Z',
+      trialEndDate: '2026-10-01T12:00:00Z',
+      nextBillingDate: '2026-10-30T12:00:00Z',
+      cancellationDate: '2026-10-10T12:00:00Z',
+      daysRemaining: 0,
+      hasAccess: false,
+    })
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="subscribe-cta"]').text()).toBe('Assinar')
+  })
 })
