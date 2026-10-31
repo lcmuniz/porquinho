@@ -17,3 +17,6 @@ ssl/
 
 # Runtime data export files
 porquinho-backend/exports/
+
+# BMAD: cache de workflows renderizados (gerado a cada execução)
+_bmad/render/
