@@ -1,16 +1,15 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import HomeView from '../views/HomeView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
-    // Rotas publicas (acessiveis sem autenticacao)
+    // Raiz: dashboard (guard manda para /login se nao autenticado)
     {
       path: '/',
-      name: 'home',
-      component: HomeView,
-      meta: { requiresAuth: false },
+      redirect: { name: 'dashboard' },
     },
+
+    // Rotas publicas (acessiveis sem autenticacao)
     {
       path: '/login',
       name: 'login',
@@ -93,11 +92,6 @@ const router = createRouter({
     },
 
     // Rotas de desenvolvimento (sem restricao)
-    {
-      path: '/about',
-      name: 'about',
-      component: () => import('../views/AboutView.vue'),
-    },
     {
       path: '/design-system',
       name: 'design-system',
