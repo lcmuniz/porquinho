@@ -33,6 +33,14 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, UUID
     Optional<Subscription> findByUserIdForUpdate(@Param("userId") UUID userId);
 
     /**
+     * Row lock by Stripe subscription id (Story 2.4, customer.subscription.deleted webhook).
+     * stripe_subscription_id is UNIQUE (V10), so at most one row.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT s FROM Subscription s WHERE s.stripeSubscriptionId = :stripeSubscriptionId")
+    Optional<Subscription> findByStripeSubscriptionIdForUpdate(@Param("stripeSubscriptionId") String stripeSubscriptionId);
+
+    /**
      * Candidates for the daily trial reminder job (Story 2.3): running trials with a reminder possibly due,
      * i.e. 7d pending and ending by sevenDayUntil, or 1d pending and ending by oneDayUntil. Narrow on purpose:
      * rows already reminded (7d) are not re-locked daily until the 1d window. The exact day rules

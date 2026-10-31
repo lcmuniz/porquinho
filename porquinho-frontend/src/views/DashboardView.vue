@@ -7,7 +7,7 @@
             <h1 class="text-2xl font-semibold text-gray-900">Dashboard</h1>
             <TrialBadge v-if="subscription" :subscription="subscription" />
             <RouterLink
-              v-if="subscription?.planType === 'TRIAL'"
+              v-if="showSubscribeCta"
               to="/assinatura"
               data-testid="subscribe-cta"
               class="text-sm font-medium text-gray-700 underline hover:text-gray-900"
@@ -70,7 +70,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import TrialBadge from '@/components/subscription/TrialBadge.vue'
 import { getMySubscription } from '@/services/subscriptionService'
@@ -79,6 +79,16 @@ import { useAuthStore } from '@/stores/auth'
 import type { Subscription } from '@/types/subscription'
 
 const subscription = ref<Subscription | null>(null)
+// Trial, ou assinatura expirada/cancelada já sem acesso (Story 2.4)
+const showSubscribeCta = computed(() => {
+  const sub = subscription.value
+  if (!sub) return false
+  return (
+    sub.planType === 'TRIAL' ||
+    sub.status === 'EXPIRED' ||
+    (sub.status === 'CANCELLED' && !sub.hasAccess)
+  )
+})
 const router = useRouter()
 const authStore = useAuthStore()
 

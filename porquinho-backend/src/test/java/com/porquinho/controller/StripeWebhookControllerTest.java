@@ -178,4 +178,39 @@ class StripeWebhookControllerTest {
 
         verify(subscriptionService).activateMonthly(USER_ID, "cus_1", "sub_1", "pm_1", periodEnd);
     }
+
+    // ---- Story 2.4 ----
+
+    @Test
+    void subscriptionDeletedExpiresLocalSubscription() throws Exception {
+        when(stripeBillingService.verifyWebhook(anyString(), anyString())).thenReturn(new WebhookEvent(
+            "evt_4", "customer.subscription.deleted", JSON.readTree("{\"id\":\"sub_1\",\"object\":\"subscription\"}")));
+        when(subscriptionService.expireByStripeSubscriptionId("sub_1")).thenReturn(true);
+
+        postWebhook();
+
+        verify(subscriptionService).expireByStripeSubscriptionId("sub_1");
+        verify(stripeBillingService, never()).retrieveSubscription(anyString());
+    }
+
+    @Test
+    void subscriptionDeletedForUnknownIdIsAcknowledgedWith200() throws Exception {
+        when(stripeBillingService.verifyWebhook(anyString(), anyString())).thenReturn(new WebhookEvent(
+            "evt_5", "customer.subscription.deleted", JSON.readTree("{\"id\":\"sub_unknown\"}")));
+        when(subscriptionService.expireByStripeSubscriptionId("sub_unknown")).thenReturn(false);
+
+        postWebhook();
+
+        verify(subscriptionService).expireByStripeSubscriptionId("sub_unknown");
+    }
+
+    @Test
+    void subscriptionDeletedWithoutIdIsIgnored() throws Exception {
+        when(stripeBillingService.verifyWebhook(anyString(), anyString())).thenReturn(new WebhookEvent(
+            "evt_6", "customer.subscription.deleted", JSON.readTree("{}")));
+
+        postWebhook();
+
+        verifyNoInteractions(subscriptionService);
+    }
 }

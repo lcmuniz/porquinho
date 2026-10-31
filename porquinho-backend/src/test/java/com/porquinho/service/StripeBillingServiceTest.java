@@ -7,6 +7,9 @@ import com.stripe.model.Subscription;
 import com.stripe.model.SubscriptionItem;
 import com.stripe.model.SubscriptionItemCollection;
 import com.stripe.param.checkout.SessionCreateParams;
+import com.stripe.StripeClient;
+import com.stripe.exception.ApiConnectionException;
+import com.stripe.param.SubscriptionUpdateParams;
 import org.junit.jupiter.api.Test;
 
 import javax.crypto.Mac;
@@ -21,6 +24,10 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * Story 2.2: webhook signature verification with the real Stripe algorithm (no network).
@@ -163,5 +170,57 @@ class StripeBillingServiceTest {
             StripeBillingService.toDetails(stripeSubscription(null, trialEnd));
 
         assertThat(details.currentPeriodEnd()).isEqualTo(OffsetDateTime.of(2026, 11, 30, 12, 0, 0, 0, ZoneOffset.UTC));
+    }
+
+    // ---- Story 2.4 ----
+
+    @Test
+    void cancelAtPeriodEndWithoutSecretKeyThrowsUnavailable() {
+        assertThatThrownBy(() -> service.cancelAtPeriodEnd("sub_1"))
+            .isInstanceOf(PaymentProviderUnavailableException.class);
+        assertThatThrownBy(() -> service.cancelAtPeriodEnd(null))
+            .isInstanceOf(PaymentProviderUnavailableException.class);
+    }
+
+    private StripeBillingService serviceWithSubscriptions(com.stripe.service.SubscriptionService subscriptions) {
+        StripeClient client = mock(StripeClient.class);
+        when(client.subscriptions()).thenReturn(subscriptions);
+        return new StripeBillingService(client, SECRET, "http://localhost:5173", new ObjectMapper());
+    }
+
+    @Test
+    void cancelAtPeriodEndReturnsItemPeriodEndFromStripeResponse() throws Exception {
+        com.stripe.service.SubscriptionService subscriptions = mock(com.stripe.service.SubscriptionService.class);
+        long periodEnd = Instant.parse("2026-12-31T12:00:00Z").getEpochSecond();
+        when(subscriptions.update(eq("sub_1"), any(SubscriptionUpdateParams.class)))
+            .thenReturn(stripeSubscription(periodEnd, null));
+
+        assertThat(serviceWithSubscriptions(subscriptions).cancelAtPeriodEnd("sub_1"))
+            .isEqualTo(OffsetDateTime.of(2026, 12, 31, 12, 0, 0, 0, ZoneOffset.UTC));
+    }
+
+    @Test
+    void cancelAtPeriodEndFallsBackToCancelAtThenTrialEnd() throws Exception {
+        com.stripe.service.SubscriptionService subscriptions = mock(com.stripe.service.SubscriptionService.class);
+        Subscription withCancelAt = stripeSubscription(null, Instant.parse("2026-11-15T12:00:00Z").getEpochSecond());
+        withCancelAt.setCancelAt(Instant.parse("2026-11-30T12:00:00Z").getEpochSecond());
+        when(subscriptions.update(eq("sub_1"), any(SubscriptionUpdateParams.class)))
+            .thenReturn(withCancelAt)
+            .thenReturn(stripeSubscription(null, Instant.parse("2026-11-15T12:00:00Z").getEpochSecond()));
+        StripeBillingService billing = serviceWithSubscriptions(subscriptions);
+
+        assertThat(billing.cancelAtPeriodEnd("sub_1")).isEqualTo(OffsetDateTime.of(2026, 11, 30, 12, 0, 0, 0, ZoneOffset.UTC));
+        assertThat(billing.cancelAtPeriodEnd("sub_1")).isEqualTo(OffsetDateTime.of(2026, 11, 15, 12, 0, 0, 0, ZoneOffset.UTC));
+    }
+
+    @Test
+    void cancelAtPeriodEndWrapsStripeExceptionAsUnavailable() throws Exception {
+        com.stripe.service.SubscriptionService subscriptions = mock(com.stripe.service.SubscriptionService.class);
+        when(subscriptions.update(eq("sub_1"), any(SubscriptionUpdateParams.class)))
+            .thenThrow(new ApiConnectionException("timeout"));
+
+        assertThatThrownBy(() -> serviceWithSubscriptions(subscriptions).cancelAtPeriodEnd("sub_1"))
+            .isInstanceOf(PaymentProviderUnavailableException.class)
+            .hasCauseInstanceOf(ApiConnectionException.class);
     }
 }

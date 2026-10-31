@@ -50,3 +50,21 @@
 - source_spec: `_bmad-output/implementation-artifacts/2-3-send-trial-expiration-reminders.md`
   summary: EmailService loga e-mail completo do destinatário (dado pessoal, LGPD).
   evidence: Padrão em todos os métodos de envio; trocar por userId ou e-mail mascarado.
+
+## Deferred from: code review of 2-4-self-service-subscription-cancellation (2026-10-31)
+
+- source_spec: `_bmad-output/implementation-artifacts/2-4-self-service-subscription-cancellation.md`
+  summary: Tratar `customer.subscription.updated` (desfazer cancelamento fora do app; atualizar `next_billing_date` nas renovações).
+  evidence: Hoje só `checkout.session.completed` e `customer.subscription.deleted`; natural na 2.5 (reativação) e 2.6 (recorrência).
+- source_spec: `_bmad-output/implementation-artifacts/2-4-self-service-subscription-cancellation.md`
+  summary: Reconciliar quando o Stripe aceita `cancel_at_period_end` mas o commit local falha (idempotency key / desfazer).
+  evidence: Janela pequena; hoje a linha fica ACTIVE e o Stripe para de cobrar.
+- source_spec: `_bmad-output/implementation-artifacts/2-4-self-service-subscription-cancellation.md`
+  summary: IP do audit atrás de proxy (usar X-Forwarded-For como AuthController) em SubscriptionController e DataExportController.
+  evidence: `getRemoteAddr` grava o IP do proxy em produção.
+- source_spec: `_bmad-output/implementation-artifacts/2-4-self-service-subscription-cancellation.md`
+  summary: Endpoint de webhook de produção no painel Stripe deve assinar `checkout.session.completed` e `customer.subscription.deleted`.
+  evidence: Sem isso nenhuma linha vira EXPIRED (acesso termina pelo hasAccess mesmo assim).
+- source_spec: `_bmad-output/implementation-artifacts/2-4-self-service-subscription-cancellation.md`
+  summary: ACTIVE→EXPIRED por cobranças recusadas sem e-mail/aviso ao usuário.
+  evidence: Escopo da Story 2.7.

@@ -7,7 +7,8 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * User subscription (Story 2.1; Stripe ids added in Story 2.2; trial reminder tracking in Story 2.3). One row per user for its whole lifetime.
+ * User subscription (Story 2.1; Stripe ids added in Story 2.2; trial reminder tracking in Story 2.3;
+ * cancellation_date in Story 2.4). One row per user for its whole lifetime.
  * No @Where on purpose: the LGPD purge hard-deletes this row (see Story 1.7 learnings).
  */
 @Entity
@@ -58,6 +59,9 @@ public class Subscription {
 
     @Column(name = "trial_reminder_1d_sent_at")
     private OffsetDateTime trialReminder1dSentAt;
+
+    @Column(name = "cancellation_date")
+    private OffsetDateTime cancellationDate;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
@@ -127,6 +131,9 @@ public class Subscription {
 
     public OffsetDateTime getTrialReminder1dSentAt() { return trialReminder1dSentAt; }
     public void setTrialReminder1dSentAt(OffsetDateTime trialReminder1dSentAt) { this.trialReminder1dSentAt = trialReminder1dSentAt; }
+
+    public OffsetDateTime getCancellationDate() { return cancellationDate; }
+    public void setCancellationDate(OffsetDateTime cancellationDate) { this.cancellationDate = cancellationDate; }
 
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }
