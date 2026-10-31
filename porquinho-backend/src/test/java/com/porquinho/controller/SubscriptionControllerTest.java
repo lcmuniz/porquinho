@@ -2,6 +2,8 @@ package com.porquinho.controller;
 
 import com.porquinho.config.TestWebSecurityConfig;
 import com.porquinho.entity.Subscription;
+import com.porquinho.exception.ConflictException;
+import com.porquinho.exception.PaymentProviderUnavailableException;
 import com.porquinho.service.SubscriptionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,6 +24,7 @@ import java.util.UUID;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(SubscriptionController.class)
@@ -75,5 +78,34 @@ class SubscriptionControllerTest {
 
         mockMvc.perform(get("/api/v1/subscriptions/me").with(authentication(authToken)))
             .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void checkoutShouldReturn200WithStripeUrl() throws Exception {
+        when(subscriptionService.createCheckout(userId)).thenReturn("https://checkout.stripe.com/c/pay/cs_test_1");
+
+        mockMvc.perform(post("/api/v1/subscriptions/checkout").with(authentication(authToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.url").value("https://checkout.stripe.com/c/pay/cs_test_1"));
+    }
+
+    @Test
+    void checkoutShouldReturn409WhenAlreadyMonthly() throws Exception {
+        when(subscriptionService.createCheckout(userId)).thenThrow(new ConflictException("Você já possui uma assinatura ativa."));
+
+        mockMvc.perform(post("/api/v1/subscriptions/checkout").with(authentication(authToken)))
+            .andExpect(status().isConflict())
+            .andExpect(content().contentTypeCompatibleWith("application/problem+json"))
+            .andExpect(jsonPath("$.status").value(409));
+    }
+
+    @Test
+    void checkoutShouldReturn503WhenStripeFails() throws Exception {
+        when(subscriptionService.createCheckout(userId)).thenThrow(new PaymentProviderUnavailableException("down"));
+
+        mockMvc.perform(post("/api/v1/subscriptions/checkout").with(authentication(authToken)))
+            .andExpect(status().isServiceUnavailable())
+            .andExpect(content().contentTypeCompatibleWith("application/problem+json"))
+            .andExpect(jsonPath("$.status").value(503));
     }
 }

@@ -67,6 +67,13 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      // Story 2.2: plano mensal (Stripe Checkout). Retorno do Checkout: ?status=sucesso|cancelado
+      path: '/assinatura',
+      name: 'subscription',
+      component: () => import('../views/SubscriptionView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/onboarding',
       name: 'onboarding',
       component: () => import('../views/OnboardingView.vue'),

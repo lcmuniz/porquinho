@@ -23,3 +23,18 @@
 - source_spec: `_bmad-output/implementation-artifacts/2-1-automatically-activate-30-day-free-trial.md`
   summary: [RESOLVIDO 2026-10-31] `/login` e `/password-reset/completed` ainda usam `@AuthenticationPrincipal String`, que resolve null com `JwtAuthenticationToken`.
   evidence: Em produção o audit `password_reset_completed` é silenciosamente pulado. Trocar por `Authentication.getName()` como feito nos endpoints de registro.
+
+## Deferred from: code review of 2-2-subscribe-to-monthly-plan-after-trial (2026-10-31)
+
+- source_spec: `_bmad-output/implementation-artifacts/2-2-subscribe-to-monthly-plan-after-trial.md`
+  summary: `checkout.session.completed` reentregue após cancelamento/expiração pode reativar a assinatura.
+  evidence: maybe-false hoje (CANCELLED/EXPIRED inalcançáveis); tratar na 2.4 com dedupe por `event.id` ou checagem de status.
+- source_spec: `_bmad-output/implementation-artifacts/2-2-subscribe-to-monthly-plan-after-trial.md`
+  summary: Reaproveitar `stripe_customer_id` (`setCustomer`) em vez de `customer_email` ao reassinar.
+  evidence: Cada reassinatura cria Customer novo; relevante na 2.5 (reativação).
+- source_spec: `_bmad-output/implementation-artifacts/2-2-subscribe-to-monthly-plan-after-trial.md`
+  summary: Badge e CTA "Assinar" para MONTHLY CANCELLED/EXPIRED.
+  evidence: Estados só passam a existir nas Stories 2.4–2.7.
+- source_spec: `_bmad-output/implementation-artifacts/2-2-subscribe-to-monthly-plan-after-trial.md`
+  summary: Teste concorrente (Testcontainers) do lock pessimista em `findByUserIdForUpdate`.
+  evidence: Sem teste, remover `@Lock` passa; consequência limitada a audit/e-mail duplicados.

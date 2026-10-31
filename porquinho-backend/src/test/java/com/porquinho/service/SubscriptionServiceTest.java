@@ -2,6 +2,10 @@ package com.porquinho.service;
 
 import com.porquinho.entity.AuditLog;
 import com.porquinho.entity.Subscription;
+import com.porquinho.entity.User;
+import com.porquinho.exception.ConflictException;
+import com.porquinho.exception.PaymentProviderUnavailableException;
+import com.porquinho.repository.UserRepository;
 import com.porquinho.entity.Subscription.PlanType;
 import com.porquinho.entity.Subscription.Status;
 import com.porquinho.repository.SubscriptionRepository;
@@ -11,6 +15,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -20,10 +26,13 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.isNull;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -39,12 +48,22 @@ class SubscriptionServiceTest {
     @Mock
     private AuditLogService auditLogService;
 
+    @Mock
+    private StripeBillingService stripeBillingService;
+
+    @Mock
+    private UserRepository userRepository;
+
+    @Mock
+    private EmailService emailService;
+
     private SubscriptionService service;
     private UUID userId;
 
     @BeforeEach
     void setUp() {
-        service = new SubscriptionService(subscriptionRepository, auditLogService, Clock.fixed(NOW, ZoneOffset.UTC));
+        service = new SubscriptionService(subscriptionRepository, auditLogService, Clock.fixed(NOW, ZoneOffset.UTC),
+            stripeBillingService, userRepository, emailService);
         userId = UUID.randomUUID();
     }
 
@@ -146,5 +165,171 @@ class SubscriptionServiceTest {
     void daysRemainingShouldBeZeroWhenExpired() {
         assertThat(service.daysRemaining(trialEndingAt(NOW_UTC))).isZero();
         assertThat(service.daysRemaining(trialEndingAt(NOW_UTC.minusDays(3)))).isZero();
+    }
+
+    // ---- Story 2.2: checkout ----
+
+    private User userWithEmail(String email) {
+        User user = new User();
+        user.setEmail(email);
+        return user;
+    }
+
+    @Test
+    void createCheckoutDuringTrialDefersFirstChargeToTrialEnd() {
+        OffsetDateTime trialEnd = NOW_UTC.plusDays(10);
+        when(subscriptionRepository.findByUserId(userId)).thenReturn(Optional.of(trialEndingAt(trialEnd)));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
+        when(stripeBillingService.createCheckoutSession(userId, "ana@example.com", trialEnd.toInstant()))
+            .thenReturn("https://checkout.stripe.com/c/pay/cs_test_1");
+
+        assertThat(service.createCheckout(userId)).isEqualTo("https://checkout.stripe.com/c/pay/cs_test_1");
+    }
+
+    @Test
+    void createCheckoutWithExpiredTrialChargesImmediately() {
+        when(subscriptionRepository.findByUserId(userId)).thenReturn(Optional.of(trialEndingAt(NOW_UTC.minusDays(1))));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
+        when(stripeBillingService.createCheckoutSession(eq(userId), eq("ana@example.com"), isNull()))
+            .thenReturn("https://checkout.stripe.com/x");
+
+        assertThat(service.createCheckout(userId)).isEqualTo("https://checkout.stripe.com/x");
+    }
+
+    @Test
+    void firstChargeIsAtLeastStripeMinimumWhenTrialEndsSoon() {
+        Subscription endingSoon = trialEndingAt(NOW_UTC.plusHours(3));
+
+        assertThat(service.firstChargeAt(endingSoon)).isEqualTo(NOW.plus(SubscriptionService.MIN_STRIPE_TRIAL));
+    }
+
+    @Test
+    void createCheckoutWhenAlreadyMonthlyActiveThrowsConflict() {
+        Subscription monthly = trialEndingAt(NOW_UTC.minusDays(1));
+        monthly.setPlanType(PlanType.MONTHLY);
+        when(subscriptionRepository.findByUserId(userId)).thenReturn(Optional.of(monthly));
+
+        assertThatThrownBy(() -> service.createCheckout(userId)).isInstanceOf(ConflictException.class);
+        verify(stripeBillingService, never()).createCheckoutSession(any(), any(), any());
+    }
+
+    @Test
+    void createCheckoutStripeFailureLeavesTrialUntouched() {
+        Subscription trial = trialEndingAt(NOW_UTC.plusDays(10));
+        when(subscriptionRepository.findByUserId(userId)).thenReturn(Optional.of(trial));
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+        when(stripeBillingService.createCheckoutSession(eq(userId), isNull(), any()))
+            .thenThrow(new PaymentProviderUnavailableException("down"));
+
+        assertThatThrownBy(() -> service.createCheckout(userId)).isInstanceOf(PaymentProviderUnavailableException.class);
+        assertThat(trial.getPlanType()).isEqualTo(PlanType.TRIAL);
+        verify(subscriptionRepository, never()).save(any());
+    }
+
+    // ---- Story 2.2: activateMonthly ----
+
+    @Test
+    void activateMonthlySwitchesPlanSavesStripeIdsAuditsAndEmails() {
+        Subscription trial = trialEndingAt(NOW_UTC.plusDays(10));
+        OffsetDateTime nextBilling = NOW_UTC.plusDays(10);
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(trial));
+        when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
+
+        Subscription result = service.activateMonthly(userId, "cus_1", "sub_1", "pm_1", nextBilling);
+
+        assertThat(result.getPlanType()).isEqualTo(PlanType.MONTHLY);
+        assertThat(result.getStatus()).isEqualTo(Status.ACTIVE);
+        assertThat(result.getStripeCustomerId()).isEqualTo("cus_1");
+        assertThat(result.getStripeSubscriptionId()).isEqualTo("sub_1");
+        assertThat(result.getPaymentMethodId()).isEqualTo("pm_1");
+        assertThat(result.getNextBillingDate()).isEqualTo(nextBilling);
+        verify(auditLogService).log(eq("subscription_activated"), eq(userId), isNull(), anyString());
+        verify(emailService).sendSubscriptionActivated("ana@example.com", nextBilling);
+    }
+
+    @Test
+    void activateMonthlyIsIdempotentForSameStripeSubscription() {
+        Subscription trial = trialEndingAt(NOW_UTC.plusDays(10));
+        OffsetDateTime nextBilling = NOW_UTC.plusDays(10);
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(trial));
+        when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
+
+        service.activateMonthly(userId, "cus_1", "sub_1", "pm_1", nextBilling);
+        Subscription second = service.activateMonthly(userId, "cus_1", "sub_1", "pm_1", nextBilling);
+
+        assertThat(second.getPlanType()).isEqualTo(PlanType.MONTHLY);
+        assertThat(second.getStripeSubscriptionId()).isEqualTo("sub_1");
+        verify(subscriptionRepository, times(1)).save(any());
+        verify(auditLogService, times(1)).log(eq("subscription_activated"), any(), any(), anyString());
+        verify(emailService, times(1)).sendSubscriptionActivated(anyString(), any());
+    }
+
+    @Test
+    void createCheckoutForCancelledMonthlyIsNotAConflict() {
+        Subscription cancelled = trialEndingAt(NOW_UTC.minusDays(40));
+        cancelled.setPlanType(PlanType.MONTHLY);
+        cancelled.setStatus(Status.CANCELLED);
+        when(subscriptionRepository.findByUserId(userId)).thenReturn(Optional.of(cancelled));
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+        when(stripeBillingService.createCheckoutSession(eq(userId), isNull(), isNull())).thenReturn("https://checkout.stripe.com/y");
+
+        assertThat(service.createCheckout(userId)).isEqualTo("https://checkout.stripe.com/y");
+    }
+
+    @Test
+    void activateMonthlyWithDifferentStripeSubscriptionKeepsRowAndCancelsDuplicate() {
+        Subscription active = trialEndingAt(NOW_UTC.minusDays(5));
+        active.setPlanType(PlanType.MONTHLY);
+        active.setStripeCustomerId("cus_1");
+        active.setStripeSubscriptionId("sub_1");
+        active.setPaymentMethodId("pm_1");
+        OffsetDateTime originalNext = NOW_UTC.plusDays(20);
+        active.setNextBillingDate(originalNext);
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(active));
+
+        Subscription result = service.activateMonthly(userId, "cus_2", "sub_2", "pm_2", NOW_UTC.plusDays(30));
+
+        assertThat(result.getStripeSubscriptionId()).isEqualTo("sub_1");
+        assertThat(result.getStripeCustomerId()).isEqualTo("cus_1");
+        assertThat(result.getPaymentMethodId()).isEqualTo("pm_1");
+        assertThat(result.getNextBillingDate()).isEqualTo(originalNext);
+        verify(stripeBillingService).cancelSubscription("sub_2");
+        verify(subscriptionRepository, never()).save(any());
+        verify(auditLogService, never()).log(anyString(), any(), any(), any());
+        verify(emailService, never()).sendSubscriptionActivated(any(), any());
+    }
+
+    @Test
+    void activateMonthlyAuditWritesJsonNullWhenNextBillingDateMissing() {
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(trialEndingAt(NOW_UTC.plusDays(3))));
+        when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.activateMonthly(userId, "cus_1", "sub_1", "pm_1", null);
+
+        ArgumentCaptor<String> metadata = ArgumentCaptor.forClass(String.class);
+        verify(auditLogService).log(eq("subscription_activated"), eq(userId), isNull(), metadata.capture());
+        assertThat(metadata.getValue()).isEqualTo("{\"stripe_subscription_id\":\"sub_1\",\"next_billing_date\":null}");
+    }
+
+    @Test
+    void activateMonthlySendsEmailOnlyAfterCommit() {
+        OffsetDateTime nextBilling = NOW_UTC.plusDays(10);
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(trialEndingAt(nextBilling)));
+        when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.activateMonthly(userId, "cus_1", "sub_1", "pm_1", nextBilling);
+            verify(emailService, never()).sendSubscriptionActivated(any(), any());
+
+            TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
+
+            verify(emailService).sendSubscriptionActivated("ana@example.com", nextBilling);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 }

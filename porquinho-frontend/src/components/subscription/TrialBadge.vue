@@ -10,6 +10,14 @@
   >
     {{ label }}
   </span>
+  <span
+    v-else-if="subscription.planType === 'MONTHLY' && subscription.status === 'ACTIVE'"
+    role="status"
+    data-testid="subscription-active-badge"
+    class="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800"
+  >
+    Assinatura ativa
+  </span>
 </template>
 
 <script setup lang="ts">

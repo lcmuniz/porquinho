@@ -6,6 +6,14 @@
           <div class="flex flex-wrap items-center gap-3">
             <h1 class="text-2xl font-semibold text-gray-900">Dashboard</h1>
             <TrialBadge v-if="subscription" :subscription="subscription" />
+            <RouterLink
+              v-if="subscription?.planType === 'TRIAL'"
+              to="/assinatura"
+              data-testid="subscribe-cta"
+              class="text-sm font-medium text-gray-700 underline hover:text-gray-900"
+            >
+              Assinar
+            </RouterLink>
           </div>
           <p class="text-gray-600">Em desenvolvimento — Epic 7</p>
         </div>

@@ -48,4 +48,12 @@ describe('TrialBadge', () => {
 
     expect(wrapper.find('[data-testid="trial-badge"]').exists()).toBe(false)
   })
+
+  it('mostra "Assinatura ativa" para plano mensal ativo', () => {
+    const wrapper = mount(TrialBadge, {
+      props: { subscription: makeSubscription({ planType: 'MONTHLY', daysRemaining: 0 }) },
+    })
+
+    expect(wrapper.get('[data-testid="subscription-active-badge"]').text()).toBe('Assinatura ativa')
+  })
 })

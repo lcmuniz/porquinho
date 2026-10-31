@@ -2,7 +2,8 @@
 title: 'Assinar plano mensal (R$ 19,90) via Stripe Checkout'
 type: 'feature'
 created: '2026-10-31'
-status: 'ready-for-dev'
+status: 'done'
+baseline_commit: 94762ff0d527d091972849ca0a27a70bfd89f3af
 route: 'dispatch'
 story_key: 2-2-subscribe-to-monthly-plan-after-trial
 review_loop_iteration: 0
@@ -67,15 +68,15 @@ context:
 
 ## Tasks & Acceptance
 
-- [ ] `pom.xml` + `application.yml` -- stripe-java, propriedades Stripe e `app.frontend-url`; `.env.example`/docs com `STRIPE_WEBHOOK_SECRET`
-- [ ] `V10__add_stripe_ids_to_subscriptions.sql` + `Subscription.java` -- colunas e campos novos
-- [ ] `service/StripeBillingService.java` -- criar sessão Checkout (`mode=subscription`, `client_reference_id`=userId, `customer_email`, `price_data` 1990 BRL mensal, success `{frontend}/assinatura?status=sucesso`, cancel `{frontend}/assinatura?status=cancelado`); construir/verificar evento do webhook. Isola o SDK para mock nos testes
-- [ ] `SubscriptionService.java` -- `activateMonthly(userId, stripeCustomerId, stripeSubscriptionId, paymentMethodId, nextBillingDate)` idempotente + audit + e-mail
-- [ ] `SubscriptionController.java` -- `POST /checkout` (409 se já MONTHLY/ACTIVE, 503 se Stripe falhar)
-- [ ] `controller/StripeWebhookController.java` + `SecurityConfig.java` -- `POST /api/v1/webhooks/stripe`, público, trata `checkout.session.completed`; outros eventos → 200 ignorado
-- [ ] `EmailService.java` -- `sendSubscriptionActivated(email, nextBillingDate)`
-- [ ] Frontend: `views/SubscriptionView.vue` (rota `/assinatura`, requiresAuth): plano R$ 19,90/mês, botão "Assinar" → `window.location = url`; mensagens para `?status=sucesso|cancelado`; `subscriptionService.createCheckout()`; badge "Assinatura ativa" para MONTHLY; CTA "Assinar" no badge/dashboard em trial; `api.ts` 402 → `/assinatura`
-- [ ] Testes: unit `SubscriptionService.activateMonthly` (idempotência), controller checkout (200/409/503), webhook (assinatura inválida 400, evento válido ativa, evento ignorado 200), frontend SubscriptionView + interceptor 402
+- [x] `pom.xml` + `application.yml` -- stripe-java, propriedades Stripe e `app.frontend-url`; `.env.example`/docs com `STRIPE_WEBHOOK_SECRET`
+- [x] `V10__add_stripe_ids_to_subscriptions.sql` + `Subscription.java` -- colunas e campos novos
+- [x] `service/StripeBillingService.java` -- criar sessão Checkout (`mode=subscription`, `client_reference_id`=userId, `customer_email`, `price_data` 1990 BRL mensal, success `{frontend}/assinatura?status=sucesso`, cancel `{frontend}/assinatura?status=cancelado`); construir/verificar evento do webhook. Isola o SDK para mock nos testes
+- [x] `SubscriptionService.java` -- `activateMonthly(userId, stripeCustomerId, stripeSubscriptionId, paymentMethodId, nextBillingDate)` idempotente + audit + e-mail
+- [x] `SubscriptionController.java` -- `POST /checkout` (409 se já MONTHLY/ACTIVE, 503 se Stripe falhar)
+- [x] `controller/StripeWebhookController.java` + `SecurityConfig.java` -- `POST /api/v1/webhooks/stripe`, público, trata `checkout.session.completed`; outros eventos → 200 ignorado
+- [x] `EmailService.java` -- `sendSubscriptionActivated(email, nextBillingDate)`
+- [x] Frontend: `views/SubscriptionView.vue` (rota `/assinatura`, requiresAuth): plano R$ 19,90/mês, botão "Assinar" → `window.location = url`; mensagens para `?status=sucesso|cancelado`; `subscriptionService.createCheckout()`; badge "Assinatura ativa" para MONTHLY; CTA "Assinar" no badge/dashboard em trial; `api.ts` 402 → `/assinatura`
+- [x] Testes: unit `SubscriptionService.activateMonthly` (idempotência), controller checkout (200/409/503), webhook (assinatura inválida 400, evento válido ativa, evento ignorado 200), frontend SubscriptionView + interceptor 402
 
 **AC:**
 - Dado trial ativo, quando clico "Assinar" e pago com `4242 4242 4242 4242` no Checkout de teste, então volto para `/assinatura?status=sucesso` e, após o webhook, o dashboard mostra "Assinatura ativa".
@@ -84,6 +85,29 @@ context:
 ## Spec Change Log
 
 ## Review Triage Log
+
+Revisão em 3 camadas (Blind Hunter, Edge Case Hunter, Verification Gap) — 2026-10-31.
+
+| # | Origem | Achado | Veredito | Evidência | Rota |
+|---|---|---|---|---|---|
+| 1 | Blind, Edge | 2º Checkout concluído sobrescreve `stripeSubscriptionId`; 1ª assinatura Stripe segue cobrando | high | `activateMonthly` só checa mesmo id; nada impede 2 sessões | patch (cancelar duplicata) — escolhido sobre bad_spec por proporcionalidade: guard local + 1 método best-effort |
+| 2 | Blind, Edge | Purge LGPD não cancela assinatura no Stripe | high | `AccountDeletionService:209` TODO; com 2.2 há cobrança real | patch (reusa cancelSubscription do #1) |
+| 3 | Edge | Evento antigo reativa CANCELLED/EXPIRED | maybe-false | Estados inalcançáveis até 2.4 | defer |
+| 4 | Blind | Customer Stripe não reaproveitado | low | Só afeta reassinatura (2.5) | defer |
+| 5 | Blind, VG | Checkout com trial vencido sem teste pela cadeia real | medium | Isenção `/api/v1/subscriptions/` existe; sem teste | patch (teste) |
+| 6 | Blind, Edge | Data do e-mail em UTC | low | `toOffsetDateTime` UTC; correção direta | patch |
+| 7 | Blind, Edge | Tela de sucesso: texto "Pagamento recebido", botão Assinar visível, sem refresh | medium | Trial não paga agora; risco de 2º checkout (#1) | patch |
+| 8 | Blind | Erro inesperado no webhook → 500 e Stripe reenvia | false | Retry é o comportamento desejado para erro transitório | reject |
+| 9 | Blind | Mensagens de config expostas no webhook público | low | `ex.getMessage()` no ProblemDetail; correção direta | patch |
+| 10 | Blind, Edge | Audit JSON grava "null" e não escapa | low | `String.format`; correção direta | patch |
+| 11 | Blind | Import circular api.ts ↔ router | maybe-false | Funciona em dev/testes; views lazy | reject (low se real) |
+| 12 | Blind, Edge | Badge/CTA ausentes para MONTHLY CANCELLED/EXPIRED | low | Estados inalcançáveis até 2.4 | defer |
+| 13 | VG | Caminho afterCommit do e-mail sem teste | medium | VG pré-verificado | patch |
+| 14 | VG | Parâmetros do Checkout e mapeamento da subscription sem teste | medium | VG pré-verificado | patch |
+| 15 | VG, Blind | Guardas do webhook sem teste | medium | VG pré-verificado | patch |
+| 16 | VG, Blind | Lock pessimista sem teste concorrente | medium | VG pré-verificado; afeta só audit/e-mail duplicado | defer |
+| 17 | VG | 409 na view e MONTHLY/CANCELLED no backend sem teste | medium | VG pré-verificado | patch |
+| 18 | Blind | `stripeWebhookIsPublicWithoutJwt` espera 404 (frágil) | low | Teste novo #15 cobre o controller real | reject |
 
 ## Design Notes
 
@@ -99,3 +123,7 @@ Teste local do webhook: `stripe listen --forward-to localhost:8080/api/v1/webhoo
 
 **Manual checks:**
 - Fluxo AC 1 com `stripe listen` rodando; conferir linha em `subscriptions` (MONTHLY/ACTIVE, ids Stripe preenchidos)
+
+### Verificação manual (2026-10-31)
+
+Fluxo AC 1 executado no modo de teste com `stripe listen`: `checkout.session.completed` → webhook 200 → linha `MONTHLY/ACTIVE` com `stripe_customer_id`, `stripe_subscription_id` e `payment_method_id` preenchidos; `next_billing_date` = `trial_end_date` (2026-11-30, decisão A). No Stripe: 1 assinatura `trialing`, 1990 BRL. Audit `subscription_activated` = 1.

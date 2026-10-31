@@ -8,9 +8,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -39,5 +41,15 @@ public class SubscriptionController {
             subscriptionService.daysRemaining(subscription),
             subscriptionService.hasAccess(subscription)
         ));
+    }
+
+    /**
+     * Story 2.2: create a Stripe Checkout session; the frontend just redirects to {@code url}.
+     * 409 if already MONTHLY/ACTIVE, 503 if Stripe fails. The plan is activated by the webhook only.
+     */
+    @PostMapping("/checkout")
+    public ResponseEntity<Map<String, String>> createCheckout(@AuthenticationPrincipal Jwt jwt) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(Map.of("url", subscriptionService.createCheckout(userId)));
     }
 }

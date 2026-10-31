@@ -46,6 +46,7 @@ describe('DashboardView', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-testid="trial-badge"]').text()).toBe('Trial: 12 dias restantes')
+    expect(wrapper.get('[data-testid="subscribe-cta"]').text()).toBe('Assinar')
   })
 
   it('esconde o badge e mantém o dashboard quando a API falha (ex.: 404)', async () => {
@@ -70,5 +71,21 @@ describe('DashboardView', () => {
     expect(localStorage.getItem('user')).toBeNull()
     expect(mockSignOut).toHaveBeenCalled()
     expect(mockPush).toHaveBeenCalledWith('/login')
+  })
+
+  it('mostra "Assinatura ativa" e esconde o CTA para plano mensal', async () => {
+    mockGetMySubscription.mockResolvedValue({
+      planType: 'MONTHLY',
+      status: 'ACTIVE',
+      trialStartDate: '2026-10-01T12:00:00Z',
+      trialEndDate: '2026-10-31T12:00:00Z',
+      daysRemaining: 0,
+      hasAccess: true,
+    })
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="subscription-active-badge"]').text()).toBe('Assinatura ativa')
+    expect(wrapper.find('[data-testid="subscribe-cta"]').exists()).toBe(false)
   })
 })

@@ -51,6 +51,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/auth/login/failed").permitAll()
                 .requestMatchers("/api/v1/auth/password-reset/requested").permitAll()
                 .requestMatchers("/api/v1/data-export/download/**").permitAll()  // Download via UUID token (no JWT needed)
+                .requestMatchers("/api/v1/webhooks/stripe").permitAll()  // Story 2.2: authenticated by Stripe-Signature, not JWT
                 .requestMatchers("/api/v1/auth/sessions/**").authenticated()  // Session management endpoints (Story 1.5)
                 .requestMatchers("/api/v1/**").authenticated()
                 .anyRequest().permitAll()
