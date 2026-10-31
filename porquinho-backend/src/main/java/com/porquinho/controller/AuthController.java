@@ -20,7 +20,6 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -183,14 +182,12 @@ public class AuthController {
      * HYBRID ARCHITECTURE: Returns 404 if user doesn't exist in backend database,
      * allowing frontend to perform lazy sync (create user in backend on first login).
      *
-     * @param userId User ID extracted from JWT sub claim by JwtAuthenticationConverter
      * @param request Request containing email
      * @param httpRequest HTTP request to extract client IP address
      * @return 200 OK if successful, 404 if user not found in backend
      */
     @PostMapping("/login")
     public ResponseEntity<Void> logLogin(
-        @AuthenticationPrincipal String userId,
         @Valid @RequestBody LoginRequest request,
         HttpServletRequest httpRequest
     ) {
@@ -267,15 +264,18 @@ public class AuthController {
      * This endpoint is called after Supabase successfully resets the password.
      * Requires authentication (JWT from Supabase reset token flow).
      *
-     * @param userId User ID extracted from JWT sub claim by JwtAuthenticationConverter
+     * @param authentication Authenticated JWT (user id = sub claim)
      * @param httpRequest HTTP request to extract client IP address
      * @return 200 OK (no response body)
      */
     @PostMapping("/password-reset/completed")
     public ResponseEntity<Void> logPasswordResetCompleted(
-        @AuthenticationPrincipal String userId,
+        Authentication authentication,
         HttpServletRequest httpRequest
     ) {
+        // JWT sub (see registerWithGoogle for why not @AuthenticationPrincipal String)
+        String userId = resolveUserId(authentication);
+
         // Extract client IP address for audit logging
         String ipAddress = getClientIpAddress(httpRequest);
 
@@ -285,9 +285,8 @@ public class AuthController {
             httpRequest.getHeader("User-Agent") != null ? httpRequest.getHeader("User-Agent") : "unknown"
         );
 
-        // Log audit event with user_id
-        // In test environment, userId might be null or "anonymousUser" - handle gracefully
-        if (userId != null && !userId.equals("anonymousUser")) {
+        // Log audit event with user_id (null only when unauthenticated, e.g. test profile)
+        if (userId != null) {
             auditLogService.log("password_reset_completed", java.util.UUID.fromString(userId), ipAddress, metadata);
         }
 

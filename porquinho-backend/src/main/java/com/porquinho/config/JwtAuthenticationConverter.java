@@ -16,7 +16,8 @@ import java.util.Collections;
 /**
  * Converter that extracts user_id from Supabase JWT "sub" claim.
  * The sub claim in Supabase contains the user's UUID.
- * This allows controllers to use @AuthenticationPrincipal String userId.
+ * The token's name is the user id: controllers read it via Authentication.getName().
+ * (The principal is the Jwt object, so @AuthenticationPrincipal String resolves to null.)
  * Also checks JWT blacklist for revoked sessions.
  */
 public class JwtAuthenticationConverter implements Converter<Jwt, AbstractAuthenticationToken> {
