@@ -87,4 +87,19 @@ class MigrationTest {
         );
         assertThat(count).isEqualTo(1);
     }
+
+    @Test
+    void v11ShouldAddTrialReminderColumnsToSubscriptions() {
+        for (String column : new String[] {"trial_reminder_7d_sent_at", "trial_reminder_1d_sent_at"}) {
+            String type = jdbcTemplate.queryForObject(
+                "SELECT data_type FROM information_schema.columns " +
+                "WHERE table_name = 'subscriptions' AND column_name = ?",
+                String.class,
+                column
+            );
+            assertThat(type)
+                .withFailMessage("Column '%s' should be TIMESTAMPTZ in subscriptions, got %s", column, type)
+                .isEqualTo("timestamp with time zone");
+        }
+    }
 }

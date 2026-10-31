@@ -31,7 +31,7 @@ import java.util.UUID;
  * Subscription rules (Story 2.1) and monthly-plan activation via Stripe (Story 2.2).
  *
  * Trial expiration is computed on read (hasAccess compares now with trial_end_date).
- * The daily job that flips status to EXPIRED and sends reminders belongs to Story 2.3.
+ * Trial-end reminder e-mails are sent by TrialReminderService (Story 2.3).
  */
 @Service
 public class SubscriptionService {
@@ -232,8 +232,8 @@ public class SubscriptionService {
         }
     }
 
-    // E-mail only after the row is committed, and outside the row lock.
-    private static void afterCommit(Runnable action) {
+    // E-mail only after the row is committed, and outside the row lock. Also used by TrialReminderService.
+    static void afterCommit(Runnable action) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override

@@ -141,4 +141,45 @@ public class EmailService {
             log.warn("Failed to send subscription activated email to {}: {}", email, e.getMessage());
         }
     }
+
+    /**
+     * Send the trial-ending reminder (Story 2.3): 7 days before ("termina em 7 dias") or 1 day before
+     * ("termina amanhã"). daysLeft comes from the job (Sao Paulo calendar days), so a late run says
+     * the real count ("em 5 dias", "hoje") instead of a wrong one.
+     * Best-effort: if SMTP is not configured or sending fails, logs warning and continues.
+     *
+     * @param email Recipient email address
+     * @param daysLeft Calendar days until the trial ends (Sao Paulo dates)
+     * @param trialEndDate When the trial ends
+     * @param subscribeUrl Link to the subscription page ({frontend}/assinatura)
+     */
+    public void sendTrialReminder(String email, long daysLeft, OffsetDateTime trialEndDate, String subscribeUrl) {
+        if (mailSender == null) {
+            log.warn("SMTP not configured - skipping trial reminder email to {}", email);
+            return;
+        }
+
+        try {
+            String when = daysLeft <= 0 ? "hoje" : daysLeft == 1 ? "amanhã" : "em " + daysLeft + " dias";
+            String endDate = trialEndDate
+                .atZoneSameInstant(ZoneId.of("America/Sao_Paulo"))
+                .format(DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.of("pt", "BR")));
+
+            SimpleMailMessage message = newMessage(email, "Porquinho - Seu trial termina " + when);
+            message.setText(
+                "Olá!\n\n" +
+                "Seu período de teste gratuito do Porquinho termina " + when + " (" + endDate + ").\n\n" +
+                "Assinando o plano mensal (R$ 19,90/mês) você continua com:\n" +
+                "- Todas as suas contas, transações e categorias preservadas\n" +
+                "- Acesso completo a todas as funcionalidades, sem limites\n\n" +
+                "Se assinar agora, a primeira cobrança só acontece quando o trial acabar.\n\n" +
+                "Assinar agora: " + subscribeUrl + "\n\n" +
+                "Atenciosamente,\nEquipe Porquinho"
+            );
+            mailSender.send(message);
+            log.info("Trial reminder ({} days left) email sent to {}", daysLeft, email);
+        } catch (Exception e) {
+            log.warn("Failed to send trial reminder email to {}: {}", email, e.getMessage());
+        }
+    }
 }

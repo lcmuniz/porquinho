@@ -2,7 +2,8 @@
 title: 'Lembretes por e-mail 7 dias e 1 dia antes do fim do trial'
 type: 'feature'
 created: '2026-10-31'
-status: 'ready-for-dev'
+status: 'done'
+baseline_commit: 61890a02cae79bc806737d87c3adb39638bd2541
 route: 'dispatch'
 story_key: 2-3-send-trial-expiration-reminders
 review_loop_iteration: 0
@@ -61,11 +62,11 @@ context:
 
 ## Tasks & Acceptance
 
-- [ ] `V11__add_trial_reminder_tracking.sql` + `Subscription.java` -- colunas e campos
-- [ ] `SubscriptionRepository.java` -- query de candidatas
-- [ ] `service/TrialReminderService.java` -- `@Scheduled` diário; para cada candidata, em transação própria: calcula dias restantes (datas SP), decide 7d/1d pelas regras, marca `*_sent_at`, audit, e-mail após commit
-- [ ] `EmailService.java` -- `sendTrialReminder`: assunto "Porquinho - Seu trial termina em 7 dias" / "Porquinho - Seu trial termina amanhã", data de fim, benefícios curtos, link `{frontend}/assinatura`
-- [ ] Testes: unit do serviço cobrindo toda a matriz (Clock fixo); `EmailServiceTest` dos dois textos; `MigrationTest` das colunas novas
+- [x] `V11__add_trial_reminder_tracking.sql` + `Subscription.java` -- colunas e campos
+- [x] `SubscriptionRepository.java` -- query de candidatas
+- [x] `service/TrialReminderService.java` -- `@Scheduled` diário; para cada candidata, em transação própria: calcula dias restantes (datas SP), decide 7d/1d pelas regras, marca `*_sent_at`, audit, e-mail após commit
+- [x] `EmailService.java` -- `sendTrialReminder`: assunto "Porquinho - Seu trial termina em 7 dias" / "Porquinho - Seu trial termina amanhã", data de fim, benefícios curtos, link `{frontend}/assinatura`
+- [x] Testes: unit do serviço cobrindo toda a matriz (Clock fixo); `EmailServiceTest` dos dois textos; `MigrationTest` das colunas novas
 
 **AC:**
 - Dado um trial terminando em 7 dias, quando o job roda, então chega 1 e-mail com link para `/assinatura`, e rodar o job de novo não envia outro.
@@ -73,6 +74,25 @@ context:
 ## Spec Change Log
 
 ## Review Triage Log
+
+Revisão em 3 camadas (Blind Hunter, Edge Case Hunter, Verification Gap) — 2026-10-31.
+
+| # | Origem | Achado | Veredito | Evidência | Rota |
+|---|---|---|---|---|---|
+| 1 | Blind, Edge | Usuário soft-deletado marcado/auditado sem e-mail | medium | `User` tem `@Where(deleted_at IS NULL)`; findById vazio no afterCommit | patch |
+| 2 | Blind | Query devolve diariamente trials já lembrados (7d), com lock por linha | low | Contende com webhook; correção direta no JPQL | patch |
+| 3 | VG, Blind | Caminho 1d da query real sem teste | medium | VG pré-verificado | patch |
+| 4 | VG, Blind | "E-mail após commit" sem teste | medium | VG pré-verificado | patch |
+| 5 | VG, Blind | Textos "hoje" e "em N dias" sem teste | medium | VG pré-verificado | patch |
+| 6 | Blind | Backend fora às 9h perde lembrete 1d (sem catch-up no startup) | medium | Cron único; query exige trial_end > now | defer |
+| 7 | Blind | Ninguém marca status EXPIRED (Javadoc antigo atribuía à 2.3) | low | `hasAccess` calcula na leitura; sem efeito funcional | defer |
+| 8 | Blind | E-mail completo nos logs (LGPD) | low | Padrão pré-existente em todo o EmailService | defer |
+| 9 | Edge | Lock sem timeout pode travar o scheduler | maybe-false | Webhook segura o lock por milissegundos | reject |
+| 10 | Edge | Assinou entre commit e envio → recebe lembrete | low | Janela de ms, raro, inofensivo | reject |
+| 11 | Edge | Assunto difere dos 2 textos da spec em execução atrasada | false | Melhoria intencional: mostra dias reais | reject |
+| 12 | Blind | Nome do audit `trial_reminder_sent` antes do envio | low | Design aceita perda; renomear sem ganho real | reject |
+| 13 | Blind | `afterCommit` package-private acopla serviços | low | Sem dano concreto | reject |
+| 14 | Blind | MigrationTest V11 sem filtro de schema | low | Banco de teste tem um schema | reject |
 
 ## Design Notes
 
