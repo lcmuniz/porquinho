@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,7 +8,6 @@ import { useAuth } from '@/composables/useAuth'
 import { authService } from '@/services/authService'
 
 const router = useRouter()
-const route = useRoute()
 const { updatePassword } = useAuth()
 
 const newPassword = ref('')
