@@ -38,3 +38,15 @@
 - source_spec: `_bmad-output/implementation-artifacts/2-2-subscribe-to-monthly-plan-after-trial.md`
   summary: Teste concorrente (Testcontainers) do lock pessimista em `findByUserIdForUpdate`.
   evidence: Sem teste, remover `@Lock` passa; consequência limitada a audit/e-mail duplicados.
+
+## Deferred from: code review of 2-3-send-trial-expiration-reminders (2026-10-31)
+
+- source_spec: `_bmad-output/implementation-artifacts/2-3-send-trial-expiration-reminders.md`
+  summary: Job de lembretes sem execução de recuperação no startup; backend fora às 9h pode perder o lembrete de 1 dia.
+  evidence: Só cron 09:00 SP; query exige trial_end > now. Opção: rodar também em ApplicationReadyEvent (idempotente).
+- source_spec: `_bmad-output/implementation-artifacts/2-3-send-trial-expiration-reminders.md`
+  summary: Nenhum job vira status TRIAL→EXPIRED após o fim do trial.
+  evidence: Funcionalmente ok (hasAccess calcula na leitura); relevante para relatórios/2.6–2.7.
+- source_spec: `_bmad-output/implementation-artifacts/2-3-send-trial-expiration-reminders.md`
+  summary: EmailService loga e-mail completo do destinatário (dado pessoal, LGPD).
+  evidence: Padrão em todos os métodos de envio; trocar por userId ou e-mail mascarado.

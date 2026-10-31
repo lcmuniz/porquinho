@@ -7,7 +7,7 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * User subscription (Story 2.1; Stripe ids added in Story 2.2). One row per user for its whole lifetime.
+ * User subscription (Story 2.1; Stripe ids added in Story 2.2; trial reminder tracking in Story 2.3). One row per user for its whole lifetime.
  * No @Where on purpose: the LGPD purge hard-deletes this row (see Story 1.7 learnings).
  */
 @Entity
@@ -52,6 +52,12 @@ public class Subscription {
 
     @Column(name = "stripe_subscription_id", unique = true)
     private String stripeSubscriptionId;
+
+    @Column(name = "trial_reminder_7d_sent_at")
+    private OffsetDateTime trialReminder7dSentAt;
+
+    @Column(name = "trial_reminder_1d_sent_at")
+    private OffsetDateTime trialReminder1dSentAt;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
@@ -115,6 +121,12 @@ public class Subscription {
 
     public String getStripeSubscriptionId() { return stripeSubscriptionId; }
     public void setStripeSubscriptionId(String stripeSubscriptionId) { this.stripeSubscriptionId = stripeSubscriptionId; }
+
+    public OffsetDateTime getTrialReminder7dSentAt() { return trialReminder7dSentAt; }
+    public void setTrialReminder7dSentAt(OffsetDateTime trialReminder7dSentAt) { this.trialReminder7dSentAt = trialReminder7dSentAt; }
+
+    public OffsetDateTime getTrialReminder1dSentAt() { return trialReminder1dSentAt; }
+    public void setTrialReminder1dSentAt(OffsetDateTime trialReminder1dSentAt) { this.trialReminder1dSentAt = trialReminder1dSentAt; }
 
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }

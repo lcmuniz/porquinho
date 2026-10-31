@@ -49,6 +49,71 @@ class EmailServiceTest {
     }
 
     @Test
+    void trialReminderSevenDaysText() {
+        JavaMailSender sender = mock(JavaMailSender.class);
+        EmailService service = serviceWith(sender, "x@example.com");
+
+        // 30/11 13:00Z = 30/11 10:00 in Brazil
+        service.sendTrialReminder("user@example.com", 7,
+            OffsetDateTime.of(2026, 11, 30, 13, 0, 0, 0, ZoneOffset.UTC), "https://app.example.com/assinatura");
+
+        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(sender).send(captor.capture());
+        SimpleMailMessage message = captor.getValue();
+        assertThat(message.getSubject()).isEqualTo("Porquinho - Seu trial termina em 7 dias");
+        assertThat(message.getTo()).containsExactly("user@example.com");
+        assertThat(message.getText())
+            .contains("termina em 7 dias (30/11/2026)")
+            .contains("Assinar agora: https://app.example.com/assinatura");
+    }
+
+    @Test
+    void trialReminderOneDayText() {
+        JavaMailSender sender = mock(JavaMailSender.class);
+        EmailService service = serviceWith(sender, "x@example.com");
+
+        // 01/12 01:00Z is still 30/11 in Brazil
+        service.sendTrialReminder("user@example.com", 1,
+            OffsetDateTime.of(2026, 12, 1, 1, 0, 0, 0, ZoneOffset.UTC), "https://app.example.com/assinatura");
+
+        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(sender).send(captor.capture());
+        SimpleMailMessage message = captor.getValue();
+        assertThat(message.getSubject()).isEqualTo("Porquinho - Seu trial termina amanhã");
+        assertThat(message.getText())
+            .contains("termina amanhã (30/11/2026)")
+            .contains("Assinar agora: https://app.example.com/assinatura");
+    }
+
+    @Test
+    void trialReminderLateRunUsesRealDayCount() {
+        JavaMailSender sender = mock(JavaMailSender.class);
+        EmailService service = serviceWith(sender, "x@example.com");
+        OffsetDateTime end = OffsetDateTime.of(2026, 11, 30, 13, 0, 0, 0, ZoneOffset.UTC);
+
+        service.sendTrialReminder("user@example.com", 5, end, "https://app.example.com/assinatura");
+        service.sendTrialReminder("user@example.com", 0, end, "https://app.example.com/assinatura");
+
+        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(sender, times(2)).send(captor.capture());
+        SimpleMailMessage five = captor.getAllValues().get(0);
+        SimpleMailMessage today = captor.getAllValues().get(1);
+        assertThat(five.getSubject()).isEqualTo("Porquinho - Seu trial termina em 5 dias");
+        assertThat(five.getText()).contains("termina em 5 dias (30/11/2026)");
+        assertThat(today.getSubject()).isEqualTo("Porquinho - Seu trial termina hoje");
+        assertThat(today.getText()).contains("termina hoje (30/11/2026)");
+    }
+
+    @Test
+    void trialReminderSwallowsSmtpFailure() {
+        JavaMailSender sender = mock(JavaMailSender.class);
+        doThrow(new org.springframework.mail.MailSendException("down")).when(sender).send(any(SimpleMailMessage.class));
+        EmailService service = serviceWith(sender, "x@example.com");
+
+        service.sendTrialReminder("user@example.com", 1, OffsetDateTime.now(), "http://x/assinatura");  // must not throw
+    }
+
+    @Test
     void skipsSilentlyWhenSmtpNotConfigured() {
         EmailService service = serviceWith(null, "");
         service.sendDataExportReady("user@example.com", "http://x");  // must not throw
