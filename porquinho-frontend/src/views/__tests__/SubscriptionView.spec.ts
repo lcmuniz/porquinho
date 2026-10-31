@@ -6,12 +6,14 @@ import type { Subscription } from '@/types/subscription'
 const mockGetMySubscription = vi.fn()
 const mockCreateCheckout = vi.fn()
 const mockCancelSubscription = vi.fn()
+const mockReactivateSubscription = vi.fn()
 const mockRoute = { query: {} as Record<string, string> }
 
 vi.mock('@/services/subscriptionService', () => ({
   getMySubscription: (...args: unknown[]) => mockGetMySubscription(...args),
   createCheckout: (...args: unknown[]) => mockCreateCheckout(...args),
   cancelSubscription: (...args: unknown[]) => mockCancelSubscription(...args),
+  reactivateSubscription: (...args: unknown[]) => mockReactivateSubscription(...args),
 }))
 
 vi.mock('vue-router', async (importOriginal) => ({
@@ -44,6 +46,7 @@ describe('SubscriptionView', () => {
     mockGetMySubscription.mockReset().mockResolvedValue(trial())
     mockCreateCheckout.mockReset()
     mockCancelSubscription.mockReset()
+    mockReactivateSubscription.mockReset()
     mockRoute.query = {}
     assign.mockReset()
     vi.stubGlobal('location', { ...window.location, assign })
@@ -292,7 +295,7 @@ describe('SubscriptionView', () => {
     wrapper.unmount()
   })
 
-  it('assinatura expirada mostra o badge e o botão Assinar', async () => {
+  it('assinatura expirada mostra o badge e o botão Reativar assinatura (Checkout)', async () => {
     mockGetMySubscription.mockResolvedValue(
       trial({ planType: 'MONTHLY', status: 'EXPIRED', daysRemaining: 0, hasAccess: false }),
     )
@@ -300,7 +303,7 @@ describe('SubscriptionView', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-testid="subscription-expired-badge"]').text()).toBe('Assinatura expirada')
-    expect(wrapper.find('[data-testid="subscribe-button"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="subscribe-button"]').text()).toBe('Reativar assinatura')
     expect(wrapper.find('[data-testid="cancel-button"]').exists()).toBe(false)
   })
 
@@ -363,7 +366,7 @@ describe('SubscriptionView', () => {
     wrapper.unmount()
   })
 
-  it('cancelada já sem acesso mostra o botão Assinar e não o aviso de cancelada', async () => {
+  it('cancelada já sem acesso mostra o botão Reativar assinatura e não o aviso de cancelada', async () => {
     mockGetMySubscription.mockResolvedValue(
       trial({
         planType: 'MONTHLY',
@@ -376,7 +379,124 @@ describe('SubscriptionView', () => {
     const wrapper = mountView()
     await flushPromises()
 
-    expect(wrapper.find('[data-testid="subscribe-button"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="subscribe-button"]').text()).toBe('Reativar assinatura')
     expect(wrapper.find('[data-testid="cancelled-notice"]').exists()).toBe(false)
+  })
+
+  // ---- Story 2.5: reativação ----
+
+  it('cancelada com acesso mostra "Reativar assinatura" e não o botão do Checkout', async () => {
+    mockGetMySubscription.mockResolvedValue(cancelledMonthly())
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="reactivate-button"]').text()).toBe('Reativar assinatura')
+    expect(wrapper.find('[data-testid="subscribe-button"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('a próxima cobrança acontece em 30/11/2026')
+  })
+
+  it('reativar (sem modal) chama a API e volta a "Assinatura ativa"', async () => {
+    mockGetMySubscription.mockResolvedValue(cancelledMonthly())
+    mockReactivateSubscription.mockResolvedValue(activeMonthly())
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="reactivate-button"]').trigger('click')
+    await flushPromises()
+
+    expect(mockReactivateSubscription).toHaveBeenCalledOnce()
+    expect(mockCreateCheckout).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="subscription-active-badge"]').text()).toBe('Assinatura ativa')
+    expect(wrapper.find('[data-testid="cancel-button"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="reactivate-button"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="reactivate-error"]').exists()).toBe(false)
+  })
+
+  it('reativar com Stripe fora (503) mostra erro e mantém cancelada', async () => {
+    mockGetMySubscription.mockResolvedValue(cancelledMonthly())
+    mockReactivateSubscription.mockRejectedValue({ response: { status: 503 } })
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="reactivate-button"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="reactivate-error"]').text()).toContain('Nada foi alterado')
+    expect(wrapper.find('[data-testid="cancelled-notice"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="reactivate-button"]').exists()).toBe(true)
+  })
+
+  it('reativar com 409 já ativa (outra aba) recarrega e não mostra erro', async () => {
+    mockGetMySubscription.mockResolvedValueOnce(cancelledMonthly()).mockResolvedValue(activeMonthly())
+    mockReactivateSubscription.mockRejectedValue({ response: { status: 409 } })
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="reactivate-button"]').trigger('click')
+    await flushPromises()
+
+    expect(mockGetMySubscription).toHaveBeenCalledTimes(2)
+    expect(wrapper.get('[data-testid="subscription-active-badge"]').text()).toBe('Assinatura ativa')
+    expect(wrapper.find('[data-testid="reactivate-error"]').exists()).toBe(false)
+  })
+
+  it('reativar com 409 do Stripe (assinatura já terminou) pede para assinar de novo', async () => {
+    mockGetMySubscription.mockResolvedValue(cancelledMonthly())
+    mockReactivateSubscription.mockRejectedValue({ response: { status: 409 } })
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="reactivate-button"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="reactivate-error"]').text()).toContain('Assine novamente')
+  })
+
+  it('reativar sem resposta (timeout) recarrega e, se ficou ativa, não mostra erro', async () => {
+    mockGetMySubscription.mockResolvedValueOnce(cancelledMonthly()).mockResolvedValue(activeMonthly())
+    mockReactivateSubscription.mockRejectedValue(new Error('timeout'))
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="reactivate-button"]').trigger('click')
+    await flushPromises()
+
+    expect(mockGetMySubscription).toHaveBeenCalledTimes(2)
+    expect(wrapper.get('[data-testid="subscription-active-badge"]').text()).toBe('Assinatura ativa')
+    expect(wrapper.find('[data-testid="reactivate-error"]').exists()).toBe(false)
+  })
+
+  it('reativar sem resposta (timeout) e ainda cancelada mostra aviso sem "Nada foi alterado"', async () => {
+    mockGetMySubscription.mockResolvedValue(cancelledMonthly())
+    mockReactivateSubscription.mockRejectedValue(new Error('timeout'))
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="reactivate-button"]').trigger('click')
+    await flushPromises()
+
+    expect(mockGetMySubscription).toHaveBeenCalledTimes(2)
+    const text = wrapper.get('[data-testid="reactivate-error"]').text()
+    expect(text).toContain('Não foi possível confirmar a reativação')
+    expect(text).not.toContain('Nada foi alterado')
+    expect(wrapper.find('[data-testid="cancelled-notice"]').exists()).toBe(true)
+  })
+
+  it('expirada: "Reativar assinatura" abre o Stripe Checkout', async () => {
+    mockGetMySubscription.mockResolvedValue(
+      trial({ planType: 'MONTHLY', status: 'EXPIRED', daysRemaining: 0, hasAccess: false }),
+    )
+    mockCreateCheckout.mockResolvedValue({ url: 'https://checkout.stripe.com/c/pay/cs_test_2' })
+    const wrapper = mountView()
+    await flushPromises()
+
+    const button = wrapper.get('[data-testid="subscribe-button"]')
+    expect(button.text()).toBe('Reativar assinatura')
+    await button.trigger('click')
+    await flushPromises()
+
+    expect(mockCreateCheckout).toHaveBeenCalledOnce()
+    expect(mockReactivateSubscription).not.toHaveBeenCalled()
+    expect(assign).toHaveBeenCalledWith('https://checkout.stripe.com/c/pay/cs_test_2')
   })
 })

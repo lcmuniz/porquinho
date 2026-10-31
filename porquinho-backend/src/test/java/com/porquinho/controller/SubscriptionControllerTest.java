@@ -158,4 +158,52 @@ class SubscriptionControllerTest {
         mockMvc.perform(post("/api/v1/subscriptions/cancel").with(authentication(authToken)))
             .andExpect(status().isNotFound());
     }
+
+    // ---- Story 2.5 ----
+
+    @Test
+    void reactivateShouldReturn200WithActiveStatus() throws Exception {
+        OffsetDateTime start = OffsetDateTime.parse("2026-09-01T12:00:00Z");
+        Subscription sub = new Subscription(userId, Subscription.PlanType.MONTHLY, Subscription.Status.ACTIVE,
+            start, start.plusDays(30));
+        sub.setNextBillingDate(OffsetDateTime.parse("2026-11-30T12:00:00Z"));
+        when(subscriptionService.reactivate(eq(userId), any())).thenReturn(sub);
+        when(subscriptionService.hasAccess(sub)).thenReturn(true);
+
+        mockMvc.perform(post("/api/v1/subscriptions/reactivate").with(authentication(authToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.planType").value("MONTHLY"))
+            .andExpect(jsonPath("$.status").value("ACTIVE"))
+            .andExpect(jsonPath("$.nextBillingDate").value("2026-11-30T12:00:00Z"))
+            .andExpect(jsonPath("$.cancellationDate").value(org.hamcrest.Matchers.nullValue()))
+            .andExpect(jsonPath("$.hasAccess").value(true));
+    }
+
+    @Test
+    void reactivateShouldReturn409WhenNotCancelledWithAccess() throws Exception {
+        when(subscriptionService.reactivate(eq(userId), any())).thenThrow(new ConflictException("Sua assinatura já está ativa."));
+
+        mockMvc.perform(post("/api/v1/subscriptions/reactivate").with(authentication(authToken)))
+            .andExpect(status().isConflict())
+            .andExpect(content().contentTypeCompatibleWith("application/problem+json"))
+            .andExpect(jsonPath("$.status").value(409));
+    }
+
+    @Test
+    void reactivateShouldReturn503WhenStripeFails() throws Exception {
+        when(subscriptionService.reactivate(eq(userId), any())).thenThrow(new PaymentProviderUnavailableException("down"));
+
+        mockMvc.perform(post("/api/v1/subscriptions/reactivate").with(authentication(authToken)))
+            .andExpect(status().isServiceUnavailable())
+            .andExpect(jsonPath("$.status").value(503));
+    }
+
+    @Test
+    void reactivateShouldReturn404WhenNoSubscription() throws Exception {
+        when(subscriptionService.reactivate(eq(userId), any()))
+            .thenThrow(new com.porquinho.exception.ResourceNotFoundException("Subscription not found"));
+
+        mockMvc.perform(post("/api/v1/subscriptions/reactivate").with(authentication(authToken)))
+            .andExpect(status().isNotFound());
+    }
 }

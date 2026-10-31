@@ -29,7 +29,7 @@ import java.util.UUID;
 
 /**
  * Subscription rules (Story 2.1), monthly-plan activation via Stripe (Story 2.2) and
- * self-service cancellation at period end (Story 2.4).
+ * self-service cancellation at period end (Story 2.4) and reactivation (Story 2.5).
  *
  * Trial expiration is computed on read (hasAccess compares now with trial_end_date).
  * Trial-end reminder e-mails are sent by TrialReminderService (Story 2.3).
@@ -214,6 +214,9 @@ public class SubscriptionService {
             return subscription;
         }
 
+        // Former subscriber (EXPIRED, or CANCELLED with the paid period over) coming back via Checkout (Story 2.5)
+        boolean reactivation = subscription.getPlanType() == PlanType.MONTHLY;
+
         subscription.setPlanType(PlanType.MONTHLY);
         subscription.setStatus(Status.ACTIVE);
         subscription.setStripeCustomerId(stripeCustomerId);
@@ -226,13 +229,79 @@ public class SubscriptionService {
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("stripe_subscription_id", stripeSubscriptionId);
         metadata.put("next_billing_date", nextBillingDate == null ? null : nextBillingDate.toString());
-        auditLogService.log("subscription_activated", userId, null, toJson(metadata));
+        if (reactivation) {
+            metadata.put("via", "checkout");
+        }
+        auditLogService.log(reactivation ? "subscription_reactivated" : "subscription_activated",
+            userId, null, toJson(metadata));
 
         afterCommit(() -> userRepository.findById(userId)
             .map(User::getEmail)
             .ifPresentOrElse(
-                email -> emailService.sendSubscriptionActivated(email, nextBillingDate),
+                email -> {
+                    if (reactivation) {
+                        emailService.sendSubscriptionReactivated(email, nextBillingDate);
+                    } else {
+                        emailService.sendSubscriptionActivated(email, nextBillingDate);
+                    }
+                },
                 () -> log.warn("No user {} to email about subscription activation", userId)));
+
+        return saved;
+    }
+
+    /**
+     * Undo a self-service cancel while the paid period is still running (Story 2.5, decision 1A).
+     * Stripe is asked synchronously to drop the scheduled cancel (no charge now; next charge on the
+     * date Stripe already had); only after Stripe accepted the row goes back to ACTIVE.
+     * Expired (or cancelled with the period over) users reactivate through Checkout instead.
+     *
+     * @throws ResourceNotFoundException user has no subscription row
+     * @throws ConflictException not MONTHLY/CANCELLED with access (active, trial, expired), or Stripe
+     *                           says the subscription already ended
+     * @throws PaymentProviderUnavailableException Stripe failed (nothing changes locally)
+     */
+    @Transactional
+    public Subscription reactivate(UUID userId, String ipAddress) {
+        Subscription subscription = subscriptionRepository.findByUserIdForUpdate(userId)
+            .orElseThrow(() -> new ResourceNotFoundException("Subscription not found"));
+
+        if (subscription.getPlanType() == PlanType.MONTHLY && subscription.getStatus() == Status.ACTIVE) {
+            throw new ConflictException("Sua assinatura já está ativa.");
+        }
+        if (subscription.getPlanType() != PlanType.MONTHLY
+            || subscription.getStatus() != Status.CANCELLED
+            || !hasAccess(subscription)) {
+            throw new ConflictException(subscription.getPlanType() == PlanType.MONTHLY
+                ? "Sua assinatura já terminou. Assine novamente para reativar."
+                : "Não há assinatura cancelada para reativar.");
+        }
+
+        // Throws PaymentProviderUnavailableException -> 503 or ConflictException -> 409; row untouched.
+        OffsetDateTime periodEnd = stripeBillingService.resumeSubscription(subscription.getStripeSubscriptionId());
+
+        if (periodEnd != null) {
+            subscription.setNextBillingDate(periodEnd);
+        }
+        OffsetDateTime nextBillingDate = subscription.getNextBillingDate();
+        OffsetDateTime previousCancellationDate = subscription.getCancellationDate();
+        subscription.setStatus(Status.ACTIVE);
+        subscription.setCancellationDate(null);
+        Subscription saved = subscriptionRepository.save(subscription);
+
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("stripe_subscription_id", subscription.getStripeSubscriptionId());
+        metadata.put("next_billing_date", nextBillingDate == null ? null : nextBillingDate.toString());
+        metadata.put("via", "resume");
+        metadata.put("previous_cancellation_date",
+            previousCancellationDate == null ? null : previousCancellationDate.toString());
+        auditLogService.log("subscription_reactivated", userId, ipAddress, toJson(metadata));
+
+        afterCommit(() -> userRepository.findById(userId)
+            .map(User::getEmail)
+            .ifPresentOrElse(
+                email -> emailService.sendSubscriptionReactivated(email, nextBillingDate),
+                () -> log.warn("No user {} to email about subscription reactivation", userId)));
 
         return saved;
     }

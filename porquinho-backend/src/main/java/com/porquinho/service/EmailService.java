@@ -143,6 +143,43 @@ public class EmailService {
     }
 
     /**
+     * Send "Assinatura reativada" after a reactivation (Story 2.5): scheduled cancel undone, or a
+     * former subscriber came back through Checkout.
+     * Best-effort: if SMTP is not configured or sending fails, logs warning and continues.
+     *
+     * @param email Recipient email address
+     * @param nextBillingDate Date of the next charge; may be null
+     */
+    public void sendSubscriptionReactivated(String email, OffsetDateTime nextBillingDate) {
+        if (mailSender == null) {
+            log.warn("SMTP not configured - skipping subscription reactivated email to {}", email);
+            return;
+        }
+
+        try {
+            String billingLine = nextBillingDate == null
+                ? ""
+                // Brazil local date: a UTC instant between 00:00 and 03:00 is still the previous day here
+                : "Próxima cobrança: " + nextBillingDate
+                    .atZoneSameInstant(ZoneId.of("America/Sao_Paulo"))
+                    .format(DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.of("pt", "BR"))) + ".\n\n";
+
+            SimpleMailMessage message = newMessage(email, "Porquinho - Assinatura reativada");
+            message.setText(
+                "Olá!\n\n" +
+                "Sua assinatura mensal do Porquinho (R$ 19,90/mês) foi reativada.\n\n" +
+                billingLine +
+                "A cobrança é feita automaticamente no cartão cadastrado.\n\n" +
+                "Atenciosamente,\nEquipe Porquinho"
+            );
+            mailSender.send(message);
+            log.info("Subscription reactivated email sent to {}", email);
+        } catch (Exception e) {
+            log.warn("Failed to send subscription reactivated email to {}: {}", email, e.getMessage());
+        }
+    }
+
+    /**
      * Send the trial-ending reminder (Story 2.3): 7 days before ("termina em 7 dias") or 1 day before
      * ("termina amanhã"). daysLeft comes from the job (Sao Paulo calendar days), so a late run says
      * the real count ("em 5 dias", "hoje") instead of a wrong one.

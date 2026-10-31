@@ -17,6 +17,17 @@ export async function cancelSubscription(): Promise<Subscription> {
   return response.data
 }
 
+/**
+ * Story 2.5: desfaz o cancelamento agendado enquanto o período pago ainda vale (sem cobrança agora)
+ * e devolve o status atualizado (MONTHLY/ACTIVE).
+ * Erros: 409 se não é uma cancelada com acesso (ativa, trial, expirada: essas usam o Checkout) ou se o
+ * Stripe diz que a assinatura já terminou; 404 sem assinatura; 503 se o Stripe falhou (nada muda).
+ */
+export async function reactivateSubscription(): Promise<Subscription> {
+  const response = await api.post<Subscription>('/api/v1/subscriptions/reactivate')
+  return response.data
+}
+
 /** Story 2.2: cria a sessão do Stripe Checkout; o frontend só redireciona para a URL. */
 export async function createCheckout(): Promise<CheckoutSession> {
   const response = await api.post<CheckoutSession>('/api/v1/subscriptions/checkout')
