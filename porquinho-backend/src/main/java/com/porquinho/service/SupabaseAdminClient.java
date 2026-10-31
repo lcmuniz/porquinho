@@ -2,6 +2,7 @@ package com.porquinho.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -35,7 +36,9 @@ public class SupabaseAdminClient {
     /**
      * Production constructor: applies bounded timeouts to prevent the purge job from
      * blocking indefinitely on a stuck Supabase request.
+     * {@code @Autowired} is required: with two constructors Spring would otherwise look for a no-arg one.
      */
+    @Autowired
     public SupabaseAdminClient(
             @Value("${supabase.project-url:}") String projectUrl,
             @Value("${supabase.service-role-key:}") String serviceRoleKey,
