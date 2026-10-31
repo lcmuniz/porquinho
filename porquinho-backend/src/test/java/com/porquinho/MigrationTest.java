@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Integration test to verify Flyway migrations execute successfully.
- * Tests V2__create_users_table.sql migration.
+ * Runs against PostgreSQL (Testcontainers), the same engine as production.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -21,10 +21,9 @@ class MigrationTest {
 
     @Test
     void shouldCreateUsersTableSuccessfully() {
-        // Verify users table exists (H2 uses uppercase table names)
         Integer count = jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM information_schema.tables " +
-            "WHERE UPPER(table_name) = 'USERS' AND table_schema = 'PUBLIC'",
+            "WHERE table_name = 'users' AND table_schema = 'public'",
             Integer.class
         );
         assertThat(count).isGreaterThanOrEqualTo(1);
@@ -32,16 +31,15 @@ class MigrationTest {
 
     @Test
     void usersTableShouldHaveCorrectColumns() {
-        // Verify required columns exist (H2 uses uppercase column names)
         String[] expectedColumns = {
-            "ID", "EMAIL", "AUTH_PROVIDER", "GOOGLE_ID",
-            "CREATED_AT", "UPDATED_AT", "DELETED_AT", "DELETED_BY"
+            "id", "email", "auth_provider", "google_id",
+            "created_at", "updated_at", "deleted_at", "deleted_by"
         };
 
         for (String column : expectedColumns) {
             Integer count = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.columns " +
-                "WHERE UPPER(table_name) = 'USERS' AND UPPER(column_name) = ?",
+                "WHERE table_name = 'users' AND column_name = ?",
                 Integer.class,
                 column
             );
@@ -53,10 +51,8 @@ class MigrationTest {
 
     @Test
     void usersTableShouldHaveUniqueEmailIndex() {
-        // Verify idx_users_email index exists (H2 uses information_schema.indexes)
         Integer count = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM information_schema.indexes " +
-            "WHERE UPPER(table_name) = 'USERS' AND UPPER(index_name) = 'IDX_USERS_EMAIL'",
+            "SELECT COUNT(*) FROM pg_indexes WHERE tablename = 'users' AND indexname = 'idx_users_email'",
             Integer.class
         );
         assertThat(count).isGreaterThan(0);
@@ -64,10 +60,8 @@ class MigrationTest {
 
     @Test
     void usersTableShouldHaveGoogleIdIndex() {
-        // Verify idx_users_google_id index exists (H2 uses information_schema.indexes)
         Integer count = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM information_schema.indexes " +
-            "WHERE UPPER(table_name) = 'USERS' AND UPPER(index_name) = 'IDX_USERS_GOOGLE_ID'",
+            "SELECT COUNT(*) FROM pg_indexes WHERE tablename = 'users' AND indexname = 'idx_users_google_id'",
             Integer.class
         );
         assertThat(count).isGreaterThan(0);
@@ -77,7 +71,7 @@ class MigrationTest {
     void v9ShouldCreateSubscriptionsTable() {
         Integer count = jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM information_schema.tables " +
-            "WHERE UPPER(table_name) = 'SUBSCRIPTIONS' AND table_schema = 'PUBLIC'",
+            "WHERE table_name = 'subscriptions' AND table_schema = 'public'",
             Integer.class
         );
         assertThat(count).isEqualTo(1);
@@ -87,8 +81,8 @@ class MigrationTest {
     void v9SubscriptionsShouldHaveUniqueConstraintOnUserId() {
         Integer count = jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM information_schema.table_constraints " +
-            "WHERE UPPER(table_name) = 'SUBSCRIPTIONS' " +
-            "AND UPPER(constraint_name) = 'SUBSCRIPTIONS_USER_ID_UNIQUE' AND constraint_type = 'UNIQUE'",
+            "WHERE table_name = 'subscriptions' " +
+            "AND constraint_name = 'subscriptions_user_id_unique' AND constraint_type = 'UNIQUE'",
             Integer.class
         );
         assertThat(count).isEqualTo(1);

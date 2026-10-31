@@ -28,6 +28,8 @@
 	</scm>
 	<properties>
 		<java.version>21</java.version>
+		<!-- 1.21.0 (do Spring Boot 3.5.0) usa API Docker 1.32, rejeitada pelo Docker Engine 29+ -->
+		<testcontainers.version>1.21.4</testcontainers.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -101,10 +103,10 @@
 			<artifactId>spring-boot-starter-cache</artifactId>
 		</dependency>
 
-		<!-- H2 - In-memory database for unit tests only -->
+		<!-- Testcontainers: testes rodam contra PostgreSQL real (URL jdbc:tc: em src/test/resources) -->
 		<dependency>
-			<groupId>com.h2database</groupId>
-			<artifactId>h2</artifactId>
+			<groupId>org.testcontainers</groupId>
+			<artifactId>postgresql</artifactId>
 			<scope>test</scope>
 		</dependency>
 

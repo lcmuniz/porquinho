@@ -21,21 +21,8 @@ jobs:
     name: Test Backend
     runs-on: ubuntu-latest
 
+    # PostgreSQL dos testes vem do Testcontainers (Docker já disponível no ubuntu-latest)
     services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: porquinho_test
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
       redis:
         image: redis:7-alpine
         ports:
@@ -62,9 +49,6 @@ jobs:
           ./mvnw test
         env:
           SPRING_PROFILES_ACTIVE: test
-          SUPABASE_DB_URL: jdbc:postgresql://localhost:5432/porquinho_test
-          SUPABASE_DB_USERNAME: postgres
-          SUPABASE_DB_PASSWORD: postgres
           SUPABASE_JWT_SECRET: test-secret-key-for-ci-must-be-at-least-256-bits-long
           REDIS_HOST: localhost
           REDIS_PORT: 6379

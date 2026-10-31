@@ -2,7 +2,7 @@ package com.porquinho.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
@@ -22,9 +22,10 @@ public class EmailService {
 
     private final JavaMailSender mailSender;
 
-    @Autowired(required = false)
-    public EmailService(JavaMailSender mailSender) {
-        this.mailSender = mailSender;
+    // ObjectProvider: JavaMailSender only exists when spring.mail.host is set (e.g. absent in tests).
+    // @Autowired(required = false) on a single constructor does NOT make the parameter optional.
+    public EmailService(ObjectProvider<JavaMailSender> mailSender) {
+        this.mailSender = mailSender.getIfAvailable();
     }
 
     /**
