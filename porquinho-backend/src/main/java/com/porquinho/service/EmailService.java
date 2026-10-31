@@ -8,6 +8,7 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
@@ -92,6 +93,44 @@ public class EmailService {
             log.info("Account deletion confirmation email sent to {}", email);
         } catch (Exception e) {
             log.warn("Failed to send account deletion confirmation email to {}: {}", email, e.getMessage());
+        }
+    }
+
+    /**
+     * Send "Assinatura ativada" after the monthly plan is confirmed by Stripe (Story 2.2).
+     * Best-effort: if SMTP is not configured or sending fails, logs warning and continues.
+     *
+     * @param email Recipient email address
+     * @param nextBillingDate Date of the next (or first, if subscribed during the trial) charge; may be null
+     */
+    public void sendSubscriptionActivated(String email, OffsetDateTime nextBillingDate) {
+        if (mailSender == null) {
+            log.warn("SMTP not configured - skipping subscription activated email to {}", email);
+            return;
+        }
+
+        try {
+            String billingLine = nextBillingDate == null
+                ? ""
+                // Brazil local date: a UTC instant between 00:00 and 03:00 is still the previous day here
+                : "Próxima cobrança: " + nextBillingDate
+                    .atZoneSameInstant(ZoneId.of("America/Sao_Paulo"))
+                    .format(DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.of("pt", "BR"))) + ".\n\n";
+
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setTo(email);
+            message.setSubject("Porquinho - Assinatura ativada");
+            message.setText(
+                "Olá!\n\n" +
+                "Sua assinatura mensal do Porquinho (R$ 19,90/mês) está ativa.\n\n" +
+                billingLine +
+                "A cobrança é feita automaticamente no cartão cadastrado.\n\n" +
+                "Atenciosamente,\nEquipe Porquinho"
+            );
+            mailSender.send(message);
+            log.info("Subscription activated email sent to {}", email);
+        } catch (Exception e) {
+            log.warn("Failed to send subscription activated email to {}: {}", email, e.getMessage());
         }
     }
 }

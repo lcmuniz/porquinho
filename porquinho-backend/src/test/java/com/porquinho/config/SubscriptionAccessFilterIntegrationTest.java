@@ -20,6 +20,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -91,5 +92,24 @@ class SubscriptionAccessFilterIntegrationTest {
     void unauthenticatedRequestIsRejectedBeforeSubscriptionCheck() throws Exception {
         mockMvc.perform(get("/api/v1/budgets"))
             .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void stripeWebhookIsPublicWithoutJwt() throws Exception {
+        // Story 2.2: permitAll in SecurityConfig. The webhook controller is not in this slice,
+        // so 404 (reached MVC) proves the request was neither 401 nor 402.
+        mockMvc.perform(post("/api/v1/webhooks/stripe").content("{}"))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void expiredTrialUserCanStillStartCheckout() throws Exception {
+        // Story 2.2: /api/v1/subscriptions/ is exempt from the 402 filter, so the user can pay
+        when(subscriptionService.hasAccess(USER_ID)).thenReturn(false);
+        when(subscriptionService.createCheckout(USER_ID)).thenReturn("https://checkout.stripe.com/c/pay/cs_test_1");
+
+        mockMvc.perform(post("/api/v1/subscriptions/checkout").header("Authorization", "Bearer any-token"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.url").value("https://checkout.stripe.com/c/pay/cs_test_1"));
     }
 }

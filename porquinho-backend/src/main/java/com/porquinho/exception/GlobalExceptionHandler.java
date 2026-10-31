@@ -68,6 +68,36 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handle PaymentProviderUnavailableException (Stripe down/failed) and return 503 (Story 2.2).
+     */
+    @ExceptionHandler(PaymentProviderUnavailableException.class)
+    public ProblemDetail handlePaymentProviderUnavailableException(PaymentProviderUnavailableException ex) {
+        // Fixed detail: ex.getMessage() may carry config/internal hints (e.g. missing secret key)
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Pagamento indisponível no momento. Tente novamente mais tarde."
+        );
+        problemDetail.setTitle("Pagamento indisponível");
+        problemDetail.setType(URI.create("https://api.porquinho.com/errors/payment-provider-unavailable"));
+        return problemDetail;
+    }
+
+    /**
+     * Handle InvalidWebhookSignatureException and return 400 (Story 2.2).
+     */
+    @ExceptionHandler(InvalidWebhookSignatureException.class)
+    public ProblemDetail handleInvalidWebhookSignatureException(InvalidWebhookSignatureException ex) {
+        // Public endpoint: never echo the reason (e.g. "secret not configured"); it is logged instead
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(
+            HttpStatus.BAD_REQUEST,
+            "Invalid webhook signature"
+        );
+        problemDetail.setTitle("Invalid Webhook Signature");
+        problemDetail.setType(URI.create("https://api.porquinho.com/errors/invalid-webhook-signature"));
+        return problemDetail;
+    }
+
+    /**
      * Handle ResourceNotFoundException and return 404 Not Found status.
      *
      * @param ex ResourceNotFoundException

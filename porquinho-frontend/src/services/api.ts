@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { supabase } from './supabase'
+import router from '@/router'
 
 const apiBaseURL = import.meta.env.VITE_API_BASE_URL
 
@@ -53,11 +54,21 @@ api.interceptors.request.use(
   }
 )
 
-// Response interceptor: Handle 401 errors and refresh token
+export const SUBSCRIPTION_ROUTE = '/assinatura'
+
+// Response interceptor: 402 -> tela de assinatura (Story 2.2); 401 -> refresh token
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config
+
+    // 402: trial vencido ou sem assinatura. Leva para a tela de assinatura (sem loop se já estiver lá).
+    if (error.response?.status === 402) {
+      if (router.currentRoute.value.path !== SUBSCRIPTION_ROUTE) {
+        router.push(SUBSCRIPTION_ROUTE)
+      }
+      return Promise.reject(error)
+    }
 
     // If 401 and not already retried, try to refresh token
     if (error.response?.status === 401 && !originalRequest._retry) {

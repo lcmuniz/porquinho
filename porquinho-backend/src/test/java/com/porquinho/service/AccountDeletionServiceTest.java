@@ -62,6 +62,9 @@ class AccountDeletionServiceTest {
     @Mock
     private SubscriptionRepository subscriptionRepository;
 
+    @Mock
+    private StripeBillingService stripeBillingService;
+
     private AccountDeletionService service;
 
     private UUID userId;
@@ -84,11 +87,11 @@ class AccountDeletionServiceTest {
         AccountDeletionService temp = new AccountDeletionService(
             userRepository, userSessionRepository, auditLogRepository, dataExportRepository,
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
-            supabaseAdminClient, rateLimitService, subscriptionRepository, null);
+            supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService, null);
         service = new AccountDeletionService(
             userRepository, userSessionRepository, auditLogRepository, dataExportRepository,
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
-            supabaseAdminClient, rateLimitService, subscriptionRepository, temp);
+            supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService, temp);
         // After construction, swap in the real reference so self == service (recursive ref ok
         // for tests because Spring's proxy would similarly route the call into this same bean).
         try {
@@ -268,6 +271,46 @@ class AccountDeletionServiceTest {
         assertEquals(DeletionStatus.PURGED, deletion.getStatus());
         assertNotNull(deletion.getPurgedAt());
         verify(accountDeletionRepository).save(deletion);
+    }
+
+    @Test
+    void purgeShouldCancelStripeSubscriptionBeforeDeletingSubscriptionRow() {
+        AccountDeletion deletion = new AccountDeletion(userId,
+            OffsetDateTime.now().minusDays(1), "127.0.0.1");
+        deletion.setId(UUID.randomUUID());
+        com.porquinho.entity.Subscription sub = new com.porquinho.entity.Subscription(
+            userId, com.porquinho.entity.Subscription.PlanType.MONTHLY,
+            com.porquinho.entity.Subscription.Status.ACTIVE, null, null);
+        sub.setStripeSubscriptionId("sub_1");
+
+        when(accountDeletionRepository.findAllByStatusAndScheduledPurgeAtBefore(
+            eq(DeletionStatus.PENDING_PURGE), any())).thenReturn(List.of(deletion));
+        when(dataExportRepository.findAllByUserId(userId)).thenReturn(List.of());
+        when(subscriptionRepository.findByUserId(userId)).thenReturn(java.util.Optional.of(sub));
+
+        service.purgeScheduledDeletions();
+
+        org.mockito.InOrder order = inOrder(stripeBillingService, subscriptionRepository);
+        order.verify(stripeBillingService).cancelSubscription("sub_1");
+        order.verify(subscriptionRepository).deleteByUserId(userId);
+        assertEquals(DeletionStatus.PURGED, deletion.getStatus());
+    }
+
+    @Test
+    void purgeWithoutStripeSubscriptionDoesNotCallStripe() {
+        AccountDeletion deletion = new AccountDeletion(userId,
+            OffsetDateTime.now().minusDays(1), "127.0.0.1");
+        deletion.setId(UUID.randomUUID());
+
+        when(accountDeletionRepository.findAllByStatusAndScheduledPurgeAtBefore(
+            eq(DeletionStatus.PENDING_PURGE), any())).thenReturn(List.of(deletion));
+        when(dataExportRepository.findAllByUserId(userId)).thenReturn(List.of());
+        when(subscriptionRepository.findByUserId(userId)).thenReturn(java.util.Optional.empty());
+
+        service.purgeScheduledDeletions();
+
+        verify(stripeBillingService, never()).cancelSubscription(any());
+        verify(subscriptionRepository).deleteByUserId(userId);
     }
 
     @Test

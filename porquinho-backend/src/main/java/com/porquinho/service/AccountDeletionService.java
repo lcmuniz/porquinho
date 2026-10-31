@@ -4,6 +4,7 @@ import com.porquinho.dto.AccountDeletionResponse;
 import com.porquinho.entity.AccountDeletion;
 import com.porquinho.entity.AccountDeletion.DeletionStatus;
 import com.porquinho.entity.DataExport;
+import com.porquinho.entity.Subscription;
 import com.porquinho.entity.User;
 import com.porquinho.entity.UserSession;
 import com.porquinho.exception.RateLimitExceededException;
@@ -68,6 +69,7 @@ public class AccountDeletionService {
     private final SupabaseAdminClient supabaseAdminClient;
     private final RateLimitService rateLimitService;
     private final SubscriptionRepository subscriptionRepository;
+    private final StripeBillingService stripeBillingService;
 
     @Value("${app.export.directory:./exports}")
     private String exportDirectory;
@@ -92,6 +94,7 @@ public class AccountDeletionService {
             SupabaseAdminClient supabaseAdminClient,
             RateLimitService rateLimitService,
             SubscriptionRepository subscriptionRepository,
+            StripeBillingService stripeBillingService,
             @Lazy AccountDeletionService self) {
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -104,6 +107,7 @@ public class AccountDeletionService {
         this.supabaseAdminClient = supabaseAdminClient;
         this.rateLimitService = rateLimitService;
         this.subscriptionRepository = subscriptionRepository;
+        this.stripeBillingService = stripeBillingService;
         this.self = self;
     }
 
@@ -206,7 +210,7 @@ public class AccountDeletionService {
         String metadata = String.format("{\"scheduled_purge_at\":\"%s\"}", scheduledPurgeAt);
         auditLogService.log("account_deletion_requested", userId, ipAddress, metadata);
 
-        // TODO Epic 2: subscriptionService.cancelImmediately(userId);
+        // Stripe billing stops at purge (purgeUser cancels the Stripe subscription), Story 2.2.
 
         return new DeletionContext(email, saved, true);
     }
@@ -300,6 +304,10 @@ public class AccountDeletionService {
         dataExportRepository.deleteByUserId(userId);
         userSessionRepository.deleteByUserId(userId);
         auditLogRepository.deleteByUserId(userId);
+        // Story 2.2: stop Stripe billing before the local row (and its stripe id) disappears. Best-effort.
+        subscriptionRepository.findByUserId(userId)
+            .map(Subscription::getStripeSubscriptionId)
+            .ifPresent(stripeBillingService::cancelSubscription);
         subscriptionRepository.deleteByUserId(userId);  // Story 2.1: FK to users, must go first
         userRepository.deleteByIdNative(userId);
 

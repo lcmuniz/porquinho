@@ -6,3 +6,7 @@ export interface Subscription {
   daysRemaining: number
   hasAccess: boolean
 }
+
+export interface CheckoutSession {
+  url: string
+}

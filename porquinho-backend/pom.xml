@@ -93,6 +93,13 @@
 			<artifactId>spring-boot-starter-mail</artifactId>
 		</dependency>
 
+		<!-- Stripe - Checkout e webhooks de assinatura (Story 2.2) -->
+		<dependency>
+			<groupId>com.stripe</groupId>
+			<artifactId>stripe-java</artifactId>
+			<version>34.1.0</version>
+		</dependency>
+
 		<!-- Redis - Caching -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

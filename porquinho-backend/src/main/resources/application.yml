@@ -60,6 +60,12 @@ app:
     directory: ${EXPORT_DIR:./exports}
     expiration-hours: 24
     base-url: ${APP_BASE_URL:http://localhost:8080}
+  # Usado nas URLs de retorno do Stripe Checkout (Story 2.2)
+  frontend-url: ${FRONTEND_URL:http://localhost:5173}
+stripe:
+  # Segredos só no backend. Vazios = Checkout indisponível (503) e webhook rejeitado (400).
+  secret-key: ${STRIPE_SECRET_KEY:}
+  webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
 supabase:
   project-url: ${SUPABASE_PROJECT_URL:}
   service-role-key: ${SUPABASE_SERVICE_ROLE_KEY:}

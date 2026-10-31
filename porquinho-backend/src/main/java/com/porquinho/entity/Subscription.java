@@ -7,7 +7,7 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * User subscription (Story 2.1). One row per user for its whole lifetime.
+ * User subscription (Story 2.1; Stripe ids added in Story 2.2). One row per user for its whole lifetime.
  * No @Where on purpose: the LGPD purge hard-deletes this row (see Story 1.7 learnings).
  */
 @Entity
@@ -46,6 +46,12 @@ public class Subscription {
 
     @Column(name = "payment_method_id")
     private String paymentMethodId;
+
+    @Column(name = "stripe_customer_id")
+    private String stripeCustomerId;
+
+    @Column(name = "stripe_subscription_id", unique = true)
+    private String stripeSubscriptionId;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
@@ -103,6 +109,12 @@ public class Subscription {
 
     public String getPaymentMethodId() { return paymentMethodId; }
     public void setPaymentMethodId(String paymentMethodId) { this.paymentMethodId = paymentMethodId; }
+
+    public String getStripeCustomerId() { return stripeCustomerId; }
+    public void setStripeCustomerId(String stripeCustomerId) { this.stripeCustomerId = stripeCustomerId; }
+
+    public String getStripeSubscriptionId() { return stripeSubscriptionId; }
+    public void setStripeSubscriptionId(String stripeSubscriptionId) { this.stripeSubscriptionId = stripeSubscriptionId; }
 
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }

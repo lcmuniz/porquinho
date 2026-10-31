@@ -38,7 +38,8 @@ class V9BackfillMigrationTest {
         Flyway.configure().dataSource(dataSource).load().migrate();
 
         List<Map<String, Object>> rows = jdbc.queryForList(
-            "SELECT user_id, plan_type, status, trial_start_date, trial_end_date FROM subscriptions");
+            "SELECT user_id, plan_type, status, trial_start_date, trial_end_date, "
+                + "stripe_customer_id, stripe_subscription_id FROM subscriptions");
         assertThat(rows).hasSize(1);
 
         Map<String, Object> row = rows.get(0);
@@ -48,5 +49,8 @@ class V9BackfillMigrationTest {
         Instant start = ((Timestamp) row.get("trial_start_date")).toInstant();
         Instant end = ((Timestamp) row.get("trial_end_date")).toInstant();
         assertThat(Duration.between(start, end)).isEqualTo(Duration.ofDays(30));
+        // Story 2.2: V10 adds the Stripe ids, empty during the trial
+        assertThat(row.get("stripe_customer_id")).isNull();
+        assertThat(row.get("stripe_subscription_id")).isNull();
     }
 }
