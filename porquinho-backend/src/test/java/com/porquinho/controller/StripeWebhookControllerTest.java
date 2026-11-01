@@ -13,6 +13,7 @@ import com.porquinho.service.SubscriptionService.FailureOutcome;
 import com.porquinho.service.SubscriptionService.InvoicePayment;
 import com.porquinho.service.SubscriptionService.PaymentFailure;
 import com.porquinho.service.SubscriptionService.PaymentOutcome;
+import com.stripe.param.RefundCreateParams;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -75,7 +76,7 @@ class StripeWebhookControllerTest {
         OffsetDateTime periodEnd = OffsetDateTime.parse("2026-11-30T12:00:00Z");
         when(stripeBillingService.verifyWebhook(anyString(), anyString())).thenReturn(checkoutCompleted("paid"));
         when(stripeBillingService.retrieveSubscription("sub_1"))
-            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", periodEnd));
+            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", periodEnd, "active"));
 
         mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content("{}").header("Stripe-Signature", "sig"))
             .andExpect(status().isOk());
@@ -88,7 +89,7 @@ class StripeWebhookControllerTest {
         OffsetDateTime trialEnd = OffsetDateTime.parse("2026-11-30T12:00:00Z");
         when(stripeBillingService.verifyWebhook(anyString(), anyString())).thenReturn(checkoutCompleted("no_payment_required"));
         when(stripeBillingService.retrieveSubscription("sub_1"))
-            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", trialEnd));
+            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", trialEnd, "active"));
 
         mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content("{}").header("Stripe-Signature", "sig"))
             .andExpect(status().isOk());
@@ -142,11 +143,14 @@ class StripeWebhookControllerTest {
     void unknownUserIsAcknowledgedWith200() throws Exception {
         when(stripeBillingService.verifyWebhook(anyString(), anyString())).thenReturn(checkoutCompleted("paid"));
         when(stripeBillingService.retrieveSubscription("sub_1"))
-            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", OffsetDateTime.parse("2026-11-30T12:00:00Z")));
+            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", OffsetDateTime.parse("2026-11-30T12:00:00Z"), "active"));
         doThrow(new ResourceNotFoundException("Subscription not found"))
             .when(subscriptionService).activateMonthly(any(), any(), any(), any(), any());
 
         postWebhook();
+
+        // Purged user (retro Epic 2 F2): the new Stripe subscription is cancelled and its charge refunded
+        verify(stripeBillingService).cancelAndRefund("sub_1", RefundCreateParams.Reason.REQUESTED_BY_CUSTOMER);
     }
 
     @Test
@@ -176,7 +180,7 @@ class StripeWebhookControllerTest {
         OffsetDateTime periodEnd = OffsetDateTime.parse("2026-11-30T12:00:00Z");
         when(stripeBillingService.verifyWebhook(anyString(), anyString())).thenReturn(checkoutCompleted("paid"));
         when(stripeBillingService.retrieveSubscription("sub_1"))
-            .thenReturn(new SubscriptionDetails("cus_other", "pm_1", periodEnd));
+            .thenReturn(new SubscriptionDetails("cus_other", "pm_1", periodEnd, "active"));
 
         postWebhook();
 
@@ -346,6 +350,32 @@ class StripeWebhookControllerTest {
     void firstInvoiceBeforeCheckoutReturns503SoStripeRetries() throws Exception {
         givenInvoicePaid(invoiceJson("subscription_create", 1990));
         when(subscriptionService.recordPayment(EXPECTED_PAYMENT)).thenReturn(PaymentOutcome.UNKNOWN_SUBSCRIPTION);
+        when(stripeBillingService.retrieveSubscription("sub_1"))
+            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", PERIOD_END, "active"));
+
+        postWebhookExpecting(503);
+    }
+
+    @Test
+    void firstInvoiceOfCancelledDuplicateIsAcknowledgedWith200() throws Exception {
+        // Retro Epic 2 F2: the duplicate Checkout's subscription was cancelled on checkout.session.completed
+        givenInvoicePaid(invoiceJson("subscription_create", 1990));
+        when(subscriptionService.recordPayment(EXPECTED_PAYMENT)).thenReturn(PaymentOutcome.UNKNOWN_SUBSCRIPTION);
+        when(stripeBillingService.retrieveSubscription("sub_1"))
+            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", PERIOD_END, "canceled"));
+
+        postWebhook();
+
+        verify(subscriptionService).recordPayment(EXPECTED_PAYMENT);
+        verify(subscriptionService, never()).activateMonthly(any(), any(), any(), any(), any());
+        verify(stripeBillingService, never()).cancelAndRefund(anyString(), any());
+    }
+
+    @Test
+    void stripeDownWhileCheckingUnknownFirstInvoiceReturns503() throws Exception {
+        givenInvoicePaid(invoiceJson("subscription_create", 1990));
+        when(subscriptionService.recordPayment(EXPECTED_PAYMENT)).thenReturn(PaymentOutcome.UNKNOWN_SUBSCRIPTION);
+        when(stripeBillingService.retrieveSubscription("sub_1")).thenThrow(new PaymentProviderUnavailableException("down"));
 
         postWebhookExpecting(503);
     }
@@ -358,6 +388,7 @@ class StripeWebhookControllerTest {
         postWebhook();
 
         verify(subscriptionService).recordPayment(EXPECTED_PAYMENT);
+        verify(stripeBillingService, never()).retrieveSubscription(anyString());
     }
 
     // ---- Story 2.7: invoice.payment_failed ----

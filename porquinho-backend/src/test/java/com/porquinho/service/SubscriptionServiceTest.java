@@ -11,6 +11,7 @@ import com.porquinho.exception.PaymentProviderUnavailableException;
 import com.porquinho.repository.BillingTransactionRepository;
 import com.porquinho.repository.SubscriptionRepository;
 import com.porquinho.repository.UserRepository;
+import com.stripe.param.RefundCreateParams;
 import com.porquinho.service.StripeBillingService.SubscriptionDetails;
 import com.porquinho.service.SubscriptionService.FailureOutcome;
 import com.porquinho.service.SubscriptionService.InvoicePayment;
@@ -261,6 +262,10 @@ class SubscriptionServiceTest {
         assertThat(result.getNextBillingDate()).isEqualTo(nextBilling);
         verify(auditLogService).log(eq("subscription_activated"), eq(userId), isNull(), anyString());
         verify(emailService).sendSubscriptionActivated("ana@example.com", nextBilling);
+        // Single subscription: nothing cancelled or refunded (retro Epic 2 F2)
+        verify(stripeBillingService, never()).cancelSubscription(anyString());
+        verify(stripeBillingService, never()).cancelAndRefund(anyString(), any());
+        verify(stripeBillingService, never()).refundLatestInvoice(anyString(), any());
     }
 
     @Test
@@ -311,7 +316,10 @@ class SubscriptionServiceTest {
         assertThat(result.getStripeCustomerId()).isEqualTo("cus_1");
         assertThat(result.getPaymentMethodId()).isEqualTo("pm_1");
         assertThat(result.getNextBillingDate()).isEqualTo(originalNext);
-        verify(stripeBillingService).cancelSubscription("sub_2");
+        // Retro Epic 2 F2: cancel the duplicate, then refund its charge (only if the cancel went through)
+        verify(stripeBillingService).cancelAndRefund("sub_2", RefundCreateParams.Reason.DUPLICATE);
+        verify(stripeBillingService, never()).cancelAndRefund(eq("sub_1"), any());
+        verifyNoInteractions(billingTransactionRepository);
         verify(subscriptionRepository, never()).save(any());
         verify(auditLogService, never()).log(anyString(), any(), any(), any());
         verify(emailService, never()).sendSubscriptionActivated(any(), any());
@@ -723,7 +731,7 @@ class SubscriptionServiceTest {
         when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
         when(billingTransactionRepository.existsByStripeTransactionId("in_1")).thenReturn(false);
         when(stripeBillingService.retrieveSubscription("sub_1"))
-            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", newPeriodEnd));
+            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", newPeriodEnd, "active"));
         when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
 
         TransactionSynchronizationManager.initSynchronization();
@@ -770,7 +778,7 @@ class SubscriptionServiceTest {
         OffsetDateTime newPeriodEnd = NOW_UTC.plusMonths(1);
         when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
         when(stripeBillingService.retrieveSubscription("sub_1"))
-            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", newPeriodEnd));
+            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", newPeriodEnd, "active"));
         when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
 
         assertThat(service.recordPayment(invoice(NOW_UTC, null))).isEqualTo(PaymentOutcome.RECORDED);
@@ -859,7 +867,7 @@ class SubscriptionServiceTest {
         Subscription sub = activeMonthlyWithId(NOW_UTC);
         when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
         when(stripeBillingService.retrieveSubscription("sub_1"))
-            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", NOW_UTC.plusMonths(1)));
+            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", NOW_UTC.plusMonths(1), "active"));
         when(userRepository.findById(userId)).thenReturn(Optional.empty());
 
         service.recordPayment(invoice(null, null));
@@ -874,7 +882,7 @@ class SubscriptionServiceTest {
         Subscription sub = activeMonthlyWithId(NOW_UTC);
         when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
         when(stripeBillingService.retrieveSubscription("sub_1"))
-            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", NOW_UTC.plusMonths(1)));
+            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", NOW_UTC.plusMonths(1), "active"));
         when(userRepository.findById(userId)).thenReturn(Optional.empty());
 
         service.recordPayment(new InvoicePayment("in_1", "sub_1", 1990, null, NOW_UTC, null));
@@ -1011,7 +1019,7 @@ class SubscriptionServiceTest {
         OffsetDateTime newPeriodEnd = NOW_UTC.plusMonths(1);
         when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
         when(stripeBillingService.retrieveSubscription("sub_1"))
-            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", newPeriodEnd));
+            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", newPeriodEnd, "active"));
         when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
 
         assertThat(service.recordPayment(invoice(NOW_UTC, null))).isEqualTo(PaymentOutcome.RECORDED);
@@ -1031,7 +1039,7 @@ class SubscriptionServiceTest {
         Subscription sub = activeMonthlyWithId(NOW_UTC);
         when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
         when(stripeBillingService.retrieveSubscription("sub_1"))
-            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", NOW_UTC.plusMonths(1)));
+            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", NOW_UTC.plusMonths(1), "active"));
         when(userRepository.findById(userId)).thenReturn(Optional.empty());
 
         service.recordPayment(invoice(NOW_UTC, null));
@@ -1161,10 +1169,10 @@ class SubscriptionServiceTest {
 
         assertThat(result.getStatus()).isEqualTo(Status.EXPIRED);
         assertThat(result.getStripeSubscriptionId()).isEqualTo("sub_1");
-        verify(stripeBillingService).cancelSubscription("sub_2");
+        verify(stripeBillingService).cancelAndRefund("sub_2", RefundCreateParams.Reason.REQUESTED_BY_CUSTOMER);
         verify(subscriptionRepository, never()).save(any());
         verify(auditLogService, never()).log(anyString(), any(), any(), any());
-        verifyNoInteractions(emailService);
+        verifyNoInteractions(emailService, billingTransactionRepository);
     }
 
     @Test
@@ -1189,7 +1197,8 @@ class SubscriptionServiceTest {
 
         assertThat(sub.getStripeSubscriptionId()).isEqualTo("sub_1");
         assertThat(sub.getStatus()).isEqualTo(Status.PAYMENT_FAILED);
-        verify(stripeBillingService).cancelSubscription("sub_2");
+        verify(stripeBillingService).cancelAndRefund("sub_2", RefundCreateParams.Reason.DUPLICATE);
+        verifyNoInteractions(billingTransactionRepository);
         verify(subscriptionRepository, never()).save(any());
     }
 

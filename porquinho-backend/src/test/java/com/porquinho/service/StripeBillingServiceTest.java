@@ -3,13 +3,24 @@ package com.porquinho.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.porquinho.exception.InvalidWebhookSignatureException;
 import com.porquinho.exception.PaymentProviderUnavailableException;
+import com.stripe.model.Invoice;
+import com.stripe.model.InvoicePayment;
+import com.stripe.model.InvoicePaymentCollection;
+import com.stripe.model.Refund;
 import com.stripe.model.Subscription;
 import com.stripe.model.SubscriptionItem;
 import com.stripe.model.SubscriptionItemCollection;
 import com.stripe.param.checkout.SessionCreateParams;
 import com.stripe.StripeClient;
 import com.stripe.exception.ApiConnectionException;
+import com.stripe.net.RequestOptions;
+import com.stripe.param.InvoiceRetrieveParams;
+import com.stripe.param.RefundCreateParams;
 import com.stripe.param.SubscriptionUpdateParams;
+import com.stripe.service.InvoiceService;
+import com.stripe.service.RefundService;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.junit.jupiter.api.Test;
 
 import javax.crypto.Mac;
@@ -26,7 +37,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -40,6 +54,13 @@ class StripeBillingServiceTest {
 
     private final StripeBillingService service =
         new StripeBillingService("", SECRET, "http://localhost:5173/", new ObjectMapper());
+
+    // Stripe services behind the refund tests (retro Epic 2 F2). SubscriptionService stays fully qualified:
+    // the simple name is com.porquinho.service.SubscriptionService in this package.
+    private final com.stripe.service.SubscriptionService refundSubscriptions =
+        mock(com.stripe.service.SubscriptionService.class);
+    private final InvoiceService refundInvoices = mock(InvoiceService.class);
+    private final RefundService refunds = mock(RefundService.class);
 
     static String sign(String payload, String secret, long timestamp) throws Exception {
         Mac mac = Mac.getInstance("HmacSHA256");
@@ -147,6 +168,7 @@ class StripeBillingServiceTest {
         subscription.setTrialEnd(trialEnd);
         subscription.setCustomer("cus_1");
         subscription.setDefaultPaymentMethod("pm_1");
+        subscription.setStatus("active");
         return subscription;
     }
 
@@ -159,6 +181,7 @@ class StripeBillingServiceTest {
 
         assertThat(details.customerId()).isEqualTo("cus_1");
         assertThat(details.paymentMethodId()).isEqualTo("pm_1");
+        assertThat(details.status()).isEqualTo("active");
         assertThat(details.currentPeriodEnd()).isEqualTo(OffsetDateTime.of(2026, 12, 31, 12, 0, 0, 0, ZoneOffset.UTC));
     }
 
@@ -362,5 +385,154 @@ class StripeBillingServiceTest {
         service.voidInvoice("in_open");
 
         org.mockito.Mockito.verify(invoices).voidInvoice("in_open");
+    }
+
+    // ---- Retro Epic 2 F2: cancel and refund a duplicate Checkout / deleted user's subscription ----
+
+    private StripeBillingService serviceForRefund() throws Exception {
+        StripeClient client = mock(StripeClient.class);
+        when(client.subscriptions()).thenReturn(refundSubscriptions);
+        when(client.invoices()).thenReturn(refundInvoices);
+        when(client.refunds()).thenReturn(refunds);
+        Subscription subscription = new Subscription();
+        subscription.setLatestInvoice("in_dup");
+        when(refundSubscriptions.retrieve("sub_dup")).thenReturn(subscription);
+        return new StripeBillingService(client, SECRET, "http://localhost:5173", new ObjectMapper());
+    }
+
+    private static Invoice invoicePaying(long amountPaid, String paymentStatus, String paymentIntentId) {
+        InvoicePayment.Payment payment = new InvoicePayment.Payment();
+        payment.setType("payment_intent");
+        payment.setPaymentIntent(paymentIntentId);
+        InvoicePayment invoicePayment = new InvoicePayment();
+        invoicePayment.setStatus(paymentStatus);
+        invoicePayment.setPayment(payment);
+        InvoicePaymentCollection payments = new InvoicePaymentCollection();
+        payments.setData(List.of(invoicePayment));
+        Invoice invoice = new Invoice();
+        invoice.setId("in_dup");
+        invoice.setAmountPaid(amountPaid);
+        invoice.setPayments(payments);
+        return invoice;
+    }
+
+    @Test
+    void refundLatestInvoiceRefundsThePaymentIntentOfTheExpandedPaymentsWithTheGivenReason() throws Exception {
+        StripeBillingService billing = serviceForRefund();
+        when(refundInvoices.retrieve(eq("in_dup"), any(InvoiceRetrieveParams.class)))
+            .thenReturn(invoicePaying(1990, "paid", "pi_dup"));
+        when(refunds.create(any(RefundCreateParams.class), any(RequestOptions.class))).thenReturn(new Refund());
+
+        billing.refundLatestInvoice("sub_dup", RefundCreateParams.Reason.DUPLICATE);
+
+        ArgumentCaptor<InvoiceRetrieveParams> retrieve = ArgumentCaptor.forClass(InvoiceRetrieveParams.class);
+        verify(refundInvoices).retrieve(eq("in_dup"), retrieve.capture());
+        assertThat(retrieve.getValue().getExpand()).containsExactly("payments");
+        ArgumentCaptor<RefundCreateParams> params = ArgumentCaptor.forClass(RefundCreateParams.class);
+        ArgumentCaptor<RequestOptions> options = ArgumentCaptor.forClass(RequestOptions.class);
+        verify(refunds).create(params.capture(), options.capture());
+        assertThat(params.getValue().getPaymentIntent()).isEqualTo("pi_dup");
+        assertThat(params.getValue().getAmount()).isNull(); // full refund
+        assertThat(params.getValue().getReason()).isEqualTo(RefundCreateParams.Reason.DUPLICATE);
+        assertThat(options.getValue().getIdempotencyKey()).isEqualTo("refund-pi_dup");
+    }
+
+    @Test
+    void refundLatestInvoiceForDeletedUserUsesRequestedByCustomer() throws Exception {
+        StripeBillingService billing = serviceForRefund();
+        when(refundInvoices.retrieve(eq("in_dup"), any(InvoiceRetrieveParams.class)))
+            .thenReturn(invoicePaying(1990, "paid", "pi_dup"));
+
+        billing.refundLatestInvoice("sub_dup", RefundCreateParams.Reason.REQUESTED_BY_CUSTOMER);
+
+        ArgumentCaptor<RefundCreateParams> params = ArgumentCaptor.forClass(RefundCreateParams.class);
+        verify(refunds).create(params.capture(), any(RequestOptions.class));
+        assertThat(params.getValue().getReason()).isEqualTo(RefundCreateParams.Reason.REQUESTED_BY_CUSTOMER);
+    }
+
+    @Test
+    void refundLatestInvoiceOfZeroInvoiceRefundsNothing() throws Exception {
+        // Duplicate during the trial: R$ 0 invoice
+        StripeBillingService billing = serviceForRefund();
+        when(refundInvoices.retrieve(eq("in_dup"), any(InvoiceRetrieveParams.class)))
+            .thenReturn(invoicePaying(0, "paid", null));
+
+        billing.refundLatestInvoice("sub_dup", RefundCreateParams.Reason.DUPLICATE);
+
+        verifyNoInteractions(refunds);
+    }
+
+    @Test
+    void refundLatestInvoiceSkipsPaymentsNotPaidOrWithoutPaymentIntent() throws Exception {
+        StripeBillingService billing = serviceForRefund();
+        when(refundInvoices.retrieve(eq("in_dup"), any(InvoiceRetrieveParams.class)))
+            .thenReturn(invoicePaying(1990, "open", "pi_dup"));
+
+        billing.refundLatestInvoice("sub_dup", RefundCreateParams.Reason.DUPLICATE);
+
+        verifyNoInteractions(refunds);
+    }
+
+    @Test
+    void refundLatestInvoiceIsBestEffortAndNeverThrows() throws Exception {
+        StripeBillingService billing = serviceForRefund();
+        when(refundInvoices.retrieve(eq("in_dup"), any(InvoiceRetrieveParams.class)))
+            .thenReturn(invoicePaying(1990, "paid", "pi_dup"));
+        when(refunds.create(any(RefundCreateParams.class), any(RequestOptions.class)))
+            .thenThrow(new ApiConnectionException("timeout"));
+
+        billing.refundLatestInvoice("sub_dup", RefundCreateParams.Reason.DUPLICATE);
+        billing.refundLatestInvoice(null, RefundCreateParams.Reason.DUPLICATE);
+        service.refundLatestInvoice("sub_dup", RefundCreateParams.Reason.DUPLICATE); // Stripe not configured
+
+        when(refundSubscriptions.retrieve("sub_dup")).thenThrow(new ApiConnectionException("down"));
+        billing.refundLatestInvoice("sub_dup", RefundCreateParams.Reason.DUPLICATE);
+    }
+
+    @Test
+    void refundLatestInvoiceWithoutInvoiceRefundsNothing() throws Exception {
+        StripeBillingService billing = serviceForRefund();
+        when(refundSubscriptions.retrieve("sub_dup")).thenReturn(new Subscription());
+
+        billing.refundLatestInvoice("sub_dup", RefundCreateParams.Reason.DUPLICATE);
+
+        verifyNoInteractions(refundInvoices, refunds);
+    }
+
+    @Test
+    void cancelSubscriptionReturnsWhetherStripeCancelled() throws Exception {
+        StripeBillingService billing = serviceForRefund();
+        when(refundSubscriptions.cancel("sub_fail")).thenThrow(new ApiConnectionException("down"));
+
+        assertThat(billing.cancelSubscription("sub_dup")).isTrue();
+        assertThat(billing.cancelSubscription("sub_fail")).isFalse();
+        assertThat(billing.cancelSubscription(null)).isFalse();
+        assertThat(service.cancelSubscription("sub_dup")).isFalse(); // Stripe not configured
+    }
+
+    @Test
+    void cancelAndRefundRefundsOnlyAfterStripeCancelled() throws Exception {
+        StripeBillingService billing = serviceForRefund();
+        when(refundInvoices.retrieve(eq("in_dup"), any(InvoiceRetrieveParams.class)))
+            .thenReturn(invoicePaying(1990, "paid", "pi_dup"));
+
+        billing.cancelAndRefund("sub_dup", RefundCreateParams.Reason.DUPLICATE);
+
+        InOrder stripe = inOrder(refundSubscriptions, refunds);
+        stripe.verify(refundSubscriptions).cancel("sub_dup");
+        stripe.verify(refunds).create(any(RefundCreateParams.class), any(RequestOptions.class));
+    }
+
+    @Test
+    void cancelAndRefundDoesNotRefundWhenCancelFailed() throws Exception {
+        // A refunded but still alive subscription would keep billing monthly: leave both steps for a manual fix
+        StripeBillingService billing = serviceForRefund();
+        when(refundSubscriptions.cancel("sub_dup")).thenThrow(new ApiConnectionException("down"));
+
+        billing.cancelAndRefund("sub_dup", RefundCreateParams.Reason.REQUESTED_BY_CUSTOMER);
+        service.cancelAndRefund("sub_dup", RefundCreateParams.Reason.DUPLICATE); // Stripe not configured
+
+        verify(refundSubscriptions).cancel("sub_dup");
+        verifyNoInteractions(refundInvoices, refunds);
     }
 }

@@ -13,6 +13,7 @@ import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.BillingTransactionRepository;
 import com.porquinho.repository.SubscriptionRepository;
 import com.porquinho.repository.UserRepository;
+import com.stripe.param.RefundCreateParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -280,19 +281,20 @@ public class SubscriptionService {
         if (userRepository.findById(userId).isEmpty()) {
             log.warn("Checkout completed for deleted user {}; cancelling Stripe subscription {}",
                 userId, stripeSubscriptionId);
-            stripeBillingService.cancelSubscription(stripeSubscriptionId);
+            stripeBillingService.cancelAndRefund(stripeSubscriptionId, RefundCreateParams.Reason.REQUESTED_BY_CUSTOMER);
             return subscription;
         }
 
         // Second completed Checkout (two tabs / re-click) for an already active plan: keep the
-        // current Stripe subscription and cancel the incoming one so the user is not billed twice.
+        // current Stripe subscription, cancel the incoming one and refund its charge (retro Epic 2 F2).
         // PAYMENT_FAILED too: that Stripe subscription is still alive and retrying (Story 2.7).
         if (subscription.getPlanType() == PlanType.MONTHLY
             && (subscription.getStatus() == Status.ACTIVE || subscription.getStatus() == Status.PAYMENT_FAILED)
             && subscription.getStripeSubscriptionId() != null) {
             log.error("User {} already has active Stripe subscription {}; cancelling duplicate {}",
                 userId, subscription.getStripeSubscriptionId(), stripeSubscriptionId);
-            stripeBillingService.cancelSubscription(stripeSubscriptionId);
+            // Its first charge (outside the trial) is refunded in full; a R$ 0 trial invoice has nothing to refund
+            stripeBillingService.cancelAndRefund(stripeSubscriptionId, RefundCreateParams.Reason.DUPLICATE);
             return subscription;
         }
 
