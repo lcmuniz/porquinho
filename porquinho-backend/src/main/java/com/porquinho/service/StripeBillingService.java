@@ -9,10 +9,16 @@ import com.stripe.StripeClient;
 import com.stripe.exception.InvalidRequestException;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.exception.StripeException;
+import com.stripe.model.Invoice;
+import com.stripe.model.InvoicePayment;
+import com.stripe.model.Refund;
 import com.stripe.model.Subscription;
 import com.stripe.model.SubscriptionItem;
 import com.stripe.model.checkout.Session;
+import com.stripe.net.RequestOptions;
 import com.stripe.net.Webhook;
+import com.stripe.param.InvoiceRetrieveParams;
+import com.stripe.param.RefundCreateParams;
 import com.stripe.param.SubscriptionUpdateParams;
 import com.stripe.param.checkout.SessionCreateParams;
 import org.slf4j.Logger;
@@ -71,8 +77,12 @@ public class StripeBillingService {
     public record WebhookEvent(String id, String type, JsonNode object) {
     }
 
-    /** The bits of a Stripe Subscription we persist locally. */
-    public record SubscriptionDetails(String customerId, String paymentMethodId, OffsetDateTime currentPeriodEnd) {
+    /**
+     * The bits of a Stripe Subscription we persist locally, plus its Stripe status ("active", "trialing",
+     * "canceled", ...) so an unknown subscription's invoice can be told apart from a race (F2).
+     */
+    public record SubscriptionDetails(String customerId, String paymentMethodId, OffsetDateTime currentPeriodEnd,
+                                      String status) {
     }
 
     /**
@@ -179,21 +189,104 @@ public class StripeBillingService {
     /**
      * Cancel a Stripe subscription immediately. Best-effort: never throws (like SupabaseAdminClient);
      * failures are logged so they can be cancelled by hand in the Stripe dashboard.
+     *
+     * @return true when Stripe cancelled the subscription; false when there was nothing to cancel,
+     *         Stripe is not configured or the call failed
      */
-    public void cancelSubscription(String stripeSubscriptionId) {
+    public boolean cancelSubscription(String stripeSubscriptionId) {
         if (isBlank(stripeSubscriptionId)) {
-            return;
+            return false;
         }
         if (client == null) {
             log.warn("STRIPE_SECRET_KEY not configured - skipping cancel of Stripe subscription {}", stripeSubscriptionId);
-            return;
+            return false;
         }
         try {
             client.subscriptions().cancel(stripeSubscriptionId);
             log.info("Stripe subscription {} cancelled", stripeSubscriptionId);
+            return true;
         } catch (Exception e) {
-            log.warn("Failed to cancel Stripe subscription {}: {} - {}",
+            log.error("Failed to cancel Stripe subscription {}: {} - {}; cancel it by hand in the Stripe dashboard",
                 stripeSubscriptionId, e.getClass().getSimpleName(), e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Cancel a Stripe subscription that must not bill (duplicate Checkout, deleted or purged user) and, only
+     * once Stripe cancelled it, refund its latest invoice (retro Epic 2 F2). Refunding a subscription that is
+     * still alive would leave Stripe billing it monthly, so on a failed cancel nothing is refunded and both
+     * steps are left for a manual fix. Best-effort: never throws.
+     */
+    public void cancelAndRefund(String stripeSubscriptionId, RefundCreateParams.Reason reason) {
+        if (cancelSubscription(stripeSubscriptionId)) {
+            refundLatestInvoice(stripeSubscriptionId, reason);
+        } else {
+            log.error("Stripe subscription {} was not cancelled, so its charge was not refunded; "
+                + "cancel it AND refund its latest invoice by hand in the Stripe dashboard", stripeSubscriptionId);
+        }
+    }
+
+    /**
+     * Refund in full what was paid on a subscription's latest invoice (retro Epic 2 F2, decision A): the
+     * charge of a duplicate Checkout, or of a Checkout completed by a deleted/purged user, after the
+     * subscription was cancelled. API 2026: the invoice has no top-level charge/payment_intent; the
+     * payment sits in {@code invoice.payments[].payment.payment_intent} (expanded here).
+     * The reason is DUPLICATE for a second Checkout, REQUESTED_BY_CUSTOMER for a deleted/purged user.
+     * A R$ 0 invoice (subscribed during the trial) has nothing to refund. The refund uses an idempotency
+     * key per payment, so a re-delivered webhook does not refund twice.
+     * Best-effort: never throws; a failure is logged at error level with the ids for a manual refund.
+     */
+    public void refundLatestInvoice(String stripeSubscriptionId, RefundCreateParams.Reason reason) {
+        if (isBlank(stripeSubscriptionId)) {
+            return;
+        }
+        if (client == null) {
+            log.error("STRIPE_SECRET_KEY not configured - could not refund the latest invoice of Stripe subscription {}; "
+                + "refund it by hand", stripeSubscriptionId);
+            return;
+        }
+        String invoiceId = null;
+        try {
+            invoiceId = client.subscriptions().retrieve(stripeSubscriptionId).getLatestInvoice();
+            if (isBlank(invoiceId)) {
+                log.info("Stripe subscription {} has no invoice; nothing to refund", stripeSubscriptionId);
+                return;
+            }
+            Invoice invoice = client.invoices().retrieve(invoiceId,
+                InvoiceRetrieveParams.builder().addExpand("payments").build());
+            if (invoice.getAmountPaid() == null || invoice.getAmountPaid() <= 0) {
+                log.info("Invoice {} of Stripe subscription {} paid nothing; nothing to refund",
+                    invoiceId, stripeSubscriptionId);
+                return;
+            }
+            int refunded = 0;
+            if (invoice.getPayments() != null && invoice.getPayments().getData() != null) {
+                for (InvoicePayment payment : invoice.getPayments().getData()) {
+                    String paymentIntentId = payment.getPayment() == null ? null : payment.getPayment().getPaymentIntent();
+                    if (!"paid".equals(payment.getStatus()) || isBlank(paymentIntentId)) {
+                        continue;
+                    }
+                    Refund refund = client.refunds().create(
+                        RefundCreateParams.builder()
+                            .setPaymentIntent(paymentIntentId)
+                            .setReason(reason)
+                            .putMetadata("stripe_subscription_id", stripeSubscriptionId)
+                            .putMetadata("invoice_id", invoiceId)
+                            .build(),
+                        RequestOptions.builder().setIdempotencyKey("refund-" + paymentIntentId).build());
+                    refunded++;
+                    log.info("Refunded payment {} of invoice {} (Stripe subscription {}): refund {}",
+                        paymentIntentId, invoiceId, stripeSubscriptionId, refund == null ? null : refund.getId());
+                }
+            }
+            if (refunded == 0) {
+                log.error("Invoice {} of Stripe subscription {} paid {} but has no refundable payment; "
+                    + "refund it by hand in the Stripe dashboard", invoiceId, stripeSubscriptionId, invoice.getAmountPaid());
+            }
+        } catch (Exception e) {
+            log.error("Failed to refund invoice {} of Stripe subscription {}: {} - {}; refund it by hand in the Stripe dashboard",
+                invoiceId, stripeSubscriptionId, e.getClass().getSimpleName(), e.getMessage());
         }
     }
 
@@ -322,7 +415,8 @@ public class StripeBillingService {
         return new SubscriptionDetails(
             subscription.getCustomer(),
             subscription.getDefaultPaymentMethod(),
-            toOffsetDateTime(currentPeriodEnd(subscription)));
+            toOffsetDateTime(currentPeriodEnd(subscription)),
+            subscription.getStatus());
     }
 
     // Since API 2025-03-31 current_period_end lives on the subscription item, not the subscription.

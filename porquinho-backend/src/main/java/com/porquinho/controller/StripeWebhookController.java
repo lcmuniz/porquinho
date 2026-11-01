@@ -11,6 +11,7 @@ import com.porquinho.service.SubscriptionService.FailureOutcome;
 import com.porquinho.service.SubscriptionService.InvoicePayment;
 import com.porquinho.service.SubscriptionService.PaymentFailure;
 import com.porquinho.service.SubscriptionService.PaymentOutcome;
+import com.stripe.param.RefundCreateParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -37,7 +38,8 @@ import java.util.UUID;
  * Errors: bad signature -> 400 (nothing changes); Stripe API down while fetching the
  * subscription on checkout -> 503 (Stripe retries the delivery); first invoice of a subscription
  * (billing_reason=subscription_create) arriving before checkout.session.completed -> 503, so the
- * retry records it once the subscription is known.
+ * retry records it once the subscription is known; unless Stripe says that subscription is canceled
+ * (duplicate Checkout or deleted user, cancelled and refunded on checkout) -> 200.
  */
 @RestController
 public class StripeWebhookController {
@@ -50,6 +52,7 @@ public class StripeWebhookController {
     static final String INVOICE_PAYMENT_FAILED = "invoice.payment_failed";
 
     private static final String BILLING_REASON_SUBSCRIPTION_CREATE = "subscription_create";
+    private static final String STRIPE_STATUS_CANCELED = "canceled";
 
     // "no_payment_required": subscribed during the trial, first charge on trial_end
     private static final Set<String> SETTLED_PAYMENT_STATUSES = Set.of("paid", "no_payment_required");
@@ -135,6 +138,14 @@ public class StripeWebhookController {
         if (outcome == PaymentOutcome.UNKNOWN_SUBSCRIPTION) {
             String billingReason = text(invoice, "billing_reason");
             if (BILLING_REASON_SUBSCRIPTION_CREATE.equals(billingReason)) {
+                // Duplicate Checkout (or deleted user): its subscription was cancelled and refunded on
+                // checkout.session.completed, so it will never become known here. Stripe down -> 503.
+                String stripeStatus = stripeBillingService.retrieveSubscription(stripeSubscriptionId).status();
+                if (STRIPE_STATUS_CANCELED.equals(stripeStatus)) {
+                    log.warn("Ignoring {} {}: first invoice {} of cancelled Stripe subscription {} (duplicate Checkout "
+                        + "or deleted user); nothing recorded", INVOICE_PAID, event.id(), invoiceId, stripeSubscriptionId);
+                    return ResponseEntity.ok().build();
+                }
                 // First invoice raced ahead of checkout.session.completed: 503 so Stripe re-delivers it
                 log.info("{} {}: first invoice {} for Stripe subscription {} arrived before checkout; asking Stripe to retry",
                     INVOICE_PAID, event.id(), invoiceId, stripeSubscriptionId);
@@ -227,9 +238,11 @@ public class StripeWebhookController {
                 details.paymentMethodId(), details.currentPeriodEnd());
             log.info("Monthly plan activated for user {} (event {})", userId, event.id());
         } catch (ResourceNotFoundException e) {
-            // Retrying will not create the row; acknowledge so Stripe stops, but leave a trail.
-            log.error("{} {} for user {} without subscription row (stripe subscription {})",
+            // User purged: retrying will not create the row; acknowledge so Stripe stops, but leave a trail
+            // and stop the billing of the new subscription (best-effort, retro Epic 2 F2).
+            log.error("{} {} for user {} without subscription row (stripe subscription {}); cancelling and refunding it",
                 CHECKOUT_COMPLETED, event.id(), userId, stripeSubscriptionId);
+            stripeBillingService.cancelAndRefund(stripeSubscriptionId, RefundCreateParams.Reason.REQUESTED_BY_CUSTOMER);
         }
     }
 
