@@ -8,7 +8,7 @@ import java.util.UUID;
 
 /**
  * User subscription (Story 2.1; Stripe ids added in Story 2.2; trial reminder tracking in Story 2.3;
- * cancellation_date in Story 2.4). One row per user for its whole lifetime.
+ * cancellation_date in Story 2.4; payment failure tracking in Story 2.7). One row per user for its whole lifetime.
  * No @Where on purpose: the LGPD purge hard-deletes this row (see Story 1.7 learnings).
  */
 @Entity
@@ -17,7 +17,11 @@ public class Subscription {
 
     public enum PlanType { TRIAL, MONTHLY }
 
-    public enum Status { ACTIVE, CANCELLED, EXPIRED }
+    /**
+     * PAYMENT_FAILED: a renewal was declined and Stripe will retry (access kept, Story 2.7 decision 2A).
+     * SUSPENDED: every retry failed and Stripe cancelled the subscription (no access).
+     */
+    public enum Status { ACTIVE, CANCELLED, EXPIRED, PAYMENT_FAILED, SUSPENDED }
 
     @Id
     @GeneratedValue(generator = "UUID")
@@ -62,6 +66,12 @@ public class Subscription {
 
     @Column(name = "cancellation_date")
     private OffsetDateTime cancellationDate;
+
+    @Column(name = "failed_payment_attempts", nullable = false)
+    private int failedPaymentAttempts;
+
+    @Column(name = "payment_update_url", length = 1024)
+    private String paymentUpdateUrl;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
@@ -134,6 +144,12 @@ public class Subscription {
 
     public OffsetDateTime getCancellationDate() { return cancellationDate; }
     public void setCancellationDate(OffsetDateTime cancellationDate) { this.cancellationDate = cancellationDate; }
+
+    public int getFailedPaymentAttempts() { return failedPaymentAttempts; }
+    public void setFailedPaymentAttempts(int failedPaymentAttempts) { this.failedPaymentAttempts = failedPaymentAttempts; }
+
+    public String getPaymentUpdateUrl() { return paymentUpdateUrl; }
+    public void setPaymentUpdateUrl(String paymentUpdateUrl) { this.paymentUpdateUrl = paymentUpdateUrl; }
 
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }

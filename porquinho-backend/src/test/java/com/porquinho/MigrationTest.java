@@ -163,4 +163,38 @@ class MigrationTest {
             assertThat(count).withFailMessage("Index '%s' should exist", index).isEqualTo(1);
         }
     }
+
+    @Test
+    void v14ShouldAddPaymentFailureColumnsToSubscriptions() {
+        String attemptsType = jdbcTemplate.queryForObject(
+            "SELECT data_type FROM information_schema.columns " +
+            "WHERE table_name = 'subscriptions' AND column_name = 'failed_payment_attempts'", String.class);
+        assertThat(attemptsType).isEqualTo("integer");
+        String attemptsNullable = jdbcTemplate.queryForObject(
+            "SELECT is_nullable FROM information_schema.columns " +
+            "WHERE table_name = 'subscriptions' AND column_name = 'failed_payment_attempts'", String.class);
+        assertThat(attemptsNullable).isEqualTo("NO");
+        String attemptsDefault = jdbcTemplate.queryForObject(
+            "SELECT column_default FROM information_schema.columns " +
+            "WHERE table_name = 'subscriptions' AND column_name = 'failed_payment_attempts'", String.class);
+        assertThat(attemptsDefault).isEqualTo("0");
+
+        Integer urlLength = jdbcTemplate.queryForObject(
+            "SELECT character_maximum_length FROM information_schema.columns " +
+            "WHERE table_name = 'subscriptions' AND column_name = 'payment_update_url'", Integer.class);
+        assertThat(urlLength).isEqualTo(1024);
+    }
+
+    @Test
+    void v14StatusCheckShouldAcceptPaymentFailedAndSuspendedOnly() {
+        String definition = jdbcTemplate.queryForObject(
+            "SELECT pg_get_constraintdef(oid) FROM pg_constraint " +
+            "WHERE conrelid = 'subscriptions'::regclass AND conname = 'subscriptions_status_check'", String.class);
+        assertThat(definition).contains("ACTIVE", "CANCELLED", "EXPIRED", "PAYMENT_FAILED", "SUSPENDED");
+
+        Integer statusChecks = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM pg_constraint WHERE conrelid = 'subscriptions'::regclass " +
+            "AND contype = 'c' AND pg_get_constraintdef(oid) LIKE '%status%'", Integer.class);
+        assertThat(statusChecks).isEqualTo(1);
+    }
 }

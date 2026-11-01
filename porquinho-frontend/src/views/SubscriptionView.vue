@@ -55,6 +55,33 @@
             Cancelar assinatura
           </Button>
         </template>
+        <template v-else-if="isPaymentFailed">
+          <p role="alert" data-testid="payment-failed-notice" class="text-gray-700">
+            Não conseguimos cobrar sua última mensalidade. Vamos tentar de novo automaticamente e seu
+            acesso continua enquanto isso.
+          </p>
+          <p class="text-sm text-gray-600">
+            Para resolver agora, pague a fatura no Stripe com o cartão cadastrado ou com outro cartão.
+          </p>
+          <div class="flex flex-col gap-3 sm:flex-row">
+            <Button
+              v-if="subscription?.paymentUpdateUrl"
+              class="min-h-[44px]"
+              data-testid="update-payment-button"
+              @click="updatePayment"
+            >
+              Atualizar pagamento
+            </Button>
+            <Button
+              variant="outline"
+              class="min-h-[44px]"
+              data-testid="cancel-button"
+              @click="openCancelDialog"
+            >
+              Cancelar assinatura
+            </Button>
+          </div>
+        </template>
         <template v-else-if="isCancelledWithAccess">
           <p role="status" data-testid="cancelled-notice" class="text-gray-700">
             Assinatura cancelada — ativa até {{ accessUntil }}. Nenhuma nova cobrança será feita.
@@ -72,6 +99,14 @@
           </Button>
         </template>
         <template v-else-if="returnStatus !== 'sucesso'">
+          <p
+            v-if="cancelledNow"
+            role="status"
+            data-testid="cancelled-now-notice"
+            class="text-gray-700"
+          >
+            Assinatura cancelada. Seu acesso foi encerrado e nenhuma nova cobrança será feita.
+          </p>
           <p v-if="inTrial" class="text-sm text-gray-600">
             Assinando agora, você mantém os dias grátis do trial: a primeira cobrança só acontece
             quando ele terminar.
@@ -108,8 +143,14 @@
           <DialogHeader>
             <DialogTitle>Cancelar assinatura?</DialogTitle>
             <DialogDescription data-testid="cancel-dialog-description">
-              Tem certeza? Você perde o acesso ao fim do período atual ({{ accessUntil }}). Nenhuma
-              nova cobrança será feita.
+              <template v-if="isPaymentFailed">
+                Tem certeza? Como o último pagamento falhou, o acesso termina agora. Não haverá novas
+                tentativas de cobrança.
+              </template>
+              <template v-else>
+                Tem certeza? Você perde o acesso ao fim do período atual ({{ accessUntil }}). Nenhuma
+                nova cobrança será feita.
+              </template>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -179,19 +220,30 @@ const isCancelledWithAccess = computed(
     subscription.value.status === 'CANCELLED' &&
     subscription.value.hasAccess,
 )
-// Story 2.5: já foi assinante e perdeu o acesso (expirada, ou cancelada com o período encerrado):
-// volta pelo Checkout, com o rótulo "Reativar assinatura"
+// Story 2.7: cobrança recusada; o Stripe tenta de novo e o usuário pode pagar a fatura agora
+const isPaymentFailed = computed(() => subscription.value?.status === 'PAYMENT_FAILED')
+// Story 2.5: já foi assinante e perdeu o acesso (expirada, suspensa, ou cancelada com o período
+// encerrado): volta pelo Checkout, com o rótulo "Reativar assinatura"
 const isFormerSubscriber = computed(
   () =>
     subscription.value?.planType === 'MONTHLY' &&
     subscription.value.status !== 'ACTIVE' &&
+    !isPaymentFailed.value &&
     !isCancelledWithAccess.value,
 )
+
+// Página da fatura no Stripe: paga na hora (cartão salvo ou novo); o webhook invoice.paid reativa
+function updatePayment() {
+  const url = subscription.value?.paymentUpdateUrl
+  if (url) window.location.assign(url)
+}
 const accessUntil = computed(() => formatDateBR(subscription.value?.nextBillingDate))
 
 const showCancelDialog = ref(false)
 const cancelling = ref(false)
 const cancelError = ref<string | null>(null)
+// Story 2.7: cancelada durante PAYMENT_FAILED, com o acesso encerrado na hora (vira EXPIRED)
+const cancelledNow = ref(false)
 
 function openCancelDialog() {
   cancelError.value = null
@@ -201,9 +253,14 @@ function openCancelDialog() {
 async function confirmCancel() {
   cancelling.value = true
   cancelError.value = null
+  // Em PAYMENT_FAILED o cancelamento é imediato: o sucesso aparece como EXPIRED, não CANCELLED
+  const immediate = isPaymentFailed.value
+  const cancelled = () =>
+    immediate ? subscription.value?.status === 'EXPIRED' : isCancelledWithAccess.value
   try {
     subscription.value = await cancelSubscription()
     showCancelDialog.value = false
+    cancelledNow.value = immediate
   } catch (err) {
     const status = (err as { response?: { status?: number } }).response?.status
     showCancelDialog.value = false
@@ -217,7 +274,9 @@ async function confirmCancel() {
     } else {
       // Timeout/sem resposta/outro erro: o cancelamento pode ter acontecido; mostra o estado real
       await loadSubscription()
-      if (!isCancelledWithAccess.value) {
+      if (cancelled()) {
+        cancelledNow.value = immediate
+      } else {
         cancelError.value =
           'Não foi possível confirmar o cancelamento. Verifique o status e tente novamente.'
       }
@@ -293,7 +352,7 @@ async function loadSubscription() {
 }
 
 function pollUntilMonthly(attempt = 1) {
-  // MONTHLY/EXPIRED (assinando de novo) continua até o webhook ativar
+  // MONTHLY/EXPIRED ou SUSPENDED (assinando de novo) continua até o webhook ativar
   if (isActiveMonthly.value || attempt > POLL_MAX_ATTEMPTS) return
   pollTimer = setTimeout(async () => {
     await loadSubscription()

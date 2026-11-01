@@ -227,6 +227,54 @@ public class StripeBillingService {
     }
 
     /**
+     * Cancel a Stripe subscription right now (Story 2.7: user cancels while PAYMENT_FAILED, so Stripe
+     * stops retrying the declined invoice). Unlike {@link #cancelSubscription}, this is synchronous and
+     * NOT best-effort: the caller only marks the local row EXPIRED after Stripe accepted.
+     *
+     * @return latest_invoice id of the cancelled subscription (the open failed invoice, to be voided); may be null
+     * @throws PaymentProviderUnavailableException Stripe not configured or the call failed
+     */
+    public String cancelImmediately(String stripeSubscriptionId) {
+        if (isBlank(stripeSubscriptionId)) {
+            throw new PaymentProviderUnavailableException("No Stripe subscription id to cancel");
+        }
+        if (client == null) {
+            log.warn("STRIPE_SECRET_KEY not configured - cannot cancel Stripe subscription {}", stripeSubscriptionId);
+            throw new PaymentProviderUnavailableException("STRIPE_SECRET_KEY not configured");
+        }
+        try {
+            Subscription cancelled = client.subscriptions().cancel(stripeSubscriptionId);
+            log.info("Stripe subscription {} cancelled immediately", stripeSubscriptionId);
+            return cancelled == null ? null : cancelled.getLatestInvoice();
+        } catch (StripeException e) {
+            log.warn("Failed to cancel Stripe subscription {} immediately: {}", stripeSubscriptionId, e.getMessage());
+            throw new PaymentProviderUnavailableException("Stripe unavailable", e);
+        }
+    }
+
+    /**
+     * Void a Stripe invoice (Story 2.7 decision 2A: the open invoice of a suspended subscription, so the
+     * link in the "Pagamento falhou" e-mail stops charging). Best-effort: never throws; a failure is
+     * logged at error level so the invoice can be voided by hand in the Stripe dashboard.
+     */
+    public void voidInvoice(String invoiceId) {
+        if (isBlank(invoiceId)) {
+            return;
+        }
+        if (client == null) {
+            log.error("STRIPE_SECRET_KEY not configured - could not void Stripe invoice {}; void it by hand", invoiceId);
+            return;
+        }
+        try {
+            client.invoices().voidInvoice(invoiceId);
+            log.info("Stripe invoice {} voided", invoiceId);
+        } catch (Exception e) {
+            log.error("Failed to void Stripe invoice {}: {} - {}; void it by hand in the Stripe dashboard",
+                invoiceId, e.getClass().getSimpleName(), e.getMessage());
+        }
+    }
+
+    /**
      * Undo a scheduled cancel (Story 2.5): {@code cancel_at_period_end=false}. No charge now; the next
      * charge happens on the date Stripe already had. Synchronous, NOT best-effort: the caller only
      * marks the local row ACTIVE after Stripe accepted.

@@ -301,4 +301,66 @@ class StripeBillingServiceTest {
             .isInstanceOf(PaymentProviderUnavailableException.class)
             .hasCauseInstanceOf(com.stripe.exception.InvalidRequestException.class);
     }
+
+    // ---- Story 2.7 ----
+
+    @Test
+    void cancelImmediatelyWithoutSecretKeyOrIdThrowsUnavailable() {
+        assertThatThrownBy(() -> service.cancelImmediately("sub_1"))
+            .isInstanceOf(PaymentProviderUnavailableException.class);
+        assertThatThrownBy(() -> service.cancelImmediately(null))
+            .isInstanceOf(PaymentProviderUnavailableException.class);
+    }
+
+    @Test
+    void cancelImmediatelyCancelsTheStripeSubscription() throws Exception {
+        com.stripe.service.SubscriptionService subscriptions = mock(com.stripe.service.SubscriptionService.class);
+        Subscription cancelled = new Subscription();
+        cancelled.setLatestInvoice("in_open");
+        when(subscriptions.cancel("sub_1")).thenReturn(cancelled).thenReturn(new Subscription()).thenReturn(null);
+        StripeBillingService billing = serviceWithSubscriptions(subscriptions);
+
+        assertThat(billing.cancelImmediately("sub_1")).isEqualTo("in_open");
+        assertThat(billing.cancelImmediately("sub_1")).isNull();
+        assertThat(billing.cancelImmediately("sub_1")).isNull();
+        org.mockito.Mockito.verify(subscriptions, org.mockito.Mockito.times(3)).cancel("sub_1");
+    }
+
+    @Test
+    void cancelImmediatelyWrapsStripeExceptionAsUnavailable() throws Exception {
+        com.stripe.service.SubscriptionService subscriptions = mock(com.stripe.service.SubscriptionService.class);
+        when(subscriptions.cancel("sub_1")).thenThrow(new ApiConnectionException("timeout"));
+
+        assertThatThrownBy(() -> serviceWithSubscriptions(subscriptions).cancelImmediately("sub_1"))
+            .isInstanceOf(PaymentProviderUnavailableException.class)
+            .hasCauseInstanceOf(ApiConnectionException.class);
+    }
+
+    private StripeBillingService serviceWithInvoices(com.stripe.service.InvoiceService invoices) {
+        StripeClient client = mock(StripeClient.class);
+        when(client.invoices()).thenReturn(invoices);
+        return new StripeBillingService(client, SECRET, "http://localhost:5173", new ObjectMapper());
+    }
+
+    @Test
+    void voidInvoiceVoidsTheStripeInvoice() throws Exception {
+        com.stripe.service.InvoiceService invoices = mock(com.stripe.service.InvoiceService.class);
+
+        serviceWithInvoices(invoices).voidInvoice("in_open");
+
+        org.mockito.Mockito.verify(invoices).voidInvoice("in_open");
+    }
+
+    @Test
+    void voidInvoiceIsBestEffortAndNeverThrows() throws Exception {
+        com.stripe.service.InvoiceService invoices = mock(com.stripe.service.InvoiceService.class);
+        when(invoices.voidInvoice("in_open")).thenThrow(new ApiConnectionException("timeout"));
+        StripeBillingService billing = serviceWithInvoices(invoices);
+
+        billing.voidInvoice("in_open");
+        billing.voidInvoice(null);
+        service.voidInvoice("in_open");
+
+        org.mockito.Mockito.verify(invoices).voidInvoice("in_open");
+    }
 }

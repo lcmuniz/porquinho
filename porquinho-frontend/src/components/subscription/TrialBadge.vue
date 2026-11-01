@@ -27,6 +27,22 @@
     Assinatura cancelada (ativa até {{ formatDateBR(subscription.nextBillingDate) }})
   </span>
   <span
+    v-else-if="subscription.status === 'PAYMENT_FAILED'"
+    role="status"
+    data-testid="subscription-payment-failed-badge"
+    class="inline-flex items-center rounded-full bg-red-100 px-3 py-1 text-sm font-medium text-red-800"
+  >
+    Pagamento falhou
+  </span>
+  <span
+    v-else-if="subscription.status === 'SUSPENDED'"
+    role="status"
+    data-testid="subscription-suspended-badge"
+    class="inline-flex items-center rounded-full bg-red-100 px-3 py-1 text-sm font-medium text-red-800"
+  >
+    Assinatura suspensa
+  </span>
+  <span
     v-else-if="subscription.planType === 'MONTHLY'"
     role="status"
     data-testid="subscription-expired-badge"
