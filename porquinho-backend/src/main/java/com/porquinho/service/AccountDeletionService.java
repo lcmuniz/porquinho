@@ -73,6 +73,7 @@ public class AccountDeletionService {
     private final SubscriptionRepository subscriptionRepository;
     private final StripeBillingService stripeBillingService;
     private final BillingTransactionRepository billingTransactionRepository;
+    private final SubscriptionService subscriptionService;
 
     @Value("${app.export.directory:./exports}")
     private String exportDirectory;
@@ -99,6 +100,7 @@ public class AccountDeletionService {
             SubscriptionRepository subscriptionRepository,
             StripeBillingService stripeBillingService,
             BillingTransactionRepository billingTransactionRepository,
+            SubscriptionService subscriptionService,
             @Lazy AccountDeletionService self) {
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -113,6 +115,7 @@ public class AccountDeletionService {
         this.subscriptionRepository = subscriptionRepository;
         this.stripeBillingService = stripeBillingService;
         this.billingTransactionRepository = billingTransactionRepository;
+        this.subscriptionService = subscriptionService;
         this.self = self;
     }
 
@@ -215,7 +218,9 @@ public class AccountDeletionService {
         String metadata = String.format("{\"scheduled_purge_at\":\"%s\"}", scheduledPurgeAt);
         auditLogService.log("account_deletion_requested", userId, ipAddress, metadata);
 
-        // Stripe billing stops at purge (purgeUser cancels the Stripe subscription), Story 2.2.
+        // Stop Stripe billing now, not at purge (retro Epic 2, F1): the row expires in this transaction and
+        // Stripe is cancelled best-effort after commit. purgeUser still cancels again as a safety net.
+        subscriptionService.cancelForAccountDeletion(userId);
 
         return new DeletionContext(email, saved, true);
     }

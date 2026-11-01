@@ -20,6 +20,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -31,6 +32,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -67,6 +69,8 @@ class AccountDeletionServiceTest {
     private StripeBillingService stripeBillingService;
     @Mock
     private BillingTransactionRepository billingTransactionRepository;
+    @Mock
+    private SubscriptionService subscriptionService;
 
     private AccountDeletionService service;
 
@@ -91,12 +95,12 @@ class AccountDeletionServiceTest {
             userRepository, userSessionRepository, auditLogRepository, dataExportRepository,
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
             supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService,
-            billingTransactionRepository, null);
+            billingTransactionRepository, subscriptionService, null);
         service = new AccountDeletionService(
             userRepository, userSessionRepository, auditLogRepository, dataExportRepository,
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
             supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService,
-            billingTransactionRepository, temp);
+            billingTransactionRepository, subscriptionService, temp);
         // After construction, swap in the real reference so self == service (recursive ref ok
         // for tests because Spring's proxy would similarly route the call into this same bean).
         try {
@@ -152,6 +156,32 @@ class AccountDeletionServiceTest {
 
         // Email sent (best-effort, post-commit phase) - only on newly-created deletion
         verify(emailService).sendAccountDeletionConfirmation(eq("test@example.com"), any());
+
+        // Billing stops at the request, not at purge (retro Epic 2, F1); after the request audit
+        InOrder order = inOrder(auditLogService, subscriptionService);
+        order.verify(auditLogService).log(eq("account_deletion_requested"), eq(userId), eq("127.0.0.1"), anyString());
+        order.verify(subscriptionService).cancelForAccountDeletion(userId);
+        verifyNoInteractions(stripeBillingService);
+    }
+
+    @Test
+    void requestDeletionRaceOnPendingPurgeDoesNotStopBillingAgain() {
+        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(true);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userSessionRepository.findByUserIdAndRevokedAtIsNullAndExpiresAtAfter(eq(userId), any()))
+            .thenReturn(List.of());
+        AccountDeletion concurrent = new AccountDeletion(userId, OffsetDateTime.now().plusDays(30), "127.0.0.1");
+        concurrent.setId(UUID.randomUUID());
+        when(accountDeletionRepository.save(any(AccountDeletion.class)))
+            .thenThrow(new DataIntegrityViolationException("uq_pending_purge"));
+        when(accountDeletionRepository.findByUserIdAndStatus(userId, DeletionStatus.PENDING_PURGE))
+            .thenReturn(Optional.empty(), Optional.of(concurrent));
+
+        AccountDeletionResponse response = service.requestDeletion(userId, "127.0.0.1");
+
+        assertEquals(concurrent.getId(), response.getId());
+        verify(subscriptionService, never()).cancelForAccountDeletion(any());
+        verify(emailService, never()).sendAccountDeletionConfirmation(any(), any());
     }
 
     @Test
@@ -180,6 +210,9 @@ class AccountDeletionServiceTest {
 
         // Email NOT re-sent on idempotent retry
         verify(emailService, never()).sendAccountDeletionConfirmation(any(), any());
+
+        // Stripe NOT called again on idempotent retry
+        verifyNoInteractions(subscriptionService, stripeBillingService);
     }
 
     @Test
@@ -265,7 +298,7 @@ class AccountDeletionServiceTest {
         verify(userRepository).deleteByIdNative(userId);
 
         // Story 2.1: subscription deleted BEFORE the user (FK subscriptions.user_id -> users.id)
-        org.mockito.InOrder fkOrder = inOrder(subscriptionRepository, userRepository);
+        InOrder fkOrder = inOrder(subscriptionRepository, userRepository);
         fkOrder.verify(subscriptionRepository).deleteByUserId(userId);
         fkOrder.verify(userRepository).deleteByIdNative(userId);
 
@@ -295,7 +328,7 @@ class AccountDeletionServiceTest {
 
         service.purgeScheduledDeletions();
 
-        org.mockito.InOrder order = inOrder(stripeBillingService, subscriptionRepository);
+        InOrder order = inOrder(stripeBillingService, subscriptionRepository);
         order.verify(stripeBillingService).cancelSubscription("sub_1");
         order.verify(subscriptionRepository).deleteByUserId(userId);
         assertEquals(DeletionStatus.PURGED, deletion.getStatus());
@@ -446,7 +479,7 @@ class AccountDeletionServiceTest {
 
         service.purgeScheduledDeletions();
 
-        org.mockito.InOrder order = inOrder(billingTransactionRepository, subscriptionRepository, userRepository);
+        InOrder order = inOrder(billingTransactionRepository, subscriptionRepository, userRepository);
         order.verify(billingTransactionRepository).deleteByUserId(userId);
         order.verify(subscriptionRepository).deleteByUserId(userId);
         order.verify(userRepository).deleteByIdNative(userId);

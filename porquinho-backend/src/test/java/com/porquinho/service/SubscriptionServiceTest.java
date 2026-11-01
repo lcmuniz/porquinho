@@ -20,6 +20,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -39,10 +40,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -300,6 +303,7 @@ class SubscriptionServiceTest {
         OffsetDateTime originalNext = NOW_UTC.plusDays(20);
         active.setNextBillingDate(originalNext);
         when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(active));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
 
         Subscription result = service.activateMonthly(userId, "cus_2", "sub_2", "pm_2", NOW_UTC.plusDays(30));
 
@@ -317,6 +321,7 @@ class SubscriptionServiceTest {
     void activateMonthlyAuditWritesJsonNullWhenNextBillingDateMissing() {
         when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(trialEndingAt(NOW_UTC.plusDays(3))));
         when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
 
         service.activateMonthly(userId, "cus_1", "sub_1", "pm_1", null);
 
@@ -428,7 +433,7 @@ class SubscriptionServiceTest {
     void cancelWhenStripeFailsLeavesRowUntouched() {
         Subscription active = monthly(Status.ACTIVE, NOW_UTC.plusDays(12));
         when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(active));
-        org.mockito.Mockito.doThrow(new PaymentProviderUnavailableException("down"))
+        doThrow(new PaymentProviderUnavailableException("down"))
             .when(stripeBillingService).cancelAtPeriodEnd("sub_1");
 
         assertThatThrownBy(() -> service.cancel(userId, null)).isInstanceOf(PaymentProviderUnavailableException.class);
@@ -557,6 +562,7 @@ class SubscriptionServiceTest {
         expired.setCancellationDate(NOW_UTC.minusDays(20));
         when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(expired));
         when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
 
         Subscription result = service.activateMonthly(userId, "cus_1", "sub_2", "pm_2", NOW_UTC.plusDays(30));
 
@@ -691,7 +697,7 @@ class SubscriptionServiceTest {
         when(subscriptionRepository.findByUserIdForUpdate(userId))
             .thenReturn(Optional.of(monthly(Status.CANCELLED, NOW_UTC.minusDays(1))));
         when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+        when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
 
         service.activateMonthly(userId, "cus_1", "sub_2", "pm_2", NOW_UTC.plusDays(30));
 
@@ -1144,9 +1150,40 @@ class SubscriptionServiceTest {
     }
 
     @Test
+    void completedCheckoutAfterAccountDeletionCancelsIncomingSubscriptionAndKeepsRowExpired() {
+        // Deletion expired the row and soft-deleted the user; a late (or re-delivered) Checkout must not bill again
+        Subscription sub = monthly(Status.EXPIRED, NOW_UTC);
+        sub.setCancellationDate(NOW_UTC);
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(sub));
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+
+        Subscription result = service.activateMonthly(userId, "cus_1", "sub_2", "pm_2", NOW_UTC.plusDays(30));
+
+        assertThat(result.getStatus()).isEqualTo(Status.EXPIRED);
+        assertThat(result.getStripeSubscriptionId()).isEqualTo("sub_1");
+        verify(stripeBillingService).cancelSubscription("sub_2");
+        verify(subscriptionRepository, never()).save(any());
+        verify(auditLogService, never()).log(anyString(), any(), any(), any());
+        verifyNoInteractions(emailService);
+    }
+
+    @Test
+    void replayOfSameCheckoutAfterAccountDeletionIsANoOp() {
+        Subscription sub = monthly(Status.EXPIRED, NOW_UTC);
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(sub));
+
+        service.activateMonthly(userId, "cus_1", "sub_1", "pm_1", NOW_UTC.plusDays(30));
+
+        assertThat(sub.getStatus()).isEqualTo(Status.EXPIRED);
+        verifyNoInteractions(stripeBillingService, userRepository, emailService);
+        verify(subscriptionRepository, never()).save(any());
+    }
+
+    @Test
     void completedCheckoutDuringPaymentFailedCancelsTheDuplicate() {
         Subscription sub = monthly(Status.PAYMENT_FAILED, NOW_UTC);
         when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(sub));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
 
         service.activateMonthly(userId, "cus_1", "sub_2", "pm_2", NOW_UTC.plusDays(30));
 
@@ -1304,5 +1341,148 @@ class SubscriptionServiceTest {
         assertThat(service.hasAccess(sub)).isFalse();
         verify(billingTransactionRepository).save(any(BillingTransaction.class));
         verify(auditLogService, never()).log(eq("payment_recovered"), any(), any(), any());
+    }
+
+    // --- Account deletion stops billing at the request (retro Epic 2, F1) ---
+
+    private void runAfterCommit(Runnable inTransaction, Runnable beforeCommitChecks) {
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            inTransaction.run();
+            beforeCommitChecks.run();
+            TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    private void assertExpiredForDeletion(Subscription sub, Status previous) {
+        assertThat(sub.getStatus()).isEqualTo(Status.EXPIRED);
+        assertThat(sub.getCancellationDate()).isEqualTo(NOW_UTC);
+        assertThat(sub.getPaymentUpdateUrl()).isNull();
+        assertThat(service.hasAccess(sub)).isFalse();
+        verify(subscriptionRepository).save(sub);
+        ArgumentCaptor<String> metadata = ArgumentCaptor.forClass(String.class);
+        verify(auditLogService).log(eq("subscription_cancelled"), eq(userId), isNull(), metadata.capture());
+        assertThat(metadata.getValue())
+            .contains("\"reason\":\"account_deletion\"")
+            .contains("\"immediate\":true")
+            .contains("\"stripe_subscription_id\":\"sub_1\"")
+            .contains("\"cancellation_date\":\"" + NOW_UTC + "\"")
+            .contains("\"previous_status\":\"" + previous.name() + "\"");
+    }
+
+    private void verifyNoCancellationEmail() {
+        verify(emailService, never()).sendSubscriptionCancelled(any(), any());
+        verify(emailService, never()).sendSubscriptionCancelledImmediately(any());
+        verify(emailService, never()).sendSubscriptionSuspended(any(), any());
+    }
+
+    @Test
+    void accountDeletionOfActiveMonthlyExpiresRowAndCancelsStripeAfterCommit() {
+        // Covers a plan subscribed during the trial too: Stripe's trial ends with the subscription, no charge
+        Subscription sub = monthly(Status.ACTIVE, NOW_UTC.plusDays(12));
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(sub));
+        when(stripeBillingService.cancelImmediately("sub_1")).thenReturn("in_paid");
+
+        runAfterCommit(() -> service.cancelForAccountDeletion(userId), () -> {
+            assertExpiredForDeletion(sub, Status.ACTIVE);
+            verify(stripeBillingService, never()).cancelImmediately(any());
+        });
+
+        verify(stripeBillingService).cancelImmediately("sub_1");
+        verify(stripeBillingService, never()).cancelAtPeriodEnd(any());
+        // A paid invoice is not voidable: only PAYMENT_FAILED voids
+        verify(stripeBillingService, never()).voidInvoice(any());
+        verifyNoCancellationEmail();
+    }
+
+    @Test
+    void accountDeletionOfCancelledWithAccessExpiresRowAndCancelsStripeNow() {
+        Subscription sub = monthly(Status.CANCELLED, NOW_UTC.plusDays(5));
+        sub.setCancellationDate(NOW_UTC.minusDays(3));
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(sub));
+        when(stripeBillingService.cancelImmediately("sub_1")).thenReturn("in_paid");
+
+        runAfterCommit(() -> service.cancelForAccountDeletion(userId), () -> assertExpiredForDeletion(sub, Status.CANCELLED));
+
+        verify(stripeBillingService).cancelImmediately("sub_1");
+        verify(stripeBillingService, never()).voidInvoice(any());
+        verifyNoCancellationEmail();
+    }
+
+    @Test
+    void accountDeletionDuringPaymentFailedCancelsStripeAndVoidsOpenInvoiceAfterCommit() {
+        Subscription sub = monthly(Status.PAYMENT_FAILED, NOW_UTC.minusDays(2));
+        sub.setFailedPaymentAttempts(2);
+        sub.setPaymentUpdateUrl(PAY_URL);
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(sub));
+        when(stripeBillingService.cancelImmediately("sub_1")).thenReturn("in_open");
+
+        runAfterCommit(() -> service.cancelForAccountDeletion(userId), () -> {
+            assertExpiredForDeletion(sub, Status.PAYMENT_FAILED);
+            verify(stripeBillingService, never()).cancelImmediately(any());
+            verify(stripeBillingService, never()).voidInvoice(any());
+        });
+
+        InOrder order = inOrder(stripeBillingService);
+        order.verify(stripeBillingService).cancelImmediately("sub_1");
+        order.verify(stripeBillingService).voidInvoice("in_open");
+        verifyNoCancellationEmail();
+    }
+
+    @Test
+    void accountDeletionWhenStripeIsDownStillExpiresRowAndDoesNotThrow() {
+        Subscription sub = monthly(Status.PAYMENT_FAILED, NOW_UTC.minusDays(2));
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(sub));
+        doThrow(new PaymentProviderUnavailableException("down")).when(stripeBillingService).cancelImmediately("sub_1");
+
+        runAfterCommit(() -> service.cancelForAccountDeletion(userId), () -> { });
+
+        assertExpiredForDeletion(sub, Status.PAYMENT_FAILED);
+        // The Stripe id stays on the row so the purge cancels again
+        assertThat(sub.getStripeSubscriptionId()).isEqualTo("sub_1");
+        verify(stripeBillingService, never()).voidInvoice(any());
+        verifyNoCancellationEmail();
+    }
+
+    @Test
+    void accountDeletionOfTrialWithoutStripeChangesNothing() {
+        Subscription sub = trialEndingAt(NOW_UTC.plusDays(10));
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(sub));
+
+        runAfterCommit(() -> service.cancelForAccountDeletion(userId), () -> { });
+
+        assertThat(sub.getStatus()).isEqualTo(Status.ACTIVE);
+        assertThat(sub.getCancellationDate()).isNull();
+        verify(subscriptionRepository, never()).save(any());
+        verify(auditLogService, never()).log(anyString(), any(), any(), any());
+        verifyNoInteractions(stripeBillingService, emailService);
+    }
+
+    @Test
+    void accountDeletionOfExpiredOrSuspendedChangesNothing() {
+        for (Status status : new Status[] {Status.EXPIRED, Status.SUSPENDED}) {
+            Subscription sub = monthly(status, NOW_UTC.minusDays(10));
+            when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(sub));
+
+            runAfterCommit(() -> service.cancelForAccountDeletion(userId), () -> { });
+
+            assertThat(sub.getStatus()).isEqualTo(status);
+            assertThat(sub.getCancellationDate()).isNull();
+        }
+        verify(subscriptionRepository, never()).save(any());
+        verify(auditLogService, never()).log(anyString(), any(), any(), any());
+        verifyNoInteractions(stripeBillingService, emailService);
+    }
+
+    @Test
+    void accountDeletionWithoutSubscriptionRowChangesNothing() {
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.empty());
+
+        service.cancelForAccountDeletion(userId);
+
+        verify(subscriptionRepository, never()).save(any());
+        verifyNoInteractions(stripeBillingService, auditLogService, emailService);
     }
 }
