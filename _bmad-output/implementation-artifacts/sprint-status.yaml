@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-13
-last_updated: 2026-10-31
+last_updated: 11-01-2026 11:21
 project: porquinho
 project_key: NOKEY
 tracking_system: file-system
@@ -75,7 +75,7 @@ development_status:
   2-5-reactivate-cancelled-subscription: done
   2-6-process-recurring-monthly-payments: done
   2-7-handle-payment-failures-with-retry-notifications: done
-  epic-2-retrospective: optional
+  epic-2-retrospective: done
 
   # Epic 3: Guided Onboarding Experience
   epic-3: backlog
@@ -168,3 +168,71 @@ development_status:
   10-4-active-users-metrics: backlog
   10-5-automated-alerts-for-critical-metrics: backlog
   epic-10-retrospective: optional
+action_items:
+  - id: "epic-2-retro-item-1-cancelar-a-assinatura-no-stripe-e-anular"
+    epic: 2
+    action: "Cancelar a assinatura no Stripe e anular fatura em aberto no requestDeletion
+      (F1, antes de produção)"
+    owner: "Luiz"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-11-01.md"
+  - id: "epic-2-retro-item-2-checkout-duplicado-estornar-a-duplicata"
+    epic: 2
+    action: "Checkout duplicado: estornar a duplicata e responder 200 ao invoice.paid
+      de sub duplicada (F2)"
+    owner: "Luiz"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-11-01.md"
+  - id: "epic-2-retro-item-3-export-lgpd-com-as-colunas-v10-v14-e-tes"
+    epic: 2
+    action: "Export LGPD com as colunas V10-V14 e teste do conjunto de chaves (F3)"
+    owner: "Luiz"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-11-01.md"
+  - id: "epic-2-retro-item-4-front-mostra-detail-do-409-do-checkout-e"
+    epic: 2
+    action: "Front mostra detail do 409 do checkout; e-mail final sem link quando
+      willRetry=false; corrigir comentário do SubscriptionAccessFilter"
+    owner: "Luiz"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-11-01.md"
+  - id: "epic-2-retro-item-5-reconciliar-épico-2-e-prd-com-o-construí"
+    epic: 2
+    action: "Reconciliar épico 2 e PRD com o construído (Stripe Billing, R$ 19,90,
+      5 status, NFR59, só cartão)"
+    owner: "Luiz / John (PM)"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-11-01.md"
+  - id: "epic-2-retro-item-6-checklist-de-deploy-com-configuração-do"
+    epic: 2
+    action: "Checklist de deploy com configuração do Stripe Dashboard (retries 3/10
+      dias, cancelar ao final, eventos do webhook)"
+    owner: "Luiz"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-11-01.md"
+  - id: "epic-2-retro-item-7-decidir-retenção-de-billing_transactions"
+    epic: 2
+    action: "Decidir retenção de billing_transactions no purge (fiscal x LGPD)"
+    owner: "Luiz"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-11-01.md"
+  - id: "epic-2-retro-item-8-dividir-subscriptionservice-webhook-x-aç"
+    epic: 2
+    action: "Dividir SubscriptionService (webhook x ações do usuário) e extrair guardas
+      do StripeBillingService"
+    owner: "Luiz"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-11-01.md"
+  - id: "epic-2-retro-item-9-specs-ao-criar-coluna-de-dado-pessoal-ou"
+    epic: 2
+    action: "Specs: ao criar coluna de dado pessoal ou cobrança, checar purge, export
+      e exclusão de conta"
+    owner: "Bob (SM)"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-11-01.md"
+  - id: "epic-2-retro-item-10-story-que-muda-a-abordagem-do-épico-atua"
+    epic: 2
+    action: "Story que muda a abordagem do épico atualiza o texto do épico"
+    owner: "Bob (SM)"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-11-01.md"
