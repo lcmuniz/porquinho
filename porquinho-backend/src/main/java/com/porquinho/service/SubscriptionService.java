@@ -275,6 +275,15 @@ public class SubscriptionService {
             return subscription;
         }
 
+        // Account deletion requested (user soft-deleted, filtered out by @Where): a Checkout completed late,
+        // or an old one re-delivered, must not bring billing back. Cancel the incoming Stripe subscription.
+        if (userRepository.findById(userId).isEmpty()) {
+            log.warn("Checkout completed for deleted user {}; cancelling Stripe subscription {}",
+                userId, stripeSubscriptionId);
+            stripeBillingService.cancelSubscription(stripeSubscriptionId);
+            return subscription;
+        }
+
         // Second completed Checkout (two tabs / re-click) for an already active plan: keep the
         // current Stripe subscription and cancel the incoming one so the user is not billed twice.
         // PAYMENT_FAILED too: that Stripe subscription is still alive and retrying (Story 2.7).
@@ -472,6 +481,63 @@ public class SubscriptionService {
         });
 
         return saved;
+    }
+
+    /**
+     * Stop billing when the user asks to delete the account (retro Epic 2, F1). Joins the deletion
+     * transaction: the row becomes EXPIRED with cancellation_date = now and no payment link, and
+     * subscription_cancelled is audited (reason account_deletion, immediate). After commit, Stripe cancels
+     * the subscription right away and, if the row was PAYMENT_FAILED, the open invoice is voided.
+     * No refund of the current period (decision A) and no e-mail (the user just got the deletion one).
+     *
+     * Best-effort on Stripe: it never throws for a Stripe failure; the error is logged for a manual cancel
+     * and the purge cancels again 30 days later. The customer.subscription.deleted that follows is a no-op.
+     * No subscription, no Stripe id (trial only), or already EXPIRED/SUSPENDED: nothing changes.
+     */
+    @Transactional
+    public void cancelForAccountDeletion(UUID userId) {
+        Optional<Subscription> found = subscriptionRepository.findByUserIdForUpdate(userId);
+        if (found.isEmpty()) {
+            return;
+        }
+        Subscription subscription = found.get();
+        String stripeSubscriptionId = subscription.getStripeSubscriptionId();
+        Status previous = subscription.getStatus();
+        if (stripeSubscriptionId == null || stripeSubscriptionId.isBlank()
+            || previous == Status.EXPIRED || previous == Status.SUSPENDED) {
+            return;
+        }
+
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        subscription.setStatus(Status.EXPIRED);
+        subscription.setCancellationDate(now);
+        subscription.setPaymentUpdateUrl(null);
+        subscriptionRepository.save(subscription);
+
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("stripe_subscription_id", stripeSubscriptionId);
+        metadata.put("cancellation_date", now.toString());
+        metadata.put("access_until", now.toString());
+        metadata.put("immediate", true);
+        metadata.put("reason", "account_deletion");
+        metadata.put("previous_status", previous.name());
+        auditLogService.log("subscription_cancelled", userId, null, toJson(metadata));
+
+        afterCommit(() -> {
+            String latestInvoiceId;
+            try {
+                latestInvoiceId = stripeBillingService.cancelImmediately(stripeSubscriptionId);
+            } catch (RuntimeException e) {
+                log.error("Could not cancel Stripe subscription {} of user {} on account deletion: {} - {}; "
+                        + "cancel it by hand in the Stripe dashboard (the purge will retry)",
+                    stripeSubscriptionId, userId, e.getClass().getSimpleName(), e.getMessage());
+                return;
+            }
+            // A paid invoice cannot be voided: only the open failed one of a PAYMENT_FAILED row
+            if (previous == Status.PAYMENT_FAILED) {
+                voidOpenInvoice(stripeSubscriptionId, latestInvoiceId);
+            }
+        });
     }
 
     /**
