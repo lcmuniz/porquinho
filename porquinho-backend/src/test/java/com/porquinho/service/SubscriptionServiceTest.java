@@ -12,7 +12,9 @@ import com.porquinho.repository.BillingTransactionRepository;
 import com.porquinho.repository.SubscriptionRepository;
 import com.porquinho.repository.UserRepository;
 import com.porquinho.service.StripeBillingService.SubscriptionDetails;
+import com.porquinho.service.SubscriptionService.FailureOutcome;
 import com.porquinho.service.SubscriptionService.InvoicePayment;
+import com.porquinho.service.SubscriptionService.PaymentFailure;
 import com.porquinho.service.SubscriptionService.PaymentOutcome;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,6 +38,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -72,7 +75,7 @@ class SubscriptionServiceTest {
     @BeforeEach
     void setUp() {
         service = new SubscriptionService(subscriptionRepository, auditLogService, Clock.fixed(NOW, ZoneOffset.UTC),
-            stripeBillingService, userRepository, emailService, billingTransactionRepository);
+            stripeBillingService, userRepository, emailService, billingTransactionRepository, "http://app.test/");
         userId = UUID.randomUUID();
     }
 
@@ -456,7 +459,7 @@ class SubscriptionServiceTest {
         when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(cancelled));
         when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        assertThat(service.expireByStripeSubscriptionId("sub_1")).isTrue();
+        assertThat(service.expireByStripeSubscriptionId("sub_1", null)).isTrue();
 
         assertThat(cancelled.getStatus()).isEqualTo(Status.EXPIRED);
         ArgumentCaptor<String> metadata = ArgumentCaptor.forClass(String.class);
@@ -469,7 +472,7 @@ class SubscriptionServiceTest {
         when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1"))
             .thenReturn(Optional.of(monthly(Status.EXPIRED, NOW_UTC.minusDays(1))));
 
-        assertThat(service.expireByStripeSubscriptionId("sub_1")).isFalse();
+        assertThat(service.expireByStripeSubscriptionId("sub_1", null)).isFalse();
 
         verify(subscriptionRepository, never()).save(any());
         verify(auditLogService, never()).log(anyString(), any(), any(), any());
@@ -479,8 +482,8 @@ class SubscriptionServiceTest {
     void expireUnknownStripeSubscriptionChangesNothing() {
         when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_unknown")).thenReturn(Optional.empty());
 
-        assertThat(service.expireByStripeSubscriptionId("sub_unknown")).isFalse();
-        assertThat(service.expireByStripeSubscriptionId(null)).isFalse();
+        assertThat(service.expireByStripeSubscriptionId("sub_unknown", null)).isFalse();
+        assertThat(service.expireByStripeSubscriptionId(null, null)).isFalse();
 
         verify(subscriptionRepository, never()).save(any());
         verify(auditLogService, never()).log(anyString(), any(), any(), any());
@@ -873,5 +876,433 @@ class SubscriptionServiceTest {
         ArgumentCaptor<BillingTransaction> tx = ArgumentCaptor.forClass(BillingTransaction.class);
         verify(billingTransactionRepository).save(tx.capture());
         assertThat(tx.getValue().getCurrency()).isEqualTo("brl");
+    }
+
+    // ---- Story 2.7: payment failures ----
+
+    private static final String PAY_URL = "https://invoice.stripe.com/i/in_1";
+
+    private PaymentFailure failure(long attempt) {
+        return new PaymentFailure("in_1", "sub_1", attempt, PAY_URL, true);
+    }
+
+    @Test
+    void firstFailureMarksPaymentFailedSavesLinkAuditsAndEmailsAfterCommit() {
+        Subscription sub = monthly(Status.ACTIVE, NOW_UTC);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+        when(billingTransactionRepository.existsByStripeTransactionId("in_1")).thenReturn(false);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            assertThat(service.recordPaymentFailure(failure(1))).isEqualTo(FailureOutcome.RECORDED);
+
+            assertThat(sub.getStatus()).isEqualTo(Status.PAYMENT_FAILED);
+            assertThat(sub.getFailedPaymentAttempts()).isEqualTo(1);
+            assertThat(sub.getPaymentUpdateUrl()).isEqualTo(PAY_URL);
+            assertThat(service.hasAccess(sub)).isTrue();
+            verify(subscriptionRepository).save(sub);
+            verify(auditLogService).log(eq("payment_failed"), eq(userId), isNull(),
+                eq("{\"attempt_count\":1,\"invoice_id\":\"in_1\",\"previous_status\":\"ACTIVE\"}"));
+            verify(emailService, never()).sendPaymentFailed(any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
+
+            TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
+
+            verify(emailService).sendPaymentFailed("ana@example.com", PAY_URL, true);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+        verify(billingTransactionRepository, never()).save(any());
+    }
+
+    @Test
+    void retryFailureIncrementsAttemptsAuditsAndEmailsAgain() {
+        Subscription sub = monthly(Status.PAYMENT_FAILED, NOW_UTC.minusDays(3));
+        sub.setFailedPaymentAttempts(1);
+        sub.setPaymentUpdateUrl(PAY_URL);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
+
+        assertThat(service.recordPaymentFailure(new PaymentFailure("in_1", "sub_1", 2, null, false)))
+            .isEqualTo(FailureOutcome.RECORDED);
+
+        assertThat(sub.getStatus()).isEqualTo(Status.PAYMENT_FAILED);
+        assertThat(sub.getFailedPaymentAttempts()).isEqualTo(2);
+        assertThat(sub.getPaymentUpdateUrl()).isEqualTo(PAY_URL);
+        verify(auditLogService).log(eq("payment_failed"), eq(userId), isNull(),
+            eq("{\"attempt_count\":2,\"invoice_id\":\"in_1\",\"previous_status\":\"PAYMENT_FAILED\"}"));
+        // Last attempt (no next_payment_attempt): the e-mail warns of suspension instead of a retry
+        verify(emailService).sendPaymentFailed("ana@example.com", PAY_URL, false);
+    }
+
+    @Test
+    void repeatedFailureAtOrBelowRecordedAttemptChangesNothing() {
+        Subscription sub = monthly(Status.PAYMENT_FAILED, NOW_UTC);
+        sub.setFailedPaymentAttempts(2);
+        sub.setPaymentUpdateUrl(PAY_URL);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+
+        assertThat(service.recordPaymentFailure(failure(2))).isEqualTo(FailureOutcome.IGNORED);
+        assertThat(service.recordPaymentFailure(failure(1))).isEqualTo(FailureOutcome.IGNORED);
+
+        assertThat(sub.getFailedPaymentAttempts()).isEqualTo(2);
+        verify(subscriptionRepository, never()).save(any());
+        verify(auditLogService, never()).log(anyString(), any(), any(), any());
+        verify(emailService, never()).sendPaymentFailed(any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
+    }
+
+    @Test
+    void lateFailureOfAnAlreadyPaidInvoiceIsIgnored() {
+        Subscription sub = monthly(Status.ACTIVE, NOW_UTC.plusDays(30));
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+        when(billingTransactionRepository.existsByStripeTransactionId("in_1")).thenReturn(true);
+
+        assertThat(service.recordPaymentFailure(failure(1))).isEqualTo(FailureOutcome.IGNORED);
+
+        assertThat(sub.getStatus()).isEqualTo(Status.ACTIVE);
+        verify(subscriptionRepository, never()).save(any());
+        verify(auditLogService, never()).log(anyString(), any(), any(), any());
+    }
+
+    @Test
+    void failureForUnknownOrNotApplicableSubscriptionChangesNothing() {
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1"))
+            .thenReturn(Optional.empty())
+            .thenReturn(Optional.of(monthly(Status.EXPIRED, NOW_UTC)))
+            .thenReturn(Optional.of(monthly(Status.SUSPENDED, NOW_UTC)))
+            .thenReturn(Optional.of(monthly(Status.CANCELLED, NOW_UTC.plusDays(3))));
+
+        assertThat(service.recordPaymentFailure(failure(1))).isEqualTo(FailureOutcome.UNKNOWN_SUBSCRIPTION);
+        assertThat(service.recordPaymentFailure(failure(1))).isEqualTo(FailureOutcome.IGNORED);
+        assertThat(service.recordPaymentFailure(failure(1))).isEqualTo(FailureOutcome.IGNORED);
+        assertThat(service.recordPaymentFailure(failure(1))).isEqualTo(FailureOutcome.IGNORED);
+        assertThat(service.recordPaymentFailure(new PaymentFailure("in_1", null, 1, PAY_URL, true)))
+            .isEqualTo(FailureOutcome.UNKNOWN_SUBSCRIPTION);
+
+        verify(subscriptionRepository, never()).save(any());
+        verify(auditLogService, never()).log(anyString(), any(), any(), any());
+        verify(emailService, never()).sendPaymentFailed(any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
+    }
+
+    @Test
+    void failureWithoutHostedUrlEmailsTheSubscriptionPage() {
+        Subscription sub = monthly(Status.ACTIVE, NOW_UTC);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
+
+        service.recordPaymentFailure(new PaymentFailure("in_1", "sub_1", 1, null, true));
+
+        assertThat(sub.getPaymentUpdateUrl()).isNull();
+        verify(emailService).sendPaymentFailed("ana@example.com", "http://app.test/assinatura", true);
+    }
+
+    @Test
+    void paidRetryRecoversToActiveClearsCounterAndLinkAndAuditsRecovery() {
+        Subscription sub = activeMonthlyWithId(NOW_UTC);
+        sub.setStatus(Status.PAYMENT_FAILED);
+        sub.setFailedPaymentAttempts(2);
+        sub.setPaymentUpdateUrl(PAY_URL);
+        OffsetDateTime newPeriodEnd = NOW_UTC.plusMonths(1);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+        when(stripeBillingService.retrieveSubscription("sub_1"))
+            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", newPeriodEnd));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
+
+        assertThat(service.recordPayment(invoice(NOW_UTC, null))).isEqualTo(PaymentOutcome.RECORDED);
+
+        assertThat(sub.getStatus()).isEqualTo(Status.ACTIVE);
+        assertThat(sub.getFailedPaymentAttempts()).isZero();
+        assertThat(sub.getPaymentUpdateUrl()).isNull();
+        verify(auditLogService).log(eq("payment_recovered"), eq(userId), isNull(),
+            eq("{\"invoice_id\":\"in_1\",\"failed_payment_attempts\":2}"));
+        verify(auditLogService).log(eq("payment_success"), eq(userId), isNull(), anyString());
+        verify(billingTransactionRepository).save(any(BillingTransaction.class));
+        verify(emailService).sendPaymentReceipt("ana@example.com", new BigDecimal("19.90"), NOW_UTC, newPeriodEnd);
+    }
+
+    @Test
+    void regularPaymentDoesNotAuditRecovery() {
+        Subscription sub = activeMonthlyWithId(NOW_UTC);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+        when(stripeBillingService.retrieveSubscription("sub_1"))
+            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", NOW_UTC.plusMonths(1)));
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+
+        service.recordPayment(invoice(NOW_UTC, null));
+
+        verify(auditLogService, never()).log(eq("payment_recovered"), any(), any(), any());
+    }
+
+    @Test
+    void deletedWhilePaymentFailedSuspendsAuditsAndEmailsAfterCommit() {
+        Subscription sub = monthly(Status.PAYMENT_FAILED, NOW_UTC.minusDays(10));
+        sub.setFailedPaymentAttempts(3);
+        sub.setPaymentUpdateUrl(PAY_URL);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+        when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            assertThat(service.expireByStripeSubscriptionId("sub_1", "in_open")).isTrue();
+
+            assertThat(sub.getStatus()).isEqualTo(Status.SUSPENDED);
+            assertThat(sub.getPaymentUpdateUrl()).isNull();
+            assertThat(service.hasAccess(sub)).isFalse();
+            verify(auditLogService).log(eq("subscription_suspended"), eq(userId), isNull(),
+                eq("{\"stripe_subscription_id\":\"sub_1\",\"failed_payment_attempts\":3,"
+                    + "\"latest_invoice_id\":\"in_open\"}"));
+            verify(auditLogService, never()).log(eq("subscription_expired"), any(), any(), any());
+            verify(emailService, never()).sendSubscriptionSuspended(any(), any());
+            verify(stripeBillingService, never()).voidInvoice(any());
+
+            TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
+
+            verify(stripeBillingService).voidInvoice("in_open");
+            verify(emailService).sendSubscriptionSuspended("ana@example.com", "http://app.test/assinatura");
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
+    void deletedReplayForSuspendedChangesNothing() {
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1"))
+            .thenReturn(Optional.of(monthly(Status.SUSPENDED, NOW_UTC.minusDays(10))));
+
+        assertThat(service.expireByStripeSubscriptionId("sub_1", null)).isFalse();
+
+        verify(subscriptionRepository, never()).save(any());
+        verify(auditLogService, never()).log(anyString(), any(), any(), any());
+        verify(emailService, never()).sendSubscriptionSuspended(any(), any());
+    }
+
+    @Test
+    void deletedForActiveMonthlyStillExpires() {
+        Subscription sub = monthly(Status.ACTIVE, NOW_UTC);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+
+        assertThat(service.expireByStripeSubscriptionId("sub_1", null)).isTrue();
+
+        assertThat(sub.getStatus()).isEqualTo(Status.EXPIRED);
+        verify(auditLogService).log(eq("subscription_expired"), eq(userId), isNull(), anyString());
+        verify(emailService, never()).sendSubscriptionSuspended(any(), any());
+        verify(stripeBillingService, never()).voidInvoice(any());
+    }
+
+    @Test
+    void paymentFailedKeepsAccessAndSuspendedHasNone() {
+        // Decision 2A: access kept while Stripe retries, even past next_billing_date
+        assertThat(service.hasAccess(monthly(Status.PAYMENT_FAILED, NOW_UTC.minusDays(5)))).isTrue();
+        assertThat(service.hasAccess(monthly(Status.SUSPENDED, NOW_UTC.plusDays(5)))).isFalse();
+    }
+
+    @Test
+    void createCheckoutOrReactivateDuringPaymentFailedThrowsConflict() {
+        Subscription sub = monthly(Status.PAYMENT_FAILED, NOW_UTC);
+        when(subscriptionRepository.findByUserId(userId)).thenReturn(Optional.of(sub));
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(sub));
+
+        assertThatThrownBy(() -> service.createCheckout(userId))
+            .isInstanceOf(ConflictException.class)
+            .hasMessageContaining("fatura pendente");
+        assertThatThrownBy(() -> service.reactivate(userId, null))
+            .isInstanceOf(ConflictException.class)
+            .hasMessageContaining("fatura pendente");
+
+        verify(stripeBillingService, never()).createCheckoutSession(any(), any(), any());
+        verify(stripeBillingService, never()).resumeSubscription(any());
+    }
+
+    @Test
+    void createCheckoutForSuspendedIsAllowed() {
+        when(subscriptionRepository.findByUserId(userId)).thenReturn(Optional.of(monthly(Status.SUSPENDED, NOW_UTC)));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
+        when(stripeBillingService.createCheckoutSession(eq(userId), eq("ana@example.com"), isNull()))
+            .thenReturn("https://checkout.stripe.com/x");
+
+        assertThat(service.createCheckout(userId)).isEqualTo("https://checkout.stripe.com/x");
+    }
+
+    @Test
+    void checkoutAfterSuspensionReactivatesAndClearsFailureTracking() {
+        Subscription sub = monthly(Status.SUSPENDED, NOW_UTC.minusDays(10));
+        sub.setFailedPaymentAttempts(3);
+        OffsetDateTime nextBilling = NOW_UTC.plusDays(30);
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(sub));
+        when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
+
+        Subscription result = service.activateMonthly(userId, "cus_1", "sub_2", "pm_2", nextBilling);
+
+        assertThat(result.getStatus()).isEqualTo(Status.ACTIVE);
+        assertThat(result.getStripeSubscriptionId()).isEqualTo("sub_2");
+        assertThat(result.getFailedPaymentAttempts()).isZero();
+        assertThat(result.getPaymentUpdateUrl()).isNull();
+        verify(auditLogService).log(eq("subscription_reactivated"), eq(userId), isNull(), anyString());
+        verify(emailService).sendSubscriptionReactivated("ana@example.com", nextBilling);
+    }
+
+    @Test
+    void completedCheckoutDuringPaymentFailedCancelsTheDuplicate() {
+        Subscription sub = monthly(Status.PAYMENT_FAILED, NOW_UTC);
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(sub));
+
+        service.activateMonthly(userId, "cus_1", "sub_2", "pm_2", NOW_UTC.plusDays(30));
+
+        assertThat(sub.getStripeSubscriptionId()).isEqualTo("sub_1");
+        assertThat(sub.getStatus()).isEqualTo(Status.PAYMENT_FAILED);
+        verify(stripeBillingService).cancelSubscription("sub_2");
+        verify(subscriptionRepository, never()).save(any());
+    }
+
+    @Test
+    void cancelDuringPaymentFailedCancelsStripeNowExpiresAuditsAndEmailsAfterCommit() {
+        Subscription sub = monthly(Status.PAYMENT_FAILED, NOW_UTC.minusDays(2));
+        sub.setFailedPaymentAttempts(2);
+        sub.setPaymentUpdateUrl(PAY_URL);
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(sub));
+        when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
+
+        when(stripeBillingService.cancelImmediately("sub_1")).thenReturn("in_open");
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            Subscription result = service.cancel(userId, "10.0.0.1");
+
+            assertThat(result.getStatus()).isEqualTo(Status.EXPIRED);
+            assertThat(result.getCancellationDate()).isEqualTo(NOW_UTC);
+            assertThat(result.getPaymentUpdateUrl()).isNull();
+            assertThat(service.hasAccess(result)).isFalse();
+            verify(stripeBillingService).cancelImmediately("sub_1");
+            verify(stripeBillingService, never()).cancelAtPeriodEnd(any());
+            verify(stripeBillingService, never()).cancelSubscription(any());
+            ArgumentCaptor<String> metadata = ArgumentCaptor.forClass(String.class);
+            verify(auditLogService).log(eq("subscription_cancelled"), eq(userId), eq("10.0.0.1"), metadata.capture());
+            assertThat(metadata.getValue())
+                .contains("\"immediate\":true")
+                .contains("\"cancellation_date\":\"" + NOW_UTC + "\"")
+                .contains("\"previous_status\":\"PAYMENT_FAILED\"");
+            verify(emailService, never()).sendSubscriptionCancelledImmediately(any());
+            verify(stripeBillingService, never()).voidInvoice(any());
+
+            TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
+
+            // The failed invoice stays open after the cancel: voided so the e-mailed link stops charging
+            verify(stripeBillingService).voidInvoice("in_open");
+            verify(emailService).sendSubscriptionCancelledImmediately("ana@example.com");
+            verify(emailService, never()).sendSubscriptionCancelled(any(), any());
+            verify(emailService, never()).sendSubscriptionSuspended(any(), any());
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
+    void cancelDuringPaymentFailedWhenStripeFailsLeavesRowUntouched() {
+        Subscription sub = monthly(Status.PAYMENT_FAILED, NOW_UTC.minusDays(2));
+        sub.setFailedPaymentAttempts(1);
+        sub.setPaymentUpdateUrl(PAY_URL);
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(sub));
+        doThrow(new PaymentProviderUnavailableException("down")).when(stripeBillingService).cancelImmediately("sub_1");
+
+        assertThatThrownBy(() -> service.cancel(userId, null)).isInstanceOf(PaymentProviderUnavailableException.class);
+
+        assertThat(sub.getStatus()).isEqualTo(Status.PAYMENT_FAILED);
+        assertThat(sub.getCancellationDate()).isNull();
+        assertThat(sub.getPaymentUpdateUrl()).isEqualTo(PAY_URL);
+        verify(subscriptionRepository, never()).save(any());
+        verify(auditLogService, never()).log(anyString(), any(), any(), any());
+        verify(emailService, never()).sendSubscriptionCancelledImmediately(any());
+    }
+
+    @Test
+    void cancelDuringPaymentFailedWithoutLatestInvoiceSkipsTheVoid() {
+        Subscription sub = monthly(Status.PAYMENT_FAILED, NOW_UTC.minusDays(2));
+        when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(sub));
+        when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+
+        service.cancel(userId, null);
+
+        assertThat(sub.getStatus()).isEqualTo(Status.EXPIRED);
+        verify(stripeBillingService, never()).voidInvoice(any());
+    }
+
+    @Test
+    void suspensionWithoutLatestInvoiceSkipsTheVoid() {
+        Subscription sub = monthly(Status.PAYMENT_FAILED, NOW_UTC.minusDays(10));
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+
+        assertThat(service.expireByStripeSubscriptionId("sub_1", null)).isTrue();
+
+        assertThat(sub.getStatus()).isEqualTo(Status.SUSPENDED);
+        verify(stripeBillingService, never()).voidInvoice(any());
+    }
+
+    @Test
+    void deletedAfterImmediateCancelIsANoOp() {
+        Subscription sub = monthly(Status.EXPIRED, NOW_UTC.minusDays(2));
+        sub.setCancellationDate(NOW_UTC);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+
+        assertThat(service.expireByStripeSubscriptionId("sub_1", "in_open")).isFalse();
+
+        verify(subscriptionRepository, never()).save(any());
+        verify(auditLogService, never()).log(anyString(), any(), any(), any());
+        verify(stripeBillingService, never()).voidInvoice(any());
+        verify(emailService, never()).sendSubscriptionSuspended(any(), any());
+    }
+
+    @Test
+    void cancelSuspendedThrowsConflictWithoutCallingStripe() {
+        when(subscriptionRepository.findByUserIdForUpdate(userId))
+            .thenReturn(Optional.of(monthly(Status.SUSPENDED, NOW_UTC.minusDays(10))));
+
+        assertThatThrownBy(() -> service.cancel(userId, null)).isInstanceOf(ConflictException.class);
+
+        verify(stripeBillingService, never()).cancelImmediately(any());
+        verify(stripeBillingService, never()).cancelAtPeriodEnd(any());
+    }
+
+    @Test
+    void invoicePaidAfterSuspensionIsRecordedButStatusStaysSuspended() {
+        // The void at suspension failed and the user still paid the old invoice: record it, keep SUSPENDED
+        Subscription sub = activeMonthlyWithId(NOW_UTC.minusDays(10));
+        sub.setStatus(Status.SUSPENDED);
+        sub.setFailedPaymentAttempts(3);
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+        when(stripeBillingService.retrieveSubscription("sub_1"))
+            .thenThrow(new PaymentProviderUnavailableException("canceled"));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
+
+        assertThat(service.recordPayment(invoice(NOW_UTC, null))).isEqualTo(PaymentOutcome.RECORDED);
+
+        assertThat(sub.getStatus()).isEqualTo(Status.SUSPENDED);
+        assertThat(service.hasAccess(sub)).isFalse();
+        verify(billingTransactionRepository).save(any(BillingTransaction.class));
+        verify(auditLogService).log(eq("payment_success"), eq(userId), isNull(), anyString());
+        verify(auditLogService, never()).log(eq("payment_recovered"), any(), any(), any());
+    }
+
+    @Test
+    void invoicePaidAfterImmediateCancelIsRecordedButStatusStaysExpired() {
+        // Cancelled during PAYMENT_FAILED, the void failed and the old invoice was paid: record it, keep EXPIRED
+        Subscription sub = activeMonthlyWithId(NOW_UTC.minusDays(2));
+        sub.setStatus(Status.EXPIRED);
+        sub.setCancellationDate(NOW_UTC.minusDays(1));
+        when(subscriptionRepository.findByStripeSubscriptionIdForUpdate("sub_1")).thenReturn(Optional.of(sub));
+        when(stripeBillingService.retrieveSubscription("sub_1"))
+            .thenThrow(new PaymentProviderUnavailableException("canceled"));
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+
+        assertThat(service.recordPayment(invoice(NOW_UTC, null))).isEqualTo(PaymentOutcome.RECORDED);
+
+        assertThat(sub.getStatus()).isEqualTo(Status.EXPIRED);
+        assertThat(service.hasAccess(sub)).isFalse();
+        verify(billingTransactionRepository).save(any(BillingTransaction.class));
+        verify(auditLogService, never()).log(eq("payment_recovered"), any(), any(), any());
     }
 }

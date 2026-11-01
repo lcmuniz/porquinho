@@ -26,6 +26,39 @@
         </button>
       </div>
 
+      <div
+        v-if="subscription?.status === 'PAYMENT_FAILED'"
+        role="alert"
+        data-testid="payment-failed-banner"
+        class="flex flex-col gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div class="text-sm text-red-800">
+          <p class="font-semibold">Pagamento falhou</p>
+          <p>
+            Não conseguimos cobrar sua mensalidade. Vamos tentar de novo nos próximos dias; atualize o
+            pagamento para não perder o acesso.
+          </p>
+        </div>
+        <!-- Abre direto a fatura no Stripe (cartão salvo ou novo); sem link, cai na tela de assinatura -->
+        <button
+          v-if="subscription.paymentUpdateUrl"
+          type="button"
+          data-testid="payment-failed-cta"
+          class="inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-lg bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-800"
+          @click="updatePayment"
+        >
+          Atualizar pagamento
+        </button>
+        <RouterLink
+          v-else
+          to="/assinatura"
+          data-testid="payment-failed-cta"
+          class="inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-lg bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-800"
+        >
+          Atualizar pagamento
+        </RouterLink>
+      </div>
+
       <section aria-labelledby="account-settings-heading" class="space-y-3">
         <h2
           id="account-settings-heading"
@@ -79,20 +112,27 @@ import { useAuthStore } from '@/stores/auth'
 import type { Subscription } from '@/types/subscription'
 
 const subscription = ref<Subscription | null>(null)
-// Trial, ou assinatura expirada/cancelada já sem acesso (Story 2.4)
+// Trial, ou assinatura expirada/suspensa/cancelada já sem acesso (Stories 2.4 e 2.7)
 const showSubscribeCta = computed(() => {
   const sub = subscription.value
   if (!sub) return false
   return (
     sub.planType === 'TRIAL' ||
     sub.status === 'EXPIRED' ||
+    sub.status === 'SUSPENDED' ||
     (sub.status === 'CANCELLED' && !sub.hasAccess)
   )
 })
-// Story 2.5: ex-assinante (expirada ou cancelada sem acesso) vê "Reativar"
+// Story 2.5: ex-assinante (expirada, suspensa ou cancelada sem acesso) vê "Reativar"
 const isFormerSubscriber = computed(
   () => subscription.value?.planType === 'MONTHLY' && showSubscribeCta.value,
 )
+
+// Story 2.7: página da fatura que falhou no Stripe; o webhook invoice.paid reativa a assinatura
+function updatePayment() {
+  const url = subscription.value?.paymentUpdateUrl
+  if (url) window.location.assign(url)
+}
 const router = useRouter()
 const authStore = useAuthStore()
 

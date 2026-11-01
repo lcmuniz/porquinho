@@ -11,6 +11,8 @@ function makeSubscription(overrides: Partial<Subscription> = {}): Subscription {
     trialEndDate: '2026-11-30T12:00:00Z',
     nextBillingDate: null,
     cancellationDate: null,
+    failedPaymentAttempts: 0,
+    paymentUpdateUrl: null,
     daysRemaining: 30,
     hasAccess: true,
     ...overrides,
@@ -108,5 +110,38 @@ describe('TrialBadge', () => {
       'Assinatura expirada',
     )
     expect(cancelledOver.find('[data-testid="subscription-cancelled-badge"]').exists()).toBe(false)
+  })
+
+  it('mostra "Pagamento falhou" para PAYMENT_FAILED (Story 2.7)', () => {
+    const wrapper = mount(TrialBadge, {
+      props: {
+        subscription: makeSubscription({
+          planType: 'MONTHLY',
+          status: 'PAYMENT_FAILED',
+          daysRemaining: 0,
+          failedPaymentAttempts: 1,
+          paymentUpdateUrl: 'https://invoice.stripe.com/i/in_1',
+        }),
+      },
+    })
+
+    expect(wrapper.get('[data-testid="subscription-payment-failed-badge"]').text()).toBe('Pagamento falhou')
+    expect(wrapper.find('[data-testid="subscription-active-badge"]').exists()).toBe(false)
+  })
+
+  it('mostra "Assinatura suspensa" para SUSPENDED (Story 2.7)', () => {
+    const wrapper = mount(TrialBadge, {
+      props: {
+        subscription: makeSubscription({
+          planType: 'MONTHLY',
+          status: 'SUSPENDED',
+          daysRemaining: 0,
+          hasAccess: false,
+        }),
+      },
+    })
+
+    expect(wrapper.get('[data-testid="subscription-suspended-badge"]').text()).toBe('Assinatura suspensa')
+    expect(wrapper.find('[data-testid="subscription-expired-badge"]').exists()).toBe(false)
   })
 })

@@ -80,3 +80,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/2-6-process-recurring-monthly-payments.md`
   summary: Decidir a retenção de `billing_transactions` no purge da conta. Hoje a tabela é apagada; a legislação fiscal pode exigir guardar registros de cobrança por cerca de 5 anos (LGPD art. 16, I), por exemplo anonimizando `user_id`.
   evidence: O purge (Story 1.7 + 2.6) faz hard delete da tabela, e `user_id NOT NULL` impede anonimizar sem uma migration. É uma questão jurídica e de produto.
+
+- source_spec: `_bmad-output/implementation-artifacts/2-7-handle-payment-failures-with-retry-notifications.md`
+  summary: Deploy: configurar no Stripe Dashboard (test e live) Billing → Revenue recovery → Retries com agendamento customizado de 2 novas tentativas (3 e 10 dias depois da falha) e, após a última falha, **cancelar a assinatura**; o webhook endpoint precisa assinar também `invoice.payment_failed`.
+  evidence: Sem o cancelamento ao final, o Stripe deixa a assinatura `past_due`/`unpaid`, nenhum `customer.subscription.deleted` chega e a linha fica em PAYMENT_FAILED com acesso indefinidamente (decisão 2A). Só o `.env.example` documenta isso hoje.

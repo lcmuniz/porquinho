@@ -9,7 +9,9 @@ import com.porquinho.service.StripeBillingService;
 import com.porquinho.service.StripeBillingService.SubscriptionDetails;
 import com.porquinho.service.StripeBillingService.WebhookEvent;
 import com.porquinho.service.SubscriptionService;
+import com.porquinho.service.SubscriptionService.FailureOutcome;
 import com.porquinho.service.SubscriptionService.InvoicePayment;
+import com.porquinho.service.SubscriptionService.PaymentFailure;
 import com.porquinho.service.SubscriptionService.PaymentOutcome;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -187,11 +189,11 @@ class StripeWebhookControllerTest {
     void subscriptionDeletedExpiresLocalSubscription() throws Exception {
         when(stripeBillingService.verifyWebhook(anyString(), anyString())).thenReturn(new WebhookEvent(
             "evt_4", "customer.subscription.deleted", JSON.readTree("{\"id\":\"sub_1\",\"object\":\"subscription\"}")));
-        when(subscriptionService.expireByStripeSubscriptionId("sub_1")).thenReturn(true);
+        when(subscriptionService.expireByStripeSubscriptionId("sub_1", null)).thenReturn(true);
 
         postWebhook();
 
-        verify(subscriptionService).expireByStripeSubscriptionId("sub_1");
+        verify(subscriptionService).expireByStripeSubscriptionId("sub_1", null);
         verify(stripeBillingService, never()).retrieveSubscription(anyString());
     }
 
@@ -199,11 +201,33 @@ class StripeWebhookControllerTest {
     void subscriptionDeletedForUnknownIdIsAcknowledgedWith200() throws Exception {
         when(stripeBillingService.verifyWebhook(anyString(), anyString())).thenReturn(new WebhookEvent(
             "evt_5", "customer.subscription.deleted", JSON.readTree("{\"id\":\"sub_unknown\"}")));
-        when(subscriptionService.expireByStripeSubscriptionId("sub_unknown")).thenReturn(false);
+        when(subscriptionService.expireByStripeSubscriptionId("sub_unknown", null)).thenReturn(false);
 
         postWebhook();
 
-        verify(subscriptionService).expireByStripeSubscriptionId("sub_unknown");
+        verify(subscriptionService).expireByStripeSubscriptionId("sub_unknown", null);
+    }
+
+    @Test
+    void subscriptionDeletedPassesLatestInvoiceIdForTheVoidOnSuspension() throws Exception {
+        when(stripeBillingService.verifyWebhook(anyString(), anyString())).thenReturn(new WebhookEvent(
+            "evt_4b", "customer.subscription.deleted",
+            JSON.readTree("{\"id\":\"sub_1\",\"latest_invoice\":\"in_open\"}")));
+
+        postWebhook();
+
+        verify(subscriptionService).expireByStripeSubscriptionId("sub_1", "in_open");
+    }
+
+    @Test
+    void subscriptionDeletedReadsExpandedLatestInvoice() throws Exception {
+        when(stripeBillingService.verifyWebhook(anyString(), anyString())).thenReturn(new WebhookEvent(
+            "evt_4c", "customer.subscription.deleted",
+            JSON.readTree("{\"id\":\"sub_1\",\"latest_invoice\":{\"id\":\"in_open\",\"object\":\"invoice\"}}")));
+
+        postWebhook();
+
+        verify(subscriptionService).expireByStripeSubscriptionId("sub_1", "in_open");
     }
 
     @Test
@@ -334,5 +358,66 @@ class StripeWebhookControllerTest {
         postWebhook();
 
         verify(subscriptionService).recordPayment(EXPECTED_PAYMENT);
+    }
+
+    // ---- Story 2.7: invoice.payment_failed ----
+
+    private void givenPaymentFailed(String invoiceJson) throws Exception {
+        when(stripeBillingService.verifyWebhook(anyString(), anyString()))
+            .thenReturn(new WebhookEvent("evt_f", "invoice.payment_failed", JSON.readTree(invoiceJson)));
+    }
+
+    private static final String FAILED_INVOICE = "{\"id\":\"in_f\",\"billing_reason\":\"subscription_cycle\","
+        + "\"attempt_count\":2,\"hosted_invoice_url\":\"https://invoice.stripe.com/i/in_f\","
+        + "\"next_payment_attempt\":1793000000,"
+        + "\"last_finalization_error\":{\"message\":\"Your card was declined.\"},"
+        + "\"parent\":{\"subscription_details\":{\"subscription\":\"sub_1\"}}}";
+
+    @Test
+    void paymentFailedRecordsFailureWithAttemptAndLink() throws Exception {
+        // last_finalization_error is not a decline reason and is not read (decision 3A)
+        givenPaymentFailed(FAILED_INVOICE);
+        PaymentFailure expected = new PaymentFailure("in_f", "sub_1", 2, "https://invoice.stripe.com/i/in_f", true);
+        when(subscriptionService.recordPaymentFailure(expected)).thenReturn(FailureOutcome.RECORDED);
+
+        postWebhook();
+
+        verify(subscriptionService).recordPaymentFailure(expected);
+        verify(stripeBillingService, never()).retrieveSubscription(anyString());
+    }
+
+    @Test
+    void paymentFailedReadsTopLevelSubscription() throws Exception {
+        givenPaymentFailed("{\"id\":\"in_f\",\"attempt_count\":1,\"subscription\":\"sub_1\","
+            + "\"hosted_invoice_url\":\"https://invoice.stripe.com/i/in_f\",\"next_payment_attempt\":null}");
+        // next_payment_attempt null: last attempt, Stripe will not retry
+        PaymentFailure expected = new PaymentFailure("in_f", "sub_1", 1, "https://invoice.stripe.com/i/in_f", false);
+        when(subscriptionService.recordPaymentFailure(expected)).thenReturn(FailureOutcome.IGNORED);
+
+        postWebhook();
+
+        verify(subscriptionService).recordPaymentFailure(expected);
+    }
+
+    @Test
+    void paymentFailedOfUnknownSubscriptionIsAcknowledgedWith200() throws Exception {
+        // First invoice declined inside Checkout: the subscription id is not known locally yet
+        givenPaymentFailed("{\"id\":\"in_f\",\"billing_reason\":\"subscription_create\",\"attempt_count\":1,"
+            + "\"parent\":{\"subscription_details\":{\"subscription\":\"sub_new\"}}}");
+        when(subscriptionService.recordPaymentFailure(any())).thenReturn(FailureOutcome.UNKNOWN_SUBSCRIPTION);
+
+        postWebhook();
+
+        verify(subscriptionService).recordPaymentFailure(new PaymentFailure("in_f", "sub_new", 1, null, false));
+    }
+
+    @Test
+    void paymentFailedWithoutInvoiceOrSubscriptionIsIgnored() throws Exception {
+        givenPaymentFailed("{\"attempt_count\":1,\"subscription\":\"sub_1\"}");
+        postWebhook();
+        givenPaymentFailed("{\"id\":\"in_f\",\"attempt_count\":1}");
+        postWebhook();
+
+        verifyNoInteractions(subscriptionService);
     }
 }

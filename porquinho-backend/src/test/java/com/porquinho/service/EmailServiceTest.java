@@ -246,4 +246,91 @@ class EmailServiceTest {
         doThrow(new org.springframework.mail.MailSendException("down")).when(sender).send(any(SimpleMailMessage.class));
         serviceWith(sender, "x@example.com").sendPaymentReceipt("user@example.com", new BigDecimal("19.90"), paidAt, null);
     }
+
+    // ---- Story 2.7 ----
+
+    @Test
+    void paymentFailedEmailHasPayLinkAndNoReason() {
+        JavaMailSender sender = mock(JavaMailSender.class);
+        EmailService service = serviceWith(sender, "x@example.com");
+
+        service.sendPaymentFailed("user@example.com", "https://invoice.stripe.com/i/in_1", true);
+
+        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(sender).send(captor.capture());
+        assertThat(captor.getValue().getSubject()).isEqualTo("Porquinho - Pagamento falhou");
+        assertThat(captor.getValue().getTo()).containsExactly("user@example.com");
+        assertThat(captor.getValue().getText())
+            .contains("https://invoice.stripe.com/i/in_1")
+            .contains("Vamos tentar de novo automaticamente")
+            .contains("seu acesso continua")
+            .doesNotContain("última tentativa")
+            .doesNotContain("Motivo");
+    }
+
+    @Test
+    void lastAttemptPaymentFailedEmailDropsRetryAndWarnsOfSuspension() {
+        JavaMailSender sender = mock(JavaMailSender.class);
+        EmailService service = serviceWith(sender, "x@example.com");
+
+        service.sendPaymentFailed("user@example.com", "https://invoice.stripe.com/i/in_1", false);
+
+        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(sender).send(captor.capture());
+        assertThat(captor.getValue().getSubject()).isEqualTo("Porquinho - Pagamento falhou");
+        assertThat(captor.getValue().getText())
+            .contains("Esta foi a última tentativa de cobrança")
+            .contains("Sem o pagamento, a assinatura será suspensa")
+            .contains("https://invoice.stripe.com/i/in_1")
+            .doesNotContain("Vamos tentar de novo")
+            .doesNotContain("seu acesso continua");
+    }
+
+    @Test
+    void immediateCancellationEmailSaysAccessEndedToday() {
+        JavaMailSender sender = mock(JavaMailSender.class);
+        EmailService service = serviceWith(sender, "x@example.com");
+
+        service.sendSubscriptionCancelledImmediately("user@example.com");
+
+        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(sender).send(captor.capture());
+        assertThat(captor.getValue().getSubject()).isEqualTo("Porquinho - Assinatura cancelada");
+        assertThat(captor.getValue().getTo()).containsExactly("user@example.com");
+        assertThat(captor.getValue().getText())
+            .contains("foi cancelada")
+            .contains("acesso ao app foi encerrado hoje")
+            .doesNotContain("continua com acesso");
+    }
+
+    @Test
+    void subscriptionSuspendedEmailHasReactivateLink() {
+        JavaMailSender sender = mock(JavaMailSender.class);
+        EmailService service = serviceWith(sender, "x@example.com");
+
+        service.sendSubscriptionSuspended("user@example.com", "https://app.example.com/assinatura");
+
+        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(sender).send(captor.capture());
+        assertThat(captor.getValue().getSubject()).isEqualTo("Porquinho - Assinatura suspensa");
+        assertThat(captor.getValue().getText())
+            .contains("suspensa")
+            .contains("Reativar assinatura: https://app.example.com/assinatura");
+    }
+
+    @Test
+    void failureEmailsAreBestEffort() {
+        JavaMailSender sender = mock(JavaMailSender.class);
+        doThrow(new RuntimeException("smtp down")).when(sender).send(any(SimpleMailMessage.class));
+        EmailService service = serviceWith(sender, "x@example.com");
+
+        service.sendPaymentFailed("user@example.com", "https://invoice.stripe.com/i/in_1", true);
+        service.sendSubscriptionSuspended("user@example.com", "https://app.example.com/assinatura");
+        service.sendSubscriptionCancelledImmediately("user@example.com");
+
+        EmailService noSmtp = serviceWith(null, "x@example.com");
+        noSmtp.sendPaymentFailed("user@example.com", "https://invoice.stripe.com/i/in_1", false);
+        noSmtp.sendSubscriptionSuspended("user@example.com", "https://app.example.com/assinatura");
+        noSmtp.sendSubscriptionCancelledImmediately("user@example.com");
+    }
 }

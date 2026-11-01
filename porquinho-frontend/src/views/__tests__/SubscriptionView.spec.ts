@@ -29,6 +29,8 @@ function trial(overrides: Partial<Subscription> = {}): Subscription {
     trialEndDate: '2026-11-30T12:00:00Z',
     nextBillingDate: null,
     cancellationDate: null,
+    failedPaymentAttempts: 0,
+    paymentUpdateUrl: null,
     daysRemaining: 20,
     hasAccess: true,
     ...overrides,
@@ -498,5 +500,157 @@ describe('SubscriptionView', () => {
     expect(mockCreateCheckout).toHaveBeenCalledOnce()
     expect(mockReactivateSubscription).not.toHaveBeenCalled()
     expect(assign).toHaveBeenCalledWith('https://checkout.stripe.com/c/pay/cs_test_2')
+  })
+
+  // ---- Story 2.7 ----
+
+  function paymentFailed(overrides: Partial<Subscription> = {}): Subscription {
+    return trial({
+      planType: 'MONTHLY',
+      status: 'PAYMENT_FAILED',
+      daysRemaining: 0,
+      nextBillingDate: '2026-10-30T12:00:00Z',
+      failedPaymentAttempts: 1,
+      paymentUpdateUrl: 'https://invoice.stripe.com/i/in_1',
+      ...overrides,
+    })
+  }
+
+  it('PAYMENT_FAILED: "Atualizar pagamento" abre a fatura no Stripe, sem Checkout', async () => {
+    mockGetMySubscription.mockResolvedValue(paymentFailed())
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="subscription-payment-failed-badge"]').text()).toBe('Pagamento falhou')
+    expect(wrapper.get('[data-testid="payment-failed-notice"]').text()).toContain('Não conseguimos cobrar')
+    expect(wrapper.find('[data-testid="subscribe-button"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="reactivate-button"]').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="update-payment-button"]').trigger('click')
+
+    expect(assign).toHaveBeenCalledWith('https://invoice.stripe.com/i/in_1')
+    expect(mockCreateCheckout).not.toHaveBeenCalled()
+  })
+
+  it('PAYMENT_FAILED sem link não mostra o botão', async () => {
+    mockGetMySubscription.mockResolvedValue(paymentFailed({ paymentUpdateUrl: null }))
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="payment-failed-notice"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="update-payment-button"]').exists()).toBe(false)
+  })
+
+  it('PAYMENT_FAILED: cancelar avisa que o acesso termina agora e mostra o estado encerrado', async () => {
+    mockGetMySubscription.mockResolvedValue(paymentFailed())
+    mockCancelSubscription.mockResolvedValue(
+      paymentFailed({
+        status: 'EXPIRED',
+        cancellationDate: '2026-10-31T12:00:00Z',
+        paymentUpdateUrl: null,
+        hasAccess: false,
+      }),
+    )
+
+    const wrapper = mountAttached()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="cancel-button"]').trigger('click')
+    await flushPromises()
+    const description = document.body.querySelector('[data-testid="cancel-dialog-description"]')
+    expect(description?.textContent).toContain('o acesso termina agora')
+    expect(description?.textContent).not.toContain('fim do período')
+    expect(mockCancelSubscription).not.toHaveBeenCalled()
+
+    confirmButton().click()
+    await flushPromises()
+
+    expect(mockCancelSubscription).toHaveBeenCalledOnce()
+    expect(wrapper.find('[data-testid="payment-failed-notice"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="cancelled-now-notice"]').text()).toContain('acesso foi encerrado')
+    expect(wrapper.get('[data-testid="subscribe-button"]').text()).toBe('Reativar assinatura')
+    expect(wrapper.find('[data-testid="cancel-error"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('PAYMENT_FAILED: cancelar com Stripe fora (503) mostra erro e mantém o aviso de falha', async () => {
+    mockGetMySubscription.mockResolvedValue(paymentFailed())
+    mockCancelSubscription.mockRejectedValue({ response: { status: 503 } })
+
+    const wrapper = mountAttached()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="cancel-button"]').trigger('click')
+    await flushPromises()
+    confirmButton().click()
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="cancel-error"]').text()).toContain('Nada foi alterado')
+    expect(wrapper.find('[data-testid="payment-failed-notice"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="cancelled-now-notice"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('PAYMENT_FAILED: cancelar sem resposta e já EXPIRED no reload não mostra erro', async () => {
+    const expired = paymentFailed({ status: 'EXPIRED', paymentUpdateUrl: null, hasAccess: false })
+    mockGetMySubscription.mockReset().mockResolvedValueOnce(paymentFailed()).mockResolvedValue(expired)
+    mockCancelSubscription.mockRejectedValue(new Error('timeout'))
+
+    const wrapper = mountAttached()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="cancel-button"]').trigger('click')
+    await flushPromises()
+    confirmButton().click()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="cancel-error"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="cancelled-now-notice"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('SUSPENDED usa o fluxo de ex-assinante: "Reativar assinatura" abre o Checkout', async () => {
+    mockGetMySubscription.mockResolvedValue(
+      trial({ planType: 'MONTHLY', status: 'SUSPENDED', daysRemaining: 0, hasAccess: false }),
+    )
+    mockCreateCheckout.mockResolvedValue({ url: 'https://checkout.stripe.com/c/pay/cs_test_3' })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="subscription-suspended-badge"]').text()).toBe('Assinatura suspensa')
+    const button = wrapper.get('[data-testid="subscribe-button"]')
+    expect(button.text()).toBe('Reativar assinatura')
+    await button.trigger('click')
+    await flushPromises()
+
+    expect(assign).toHaveBeenCalledWith('https://checkout.stripe.com/c/pay/cs_test_3')
+  })
+
+  it('assinando de novo a partir de SUSPENDED continua recarregando até ficar ativa', async () => {
+    vi.useFakeTimers()
+    try {
+      mockRoute.query = { status: 'sucesso' }
+      const suspended = trial({ planType: 'MONTHLY', status: 'SUSPENDED', daysRemaining: 0, hasAccess: false })
+      mockGetMySubscription
+        .mockReset()
+        .mockResolvedValueOnce(suspended)
+        .mockResolvedValueOnce(suspended)
+        .mockResolvedValue(trial({ planType: 'MONTHLY', daysRemaining: 0 }))
+
+      const wrapper = mountView()
+      await flushPromises()
+      await vi.advanceTimersByTimeAsync(2000)
+      await vi.advanceTimersByTimeAsync(2000)
+      await vi.advanceTimersByTimeAsync(10000)
+
+      expect(mockGetMySubscription).toHaveBeenCalledTimes(3)
+      expect(wrapper.get('[data-testid="subscription-active-badge"]').text()).toBe('Assinatura ativa')
+      wrapper.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

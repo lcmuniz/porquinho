@@ -75,6 +75,54 @@ class SubscriptionControllerTest {
     }
 
     @Test
+    void getMySubscriptionExposesPaymentFailureFields() throws Exception {
+        // Story 2.7: the dashboard banner and "Atualizar pagamento" read these two fields
+        OffsetDateTime start = OffsetDateTime.parse("2026-09-01T12:00:00Z");
+        Subscription sub = new Subscription(userId, Subscription.PlanType.MONTHLY, Subscription.Status.PAYMENT_FAILED,
+            start, start.plusDays(30));
+        sub.setFailedPaymentAttempts(2);
+        sub.setPaymentUpdateUrl("https://invoice.stripe.com/i/acct_1/in_1");
+        when(subscriptionService.findByUserId(userId)).thenReturn(Optional.of(sub));
+        when(subscriptionService.hasAccess(sub)).thenReturn(true);
+
+        mockMvc.perform(get("/api/v1/subscriptions/me").with(authentication(authToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("PAYMENT_FAILED"))
+            .andExpect(jsonPath("$.failedPaymentAttempts").value(2))
+            .andExpect(jsonPath("$.paymentUpdateUrl").value("https://invoice.stripe.com/i/acct_1/in_1"))
+            .andExpect(jsonPath("$.hasAccess").value(true));
+    }
+
+    @Test
+    void getMySubscriptionShowsZeroAttemptsAndNullLinkOutsidePaymentFailure() throws Exception {
+        OffsetDateTime start = OffsetDateTime.parse("2026-10-31T12:00:00Z");
+        Subscription sub = new Subscription(userId, Subscription.PlanType.TRIAL, Subscription.Status.ACTIVE,
+            start, start.plusDays(30));
+        when(subscriptionService.findByUserId(userId)).thenReturn(Optional.of(sub));
+
+        mockMvc.perform(get("/api/v1/subscriptions/me").with(authentication(authToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.failedPaymentAttempts").value(0))
+            .andExpect(jsonPath("$.paymentUpdateUrl").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test
+    void cancelDuringPaymentFailedReturns200WithExpiredAndNoAccess() throws Exception {
+        OffsetDateTime start = OffsetDateTime.parse("2026-09-01T12:00:00Z");
+        Subscription sub = new Subscription(userId, Subscription.PlanType.MONTHLY, Subscription.Status.EXPIRED,
+            start, start.plusDays(30));
+        sub.setCancellationDate(OffsetDateTime.parse("2026-10-31T12:00:00Z"));
+        when(subscriptionService.cancel(eq(userId), any())).thenReturn(sub);
+        when(subscriptionService.hasAccess(sub)).thenReturn(false);
+
+        mockMvc.perform(post("/api/v1/subscriptions/cancel").with(authentication(authToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("EXPIRED"))
+            .andExpect(jsonPath("$.cancellationDate").value("2026-10-31T12:00:00Z"))
+            .andExpect(jsonPath("$.hasAccess").value(false));
+    }
+
+    @Test
     void getMySubscriptionShouldReturn404WhenNone() throws Exception {
         when(subscriptionService.findByUserId(userId)).thenReturn(Optional.empty());
 

@@ -74,7 +74,7 @@ development_status:
   2-4-self-service-subscription-cancellation: done
   2-5-reactivate-cancelled-subscription: done
   2-6-process-recurring-monthly-payments: done
-  2-7-handle-payment-failures-with-retry-notifications: backlog
+  2-7-handle-payment-failures-with-retry-notifications: done
   epic-2-retrospective: optional
 
   # Epic 3: Guided Onboarding Experience

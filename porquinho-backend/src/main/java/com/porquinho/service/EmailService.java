@@ -259,6 +259,35 @@ public class EmailService {
     }
 
     /**
+     * Send "Assinatura cancelada" for a cancel that ends access right away (Story 2.7: cancelled while
+     * PAYMENT_FAILED, so there is no paid period left to keep).
+     * Best-effort: if SMTP is not configured or sending fails, logs warning and continues.
+     *
+     * @param email Recipient email address
+     */
+    public void sendSubscriptionCancelledImmediately(String email) {
+        if (mailSender == null) {
+            log.warn("SMTP not configured - skipping subscription cancelled email to {}", email);
+            return;
+        }
+
+        try {
+            SimpleMailMessage message = newMessage(email, "Porquinho - Assinatura cancelada");
+            message.setText(
+                "Olá!\n\n" +
+                "Sua assinatura mensal do Porquinho foi cancelada. Nenhuma nova cobrança será feita.\n\n" +
+                "Seu acesso ao app foi encerrado hoje.\n\n" +
+                "Seus dados continuam preservados.\n\n" +
+                "Atenciosamente,\nEquipe Porquinho"
+            );
+            mailSender.send(message);
+            log.info("Subscription cancelled (immediate) email sent to {}", email);
+        } catch (Exception e) {
+            log.warn("Failed to send subscription cancelled email to {}: {}", email, e.getMessage());
+        }
+    }
+
+    /**
      * Send the "Pagamento confirmado" receipt after Stripe charged the monthly plan (Story 2.6).
      * Dates are Sao Paulo local dates.
      * Best-effort: if SMTP is not configured or sending fails, logs warning and continues.
@@ -295,6 +324,76 @@ public class EmailService {
             log.info("Payment receipt email sent to {}", email);
         } catch (Exception e) {
             log.warn("Failed to send payment receipt email to {}: {}", email, e.getMessage());
+        }
+    }
+
+    /**
+     * Send "Pagamento falhou" after Stripe declined a monthly charge (Story 2.7). Stripe retries on its
+     * own; the link opens the Stripe page of the failed invoice, where the user pays now with the saved
+     * card or a new one.
+     * Best-effort: if SMTP is not configured or sending fails, logs warning and continues.
+     *
+     * No failure reason (decision 3A): Stripe does not put the decline reason on the invoice.
+     *
+     * @param email Recipient email address
+     * @param payUrl Stripe hosted invoice page (or the subscription page as fallback)
+     * @param willRetry false on the last attempt: no retry sentence, the subscription will be suspended
+     */
+    public void sendPaymentFailed(String email, String payUrl, boolean willRetry) {
+        if (mailSender == null) {
+            log.warn("SMTP not configured - skipping payment failed email to {}", email);
+            return;
+        }
+
+        try {
+            String nextStep = willRetry
+                ? "Vamos tentar de novo automaticamente nos próximos dias e, enquanto isso, seu acesso continua normal. " +
+                  "Se todas as tentativas falharem, a assinatura será suspensa.\n\n"
+                : "Esta foi a última tentativa de cobrança. Sem o pagamento, a assinatura será suspensa " +
+                  "e o acesso ao app será bloqueado.\n\n";
+            SimpleMailMessage message = newMessage(email, "Porquinho - Pagamento falhou");
+            message.setText(
+                "Olá!\n\n" +
+                "Não conseguimos cobrar a mensalidade da sua assinatura do Porquinho.\n\n" +
+                nextStep +
+                "Para resolver agora, pague a fatura com o cartão cadastrado ou com outro cartão:\n" +
+                payUrl + "\n\n" +
+                "Atenciosamente,\nEquipe Porquinho"
+            );
+            mailSender.send(message);
+            log.info("Payment failed email sent to {}", email);
+        } catch (Exception e) {
+            log.warn("Failed to send payment failed email to {}: {}", email, e.getMessage());
+        }
+    }
+
+    /**
+     * Send "Assinatura suspensa" after every retry failed and Stripe cancelled the subscription (Story 2.7).
+     * Best-effort: if SMTP is not configured or sending fails, logs warning and continues.
+     *
+     * @param email Recipient email address
+     * @param reactivateUrl Subscription page ({frontend}/assinatura), where the user subscribes again
+     */
+    public void sendSubscriptionSuspended(String email, String reactivateUrl) {
+        if (mailSender == null) {
+            log.warn("SMTP not configured - skipping subscription suspended email to {}", email);
+            return;
+        }
+
+        try {
+            SimpleMailMessage message = newMessage(email, "Porquinho - Assinatura suspensa");
+            message.setText(
+                "Olá!\n\n" +
+                "Não conseguimos cobrar a mensalidade da sua assinatura do Porquinho depois de várias tentativas, " +
+                "e ela foi suspensa. O acesso ao app está bloqueado até você reativar.\n\n" +
+                "Seus dados continuam preservados.\n\n" +
+                "Reativar assinatura: " + reactivateUrl + "\n\n" +
+                "Atenciosamente,\nEquipe Porquinho"
+            );
+            mailSender.send(message);
+            log.info("Subscription suspended email sent to {}", email);
+        } catch (Exception e) {
+            log.warn("Failed to send subscription suspended email to {}: {}", email, e.getMessage());
         }
     }
 
