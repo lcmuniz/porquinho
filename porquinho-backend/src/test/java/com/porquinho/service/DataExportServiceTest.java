@@ -25,7 +25,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.io.Resource;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import jakarta.persistence.Column;
+
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
@@ -205,6 +208,48 @@ class DataExportServiceTest {
         assertTrue(subs.get(0).containsKey("deleted_at"));
         assertNull(subs.get(0).get("next_billing_date"));
         assertNull(subs.get(0).get("payment_method_id"));
+        assertExportsEveryColumn(Subscription.class, subs.get(0));
+        assertEquals(userId.toString(), subs.get(0).get("user_id"));
+        assertEquals(0, subs.get(0).get("failed_payment_attempts"));
+    }
+
+    @Test
+    void collectUserDataShouldExportBillingColumnsOfSubscription() {
+        // Retro Epic 2 F3: columns added in V10-V14 are exported too
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        OffsetDateTime start = OffsetDateTime.parse("2026-10-01T00:00:00Z");
+        Subscription sub = new Subscription(userId, Subscription.PlanType.MONTHLY, Subscription.Status.PAYMENT_FAILED,
+            start, start.plusDays(30));
+        sub.setStripeCustomerId("cus_1");
+        sub.setStripeSubscriptionId("sub_1");
+        sub.setTrialReminder7dSentAt(start.plusDays(23));
+        sub.setTrialReminder1dSentAt(start.plusDays(29));
+        sub.setCancellationDate(start.plusDays(40));
+        sub.setFailedPaymentAttempts(2);
+        sub.setPaymentUpdateUrl("https://invoice.stripe.com/i/x");
+        when(subscriptionService.findByUserId(userId)).thenReturn(Optional.of(sub));
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> exported = ((List<Map<String, Object>>) dataExportService.collectUserData(userId)
+            .get("subscriptions")).get(0);
+
+        assertEquals("cus_1", exported.get("stripe_customer_id"));
+        assertEquals("sub_1", exported.get("stripe_subscription_id"));
+        assertEquals(start.plusDays(23).toString(), exported.get("trial_reminder_7d_sent_at"));
+        assertEquals(start.plusDays(29).toString(), exported.get("trial_reminder_1d_sent_at"));
+        assertEquals(start.plusDays(40).toString(), exported.get("cancellation_date"));
+        assertEquals(2, exported.get("failed_payment_attempts"));
+        assertEquals("https://invoice.stripe.com/i/x", exported.get("payment_update_url"));
+    }
+
+    /** LGPD portability: every mapped column of the entity appears as a key in the exported map. */
+    private static void assertExportsEveryColumn(Class<?> entity, Map<String, Object> exported) {
+        for (Field field : entity.getDeclaredFields()) {
+            Column column = field.getAnnotation(Column.class);
+            if (column != null) {
+                assertTrue(exported.containsKey(column.name()), entity.getSimpleName() + " column not exported: " + column.name());
+            }
+        }
     }
 
     @Test
@@ -357,6 +402,8 @@ class DataExportServiceTest {
         assertEquals(paidAt.toString(), first.get("created_at"));
         assertEquals("in_1", payments.get(1).get("stripe_transaction_id"));
         assertNull(payments.get(1).get("created_at"));
+        assertEquals(userId.toString(), first.get("user_id"));
+        assertExportsEveryColumn(BillingTransaction.class, first);
     }
 
     @Test
