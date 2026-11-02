@@ -13,6 +13,7 @@ import com.porquinho.repository.AccountDeletionRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.CategoryRepository;
 import com.porquinho.repository.CreditCardRepository;
+import com.porquinho.repository.GoalRepository;
 import com.porquinho.repository.AuditLogRepository;
 import com.porquinho.repository.BillingTransactionRepository;
 import com.porquinho.repository.DataExportRepository;
@@ -51,7 +52,7 @@ import java.util.UUID;
  * - Each AccountDeletion is processed in its own transaction (REQUIRES_NEW) so a single
  *   failure does not block the queue.
  * - Hard-deletes data_exports, user_sessions, audit_logs, billing_transactions, subscriptions,
- *   onboarding_progress, accounts, credit_cards, categories, users
+ *   onboarding_progress, accounts, credit_cards, categories, goals, users
  *   (in that order, native SQL to bypass @Where filters on User and UserSession; billing_transactions
  *   has FKs to subscriptions and users, so it goes before both).
  * - Calls Supabase Admin API best-effort.
@@ -83,6 +84,7 @@ public class AccountDeletionService {
     private final AccountRepository accountRepository;
     private final CreditCardRepository creditCardRepository;
     private final CategoryRepository categoryRepository;
+    private final GoalRepository goalRepository;
 
     @Value("${app.export.directory:./exports}")
     private String exportDirectory;
@@ -114,6 +116,7 @@ public class AccountDeletionService {
             AccountRepository accountRepository,
             CreditCardRepository creditCardRepository,
             CategoryRepository categoryRepository,
+            GoalRepository goalRepository,
             @Lazy AccountDeletionService self) {
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -133,6 +136,7 @@ public class AccountDeletionService {
         this.accountRepository = accountRepository;
         this.creditCardRepository = creditCardRepository;
         this.categoryRepository = categoryRepository;
+        this.goalRepository = goalRepository;
         this.self = self;
     }
 
@@ -341,6 +345,7 @@ public class AccountDeletionService {
         accountRepository.deleteByUserId(userId);  // Story 3.2: FK to users (removed accounts too)
         creditCardRepository.deleteByUserId(userId);  // Story 3.3: FK to users (removed cards too)
         categoryRepository.deleteByUserId(userId);  // Story 3.4: FK to users; one statement, so parent FK does not block
+        goalRepository.deleteByUserId(userId);  // Story 3.8: FK to users (removed goals too)
         userRepository.deleteByIdNative(userId);
 
         // 4. Best-effort Supabase removal (SupabaseAdminClient already swallows failures).

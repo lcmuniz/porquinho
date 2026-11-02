@@ -366,4 +366,61 @@ class OnboardingControllerTest {
         mockMvc.perform(post("/api/v1/onboarding/me/dashboard-tour").with(authentication(authToken)))
             .andExpect(status().isConflict());
     }
+
+    // ---- Story 3.8: step 8, emergency fund goal (completes the onboarding) ----
+
+    private OnboardingProgress completedProgress(String lastStep) {
+        OnboardingProgress p = progress(8, "tutorial_viewed", "accounts_added", "cards_skipped", "categories_suggested",
+            "categories_customized", "import_skipped", "dashboard_gps_explained", lastStep);
+        p.setCompleted(true);
+        return p;
+    }
+
+    @Test
+    void postFinishWithoutSkippingCompletesTheOnboarding() throws Exception {
+        when(onboardingService.finish(eq(userId), eq(false), anyString()))
+            .thenReturn(completedProgress("emergency_fund_created"));
+
+        mockMvc.perform(post("/api/v1/onboarding/me/finish").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"skipped\":false}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.currentStep").value(8))
+            .andExpect(jsonPath("$.completed").value(true))
+            .andExpect(jsonPath("$.stepsCompleted[7]").value("emergency_fund_created"));
+
+        verify(onboardingService).finish(eq(userId), eq(false), anyString());
+    }
+
+    @Test
+    void postFinishSkippedPassesSkippedTrue() throws Exception {
+        when(onboardingService.finish(eq(userId), eq(true), anyString()))
+            .thenReturn(completedProgress("emergency_fund_skipped"));
+
+        mockMvc.perform(post("/api/v1/onboarding/me/finish").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"skipped\":true}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.completed").value(true))
+            .andExpect(jsonPath("$.stepsCompleted[7]").value("emergency_fund_skipped"));
+    }
+
+    @Test
+    void postFinishWithoutBodyMeansNotSkipped() throws Exception {
+        when(onboardingService.finish(eq(userId), eq(false), anyString()))
+            .thenReturn(completedProgress("emergency_fund_created"));
+
+        mockMvc.perform(post("/api/v1/onboarding/me/finish").with(authentication(authToken)))
+            .andExpect(status().isOk());
+
+        verify(onboardingService).finish(eq(userId), eq(false), anyString());
+    }
+
+    @Test
+    void postFinishWithoutGoalOrBeforeStepEightIs409() throws Exception {
+        when(onboardingService.finish(eq(userId), eq(false), anyString()))
+            .thenThrow(new ConflictException("Crie sua meta para concluir, ou toque em \"Pular por agora\"."));
+
+        mockMvc.perform(post("/api/v1/onboarding/me/finish").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"skipped\":false}"))
+            .andExpect(status().isConflict());
+    }
 }

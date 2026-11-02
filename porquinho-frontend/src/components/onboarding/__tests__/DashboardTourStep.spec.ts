@@ -194,4 +194,20 @@ describe('DashboardTourStep', () => {
     expect(errors[0]).toEqual(['Conclua os passos anteriores antes de conhecer o Dashboard GPS.'])
     expect(errors[1]?.[0]).toContain('Não foi possível salvar seu progresso')
   })
+
+  it("Story 3.8: com initialScreen='last' abre na última tela; Voltar ali vai para a tela 4", async () => {
+    const wrapper = mount(DashboardTourStep, {
+      attachTo: document.body,
+      props: { initialScreen: 'last' },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Seu check-in semanal leva apenas 5 minutos')
+
+    await wrapper.get('[data-testid="back-button"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('Seu check-in semanal leva apenas 5 minutos')
+    expect(wrapper.emitted('back')).toBeUndefined()
+  })
 })

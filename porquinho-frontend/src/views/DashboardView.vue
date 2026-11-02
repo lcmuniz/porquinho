@@ -26,6 +26,31 @@
         </button>
       </div>
 
+      <!-- Story 3.8: fim do onboarding (sem confete: só a mensagem) -->
+      <div
+        v-if="showOnboardingDone"
+        role="status"
+        data-testid="onboarding-done-message"
+        class="flex items-start justify-between gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3"
+      >
+        <div class="flex items-start gap-3 text-sm text-green-800">
+          <PartyPopper class="mt-0.5 h-5 w-5 shrink-0 text-green-600" aria-hidden="true" />
+          <div>
+            <p class="font-semibold">Parabéns! Sua conta está configurada</p>
+            <p>Agora é só acompanhar seu dinheiro por aqui.</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          data-testid="onboarding-done-close"
+          class="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-lg text-green-800 hover:bg-green-100"
+          aria-label="Fechar mensagem"
+          @click="showOnboardingDone = false"
+        >
+          <X class="h-4 w-4" aria-hidden="true" />
+        </button>
+      </div>
+
       <div
         v-if="subscription?.status === 'PAYMENT_FAILED'"
         role="alert"
@@ -104,7 +129,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { PartyPopper, X } from 'lucide-vue-next'
 import TrialBadge from '@/components/subscription/TrialBadge.vue'
 import { getMySubscription } from '@/services/subscriptionService'
 import { supabase } from '@/services/supabase'
@@ -134,7 +160,18 @@ function updatePayment() {
   if (url) window.location.assign(url)
 }
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
+
+// Story 3.8: o onboarding acabou de ser concluído (/dashboard?onboarding=done)
+const showOnboardingDone = ref(false)
+if (route.query.onboarding === 'done') {
+  showOnboardingDone.value = true
+  // Limpa o parâmetro: recarregar a página não repete a mensagem
+  const query = { ...route.query }
+  delete query.onboarding
+  void router.replace({ path: route.path, query })
+}
 
 async function logout() {
   // O guard do router usa a chave 'user' do localStorage: limpar primeiro garante a ida ao /login

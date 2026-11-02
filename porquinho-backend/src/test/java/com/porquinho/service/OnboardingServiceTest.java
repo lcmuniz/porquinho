@@ -33,14 +33,17 @@ class OnboardingServiceTest {
     @Mock
     private CategoryService categoryService;
 
+    @Mock
+    private GoalService goalService;
+
     private OnboardingService service;
     private UUID userId;
 
     @BeforeEach
     void setUp() {
         userId = UUID.randomUUID();
-        OnboardingService temp = new OnboardingService(repository, auditLogService, accountService, creditCardService, categoryService, null);
-        service = new OnboardingService(repository, auditLogService, accountService, creditCardService, categoryService, temp);
+        OnboardingService temp = new OnboardingService(repository, auditLogService, accountService, creditCardService, categoryService, goalService, null);
+        service = new OnboardingService(repository, auditLogService, accountService, creditCardService, categoryService, goalService, temp);
         // self == service: in production it is the Spring proxy of this same bean
         try {
             java.lang.reflect.Field selfField = OnboardingService.class.getDeclaredField("self");
@@ -622,5 +625,123 @@ class OnboardingServiceTest {
         }
         verifyNoInteractions(auditLogService);
         verify(repository, never()).save(any());
+    }
+
+    // ---- Story 3.8: step 8, emergency fund goal (completes the onboarding) ----
+
+    private OnboardingProgress progressAtGoalStep() {
+        return progressAt(8, "tutorial_viewed", "accounts_added", "cards_skipped", "categories_suggested",
+            "categories_customized", "import_skipped", "dashboard_gps_explained");
+    }
+
+    @Test
+    void finishWithGoalRecordsEmergencyFundCreatedCompletesAndAudits() {
+        OnboardingProgress progress = progressAtGoalStep();
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+        when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+        when(repository.save(progress)).thenReturn(progress);
+        when(goalService.countActive(userId)).thenReturn(1L);
+
+        OnboardingProgress result = service.finish(userId, false, "10.0.0.1");
+
+        assertTrue(result.isCompleted());
+        assertEquals(8, result.getCurrentStep());
+        assertEquals("emergency_fund_created", result.getSteps().get(result.getSteps().size() - 1));
+        verify(auditLogService).log("onboarding_completed", userId, "10.0.0.1", "{\"skipped\":false,\"goals\":1}");
+    }
+
+    @Test
+    void finishWithoutGoalIsAConflictWhenNotSkipped() {
+        OnboardingProgress progress = progressAtGoalStep();
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+        when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+        when(goalService.countActive(userId)).thenReturn(0L);
+
+        assertThrows(ConflictException.class, () -> service.finish(userId, false, "10.0.0.1"));
+
+        assertFalse(progress.isCompleted());
+        assertEquals(7, progress.getSteps().size());
+        verifyNoInteractions(auditLogService);
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void finishSkippedRecordsEmergencyFundSkippedCompletesAndCreatesNothing() {
+        OnboardingProgress progress = progressAtGoalStep();
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+        when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+        when(repository.save(progress)).thenReturn(progress);
+        when(goalService.countActive(userId)).thenReturn(0L);
+
+        OnboardingProgress result = service.finish(userId, true, "10.0.0.1");
+
+        assertTrue(result.isCompleted());
+        assertEquals(8, result.getCurrentStep());
+        assertEquals("emergency_fund_skipped", result.getSteps().get(result.getSteps().size() - 1));
+        verify(auditLogService).log("onboarding_completed", userId, "10.0.0.1", "{\"skipped\":true,\"goals\":0}");
+        verify(goalService, never()).create(any(), any());
+    }
+
+    @Test
+    void finishIsIdempotentOnceCompleted() {
+        OnboardingProgress progress = progressAtGoalStep();
+        progress.addStep("emergency_fund_created");
+        progress.setCompleted(true);
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+        when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+
+        for (boolean skipped : new boolean[] {false, true}) {
+            OnboardingProgress result = service.finish(userId, skipped, "10.0.0.1");
+            assertTrue(result.isCompleted());
+            assertEquals(8, result.getSteps().size());
+        }
+        verifyNoInteractions(auditLogService, goalService);
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void finishIsAConflictOnStepsOneToSeven() {
+        for (int step : new int[] {1, 2, 3, 4, 5, 6, 7}) {
+            OnboardingProgress progress = progressAt(step);
+            when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+            when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+
+            assertThrows(ConflictException.class, () -> service.finish(userId, true, "10.0.0.1"));
+
+            assertFalse(progress.isCompleted());
+            assertEquals(step, progress.getCurrentStep());
+        }
+        verifyNoInteractions(auditLogService);
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void dashboardTourIsIdempotentOnceCompletedAtStepEight() {
+        OnboardingProgress progress = progressAtGoalStep();
+        progress.setCompleted(true);
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+        when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+
+        OnboardingProgress result = service.completeDashboardTour(userId, "10.0.0.1");
+
+        assertEquals(8, result.getCurrentStep());
+        assertTrue(result.isCompleted());
+        verifyNoInteractions(auditLogService);
+    }
+
+    @Test
+    void finishSkippedWithAnActiveGoalRecordsEmergencyFundCreatedAndAuditsNotSkipped() {
+        OnboardingProgress progress = progressAtGoalStep();
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+        when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+        when(repository.save(progress)).thenReturn(progress);
+        when(goalService.countActive(userId)).thenReturn(1L);
+
+        OnboardingProgress result = service.finish(userId, true, "10.0.0.1");
+
+        assertTrue(result.isCompleted());
+        assertEquals("emergency_fund_created", result.getSteps().get(result.getSteps().size() - 1));
+        assertFalse(result.getSteps().contains("emergency_fund_skipped"));
+        verify(auditLogService).log("onboarding_completed", userId, "10.0.0.1", "{\"skipped\":false,\"goals\":1}");
     }
 }

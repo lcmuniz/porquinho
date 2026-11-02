@@ -7,6 +7,7 @@ import com.porquinho.dto.DataExportResponse;
 import com.porquinho.entity.Account;
 import com.porquinho.entity.Category;
 import com.porquinho.entity.CreditCard;
+import com.porquinho.entity.Goal;
 import com.porquinho.entity.AuditLog;
 import com.porquinho.entity.BillingTransaction;
 import com.porquinho.entity.DataExport;
@@ -18,6 +19,7 @@ import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.CategoryRepository;
 import com.porquinho.repository.CreditCardRepository;
+import com.porquinho.repository.GoalRepository;
 import com.porquinho.repository.AuditLogRepository;
 import com.porquinho.repository.BillingTransactionRepository;
 import com.porquinho.repository.DataExportRepository;
@@ -64,6 +66,7 @@ public class DataExportService {
     private final AccountRepository accountRepository;
     private final CreditCardRepository creditCardRepository;
     private final CategoryRepository categoryRepository;
+    private final GoalRepository goalRepository;
     private final ObjectMapper objectMapper;
 
     @Value("${app.export.directory:./exports}")
@@ -88,7 +91,8 @@ public class DataExportService {
             OnboardingProgressRepository onboardingProgressRepository,
             AccountRepository accountRepository,
             CreditCardRepository creditCardRepository,
-            CategoryRepository categoryRepository) {
+            CategoryRepository categoryRepository,
+            GoalRepository goalRepository) {
         this.dataExportRepository = dataExportRepository;
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -102,6 +106,7 @@ public class DataExportService {
         this.accountRepository = accountRepository;
         this.creditCardRepository = creditCardRepository;
         this.categoryRepository = categoryRepository;
+        this.goalRepository = goalRepository;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
         this.objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
@@ -180,7 +185,7 @@ public class DataExportService {
         metadata.put("user_id", userId.toString());
         metadata.put("data_version", "1.0");
         metadata.put("exported_tables", List.of("users", "user_sessions", "audit_logs", "subscriptions",
-            "billing_transactions", "onboarding_progress", "accounts", "credit_cards", "categories"));
+            "billing_transactions", "onboarding_progress", "accounts", "credit_cards", "categories", "goals"));
         data.put("metadata", metadata);
 
         // User profile (sanitized)
@@ -342,6 +347,26 @@ public class DataExportService {
             categoryList.add(categoryMap);
         }
         data.put("categories", categoryList);
+
+        // Goals (Story 3.8) - every stored column, removed goals included (deleted_at filled)
+        List<Map<String, Object>> goalList = new ArrayList<>();
+        for (Goal goal : goalRepository.findByUserIdOrderByCreatedAtAsc(userId)) {
+            Map<String, Object> goalMap = new LinkedHashMap<>();
+            goalMap.put("id", goal.getId() != null ? goal.getId().toString() : null);
+            goalMap.put("user_id", goal.getUserId() != null ? goal.getUserId().toString() : null);
+            goalMap.put("goal_name", goal.getGoalName());
+            goalMap.put("description", goal.getDescription());
+            goalMap.put("target_amount", goal.getTargetAmount());
+            goalMap.put("current_amount", goal.getCurrentAmount());
+            goalMap.put("target_date", goal.getTargetDate() != null ? goal.getTargetDate().toString() : null);
+            goalMap.put("monthly_allocation", goal.getMonthlyAllocation());
+            goalMap.put("is_completed", goal.isCompleted());
+            goalMap.put("created_at", goal.getCreatedAt() != null ? goal.getCreatedAt().toString() : null);
+            goalMap.put("updated_at", goal.getUpdatedAt() != null ? goal.getUpdatedAt().toString() : null);
+            goalMap.put("deleted_at", goal.getDeletedAt() != null ? goal.getDeletedAt().toString() : null);
+            goalList.add(goalMap);
+        }
+        data.put("goals", goalList);
 
         return data;
     }

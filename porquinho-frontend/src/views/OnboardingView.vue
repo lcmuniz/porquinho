@@ -55,7 +55,16 @@
       <!-- Passo 7: tour do Dashboard GPS (Story 3.7) -->
       <DashboardTourStep
         v-else-if="stage === 'tour'"
+        :initial-screen="tourScreen"
         @back="backToImport"
+        @done="goToStep"
+        @error="showError"
+      />
+
+      <!-- Passo 8: meta de Reserva de Emergência, conclui o onboarding (Story 3.8) -->
+      <EmergencyFundStep
+        v-else-if="stage === 'goal'"
+        @back="backToTour"
         @done="goToStep"
         @error="showError"
       />
@@ -331,6 +340,7 @@ import CardsStep from '@/components/onboarding/CardsStep.vue'
 import CategoriesStep from '@/components/onboarding/CategoriesStep.vue'
 import CustomizeCategoriesStep from '@/components/onboarding/CustomizeCategoriesStep.vue'
 import DashboardTourStep from '@/components/onboarding/DashboardTourStep.vue'
+import EmergencyFundStep from '@/components/onboarding/EmergencyFundStep.vue'
 import ImportStep from '@/components/onboarding/ImportStep.vue'
 import OnboardingStepIndicator from '@/components/onboarding/OnboardingStepIndicator.vue'
 import { Button } from '@/components/ui/button'
@@ -348,10 +358,11 @@ import type { OnboardingProgress } from '@/types/onboarding'
 // Story 3.1: passo 1 do onboarding = boas-vindas (tela 0) + tutorial de 4 telas.
 // Story 3.2: passo 2 = contas bancárias. Story 3.3: passo 3 = cartões de crédito. Story 3.4: passo 4 =
 // categorias sugeridas. Story 3.5: passo 5 = personalizar as categorias. Story 3.6: passo 6 = importar
-// transações (ainda sem upload). Story 3.7: passo 7 = tour do Dashboard GPS. A tela sai do progresso salvo
-// no servidor: passo 1 → tutorial, 2 → contas, 3 → cartões, 4 → categorias, 5 → personalização,
-// 6 → importação, 7 → tour do dashboard, passo ≥ 8 ou concluído → DONE_ROUTE. Decisão B da 3.1 estendida:
-// enquanto o passo 8 (Story 3.8) não existe, quem passa do passo 7 vai para o dashboard.
+// transações (ainda sem upload). Story 3.7: passo 7 = tour do Dashboard GPS. Story 3.8: passo 8 = meta de
+// Reserva de Emergência, que conclui o onboarding. A tela sai do progresso salvo no servidor: passo 1 →
+// tutorial, 2 → contas, 3 → cartões, 4 → categorias, 5 → personalização, 6 → importação, 7 → tour do
+// dashboard, 8 → meta, concluído → DONE_ROUTE. Quem acaba de concluir vai para o dashboard com
+// `?onboarding=done`, que mostra a mensagem de parabéns.
 const DONE_ROUTE = '/dashboard'
 const ACCOUNTS_STEP = 2
 const CARDS_STEP = 3
@@ -359,8 +370,9 @@ const CATEGORIES_STEP = 4
 const CUSTOMIZE_STEP = 5
 const IMPORT_STEP = 6
 const TOUR_STEP = 7
+const GOAL_STEP = 8
 /** Último passo com tela; acima dele (ou com o onboarding concluído) vai para DONE_ROUTE. */
-const LAST_STEP = TOUR_STEP
+const LAST_STEP = GOAL_STEP
 const TUTORIAL_SCREENS = 4
 const TOAST_MS = 5000
 
@@ -396,7 +408,15 @@ const nextSteps = [
   { icon: Target, text: 'Criar sua reserva de emergência' },
 ]
 
-type Stage = 'tutorial' | 'accounts' | 'cards' | 'categories' | 'customize' | 'import' | 'tour'
+type Stage =
+  | 'tutorial'
+  | 'accounts'
+  | 'cards'
+  | 'categories'
+  | 'customize'
+  | 'import'
+  | 'tour'
+  | 'goal'
 const STAGE_STEP: Record<Stage, number> = {
   tutorial: 1,
   accounts: ACCOUNTS_STEP,
@@ -405,6 +425,7 @@ const STAGE_STEP: Record<Stage, number> = {
   customize: CUSTOMIZE_STEP,
   import: IMPORT_STEP,
   tour: TOUR_STEP,
+  goal: GOAL_STEP,
 }
 const STEP_STAGE: Record<number, Stage> = {
   [ACCOUNTS_STEP]: 'accounts',
@@ -413,6 +434,7 @@ const STEP_STAGE: Record<number, Stage> = {
   [CUSTOMIZE_STEP]: 'customize',
   [IMPORT_STEP]: 'import',
   [TOUR_STEP]: 'tour',
+  [GOAL_STEP]: 'goal',
 }
 
 const router = useRouter()
@@ -425,6 +447,8 @@ const screen = ref(0)
 const showSkipDialog = ref(false)
 const toast = ref<string | null>(null)
 const heading = ref<HTMLElement | null>(null)
+/** Tela em que o tour do passo 7 abre: a primeira, ou a última ao voltar do passo 8. */
+const tourScreen = ref<0 | 'last'>(0)
 
 const isLastScreen = computed(() => screen.value === TUTORIAL_SCREENS)
 
@@ -437,7 +461,7 @@ function showError(message: string) {
 }
 
 // Leitores de tela e teclado: a cada tela nova o foco vai para o título
-// (os componentes dos passos 2 a 7 focam o próprio título ao aparecer)
+// (os componentes dos passos 2 a 8 focam o próprio título ao aparecer)
 watch([screen, stage], async () => {
   await nextTick()
   heading.value?.focus()
@@ -476,13 +500,14 @@ async function finish(skipped: boolean) {
 
 /**
  * Passo 2 → contas; 3 → cartões; 4 → categorias; 5 → personalização; 6 → importação;
- * 7 → tour do dashboard; ≥ 8 ou concluído → DONE_ROUTE.
+ * 7 → tour do dashboard; 8 → meta; concluído → DONE_ROUTE com a mensagem de parabéns.
  */
 async function goToStep(progress: OnboardingProgress) {
   savedStep.value = progress.currentStep
   if (progress.completed || progress.currentStep > LAST_STEP) {
-    await router.push(DONE_ROUTE)
+    await router.push({ path: DONE_ROUTE, query: { onboarding: 'done' } })
   } else {
+    if (progress.currentStep === TOUR_STEP) tourScreen.value = 0
     stage.value = STEP_STAGE[progress.currentStep] ?? 'accounts'
   }
 }
@@ -531,6 +556,15 @@ function backToCustomize() {
  */
 function backToImport() {
   stage.value = 'import'
+}
+
+/**
+ * Voltar no passo 8: mostra o tour do passo 7 na última tela, sem mexer no progresso salvo. O Próximo ali usa
+ * o POST idempotente do tour, que devolve o passo 8 e traz o usuário de volta à meta.
+ */
+function backToTour() {
+  tourScreen.value = 'last'
+  stage.value = 'tour'
 }
 
 onMounted(async () => {

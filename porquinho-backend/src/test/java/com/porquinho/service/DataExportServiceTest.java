@@ -3,6 +3,7 @@ package com.porquinho.service;
 import com.porquinho.entity.Account;
 import com.porquinho.entity.Category;
 import com.porquinho.entity.CreditCard;
+import com.porquinho.entity.Goal;
 import com.porquinho.entity.AuditLog;
 import com.porquinho.entity.BillingTransaction;
 import com.porquinho.entity.DataExport;
@@ -17,6 +18,7 @@ import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.CategoryRepository;
 import com.porquinho.repository.CreditCardRepository;
+import com.porquinho.repository.GoalRepository;
 import com.porquinho.repository.AuditLogRepository;
 import com.porquinho.repository.BillingTransactionRepository;
 import com.porquinho.repository.DataExportRepository;
@@ -88,6 +90,9 @@ class DataExportServiceTest {
 
     @Mock
     private CategoryRepository categoryRepository;
+
+    @Mock
+    private GoalRepository goalRepository;
 
     @InjectMocks
     private DataExportService dataExportService;
@@ -451,6 +456,61 @@ class DataExportServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
 
         assertEquals(List.of(), dataExportService.collectUserData(userId).get("categories"));
+    }
+
+    @Test
+    void collectUserDataShouldExportGoalsIncludingRemovedOnes() {
+        // Story 3.8: goals are exported with every stored column, removed (soft-deleted) ones included
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        OffsetDateTime created = OffsetDateTime.parse("2026-11-02T12:00:00Z");
+        Goal active = new Goal(userId, "Reserva de Emergência", new java.math.BigDecimal("25000.00"),
+            java.time.LocalDate.parse("2027-11-02"), new java.math.BigDecimal("2083.34"));
+        active.setId(UUID.randomUUID());
+        active.setCreatedAt(created);
+        active.setUpdatedAt(created);
+        Goal removed = new Goal(userId, "Viagem", new java.math.BigDecimal("8000.00"), null, null);
+        removed.setId(UUID.randomUUID());
+        removed.setDescription("Férias");
+        removed.setCreatedAt(created.plusMinutes(1));
+        removed.setUpdatedAt(created.plusMinutes(2));
+        removed.setDeletedAt(created.plusMinutes(2));
+        when(goalRepository.findByUserIdOrderByCreatedAtAsc(userId)).thenReturn(List.of(active, removed));
+
+        Map<String, Object> data = dataExportService.collectUserData(userId);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
+        assertTrue(((List<?>) metadata.get("exported_tables")).contains("goals"));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("goals");
+        assertEquals(2, rows.size());
+        Map<String, Object> first = rows.get(0);
+        assertExportsEveryColumn(Goal.class, first);
+        assertEquals(active.getId().toString(), first.get("id"));
+        assertEquals(userId.toString(), first.get("user_id"));
+        assertEquals("Reserva de Emergência", first.get("goal_name"));
+        assertNull(first.get("description"));
+        assertEquals(new java.math.BigDecimal("25000.00"), first.get("target_amount"));
+        assertEquals(new java.math.BigDecimal("0.00"), first.get("current_amount"));
+        assertEquals("2027-11-02", first.get("target_date"));
+        assertEquals(new java.math.BigDecimal("2083.34"), first.get("monthly_allocation"));
+        assertEquals(false, first.get("is_completed"));
+        assertNull(first.get("deleted_at"));
+
+        Map<String, Object> second = rows.get(1);
+        assertExportsEveryColumn(Goal.class, second);
+        assertEquals("Férias", second.get("description"));
+        assertNull(second.get("target_date"));
+        assertNull(second.get("monthly_allocation"));
+        assertEquals(created.plusMinutes(2).toString(), second.get("deleted_at"));
+    }
+
+    @Test
+    void collectUserDataShouldExportEmptyGoalListWhenNone() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+
+        assertEquals(List.of(), dataExportService.collectUserData(userId).get("goals"));
     }
 
     /** LGPD portability: every mapped column of the entity appears as a key in the exported map. */
