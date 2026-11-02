@@ -13,6 +13,7 @@ import com.porquinho.repository.AccountDeletionRepository;
 import com.porquinho.repository.AuditLogRepository;
 import com.porquinho.repository.BillingTransactionRepository;
 import com.porquinho.repository.DataExportRepository;
+import com.porquinho.repository.OnboardingProgressRepository;
 import com.porquinho.repository.SubscriptionRepository;
 import com.porquinho.repository.UserRepository;
 import com.porquinho.repository.UserSessionRepository;
@@ -46,7 +47,8 @@ import java.util.UUID;
  * Daily scheduled purge (03:00 UTC):
  * - Each AccountDeletion is processed in its own transaction (REQUIRES_NEW) so a single
  *   failure does not block the queue.
- * - Hard-deletes data_exports, user_sessions, audit_logs, billing_transactions, subscriptions, users
+ * - Hard-deletes data_exports, user_sessions, audit_logs, billing_transactions, subscriptions,
+ *   onboarding_progress, users
  *   (in that order, native SQL to bypass @Where filters on User and UserSession; billing_transactions
  *   has FKs to subscriptions and users, so it goes before both).
  * - Calls Supabase Admin API best-effort.
@@ -74,6 +76,7 @@ public class AccountDeletionService {
     private final StripeBillingService stripeBillingService;
     private final BillingTransactionRepository billingTransactionRepository;
     private final SubscriptionService subscriptionService;
+    private final OnboardingProgressRepository onboardingProgressRepository;
 
     @Value("${app.export.directory:./exports}")
     private String exportDirectory;
@@ -101,6 +104,7 @@ public class AccountDeletionService {
             StripeBillingService stripeBillingService,
             BillingTransactionRepository billingTransactionRepository,
             SubscriptionService subscriptionService,
+            OnboardingProgressRepository onboardingProgressRepository,
             @Lazy AccountDeletionService self) {
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -116,6 +120,7 @@ public class AccountDeletionService {
         this.stripeBillingService = stripeBillingService;
         this.billingTransactionRepository = billingTransactionRepository;
         this.subscriptionService = subscriptionService;
+        this.onboardingProgressRepository = onboardingProgressRepository;
         this.self = self;
     }
 
@@ -320,6 +325,7 @@ public class AccountDeletionService {
             .ifPresent(stripeBillingService::cancelSubscription);
         billingTransactionRepository.deleteByUserId(userId);  // Story 2.6: FKs to subscriptions and users
         subscriptionRepository.deleteByUserId(userId);  // Story 2.1: FK to users, must go first
+        onboardingProgressRepository.deleteByUserId(userId);  // Story 3.1: FK to users
         userRepository.deleteByIdNative(userId);
 
         // 4. Best-effort Supabase removal (SupabaseAdminClient already swallows failures).

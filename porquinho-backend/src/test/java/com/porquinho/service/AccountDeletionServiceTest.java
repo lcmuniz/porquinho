@@ -14,6 +14,7 @@ import com.porquinho.repository.SubscriptionRepository;
 import com.porquinho.repository.AuditLogRepository;
 import com.porquinho.repository.BillingTransactionRepository;
 import com.porquinho.repository.DataExportRepository;
+import com.porquinho.repository.OnboardingProgressRepository;
 import com.porquinho.repository.UserRepository;
 import com.porquinho.repository.UserSessionRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -71,6 +72,8 @@ class AccountDeletionServiceTest {
     private BillingTransactionRepository billingTransactionRepository;
     @Mock
     private SubscriptionService subscriptionService;
+    @Mock
+    private OnboardingProgressRepository onboardingProgressRepository;
 
     private AccountDeletionService service;
 
@@ -95,12 +98,12 @@ class AccountDeletionServiceTest {
             userRepository, userSessionRepository, auditLogRepository, dataExportRepository,
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
             supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService,
-            billingTransactionRepository, subscriptionService, null);
+            billingTransactionRepository, subscriptionService, onboardingProgressRepository, null);
         service = new AccountDeletionService(
             userRepository, userSessionRepository, auditLogRepository, dataExportRepository,
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
             supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService,
-            billingTransactionRepository, subscriptionService, temp);
+            billingTransactionRepository, subscriptionService, onboardingProgressRepository, temp);
         // After construction, swap in the real reference so self == service (recursive ref ok
         // for tests because Spring's proxy would similarly route the call into this same bean).
         try {
@@ -301,6 +304,11 @@ class AccountDeletionServiceTest {
         InOrder fkOrder = inOrder(subscriptionRepository, userRepository);
         fkOrder.verify(subscriptionRepository).deleteByUserId(userId);
         fkOrder.verify(userRepository).deleteByIdNative(userId);
+
+        // Story 3.1: onboarding progress deleted BEFORE the user (FK onboarding_progress.user_id -> users.id)
+        InOrder onboardingOrder = inOrder(onboardingProgressRepository, userRepository);
+        onboardingOrder.verify(onboardingProgressRepository).deleteByUserId(userId);
+        onboardingOrder.verify(userRepository).deleteByIdNative(userId);
 
         // Supabase admin called
         verify(supabaseAdminClient).deleteUser(userId);

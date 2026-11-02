@@ -4,6 +4,7 @@ import com.porquinho.entity.AuditLog;
 import com.porquinho.entity.BillingTransaction;
 import com.porquinho.entity.DataExport;
 import com.porquinho.entity.DataExport.ExportStatus;
+import com.porquinho.entity.OnboardingProgress;
 import com.porquinho.entity.Subscription;
 import com.porquinho.entity.User;
 import com.porquinho.entity.User.AuthProvider;
@@ -13,6 +14,7 @@ import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AuditLogRepository;
 import com.porquinho.repository.BillingTransactionRepository;
 import com.porquinho.repository.DataExportRepository;
+import com.porquinho.repository.OnboardingProgressRepository;
 import com.porquinho.repository.UserRepository;
 import com.porquinho.repository.UserSessionRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -68,6 +70,9 @@ class DataExportServiceTest {
 
     @Mock
     private BillingTransactionRepository billingTransactionRepository;
+
+    @Mock
+    private OnboardingProgressRepository onboardingProgressRepository;
 
     @InjectMocks
     private DataExportService dataExportService;
@@ -240,6 +245,46 @@ class DataExportServiceTest {
         assertEquals(start.plusDays(40).toString(), exported.get("cancellation_date"));
         assertEquals(2, exported.get("failed_payment_attempts"));
         assertEquals("https://invoice.stripe.com/i/x", exported.get("payment_update_url"));
+    }
+
+    @Test
+    void collectUserDataShouldExportOnboardingProgress() {
+        // Story 3.1: onboarding_progress is exported with every stored column
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        OffsetDateTime created = OffsetDateTime.parse("2026-11-01T12:00:00Z");
+        OnboardingProgress progress = new OnboardingProgress(userId);
+        progress.setId(UUID.randomUUID());
+        progress.setCurrentStep(2);
+        progress.addStep("tutorial_skipped");
+        progress.setCreatedAt(created);
+        progress.setUpdatedAt(created.plusMinutes(3));
+        when(onboardingProgressRepository.findByUserId(userId)).thenReturn(Optional.of(progress));
+
+        Map<String, Object> data = dataExportService.collectUserData(userId);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
+        assertTrue(((List<?>) metadata.get("exported_tables")).contains("onboarding_progress"));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("onboarding_progress");
+        assertEquals(1, rows.size());
+        Map<String, Object> exported = rows.get(0);
+        assertExportsEveryColumn(OnboardingProgress.class, exported);
+        assertEquals(progress.getId().toString(), exported.get("id"));
+        assertEquals(userId.toString(), exported.get("user_id"));
+        assertEquals(2, exported.get("current_step"));
+        assertEquals(List.of("tutorial_skipped"), exported.get("steps_completed"));
+        assertEquals(false, exported.get("is_completed"));
+        assertEquals(created.toString(), exported.get("created_at"));
+        assertEquals(created.plusMinutes(3).toString(), exported.get("updated_at"));
+    }
+
+    @Test
+    void collectUserDataShouldExportEmptyOnboardingListWhenNone() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+
+        assertEquals(List.of(), dataExportService.collectUserData(userId).get("onboarding_progress"));
     }
 
     /** LGPD portability: every mapped column of the entity appears as a key in the exported map. */

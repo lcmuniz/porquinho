@@ -89,3 +89,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-retro-epic2-f1-stop-billing-on-account-deletion.md`
   summary: Teste de integração com transação Spring real para os fluxos com `afterCommit` (exclusão de conta, cancel, reactivate, activate): chamar o Stripe só depois do commit externo e nunca em rollback.
   evidence: Os testes simulam a sincronização à mão (`runAfterCommit`) ou usam mocks; uma mudança de propagação (`REQUIRES_NEW`) passaria despercebida. Achado do Verification Gap (medium, unverified em produção).
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-1-display-welcome-envelope-budget-concept-tutorial.md`
+  summary: Teste concorrente (duas threads, PostgreSQL real) provando que o lock de `findByUserIdForUpdate` em `OnboardingService.applyTutorial` grava um único audit `onboarding_tutorial_completed`.
+  evidence: Revisão da 3.1 (Verification Gap); hoje a idempotência só é testada em sequência e não há precedente de teste concorrente no repositório.
