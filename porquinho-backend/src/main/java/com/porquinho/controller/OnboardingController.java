@@ -17,7 +17,8 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 /**
- * Guided onboarding endpoints (Story 3.1: tutorial; Story 3.2: bank accounts; Story 3.3: credit cards; Story 3.4: categories). The user always comes from the JWT.
+ * Guided onboarding endpoints (Story 3.1: tutorial; Story 3.2: bank accounts; Story 3.3: credit cards; Story 3.4: categories;
+ * Story 3.5: customizing the categories). The user always comes from the JWT.
  * Not exempt from SubscriptionAccessFilter: the trial is already active during onboarding.
  */
 @RestController
@@ -91,6 +92,21 @@ public class OnboardingController {
         UUID userId = UUID.fromString(jwt.getSubject());
         return ResponseEntity.ok(OnboardingProgressResponse.of(
             onboardingService.completeCategories(userId, body.keys(), request.getRemoteAddr())));
+    }
+
+    /**
+     * Step 5 done (Story 3.5): records categories_customized (or customization_skipped) and moves to step 6. The
+     * edits themselves were saved through /api/v1/categories. 409 while on steps 1 to 4; idempotent from step 6 on.
+     * Missing body means "not skipped".
+     */
+    @PostMapping("/me/customization")
+    public ResponseEntity<OnboardingProgressResponse> completeCustomization(@AuthenticationPrincipal Jwt jwt,
+                                                                            @RequestBody(required = false) StepRequest body,
+                                                                            HttpServletRequest request) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        boolean skipped = body != null && Boolean.TRUE.equals(body.skipped());
+        return ResponseEntity.ok(OnboardingProgressResponse.of(
+            onboardingService.completeCustomization(userId, skipped, request.getRemoteAddr())));
     }
 
     public record StepRequest(Boolean skipped) { }

@@ -5,7 +5,11 @@
         <h1 ref="heading" tabindex="-1" class="text-2xl font-bold text-gray-900 outline-none">
           Categorias de gastos sugeridas
         </h1>
-        <p class="text-gray-600">
+        <p v-if="readOnly" class="text-gray-600" data-testid="categories-read-only">
+          Suas categorias já foram criadas. Para renomear, trocar, excluir ou adicionar, toque em
+          Próximo e personalize-as.
+        </p>
+        <p v-else class="text-gray-600">
           Cada categoria é um envelope do seu orçamento. Já separamos as mais comuns: desmarque as
           que não fazem sentido para você. Depois você pode ajustar nomes, cores e ícones.
         </p>
@@ -74,7 +78,7 @@
                 type="checkbox"
                 class="h-5 w-5 shrink-0 accent-purple-600"
                 :checked="selected.has(suggestion.key)"
-                :disabled="finishing"
+                :disabled="finishing || readOnly"
                 :data-testid="`category-checkbox-${suggestion.key}`"
                 @change="toggle(suggestion.key)"
               />
@@ -137,7 +141,7 @@ import { computed, onMounted, ref } from 'vue'
 import { ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { categoryIcon } from '@/lib/categoryIcons'
-import { getCategorySuggestions } from '@/services/categoryService'
+import { getCategorySuggestions, listCategories } from '@/services/categoryService'
 import { completeCategories } from '@/services/onboardingService'
 import type { CategorySuggestionGroup } from '@/types/category'
 import type { OnboardingProgress } from '@/types/onboarding'
@@ -145,8 +149,14 @@ import type { OnboardingProgress } from '@/types/onboarding'
 /**
  * Story 3.4: passo 4 do onboarding. Mostra as categorias sugeridas em 3 grupos, todas marcadas;
  * Próximo cria as marcadas (filhas do seu grupo) e avança. Sem Pular: o mínimo é 1 categoria.
- * Personalizar (nome, cor, ícone, excluir, criar) fica para a Story 3.5.
+ * Personalizar (nome, cor, ícone, excluir, criar) é o passo 5 (Story 3.5).
+ *
+ * `readOnly` (Voltar a partir do passo 5): as categorias já existem, então os checkboxes ficam desabilitados e
+ * marcam só as sugestões que o usuário tem (pelo nome). Próximo usa o POST idempotente, que não cria nada e
+ * devolve o passo 5.
  */
+const props = defineProps<{ readOnly?: boolean }>()
+
 const emit = defineEmits<{
   back: []
   done: [progress: OnboardingProgress]
@@ -184,8 +194,17 @@ async function loadSuggestions() {
   loadFailed.value = false
   try {
     groups.value = await getCategorySuggestions()
-    // Todas marcadas por padrão
-    selected.value = new Set(groups.value.flatMap((g) => g.suggestions.map((s) => s.key)))
+    const all = groups.value.flatMap((g) => g.suggestions)
+    if (props.readOnly) {
+      // Só leitura: marca as que o usuário criou; sem conseguir ler, mantém todas (o POST não cria nada)
+      const mine = await listCategories().catch(() => null)
+      const names = new Set(mine?.map((c) => c.categoryName))
+      const owned = all.filter((s) => names.has(s.name)).map((s) => s.key)
+      selected.value = new Set(mine && owned.length > 0 ? owned : all.map((s) => s.key))
+    } else {
+      // Todas marcadas por padrão
+      selected.value = new Set(all.map((s) => s.key))
+    }
   } catch {
     // Só o aviso na própria tela (com "Tentar de novo"); um toast ficaria visível após a nova tentativa
     loadFailed.value = true

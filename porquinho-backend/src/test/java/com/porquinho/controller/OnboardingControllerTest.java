@@ -253,4 +253,45 @@ class OnboardingControllerTest {
                 .contentType(MediaType.APPLICATION_JSON).content("{\"keys\":[\"housing\"]}"))
             .andExpect(status().isConflict());
     }
+
+    // ---- Story 3.5: step 5, customizing the categories ----
+
+    @Test
+    void postCustomizationReturnsStepSix() throws Exception {
+        when(onboardingService.completeCustomization(eq(userId), eq(false), anyString()))
+            .thenReturn(progress(6, "tutorial_viewed", "accounts_added", "cards_added", "categories_suggested",
+                "categories_customized"));
+
+        mockMvc.perform(post("/api/v1/onboarding/me/customization").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"skipped\":false}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.currentStep").value(6))
+            .andExpect(jsonPath("$.stepsCompleted[4]").value("categories_customized"));
+    }
+
+    @Test
+    void postCustomizationSkippedPassesSkippedAndNoBodyMeansNotSkipped() throws Exception {
+        when(onboardingService.completeCustomization(eq(userId), any(Boolean.class), anyString()))
+            .thenReturn(progress(6, "tutorial_viewed", "accounts_added", "cards_added", "categories_suggested",
+                "customization_skipped"));
+
+        mockMvc.perform(post("/api/v1/onboarding/me/customization").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"skipped\":true}"))
+            .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/onboarding/me/customization").with(authentication(authToken)))
+            .andExpect(status().isOk());
+
+        verify(onboardingService).completeCustomization(eq(userId), eq(true), anyString());
+        verify(onboardingService).completeCustomization(eq(userId), eq(false), anyString());
+    }
+
+    @Test
+    void postCustomizationBeforeStepFiveIs409() throws Exception {
+        when(onboardingService.completeCustomization(eq(userId), eq(false), anyString()))
+            .thenThrow(new ConflictException("Conclua os passos anteriores antes de personalizar suas categorias."));
+
+        mockMvc.perform(post("/api/v1/onboarding/me/customization").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"skipped\":false}"))
+            .andExpect(status().isConflict());
+    }
 }

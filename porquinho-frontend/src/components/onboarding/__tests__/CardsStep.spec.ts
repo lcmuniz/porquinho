@@ -84,7 +84,9 @@ describe('CardsStep', () => {
     expect(wrapper.find('[data-testid="cards-empty"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="next-button"]').attributes('disabled')).toBeUndefined()
     expect(wrapper.get('[data-testid="skip-button"]').text()).toContain('Pular por agora')
-    const options = wrapper.findAll('#card-bank-suggestions option').map((o) => o.attributes('value'))
+    const options = wrapper
+      .findAll('#card-bank-suggestions option')
+      .map((o) => o.attributes('value'))
     expect(options).toContain('Nubank')
     const dueDay = wrapper.get('[data-testid="card-due-day-input"]')
     expect(dueDay.attributes('type')).toBe('number')
@@ -109,10 +111,12 @@ describe('CardsStep', () => {
     expect(plain(item.get('[data-testid="card-limit"]').text())).toBe('R$ 5.000,00')
     expect(item.text()).toContain('Remover')
     // formulário limpo
-    expect((wrapper.get('[data-testid="card-name-input"]').element as HTMLInputElement).value).toBe('')
-    expect((wrapper.get('[data-testid="card-due-day-input"]').element as HTMLInputElement).value).toBe(
+    expect((wrapper.get('[data-testid="card-name-input"]').element as HTMLInputElement).value).toBe(
       '',
     )
+    expect(
+      (wrapper.get('[data-testid="card-due-day-input"]').element as HTMLInputElement).value,
+    ).toBe('')
   })
 
   it('envia banco vazio como null e aceita limite zero', async () => {
@@ -134,7 +138,9 @@ describe('CardsStep', () => {
     await fill(wrapper, 'Cartão', '100,00', day)
     await submit(wrapper)
 
-    expect(wrapper.get('[data-testid="card-due-day-error"]').text()).toBe('Informe um dia entre 1 e 31')
+    expect(wrapper.get('[data-testid="card-due-day-error"]').text()).toBe(
+      'Informe um dia entre 1 e 31',
+    )
     expect(mockCreate).not.toHaveBeenCalled()
   })
 
@@ -142,7 +148,9 @@ describe('CardsStep', () => {
     const wrapper = await mountStep()
     await fill(wrapper, 'Cartão', '-10,00', '10')
     await submit(wrapper)
-    expect(wrapper.get('[data-testid="card-limit-error"]').text()).toBe('O limite não pode ser negativo')
+    expect(wrapper.get('[data-testid="card-limit-error"]').text()).toBe(
+      'O limite não pode ser negativo',
+    )
 
     await fill(wrapper, 'Cartão', '12,345', '10')
     await submit(wrapper)
@@ -178,7 +186,9 @@ describe('CardsStep', () => {
     await fill(wrapper, 'Cartão', '1', '10')
     await submit(wrapper)
 
-    expect(wrapper.get('[data-testid="card-due-day-error"]').text()).toBe('Informe um dia entre 1 e 31')
+    expect(wrapper.get('[data-testid="card-due-day-error"]').text()).toBe(
+      'Informe um dia entre 1 e 31',
+    )
     expect(wrapper.emitted('error')).toBeUndefined()
   })
 

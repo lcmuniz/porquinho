@@ -5,9 +5,11 @@ import type { CategorySuggestionGroup } from '@/types/category'
 
 const mockGetSuggestions = vi.fn()
 const mockCompleteCategories = vi.fn()
+const mockListCategories = vi.fn()
 
 vi.mock('@/services/categoryService', () => ({
   getCategorySuggestions: (...a: unknown[]) => mockGetSuggestions(...a),
+  listCategories: (...a: unknown[]) => mockListCategories(...a),
 }))
 
 vi.mock('@/services/onboardingService', () => ({
@@ -88,6 +90,7 @@ describe('CategoriesStep', () => {
   beforeEach(() => {
     mockGetSuggestions.mockReset().mockResolvedValue(SUGGESTIONS)
     mockCompleteCategories.mockReset().mockResolvedValue(nextProgress)
+    mockListCategories.mockReset().mockResolvedValue([])
   })
 
   afterEach(() => {
@@ -256,5 +259,31 @@ describe('CategoriesStep', () => {
     const wrapper = await mountStep()
 
     expect(document.activeElement).toBe(wrapper.get('h1').element)
+  })
+
+  it('só leitura (Voltar do passo 5): checkboxes desabilitados, marca as que o usuário tem e Próximo usa o POST', async () => {
+    mockListCategories.mockResolvedValue([
+      { id: 'g1', categoryName: 'Essenciais', parentCategoryId: null },
+      { id: 'c1', categoryName: 'Moradia', parentCategoryId: 'g1' },
+    ])
+    const wrapper = mount(CategoriesStep, { attachTo: document.body, props: { readOnly: true } })
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="categories-read-only"]').exists()).toBe(true)
+    expect(checkbox(wrapper, 'housing').element.disabled).toBe(true)
+    expect(checkbox(wrapper, 'housing').element.checked).toBe(true)
+    expect(checkbox(wrapper, 'food').element.checked).toBe(false)
+
+    await nextButton(wrapper).trigger('click')
+    await flushPromises()
+    expect(mockCompleteCategories).toHaveBeenCalledWith(['housing'])
+    expect(wrapper.emitted('done')?.[0]).toEqual([nextProgress])
+  })
+
+  it('fora do modo só leitura não lê as categorias do usuário', async () => {
+    const wrapper = await mountStep()
+
+    expect(mockListCategories).not.toHaveBeenCalled()
+    expect(checkbox(wrapper, 'housing').element.disabled).toBe(false)
   })
 })

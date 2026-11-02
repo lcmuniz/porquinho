@@ -23,3 +23,24 @@ export interface CategorySuggestion {
 export interface CategorySuggestionGroup extends CategorySuggestion {
   suggestions: CategorySuggestion[]
 }
+
+/** Story 3.5: cores (#RRGGBB) e ícones Lucide permitidos para criar ou editar uma categoria. */
+export interface CategoryOptions {
+  colors: string[]
+  icons: string[]
+}
+
+/** Story 3.5: corpo do POST /api/v1/categories (categoria nova dentro de um grupo). */
+export interface CreateCategoryInput {
+  name: string
+  colorHex: string
+  iconName: string
+  parentId: string
+}
+
+/** Story 3.5: corpo do PATCH /api/v1/categories/{id}; só os campos enviados mudam. */
+export interface UpdateCategoryInput {
+  name?: string
+  colorHex?: string
+  iconName?: string
+}

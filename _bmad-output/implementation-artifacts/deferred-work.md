@@ -97,10 +97,12 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-4-suggest-initial-spending-categories.md`
   summary: Ordem determinística de `GET /api/v1/categories` (pai antes das filhas, ordem do catálogo), por exemplo com uma coluna `sort_order`, antes de a Story 3.5 listar as categorias.
   evidence: Revisão da 3.4: `created_at` vem de chamadas separadas e o desempate é por UUID aleatório.
+  status: resolvido na Story 3.5 (ordem por nome e id; pai = grupo ativo do mesmo usuário, profundidade 1, grupo com filhas não pode ser excluído).
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-4-suggest-initial-spending-categories.md`
   summary: Integridade da hierarquia de categorias ao editar (Story 3.5/Epic 6): pai do mesmo usuário, profundidade máxima e o que acontece com as filhas quando o pai é excluído (soft delete).
   evidence: Revisão da 3.4: o schema só impede auto-referência; hoje só o catálogo cria pais.
+  status: resolvido na Story 3.5 (ordem por nome e id; pai = grupo ativo do mesmo usuário, profundidade 1, grupo com filhas não pode ser excluído).
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-4-suggest-initial-spending-categories.md`
   summary: Teste HTTP do handler de `BadRequestException` (400 com `detail`) quando um endpoint passar a depender só da validação no serviço.
