@@ -421,4 +421,72 @@ class OnboardingServiceTest {
         verifyNoInteractions(categoryService, auditLogService);
         verify(repository, never()).save(any());
     }
+
+    // ---- Story 3.5: step 5, customizing the categories ----
+
+    private OnboardingProgress atCustomizationStep() {
+        OnboardingProgress progress = progressAt(5, OnboardingService.STEP_TUTORIAL_VIEWED,
+            OnboardingService.STEP_ACCOUNTS_ADDED, OnboardingService.STEP_CARDS_SKIPPED,
+            OnboardingService.STEP_CATEGORIES_SUGGESTED);
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+        when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+        return progress;
+    }
+
+    @Test
+    void customizationNextRecordsCustomizedMovesToStepSixAndAudits() {
+        OnboardingProgress progress = atCustomizationStep();
+        when(repository.save(progress)).thenReturn(progress);
+
+        OnboardingProgress result = service.completeCustomization(userId, false, "10.0.0.1");
+
+        assertEquals(6, result.getCurrentStep());
+        assertEquals(List.of("tutorial_viewed", "accounts_added", "cards_skipped", "categories_suggested",
+            "categories_customized"), result.getSteps());
+        verify(auditLogService).log("onboarding_customization_completed", userId, "10.0.0.1", "{\"skipped\":false}");
+        verifyNoInteractions(categoryService);
+    }
+
+    @Test
+    void customizationSkipRecordsSkippedAndMovesToStepSix() {
+        OnboardingProgress progress = atCustomizationStep();
+        when(repository.save(progress)).thenReturn(progress);
+
+        OnboardingProgress result = service.completeCustomization(userId, true, "10.0.0.1");
+
+        assertEquals(6, result.getCurrentStep());
+        assertEquals("customization_skipped", result.getSteps().get(4));
+        verify(auditLogService).log("onboarding_customization_completed", userId, "10.0.0.1", "{\"skipped\":true}");
+        verifyNoInteractions(categoryService);
+    }
+
+    @Test
+    void customizationStepIsIdempotentFromStepSix() {
+        OnboardingProgress progress = progressAt(6, "tutorial_viewed", "accounts_added", "cards_added",
+            "categories_suggested", "categories_customized");
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+        when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+
+        OnboardingProgress result = service.completeCustomization(userId, true, "10.0.0.1");
+
+        assertEquals(6, result.getCurrentStep());
+        assertEquals(5, result.getSteps().size());
+        verifyNoInteractions(auditLogService);
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void customizationStepIsAConflictOnStepsOneToFour() {
+        for (int step : new int[] {1, 2, 3, 4}) {
+            OnboardingProgress progress = progressAt(step);
+            when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+            when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+
+            assertThrows(ConflictException.class, () -> service.completeCustomization(userId, false, "10.0.0.1"));
+
+            assertEquals(step, progress.getCurrentStep());
+        }
+        verifyNoInteractions(auditLogService);
+        verify(repository, never()).save(any());
+    }
 }

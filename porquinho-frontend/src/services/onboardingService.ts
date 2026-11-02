@@ -44,3 +44,14 @@ export async function completeCategories(keys: string[]): Promise<OnboardingProg
   const response = await api.post<OnboardingProgress>('/api/v1/onboarding/me/categories', { keys })
   return response.data
 }
+
+/**
+ * Story 3.5: conclui o passo 5 (personalizar categorias) e avança para o passo 6.
+ * As edições já foram salvas uma a uma; pular não desfaz nada. Idempotente a partir do passo 6.
+ */
+export async function completeCustomization(skipped: boolean): Promise<OnboardingProgress> {
+  const response = await api.post<OnboardingProgress>('/api/v1/onboarding/me/customization', {
+    skipped,
+  })
+  return response.data
+}

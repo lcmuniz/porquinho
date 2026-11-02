@@ -11,6 +11,9 @@ const mockCompleteCards = vi.fn()
 const mockListCards = vi.fn()
 const mockCompleteCategories = vi.fn()
 const mockGetCategorySuggestions = vi.fn()
+const mockCompleteCustomization = vi.fn()
+const mockListCategories = vi.fn()
+const mockGetCategoryOptions = vi.fn()
 const mockPush = vi.fn()
 const mockReplace = vi.fn()
 
@@ -20,11 +23,16 @@ vi.mock('@/services/onboardingService', () => ({
   completeAccounts: (...args: unknown[]) => mockCompleteAccounts(...args),
   completeCards: (...args: unknown[]) => mockCompleteCards(...args),
   completeCategories: (...args: unknown[]) => mockCompleteCategories(...args),
+  completeCustomization: (...args: unknown[]) => mockCompleteCustomization(...args),
 }))
 
 vi.mock('@/services/categoryService', () => ({
   getCategorySuggestions: (...args: unknown[]) => mockGetCategorySuggestions(...args),
-  listCategories: vi.fn(),
+  listCategories: (...args: unknown[]) => mockListCategories(...args),
+  getCategoryOptions: (...args: unknown[]) => mockGetCategoryOptions(...args),
+  createCategory: vi.fn(),
+  updateCategory: vi.fn(),
+  deleteCategory: vi.fn(),
 }))
 
 vi.mock('@/services/cardService', () => ({
@@ -56,6 +64,34 @@ const SUGGESTIONS = [
       { key: 'housing', name: 'Moradia', iconName: 'house', colorHex: '#3B82F6' },
       { key: 'food', name: 'Alimentação', iconName: 'utensils', colorHex: '#F97316' },
     ],
+  },
+]
+
+const STEP_FIVE_DONE = [
+  'tutorial_viewed',
+  'accounts_added',
+  'cards_skipped',
+  'categories_suggested',
+]
+
+const MY_CATEGORIES = [
+  {
+    id: 'g1',
+    categoryName: 'Essenciais',
+    parentCategoryId: null,
+    colorHex: '#2563EB',
+    iconName: 'shield-check',
+    systemDefault: true,
+    createdAt: '2026-11-02T12:00:00Z',
+  },
+  {
+    id: 'c1',
+    categoryName: 'Moradia',
+    parentCategoryId: 'g1',
+    colorHex: '#3B82F6',
+    iconName: 'house',
+    systemDefault: true,
+    createdAt: '2026-11-02T12:00:00Z',
   },
 ]
 
@@ -112,6 +148,15 @@ describe('OnboardingView', () => {
       }),
     )
     mockGetCategorySuggestions.mockReset().mockResolvedValue(SUGGESTIONS)
+    mockListCategories.mockReset().mockResolvedValue(MY_CATEGORIES)
+    mockGetCategoryOptions
+      .mockReset()
+      .mockResolvedValue({ colors: ['#2563EB', '#3B82F6'], icons: ['shield-check', 'house'] })
+    mockCompleteCustomization
+      .mockReset()
+      .mockResolvedValue(
+        progress({ currentStep: 6, stepsCompleted: [...STEP_FIVE_DONE, 'categories_customized'] }),
+      )
     mockPush.mockReset().mockResolvedValue(undefined)
     mockReplace.mockReset().mockResolvedValue(undefined)
   })
@@ -266,21 +311,67 @@ describe('OnboardingView', () => {
     expect(mockGetCategorySuggestions).toHaveBeenCalledOnce()
   })
 
-  it('redireciona para o dashboard a partir do passo 5', async () => {
+  it('mostra o passo 5 (personalizar) quando as categorias já foram escolhidas', async () => {
     mockGetMyOnboarding.mockResolvedValue(
-      progress({
-        currentStep: 5,
-        stepsCompleted: [
-          'tutorial_viewed',
-          'accounts_added',
-          'cards_skipped',
-          'categories_suggested',
-        ],
-      }),
+      progress({ currentStep: 5, stepsCompleted: STEP_FIVE_DONE }),
+    )
+    const wrapper = await mountView()
+
+    expect(mockReplace).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+      'Passo 5 de 8',
+    )
+    expect(wrapper.text()).toContain('Personalize suas categorias')
+    expect(mockListCategories).toHaveBeenCalledOnce()
+  })
+
+  it('redireciona para o dashboard a partir do passo 6', async () => {
+    mockGetMyOnboarding.mockResolvedValue(
+      progress({ currentStep: 6, stepsCompleted: [...STEP_FIVE_DONE, 'categories_customized'] }),
     )
     await mountView()
 
     expect(mockReplace).toHaveBeenCalledWith('/dashboard')
+  })
+
+  it('concluir o passo 5 leva ao dashboard', async () => {
+    mockGetMyOnboarding.mockResolvedValue(
+      progress({ currentStep: 5, stepsCompleted: STEP_FIVE_DONE }),
+    )
+    const wrapper = await mountView()
+
+    await wrapper.get('[data-testid="next-button"]').trigger('click')
+    await flushPromises()
+
+    expect(mockCompleteCustomization).toHaveBeenCalledWith(false)
+    expect(mockPush).toHaveBeenCalledWith('/dashboard')
+  })
+
+  it('Voltar no passo 5 mostra as categorias sugeridas; Próximo ali volta à personalização', async () => {
+    mockGetMyOnboarding.mockResolvedValue(
+      progress({ currentStep: 5, stepsCompleted: STEP_FIVE_DONE }),
+    )
+    const wrapper = await mountView()
+
+    await wrapper.get('[data-testid="back-button"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Categorias de gastos sugeridas')
+    expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+      'Passo 4 de 8',
+    )
+    expect(mockCompleteCategories).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="categories-read-only"]').exists()).toBe(true)
+    expect(
+      wrapper.get<HTMLInputElement>('[data-testid="category-checkbox-housing"]').element.disabled,
+    ).toBe(true)
+
+    // O POST das categorias é idempotente e devolve o passo 5
+    await wrapper.get('[data-testid="next-button"]').trigger('click')
+    await flushPromises()
+
+    expect(mockPush).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Personalize suas categorias')
   })
 
   it('concluir o passo 3 leva ao passo 4 (categorias)', async () => {
@@ -300,7 +391,7 @@ describe('OnboardingView', () => {
     )
   })
 
-  it('concluir o passo 4 cria as categorias marcadas e leva ao dashboard', async () => {
+  it('concluir o passo 4 cria as categorias marcadas e leva ao passo 5', async () => {
     mockGetMyOnboarding.mockResolvedValue(
       progress({
         currentStep: 4,
@@ -314,7 +405,11 @@ describe('OnboardingView', () => {
     await flushPromises()
 
     expect(mockCompleteCategories).toHaveBeenCalledWith(['housing'])
-    expect(mockPush).toHaveBeenCalledWith('/dashboard')
+    expect(mockPush).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Personalize suas categorias')
+    expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+      'Passo 5 de 8',
+    )
   })
 
   it('Voltar no passo 4 mostra os cartões sem mexer no progresso; Próximo ali volta às categorias', async () => {

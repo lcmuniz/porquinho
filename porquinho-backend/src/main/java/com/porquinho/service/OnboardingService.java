@@ -15,7 +15,8 @@ import java.util.UUID;
 
 /**
  * Guided onboarding progress (Story 3.1: step 1, the envelope budget tutorial; Story 3.2: step 2,
- * the bank accounts; Story 3.3: step 3, the credit cards; Story 3.4: step 4, the suggested categories).
+ * the bank accounts; Story 3.3: step 3, the credit cards; Story 3.4: step 4, the suggested categories;
+ * Story 3.5: step 5, customizing the categories).
  *
  * The row is created on the first read. Two tabs opening /onboarding at the same time race on the
  * insert: UNIQUE(user_id) lets only one win and the loser re-reads the winner's row. The insert runs
@@ -36,12 +37,16 @@ public class OnboardingService {
     public static final String AUDIT_CARDS_COMPLETED = "onboarding_cards_completed";
     public static final String STEP_CATEGORIES_SUGGESTED = "categories_suggested";
     public static final String AUDIT_CATEGORIES_COMPLETED = "onboarding_categories_completed";
+    public static final String STEP_CATEGORIES_CUSTOMIZED = "categories_customized";
+    public static final String STEP_CUSTOMIZATION_SKIPPED = "customization_skipped";
+    public static final String AUDIT_CUSTOMIZATION_COMPLETED = "onboarding_customization_completed";
 
     private static final int TUTORIAL_STEP = 1;
     private static final int ACCOUNTS_STEP = 2;
     private static final int CARDS_STEP = 3;
     private static final int CATEGORIES_STEP = 4;
-    private static final int NEXT_STEP_AFTER_CATEGORIES = 5;
+    private static final int CUSTOMIZATION_STEP = 5;
+    private static final int NEXT_STEP_AFTER_CUSTOMIZATION = 6;
 
     private final OnboardingProgressRepository onboardingProgressRepository;
     private final AuditLogService auditLogService;
@@ -222,10 +227,43 @@ public class OnboardingService {
         int created = categoryService.createFromSuggestions(userId, keys);
 
         progress.addStep(STEP_CATEGORIES_SUGGESTED);
-        progress.setCurrentStep(NEXT_STEP_AFTER_CATEGORIES);
+        progress.setCurrentStep(CUSTOMIZATION_STEP);
         OnboardingProgress saved = onboardingProgressRepository.save(progress);
 
         auditLogService.log(AUDIT_CATEGORIES_COMPLETED, userId, ipAddress, "{\"count\":" + created + "}");
+        return saved;
+    }
+
+    /**
+     * Step 5 done (Story 3.5): the edits were already saved one by one through the categories API, so this only
+     * records categories_customized (or customization_skipped), moves to step 6 and writes the
+     * onboarding_customization_completed audit. Skipping never undoes saved edits. 409 while steps 1 to 4 are
+     * pending. Idempotent: once past step 5, repeating returns the current state with no change and no audit.
+     */
+    public OnboardingProgress completeCustomization(UUID userId, boolean skipped, String ipAddress) {
+        getOrCreate(userId);
+        return self.applyCustomization(userId, skipped, ipAddress);
+    }
+
+    /** Transactional half of {@link #completeCustomization}; public only so the Spring proxy can apply @Transactional. */
+    @Transactional
+    public OnboardingProgress applyCustomization(UUID userId, boolean skipped, String ipAddress) {
+        // Row lock: two concurrent POSTs are serialized, so only the first advances and audits.
+        OnboardingProgress progress = onboardingProgressRepository.findByUserIdForUpdate(userId)
+            .orElseThrow(() -> new ResourceNotFoundException("Onboarding progress not found"));
+
+        if (progress.isCompleted() || progress.getCurrentStep() > CUSTOMIZATION_STEP) {
+            return progress;
+        }
+        if (progress.getCurrentStep() < CUSTOMIZATION_STEP) {
+            throw new ConflictException("Conclua os passos anteriores antes de personalizar suas categorias.");
+        }
+
+        progress.addStep(skipped ? STEP_CUSTOMIZATION_SKIPPED : STEP_CATEGORIES_CUSTOMIZED);
+        progress.setCurrentStep(NEXT_STEP_AFTER_CUSTOMIZATION);
+        OnboardingProgress saved = onboardingProgressRepository.save(progress);
+
+        auditLogService.log(AUDIT_CUSTOMIZATION_COMPLETED, userId, ipAddress, "{\"skipped\":" + skipped + "}");
         return saved;
     }
 }
