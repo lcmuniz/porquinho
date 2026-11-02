@@ -1,7 +1,7 @@
 <template>
   <main class="min-h-screen bg-white px-4 py-8">
     <div class="mx-auto flex max-w-xl flex-col gap-8">
-      <OnboardingStepIndicator :step="1" />
+      <OnboardingStepIndicator :step="stage === 'accounts' ? 2 : 1" />
 
       <!-- Carregando: skeleton em vez de spinner -->
       <div v-if="loading" data-testid="onboarding-skeleton" class="space-y-4" aria-busy="true">
@@ -10,6 +10,14 @@
         <div class="h-24 animate-pulse rounded-lg bg-gray-100" />
         <span class="sr-only">Carregando...</span>
       </div>
+
+      <!-- Passo 2: contas bancárias (Story 3.2) -->
+      <AccountsStep
+        v-else-if="stage === 'accounts'"
+        @back="backToTutorial"
+        @done="onAccountsDone"
+        @error="showError"
+      />
 
       <section
         v-else
@@ -174,7 +182,11 @@
         <p v-if="screen > 0" class="sr-only">Tela {{ screen }} de {{ TUTORIAL_SCREENS }}</p>
       </section>
 
-      <nav v-if="!loading" class="flex flex-col gap-3" aria-label="Navegação do tutorial">
+      <nav
+        v-if="!loading && stage === 'tutorial'"
+        class="flex flex-col gap-3"
+        aria-label="Navegação do tutorial"
+      >
         <div class="flex gap-3">
           <Button
             v-if="screen > 0"
@@ -273,6 +285,7 @@ import {
   Upload,
   Wallet,
 } from 'lucide-vue-next'
+import AccountsStep from '@/components/onboarding/AccountsStep.vue'
 import OnboardingStepIndicator from '@/components/onboarding/OnboardingStepIndicator.vue'
 import { Button } from '@/components/ui/button'
 import {
@@ -284,11 +297,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { completeTutorial, getMyOnboarding } from '@/services/onboardingService'
+import type { OnboardingProgress } from '@/types/onboarding'
 
 // Story 3.1: passo 1 do onboarding = boas-vindas (tela 0) + tutorial de 4 telas.
-// Decisão B (2026-11-01): enquanto os passos 2–8 não existem, o destino depois do tutorial é o
-// dashboard. A Story 3.2 troca NEXT_ROUTE pelo passo 2.
-const NEXT_ROUTE = '/dashboard'
+// Story 3.2: passo 2 = contas bancárias. A tela sai do progresso salvo no servidor: passo 1 → tutorial,
+// passo 2 → contas, passo ≥ 3 ou concluído → DONE_ROUTE. Decisão B da 3.1 estendida: enquanto o passo 3
+// (Story 3.3) não existe, quem passa do passo 2 vai para o dashboard.
+const DONE_ROUTE = '/dashboard'
+const ACCOUNTS_STEP = 2
 const TUTORIAL_SCREENS = 4
 const TOAST_MS = 5000
 
@@ -324,8 +340,11 @@ const nextSteps = [
   { icon: Target, text: 'Criar sua reserva de emergência' },
 ]
 
+type Stage = 'tutorial' | 'accounts'
+
 const router = useRouter()
 const loading = ref(true)
+const stage = ref<Stage>('tutorial')
 const saving = ref(false)
 const screen = ref(0)
 const showSkipDialog = ref(false)
@@ -343,7 +362,8 @@ function showError(message: string) {
 }
 
 // Leitores de tela e teclado: a cada tela nova o foco vai para o título
-watch(screen, async () => {
+// (o AccountsStep foca o próprio título ao aparecer)
+watch([screen, stage], async () => {
   await nextTick()
   heading.value?.focus()
 })
@@ -364,8 +384,9 @@ async function finish(skipped: boolean) {
   // Duplo clique no mesmo tick: o botão ainda não foi desabilitado
   if (saving.value) return
   saving.value = true
+  let progress: OnboardingProgress
   try {
-    await completeTutorial(skipped)
+    progress = await completeTutorial(skipped)
   } catch {
     showSkipDialog.value = false
     showError('Não foi possível salvar seu progresso. Verifique sua conexão e tente novamente.')
@@ -375,16 +396,36 @@ async function finish(skipped: boolean) {
   }
   // Fora do catch: uma falha de navegação não é falha ao salvar
   showSkipDialog.value = false
-  await router.push(NEXT_ROUTE)
+  await goToStep(progress)
+}
+
+/** Passo 2 → contas; passo ≥ 3 ou onboarding concluído → DONE_ROUTE. */
+async function goToStep(progress: OnboardingProgress) {
+  if (progress.completed || progress.currentStep > ACCOUNTS_STEP) {
+    await router.push(DONE_ROUTE)
+  } else {
+    stage.value = 'accounts'
+  }
+}
+
+/** Voltar no passo 2: mostra o tutorial de novo (última tela) sem mexer no progresso salvo. */
+function backToTutorial() {
+  screen.value = TUTORIAL_SCREENS
+  stage.value = 'tutorial'
+}
+
+async function onAccountsDone(progress: OnboardingProgress) {
+  await goToStep(progress)
 }
 
 onMounted(async () => {
   try {
     const progress = await getMyOnboarding()
-    if (progress.completed || progress.currentStep >= 2) {
-      await router.replace(NEXT_ROUTE)
+    if (progress.completed || progress.currentStep > ACCOUNTS_STEP) {
+      await router.replace(DONE_ROUTE)
       return
     }
+    if (progress.currentStep === ACCOUNTS_STEP) stage.value = 'accounts'
   } catch {
     // Sem o progresso o tutorial ainda pode ser visto; salvar no fim tenta de novo
     showError(

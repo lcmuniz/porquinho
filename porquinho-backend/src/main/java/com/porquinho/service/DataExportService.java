@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.porquinho.dto.DataExportResponse;
+import com.porquinho.entity.Account;
 import com.porquinho.entity.AuditLog;
 import com.porquinho.entity.BillingTransaction;
 import com.porquinho.entity.DataExport;
@@ -12,6 +13,7 @@ import com.porquinho.entity.User;
 import com.porquinho.entity.UserSession;
 import com.porquinho.exception.RateLimitExceededException;
 import com.porquinho.exception.ResourceNotFoundException;
+import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.AuditLogRepository;
 import com.porquinho.repository.BillingTransactionRepository;
 import com.porquinho.repository.DataExportRepository;
@@ -55,6 +57,7 @@ public class DataExportService {
     private final SubscriptionService subscriptionService;
     private final BillingTransactionRepository billingTransactionRepository;
     private final OnboardingProgressRepository onboardingProgressRepository;
+    private final AccountRepository accountRepository;
     private final ObjectMapper objectMapper;
 
     @Value("${app.export.directory:./exports}")
@@ -76,7 +79,8 @@ public class DataExportService {
             AuditLogService auditLogService,
             SubscriptionService subscriptionService,
             BillingTransactionRepository billingTransactionRepository,
-            OnboardingProgressRepository onboardingProgressRepository) {
+            OnboardingProgressRepository onboardingProgressRepository,
+            AccountRepository accountRepository) {
         this.dataExportRepository = dataExportRepository;
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -87,6 +91,7 @@ public class DataExportService {
         this.subscriptionService = subscriptionService;
         this.billingTransactionRepository = billingTransactionRepository;
         this.onboardingProgressRepository = onboardingProgressRepository;
+        this.accountRepository = accountRepository;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
         this.objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
@@ -165,7 +170,7 @@ public class DataExportService {
         metadata.put("user_id", userId.toString());
         metadata.put("data_version", "1.0");
         metadata.put("exported_tables", List.of("users", "user_sessions", "audit_logs", "subscriptions",
-            "billing_transactions", "onboarding_progress"));
+            "billing_transactions", "onboarding_progress", "accounts"));
         data.put("metadata", metadata);
 
         // User profile (sanitized)
@@ -273,6 +278,24 @@ public class DataExportService {
             onboardingList.add(progressMap);
         });
         data.put("onboarding_progress", onboardingList);
+
+        // Bank accounts (Story 3.2) - every stored column, removed accounts included (deleted_at filled)
+        List<Map<String, Object>> accountList = new ArrayList<>();
+        for (Account account : accountRepository.findByUserIdOrderByCreatedAtAsc(userId)) {
+            Map<String, Object> accountMap = new LinkedHashMap<>();
+            accountMap.put("id", account.getId() != null ? account.getId().toString() : null);
+            accountMap.put("user_id", account.getUserId() != null ? account.getUserId().toString() : null);
+            accountMap.put("account_name", account.getAccountName());
+            accountMap.put("bank_name", account.getBankName());
+            accountMap.put("account_type", account.getAccountType() != null ? account.getAccountType().name() : null);
+            accountMap.put("initial_balance", account.getInitialBalance());
+            accountMap.put("current_balance", account.getCurrentBalance());
+            accountMap.put("created_at", account.getCreatedAt() != null ? account.getCreatedAt().toString() : null);
+            accountMap.put("updated_at", account.getUpdatedAt() != null ? account.getUpdatedAt().toString() : null);
+            accountMap.put("deleted_at", account.getDeletedAt() != null ? account.getDeletedAt().toString() : null);
+            accountList.add(accountMap);
+        }
+        data.put("accounts", accountList);
 
         return data;
     }

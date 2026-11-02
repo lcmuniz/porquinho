@@ -1,5 +1,6 @@
 package com.porquinho.service;
 
+import com.porquinho.entity.Account;
 import com.porquinho.entity.AuditLog;
 import com.porquinho.entity.BillingTransaction;
 import com.porquinho.entity.DataExport;
@@ -11,6 +12,7 @@ import com.porquinho.entity.User.AuthProvider;
 import com.porquinho.entity.UserSession;
 import com.porquinho.exception.RateLimitExceededException;
 import com.porquinho.exception.ResourceNotFoundException;
+import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.AuditLogRepository;
 import com.porquinho.repository.BillingTransactionRepository;
 import com.porquinho.repository.DataExportRepository;
@@ -73,6 +75,9 @@ class DataExportServiceTest {
 
     @Mock
     private OnboardingProgressRepository onboardingProgressRepository;
+
+    @Mock
+    private AccountRepository accountRepository;
 
     @InjectMocks
     private DataExportService dataExportService;
@@ -285,6 +290,58 @@ class DataExportServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
 
         assertEquals(List.of(), dataExportService.collectUserData(userId).get("onboarding_progress"));
+    }
+
+    @Test
+    void collectUserDataShouldExportAccountsIncludingRemovedOnes() {
+        // Story 3.2: accounts are exported with every stored column, removed (soft-deleted) ones included
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        OffsetDateTime created = OffsetDateTime.parse("2026-11-02T12:00:00Z");
+        Account active = new Account(userId, "Nubank", "Nubank", Account.AccountType.CHECKING, new java.math.BigDecimal("1234.56"));
+        active.setId(UUID.randomUUID());
+        active.setCreatedAt(created);
+        active.setUpdatedAt(created);
+        Account removed = new Account(userId, "Poupança", null, Account.AccountType.SAVINGS, new java.math.BigDecimal("-150.00"));
+        removed.setId(UUID.randomUUID());
+        removed.setCreatedAt(created.plusMinutes(1));
+        removed.setUpdatedAt(created.plusMinutes(2));
+        removed.setDeletedAt(created.plusMinutes(2));
+        when(accountRepository.findByUserIdOrderByCreatedAtAsc(userId)).thenReturn(List.of(active, removed));
+
+        Map<String, Object> data = dataExportService.collectUserData(userId);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
+        assertTrue(((List<?>) metadata.get("exported_tables")).contains("accounts"));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("accounts");
+        assertEquals(2, rows.size());
+        Map<String, Object> first = rows.get(0);
+        assertExportsEveryColumn(Account.class, first);
+        assertEquals(active.getId().toString(), first.get("id"));
+        assertEquals(userId.toString(), first.get("user_id"));
+        assertEquals("Nubank", first.get("account_name"));
+        assertEquals("Nubank", first.get("bank_name"));
+        assertEquals("CHECKING", first.get("account_type"));
+        assertEquals(new java.math.BigDecimal("1234.56"), first.get("initial_balance"));
+        assertEquals(new java.math.BigDecimal("1234.56"), first.get("current_balance"));
+        assertEquals(created.toString(), first.get("created_at"));
+        assertNull(first.get("deleted_at"));
+
+        Map<String, Object> second = rows.get(1);
+        assertExportsEveryColumn(Account.class, second);
+        assertEquals("SAVINGS", second.get("account_type"));
+        assertNull(second.get("bank_name"));
+        assertEquals(new java.math.BigDecimal("-150.00"), second.get("initial_balance"));
+        assertEquals(created.plusMinutes(2).toString(), second.get("deleted_at"));
+    }
+
+    @Test
+    void collectUserDataShouldExportEmptyAccountListWhenNone() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+
+        assertEquals(List.of(), dataExportService.collectUserData(userId).get("accounts"));
     }
 
     /** LGPD portability: every mapped column of the entity appears as a key in the exported map. */

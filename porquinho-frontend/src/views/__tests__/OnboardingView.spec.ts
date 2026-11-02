@@ -5,12 +5,21 @@ import type { OnboardingProgress } from '@/types/onboarding'
 
 const mockGetMyOnboarding = vi.fn()
 const mockCompleteTutorial = vi.fn()
+const mockCompleteAccounts = vi.fn()
+const mockListAccounts = vi.fn()
 const mockPush = vi.fn()
 const mockReplace = vi.fn()
 
 vi.mock('@/services/onboardingService', () => ({
   getMyOnboarding: (...args: unknown[]) => mockGetMyOnboarding(...args),
   completeTutorial: (...args: unknown[]) => mockCompleteTutorial(...args),
+  completeAccounts: (...args: unknown[]) => mockCompleteAccounts(...args),
+}))
+
+vi.mock('@/services/accountService', () => ({
+  listAccounts: (...args: unknown[]) => mockListAccounts(...args),
+  createAccount: vi.fn(),
+  deleteAccount: vi.fn(),
 }))
 
 vi.mock('vue-router', () => ({
@@ -48,6 +57,12 @@ describe('OnboardingView', () => {
     mockCompleteTutorial
       .mockReset()
       .mockResolvedValue(progress({ currentStep: 2, stepsCompleted: ['tutorial_viewed'] }))
+    mockCompleteAccounts
+      .mockReset()
+      .mockResolvedValue(
+        progress({ currentStep: 3, stepsCompleted: ['tutorial_viewed', 'accounts_added'] }),
+      )
+    mockListAccounts.mockReset().mockResolvedValue([])
     mockPush.mockReset().mockResolvedValue(undefined)
     mockReplace.mockReset().mockResolvedValue(undefined)
   })
@@ -100,10 +115,10 @@ describe('OnboardingView', () => {
     await flushPromises()
 
     expect(mockCompleteTutorial).toHaveBeenCalledOnce()
-    expect(mockPush).toHaveBeenCalledOnce()
+    expect(wrapper.find('[data-testid="accounts-step"]').exists()).toBe(true)
   })
 
-  it('Próximo na última tela conclui o tutorial e leva ao dashboard', async () => {
+  it('Próximo na última tela conclui o tutorial e leva ao passo 2 (contas)', async () => {
     const wrapper = await mountView()
     await goToLastScreen(wrapper)
 
@@ -111,7 +126,11 @@ describe('OnboardingView', () => {
     await flushPromises()
 
     expect(mockCompleteTutorial).toHaveBeenCalledWith(false)
-    expect(mockPush).toHaveBeenCalledWith('/dashboard')
+    expect(mockPush).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Adicione suas contas bancárias')
+    expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+      'Passo 2 de 8',
+    )
   })
 
   it('Pular pede confirmação e só pula depois de confirmar', async () => {
@@ -127,7 +146,8 @@ describe('OnboardingView', () => {
     await flushPromises()
 
     expect(mockCompleteTutorial).toHaveBeenCalledWith(true)
-    expect(mockPush).toHaveBeenCalledWith('/dashboard')
+    expect(mockPush).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Adicione suas contas bancárias')
   })
 
   it('cancelar a confirmação mantém o usuário no tutorial', async () => {
@@ -151,13 +171,64 @@ describe('OnboardingView', () => {
     expect(wrapper.text()).not.toContain('Bem-vindo ao porquinho!')
   })
 
-  it('redireciona para o dashboard quando o tutorial já foi feito (passo ≥ 2)', async () => {
+  it('mostra o passo 2 quando o tutorial já foi feito (passo 2)', async () => {
     mockGetMyOnboarding.mockResolvedValue(
       progress({ currentStep: 2, stepsCompleted: ['tutorial_skipped'] }),
+    )
+    const wrapper = await mountView()
+
+    expect(mockReplace).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+      'Passo 2 de 8',
+    )
+    expect(wrapper.text()).toContain('Adicione suas contas bancárias')
+    expect(wrapper.text()).not.toContain('Bem-vindo ao porquinho!')
+    expect(mockListAccounts).toHaveBeenCalledOnce()
+  })
+
+  it('redireciona para o dashboard a partir do passo 3', async () => {
+    mockGetMyOnboarding.mockResolvedValue(
+      progress({ currentStep: 3, stepsCompleted: ['tutorial_viewed', 'accounts_added'] }),
     )
     await mountView()
 
     expect(mockReplace).toHaveBeenCalledWith('/dashboard')
+  })
+
+  it('Voltar no passo 2 mostra o tutorial sem mexer no progresso; ao terminá-lo volta ao passo 2', async () => {
+    mockGetMyOnboarding.mockResolvedValue(
+      progress({ currentStep: 2, stepsCompleted: ['tutorial_viewed'] }),
+    )
+    const wrapper = await mountView()
+
+    await wrapper.get('[data-testid="back-button"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Pronto para começar?')
+    expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+      'Passo 1 de 8',
+    )
+    expect(mockCompleteTutorial).not.toHaveBeenCalled()
+    expect(mockCompleteAccounts).not.toHaveBeenCalled()
+
+    await wrapper.get('[data-testid="next-button"]').trigger('click')
+    await flushPromises()
+
+    expect(mockCompleteTutorial).toHaveBeenCalledWith(false)
+    expect(wrapper.text()).toContain('Adicione suas contas bancárias')
+  })
+
+  it('concluir o passo 2 leva ao dashboard', async () => {
+    mockGetMyOnboarding.mockResolvedValue(
+      progress({ currentStep: 2, stepsCompleted: ['tutorial_viewed'] }),
+    )
+    const wrapper = await mountView()
+
+    await wrapper.get('[data-testid="skip-button"]').trigger('click')
+    await flushPromises()
+
+    expect(mockCompleteAccounts).toHaveBeenCalledWith(true)
+    expect(mockPush).toHaveBeenCalledWith('/dashboard')
   })
 
   it('mostra erro e continua na tela quando salvar falha', async () => {

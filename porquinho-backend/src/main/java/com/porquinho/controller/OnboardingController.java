@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 /**
- * Guided onboarding endpoints (Story 3.1). The user always comes from the JWT.
+ * Guided onboarding endpoints (Story 3.1: tutorial; Story 3.2: bank accounts). The user always comes from the JWT.
  * Not exempt from SubscriptionAccessFilter: the trial is already active during onboarding.
  */
 @RestController
@@ -41,7 +41,7 @@ public class OnboardingController {
      */
     @PostMapping("/me/tutorial")
     public ResponseEntity<OnboardingProgressResponse> completeTutorial(@AuthenticationPrincipal Jwt jwt,
-                                                                       @RequestBody(required = false) TutorialRequest body,
+                                                                       @RequestBody(required = false) StepRequest body,
                                                                        HttpServletRequest request) {
         UUID userId = UUID.fromString(jwt.getSubject());
         boolean skipped = body != null && Boolean.TRUE.equals(body.skipped());
@@ -49,5 +49,20 @@ public class OnboardingController {
             onboardingService.completeTutorial(userId, skipped, request.getRemoteAddr())));
     }
 
-    public record TutorialRequest(Boolean skipped) { }
+    /**
+     * Step 2 done (Story 3.2). "Próximo" needs at least 1 active account (409 otherwise); skipping with no
+     * account creates "Minha Conta Principal". Moves to step 3. 409 while on step 1; idempotent from step 3 on.
+     * Missing body means "not skipped".
+     */
+    @PostMapping("/me/accounts")
+    public ResponseEntity<OnboardingProgressResponse> completeAccounts(@AuthenticationPrincipal Jwt jwt,
+                                                                       @RequestBody(required = false) StepRequest body,
+                                                                       HttpServletRequest request) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        boolean skipped = body != null && Boolean.TRUE.equals(body.skipped());
+        return ResponseEntity.ok(OnboardingProgressResponse.of(
+            onboardingService.completeAccounts(userId, skipped, request.getRemoteAddr())));
+    }
+
+    public record StepRequest(Boolean skipped) { }
 }

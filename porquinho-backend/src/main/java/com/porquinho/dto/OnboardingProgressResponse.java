@@ -5,7 +5,7 @@ import com.porquinho.entity.OnboardingProgress;
 import java.util.List;
 
 /**
- * GET /api/v1/onboarding/me and POST /api/v1/onboarding/me/tutorial (Story 3.1).
+ * GET /api/v1/onboarding/me and POST /api/v1/onboarding/me/tutorial (Story 3.1) and /me/accounts (Story 3.2).
  */
 public record OnboardingProgressResponse(
     int currentStep,

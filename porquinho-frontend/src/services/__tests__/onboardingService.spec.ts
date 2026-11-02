@@ -10,7 +10,7 @@ vi.mock('../api', () => ({
   },
 }))
 
-import { completeTutorial, getMyOnboarding } from '../onboardingService'
+import { completeAccounts, completeTutorial, getMyOnboarding } from '../onboardingService'
 
 const progress = { currentStep: 2, stepsCompleted: ['tutorial_skipped'], completed: false }
 
@@ -28,5 +28,10 @@ describe('onboardingService', () => {
   it('completeTutorial(true) faz POST em /api/v1/onboarding/me/tutorial com { skipped: true }', async () => {
     await expect(completeTutorial(true)).resolves.toEqual(progress)
     expect(mockPost).toHaveBeenCalledWith('/api/v1/onboarding/me/tutorial', { skipped: true })
+  })
+
+  it('completeAccounts(false) faz POST em /api/v1/onboarding/me/accounts com { skipped: false }', async () => {
+    await expect(completeAccounts(false)).resolves.toEqual(progress)
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/onboarding/me/accounts', { skipped: false })
   })
 })
