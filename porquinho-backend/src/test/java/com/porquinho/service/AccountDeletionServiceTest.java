@@ -12,6 +12,7 @@ import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountDeletionRepository;
 import com.porquinho.repository.SubscriptionRepository;
 import com.porquinho.repository.AccountRepository;
+import com.porquinho.repository.CategoryRepository;
 import com.porquinho.repository.CreditCardRepository;
 import com.porquinho.repository.AuditLogRepository;
 import com.porquinho.repository.BillingTransactionRepository;
@@ -80,6 +81,8 @@ class AccountDeletionServiceTest {
     private AccountRepository accountRepository;
     @Mock
     private CreditCardRepository creditCardRepository;
+    @Mock
+    private CategoryRepository categoryRepository;
 
     private AccountDeletionService service;
 
@@ -105,13 +108,13 @@ class AccountDeletionServiceTest {
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
             supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService,
             billingTransactionRepository, subscriptionService, onboardingProgressRepository, accountRepository,
-            creditCardRepository, null);
+            creditCardRepository, categoryRepository, null);
         service = new AccountDeletionService(
             userRepository, userSessionRepository, auditLogRepository, dataExportRepository,
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
             supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService,
             billingTransactionRepository, subscriptionService, onboardingProgressRepository, accountRepository,
-            creditCardRepository, temp);
+            creditCardRepository, categoryRepository, temp);
         // After construction, swap in the real reference so self == service (recursive ref ok
         // for tests because Spring's proxy would similarly route the call into this same bean).
         try {
@@ -327,6 +330,11 @@ class AccountDeletionServiceTest {
         InOrder cardsOrder = inOrder(creditCardRepository, userRepository);
         cardsOrder.verify(creditCardRepository).deleteByUserId(userId);
         cardsOrder.verify(userRepository).deleteByIdNative(userId);
+
+        // Story 3.4: categories deleted BEFORE the user (FK categories.user_id -> users.id)
+        InOrder categoriesOrder = inOrder(categoryRepository, userRepository);
+        categoriesOrder.verify(categoryRepository).deleteByUserId(userId);
+        categoriesOrder.verify(userRepository).deleteByIdNative(userId);
 
         // Supabase admin called
         verify(supabaseAdminClient).deleteUser(userId);

@@ -9,11 +9,13 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
+import java.util.Set;
 import java.util.UUID;
 
 /**
  * Guided onboarding progress (Story 3.1: step 1, the envelope budget tutorial; Story 3.2: step 2,
- * the bank accounts; Story 3.3: step 3, the credit cards).
+ * the bank accounts; Story 3.3: step 3, the credit cards; Story 3.4: step 4, the suggested categories).
  *
  * The row is created on the first read. Two tabs opening /onboarding at the same time race on the
  * insert: UNIQUE(user_id) lets only one win and the loser re-reads the winner's row. The insert runs
@@ -32,16 +34,20 @@ public class OnboardingService {
     public static final String STEP_CARDS_ADDED = "cards_added";
     public static final String STEP_CARDS_SKIPPED = "cards_skipped";
     public static final String AUDIT_CARDS_COMPLETED = "onboarding_cards_completed";
+    public static final String STEP_CATEGORIES_SUGGESTED = "categories_suggested";
+    public static final String AUDIT_CATEGORIES_COMPLETED = "onboarding_categories_completed";
 
     private static final int TUTORIAL_STEP = 1;
     private static final int ACCOUNTS_STEP = 2;
     private static final int CARDS_STEP = 3;
-    private static final int NEXT_STEP_AFTER_CARDS = 4;
+    private static final int CATEGORIES_STEP = 4;
+    private static final int NEXT_STEP_AFTER_CATEGORIES = 5;
 
     private final OnboardingProgressRepository onboardingProgressRepository;
     private final AuditLogService auditLogService;
     private final AccountService accountService;
     private final CreditCardService creditCardService;
+    private final CategoryService categoryService;
 
     /** Spring proxy of this bean, so the calls to the apply* methods go through @Transactional. */
     private final OnboardingService self;
@@ -50,11 +56,13 @@ public class OnboardingService {
                              AuditLogService auditLogService,
                              AccountService accountService,
                              CreditCardService creditCardService,
+                             CategoryService categoryService,
                              @Lazy OnboardingService self) {
         this.onboardingProgressRepository = onboardingProgressRepository;
         this.auditLogService = auditLogService;
         this.accountService = accountService;
         this.creditCardService = creditCardService;
+        this.categoryService = categoryService;
         this.self = self;
     }
 
@@ -176,11 +184,48 @@ public class OnboardingService {
         boolean added = !skipped && cards > 0;
 
         progress.addStep(added ? STEP_CARDS_ADDED : STEP_CARDS_SKIPPED);
-        progress.setCurrentStep(NEXT_STEP_AFTER_CARDS);
+        progress.setCurrentStep(CATEGORIES_STEP);
         OnboardingProgress saved = onboardingProgressRepository.save(progress);
 
         auditLogService.log(AUDIT_CARDS_COMPLETED, userId, ipAddress,
             "{\"skipped\":" + skipped + ",\"cards\":" + cards + "}");
+        return saved;
+    }
+
+    /**
+     * Step 4 done (Story 3.4): creates the chosen suggested categories (children of their group, groups as
+     * parents, all is_system_default), records categories_suggested, moves to step 5 and writes the
+     * onboarding_categories_completed audit with the number of children created, all in one transaction.
+     * 400 when no key or an unknown key is given (checked first, before any state change). 409 while
+     * steps 1 to 3 are pending. Idempotent: once past step 4, repeating creates nothing and writes no audit.
+     */
+    public OnboardingProgress completeCategories(UUID userId, Collection<String> keys, String ipAddress) {
+        Set<String> chosen = CategoryService.validateKeys(keys);
+        getOrCreate(userId);
+        return self.applyCategories(userId, chosen, ipAddress);
+    }
+
+    /** Transactional half of {@link #completeCategories}; public only so the Spring proxy can apply @Transactional. */
+    @Transactional
+    public OnboardingProgress applyCategories(UUID userId, Collection<String> keys, String ipAddress) {
+        // Row lock: two concurrent POSTs are serialized, so only the first creates the categories and audits.
+        OnboardingProgress progress = onboardingProgressRepository.findByUserIdForUpdate(userId)
+            .orElseThrow(() -> new ResourceNotFoundException("Onboarding progress not found"));
+
+        if (progress.isCompleted() || progress.getCurrentStep() > CATEGORIES_STEP) {
+            return progress;
+        }
+        if (progress.getCurrentStep() < CATEGORIES_STEP) {
+            throw new ConflictException("Conclua os passos anteriores antes de escolher suas categorias.");
+        }
+
+        int created = categoryService.createFromSuggestions(userId, keys);
+
+        progress.addStep(STEP_CATEGORIES_SUGGESTED);
+        progress.setCurrentStep(NEXT_STEP_AFTER_CATEGORIES);
+        OnboardingProgress saved = onboardingProgressRepository.save(progress);
+
+        auditLogService.log(AUDIT_CATEGORIES_COMPLETED, userId, ipAddress, "{\"count\":" + created + "}");
         return saved;
     }
 }

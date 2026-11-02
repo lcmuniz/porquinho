@@ -141,6 +141,18 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handle invalid input detected in the service layer and return 400 (Story 3.4), e.g. no category
+     * chosen or an unknown suggestion key. The message is already in pt-BR.
+     */
+    @ExceptionHandler(BadRequestException.class)
+    public ProblemDetail handleBadRequestException(BadRequestException ex) {
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+        problemDetail.setTitle("Dados inválidos");
+        problemDetail.setType(URI.create("https://api.porquinho.com/errors/validation"));
+        return problemDetail;
+    }
+
+    /**
      * Handle unreadable JSON (malformed body or a value of the wrong type, e.g. text in a number field)
      * and return 400 (Story 3.2). Fixed detail: the parser message exposes internal class names.
      */

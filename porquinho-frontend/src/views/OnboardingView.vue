@@ -27,6 +27,14 @@
         @error="showError"
       />
 
+      <!-- Passo 4: categorias de gastos sugeridas (Story 3.4) -->
+      <CategoriesStep
+        v-else-if="stage === 'categories'"
+        @back="backToCards"
+        @done="goToStep"
+        @error="showError"
+      />
+
       <section
         v-else
         aria-live="polite"
@@ -295,6 +303,7 @@ import {
 } from 'lucide-vue-next'
 import AccountsStep from '@/components/onboarding/AccountsStep.vue'
 import CardsStep from '@/components/onboarding/CardsStep.vue'
+import CategoriesStep from '@/components/onboarding/CategoriesStep.vue'
 import OnboardingStepIndicator from '@/components/onboarding/OnboardingStepIndicator.vue'
 import { Button } from '@/components/ui/button'
 import {
@@ -309,13 +318,14 @@ import { completeTutorial, getMyOnboarding } from '@/services/onboardingService'
 import type { OnboardingProgress } from '@/types/onboarding'
 
 // Story 3.1: passo 1 do onboarding = boas-vindas (tela 0) + tutorial de 4 telas.
-// Story 3.2: passo 2 = contas bancárias. Story 3.3: passo 3 = cartões de crédito. A tela sai do progresso
-// salvo no servidor: passo 1 → tutorial, passo 2 → contas, passo 3 → cartões, passo ≥ 4 ou concluído →
-// DONE_ROUTE. Decisão B da 3.1 estendida: enquanto o passo 4 (Story 3.4) não existe, quem passa do passo 3
-// vai para o dashboard.
+// Story 3.2: passo 2 = contas bancárias. Story 3.3: passo 3 = cartões de crédito. Story 3.4: passo 4 =
+// categorias sugeridas. A tela sai do progresso salvo no servidor: passo 1 → tutorial, passo 2 → contas,
+// passo 3 → cartões, passo 4 → categorias, passo ≥ 5 ou concluído → DONE_ROUTE. Decisão B da 3.1
+// estendida: enquanto o passo 5 (Story 3.5) não existe, quem passa do passo 4 vai para o dashboard.
 const DONE_ROUTE = '/dashboard'
 const ACCOUNTS_STEP = 2
 const CARDS_STEP = 3
+const CATEGORIES_STEP = 4
 const TUTORIAL_SCREENS = 4
 const TOAST_MS = 5000
 
@@ -351,8 +361,18 @@ const nextSteps = [
   { icon: Target, text: 'Criar sua reserva de emergência' },
 ]
 
-type Stage = 'tutorial' | 'accounts' | 'cards'
-const STAGE_STEP: Record<Stage, number> = { tutorial: 1, accounts: ACCOUNTS_STEP, cards: CARDS_STEP }
+type Stage = 'tutorial' | 'accounts' | 'cards' | 'categories'
+const STAGE_STEP: Record<Stage, number> = {
+  tutorial: 1,
+  accounts: ACCOUNTS_STEP,
+  cards: CARDS_STEP,
+  categories: CATEGORIES_STEP,
+}
+const STEP_STAGE: Record<number, Stage> = {
+  [ACCOUNTS_STEP]: 'accounts',
+  [CARDS_STEP]: 'cards',
+  [CATEGORIES_STEP]: 'categories',
+}
 
 const router = useRouter()
 const loading = ref(true)
@@ -374,7 +394,7 @@ function showError(message: string) {
 }
 
 // Leitores de tela e teclado: a cada tela nova o foco vai para o título
-// (o AccountsStep e o CardsStep focam o próprio título ao aparecer)
+// (AccountsStep, CardsStep e CategoriesStep focam o próprio título ao aparecer)
 watch([screen, stage], async () => {
   await nextTick()
   heading.value?.focus()
@@ -411,12 +431,12 @@ async function finish(skipped: boolean) {
   await goToStep(progress)
 }
 
-/** Passo 2 → contas; passo 3 → cartões; passo ≥ 4 ou onboarding concluído → DONE_ROUTE. */
+/** Passo 2 → contas; 3 → cartões; 4 → categorias; passo ≥ 5 ou onboarding concluído → DONE_ROUTE. */
 async function goToStep(progress: OnboardingProgress) {
-  if (progress.completed || progress.currentStep > CARDS_STEP) {
+  if (progress.completed || progress.currentStep > CATEGORIES_STEP) {
     await router.push(DONE_ROUTE)
   } else {
-    stage.value = progress.currentStep === CARDS_STEP ? 'cards' : 'accounts'
+    stage.value = STEP_STAGE[progress.currentStep] ?? 'accounts'
   }
 }
 
@@ -428,21 +448,29 @@ function backToTutorial() {
 
 /**
  * Voltar no passo 3: mostra as contas sem mexer no progresso salvo. O Próximo ali usa o POST
- * idempotente das contas, que devolve o passo 3 e traz o usuário de volta aos cartões.
+ * idempotente das contas, que devolve o passo salvo (3 ou 4) e traz o usuário de volta a ele.
  */
 function backToAccounts() {
   stage.value = 'accounts'
 }
 
+/**
+ * Voltar no passo 4: mostra os cartões sem mexer no progresso salvo. O Próximo ali usa o POST
+ * idempotente dos cartões, que devolve o passo 4 e traz o usuário de volta às categorias.
+ */
+function backToCards() {
+  stage.value = 'cards'
+}
+
 onMounted(async () => {
   try {
     const progress = await getMyOnboarding()
-    if (progress.completed || progress.currentStep > CARDS_STEP) {
+    if (progress.completed || progress.currentStep > CATEGORIES_STEP) {
       await router.replace(DONE_ROUTE)
       return
     }
-    if (progress.currentStep === ACCOUNTS_STEP) stage.value = 'accounts'
-    if (progress.currentStep === CARDS_STEP) stage.value = 'cards'
+    const resumed = STEP_STAGE[progress.currentStep]
+    if (resumed) stage.value = resumed
   } catch {
     // Sem o progresso o tutorial ainda pode ser visto; salvar no fim tenta de novo
     showError(

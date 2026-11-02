@@ -9,6 +9,8 @@ const mockCompleteAccounts = vi.fn()
 const mockListAccounts = vi.fn()
 const mockCompleteCards = vi.fn()
 const mockListCards = vi.fn()
+const mockCompleteCategories = vi.fn()
+const mockGetCategorySuggestions = vi.fn()
 const mockPush = vi.fn()
 const mockReplace = vi.fn()
 
@@ -17,6 +19,12 @@ vi.mock('@/services/onboardingService', () => ({
   completeTutorial: (...args: unknown[]) => mockCompleteTutorial(...args),
   completeAccounts: (...args: unknown[]) => mockCompleteAccounts(...args),
   completeCards: (...args: unknown[]) => mockCompleteCards(...args),
+  completeCategories: (...args: unknown[]) => mockCompleteCategories(...args),
+}))
+
+vi.mock('@/services/categoryService', () => ({
+  getCategorySuggestions: (...args: unknown[]) => mockGetCategorySuggestions(...args),
+  listCategories: vi.fn(),
 }))
 
 vi.mock('@/services/cardService', () => ({
@@ -37,6 +45,19 @@ vi.mock('vue-router', () => ({
     replace: (...args: unknown[]) => mockReplace(...args),
   }),
 }))
+
+const SUGGESTIONS = [
+  {
+    key: 'essentials',
+    name: 'Essenciais',
+    iconName: 'shield-check',
+    colorHex: '#2563EB',
+    suggestions: [
+      { key: 'housing', name: 'Moradia', iconName: 'house', colorHex: '#3B82F6' },
+      { key: 'food', name: 'Alimentação', iconName: 'utensils', colorHex: '#F97316' },
+    ],
+  },
+]
 
 function progress(overrides: Partial<OnboardingProgress> = {}): OnboardingProgress {
   return { currentStep: 1, stepsCompleted: [], completed: false, ...overrides }
@@ -79,6 +100,18 @@ describe('OnboardingView', () => {
       }),
     )
     mockListCards.mockReset().mockResolvedValue([])
+    mockCompleteCategories.mockReset().mockResolvedValue(
+      progress({
+        currentStep: 5,
+        stepsCompleted: [
+          'tutorial_viewed',
+          'accounts_added',
+          'cards_added',
+          'categories_suggested',
+        ],
+      }),
+    )
+    mockGetCategorySuggestions.mockReset().mockResolvedValue(SUGGESTIONS)
     mockPush.mockReset().mockResolvedValue(undefined)
     mockReplace.mockReset().mockResolvedValue(undefined)
   })
@@ -216,11 +249,33 @@ describe('OnboardingView', () => {
     expect(mockListCards).toHaveBeenCalledOnce()
   })
 
-  it('redireciona para o dashboard a partir do passo 4', async () => {
+  it('mostra o passo 4 (categorias) quando os cartões já foram concluídos', async () => {
     mockGetMyOnboarding.mockResolvedValue(
       progress({
         currentStep: 4,
         stepsCompleted: ['tutorial_viewed', 'accounts_added', 'cards_skipped'],
+      }),
+    )
+    const wrapper = await mountView()
+
+    expect(mockReplace).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+      'Passo 4 de 8',
+    )
+    expect(wrapper.text()).toContain('Categorias de gastos sugeridas')
+    expect(mockGetCategorySuggestions).toHaveBeenCalledOnce()
+  })
+
+  it('redireciona para o dashboard a partir do passo 5', async () => {
+    mockGetMyOnboarding.mockResolvedValue(
+      progress({
+        currentStep: 5,
+        stepsCompleted: [
+          'tutorial_viewed',
+          'accounts_added',
+          'cards_skipped',
+          'categories_suggested',
+        ],
       }),
     )
     await mountView()
@@ -228,7 +283,7 @@ describe('OnboardingView', () => {
     expect(mockReplace).toHaveBeenCalledWith('/dashboard')
   })
 
-  it('concluir o passo 3 leva ao dashboard', async () => {
+  it('concluir o passo 3 leva ao passo 4 (categorias)', async () => {
     mockGetMyOnboarding.mockResolvedValue(
       progress({ currentStep: 3, stepsCompleted: ['tutorial_viewed', 'accounts_added'] }),
     )
@@ -238,7 +293,56 @@ describe('OnboardingView', () => {
     await flushPromises()
 
     expect(mockCompleteCards).toHaveBeenCalledWith(false)
+    expect(mockPush).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Categorias de gastos sugeridas')
+    expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+      'Passo 4 de 8',
+    )
+  })
+
+  it('concluir o passo 4 cria as categorias marcadas e leva ao dashboard', async () => {
+    mockGetMyOnboarding.mockResolvedValue(
+      progress({
+        currentStep: 4,
+        stepsCompleted: ['tutorial_viewed', 'accounts_added', 'cards_added'],
+      }),
+    )
+    const wrapper = await mountView()
+
+    await wrapper.get('[data-testid="category-checkbox-food"]').setValue(false)
+    await wrapper.get('[data-testid="next-button"]').trigger('click')
+    await flushPromises()
+
+    expect(mockCompleteCategories).toHaveBeenCalledWith(['housing'])
     expect(mockPush).toHaveBeenCalledWith('/dashboard')
+  })
+
+  it('Voltar no passo 4 mostra os cartões sem mexer no progresso; Próximo ali volta às categorias', async () => {
+    mockGetMyOnboarding.mockResolvedValue(
+      progress({
+        currentStep: 4,
+        stepsCompleted: ['tutorial_viewed', 'accounts_added', 'cards_added'],
+      }),
+    )
+    const wrapper = await mountView()
+
+    await wrapper.get('[data-testid="back-button"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Adicione seus cartões de crédito')
+    expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+      'Passo 3 de 8',
+    )
+    expect(mockCompleteCards).not.toHaveBeenCalled()
+    expect(mockCompleteCategories).not.toHaveBeenCalled()
+
+    // O POST dos cartões é idempotente e devolve o passo 4
+    await wrapper.get('[data-testid="next-button"]').trigger('click')
+    await flushPromises()
+
+    expect(mockCompleteCards).toHaveBeenCalledWith(false)
+    expect(mockPush).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Categorias de gastos sugeridas')
   })
 
   it('Voltar no passo 3 mostra as contas sem mexer no progresso; Próximo ali volta aos cartões', async () => {

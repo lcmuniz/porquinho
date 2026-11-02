@@ -15,6 +15,7 @@ import {
   completeCards,
   completeTutorial,
   getMyOnboarding,
+  completeCategories,
 } from '../onboardingService'
 
 const progress = { currentStep: 2, stepsCompleted: ['tutorial_skipped'], completed: false }
@@ -43,5 +44,12 @@ describe('onboardingService', () => {
   it('completeCards(true) faz POST em /api/v1/onboarding/me/cards com { skipped: true }', async () => {
     await expect(completeCards(true)).resolves.toEqual(progress)
     expect(mockPost).toHaveBeenCalledWith('/api/v1/onboarding/me/cards', { skipped: true })
+  })
+
+  it('completeCategories faz POST em /api/v1/onboarding/me/categories com as chaves', async () => {
+    await expect(completeCategories(['housing', 'leisure'])).resolves.toEqual(progress)
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/onboarding/me/categories', {
+      keys: ['housing', 'leisure'],
+    })
   })
 })

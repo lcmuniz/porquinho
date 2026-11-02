@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.porquinho.dto.DataExportResponse;
 import com.porquinho.entity.Account;
+import com.porquinho.entity.Category;
 import com.porquinho.entity.CreditCard;
 import com.porquinho.entity.AuditLog;
 import com.porquinho.entity.BillingTransaction;
@@ -15,6 +16,7 @@ import com.porquinho.entity.UserSession;
 import com.porquinho.exception.RateLimitExceededException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountRepository;
+import com.porquinho.repository.CategoryRepository;
 import com.porquinho.repository.CreditCardRepository;
 import com.porquinho.repository.AuditLogRepository;
 import com.porquinho.repository.BillingTransactionRepository;
@@ -61,6 +63,7 @@ public class DataExportService {
     private final OnboardingProgressRepository onboardingProgressRepository;
     private final AccountRepository accountRepository;
     private final CreditCardRepository creditCardRepository;
+    private final CategoryRepository categoryRepository;
     private final ObjectMapper objectMapper;
 
     @Value("${app.export.directory:./exports}")
@@ -84,7 +87,8 @@ public class DataExportService {
             BillingTransactionRepository billingTransactionRepository,
             OnboardingProgressRepository onboardingProgressRepository,
             AccountRepository accountRepository,
-            CreditCardRepository creditCardRepository) {
+            CreditCardRepository creditCardRepository,
+            CategoryRepository categoryRepository) {
         this.dataExportRepository = dataExportRepository;
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -97,6 +101,7 @@ public class DataExportService {
         this.onboardingProgressRepository = onboardingProgressRepository;
         this.accountRepository = accountRepository;
         this.creditCardRepository = creditCardRepository;
+        this.categoryRepository = categoryRepository;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
         this.objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
@@ -175,7 +180,7 @@ public class DataExportService {
         metadata.put("user_id", userId.toString());
         metadata.put("data_version", "1.0");
         metadata.put("exported_tables", List.of("users", "user_sessions", "audit_logs", "subscriptions",
-            "billing_transactions", "onboarding_progress", "accounts", "credit_cards"));
+            "billing_transactions", "onboarding_progress", "accounts", "credit_cards", "categories"));
         data.put("metadata", metadata);
 
         // User profile (sanitized)
@@ -318,6 +323,25 @@ public class DataExportService {
             cardList.add(cardMap);
         }
         data.put("credit_cards", cardList);
+
+        // Categories (Story 3.4) - every stored column, removed categories included (deleted_at filled)
+        List<Map<String, Object>> categoryList = new ArrayList<>();
+        for (Category category : categoryRepository.findByUserIdOrderByCreatedAtAsc(userId)) {
+            Map<String, Object> categoryMap = new LinkedHashMap<>();
+            categoryMap.put("id", category.getId() != null ? category.getId().toString() : null);
+            categoryMap.put("user_id", category.getUserId() != null ? category.getUserId().toString() : null);
+            categoryMap.put("category_name", category.getCategoryName());
+            categoryMap.put("parent_category_id",
+                category.getParentCategoryId() != null ? category.getParentCategoryId().toString() : null);
+            categoryMap.put("color_hex", category.getColorHex());
+            categoryMap.put("icon_name", category.getIconName());
+            categoryMap.put("is_system_default", category.isSystemDefault());
+            categoryMap.put("created_at", category.getCreatedAt() != null ? category.getCreatedAt().toString() : null);
+            categoryMap.put("updated_at", category.getUpdatedAt() != null ? category.getUpdatedAt().toString() : null);
+            categoryMap.put("deleted_at", category.getDeletedAt() != null ? category.getDeletedAt().toString() : null);
+            categoryList.add(categoryMap);
+        }
+        data.put("categories", categoryList);
 
         return data;
     }

@@ -1,6 +1,7 @@
 package com.porquinho.service;
 
 import com.porquinho.entity.Account;
+import com.porquinho.entity.Category;
 import com.porquinho.entity.CreditCard;
 import com.porquinho.entity.AuditLog;
 import com.porquinho.entity.BillingTransaction;
@@ -14,6 +15,7 @@ import com.porquinho.entity.UserSession;
 import com.porquinho.exception.RateLimitExceededException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountRepository;
+import com.porquinho.repository.CategoryRepository;
 import com.porquinho.repository.CreditCardRepository;
 import com.porquinho.repository.AuditLogRepository;
 import com.porquinho.repository.BillingTransactionRepository;
@@ -83,6 +85,9 @@ class DataExportServiceTest {
 
     @Mock
     private CreditCardRepository creditCardRepository;
+
+    @Mock
+    private CategoryRepository categoryRepository;
 
     @InjectMocks
     private DataExportService dataExportService;
@@ -397,6 +402,55 @@ class DataExportServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
 
         assertEquals(List.of(), dataExportService.collectUserData(userId).get("credit_cards"));
+    }
+
+    @Test
+    void collectUserDataShouldExportCategoriesIncludingRemovedOnes() {
+        // Story 3.4: categories are exported with every stored column, removed (soft-deleted) ones included
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        OffsetDateTime created = OffsetDateTime.parse("2026-11-02T12:00:00Z");
+        Category parent = new Category(userId, "Essenciais", null, "#2563EB", "shield-check", true);
+        parent.setId(UUID.randomUUID());
+        parent.setCreatedAt(created);
+        parent.setUpdatedAt(created);
+        Category child = new Category(userId, "Moradia", parent.getId(), "#3B82F6", "house", true);
+        child.setId(UUID.randomUUID());
+        child.setCreatedAt(created.plusMinutes(1));
+        child.setUpdatedAt(created.plusMinutes(2));
+        child.setDeletedAt(created.plusMinutes(2));
+        when(categoryRepository.findByUserIdOrderByCreatedAtAsc(userId)).thenReturn(List.of(parent, child));
+
+        Map<String, Object> data = dataExportService.collectUserData(userId);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
+        assertTrue(((List<?>) metadata.get("exported_tables")).contains("categories"));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("categories");
+        assertEquals(2, rows.size());
+        Map<String, Object> first = rows.get(0);
+        assertExportsEveryColumn(Category.class, first);
+        assertEquals(parent.getId().toString(), first.get("id"));
+        assertEquals(userId.toString(), first.get("user_id"));
+        assertEquals("Essenciais", first.get("category_name"));
+        assertNull(first.get("parent_category_id"));
+        assertEquals("#2563EB", first.get("color_hex"));
+        assertEquals("shield-check", first.get("icon_name"));
+        assertEquals(true, first.get("is_system_default"));
+        assertNull(first.get("deleted_at"));
+
+        Map<String, Object> second = rows.get(1);
+        assertExportsEveryColumn(Category.class, second);
+        assertEquals(parent.getId().toString(), second.get("parent_category_id"));
+        assertEquals(created.plusMinutes(2).toString(), second.get("deleted_at"));
+    }
+
+    @Test
+    void collectUserDataShouldExportEmptyCategoryListWhenNone() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+
+        assertEquals(List.of(), dataExportService.collectUserData(userId).get("categories"));
     }
 
     /** LGPD portability: every mapped column of the entity appears as a key in the exported map. */

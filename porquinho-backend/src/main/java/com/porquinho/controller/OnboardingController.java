@@ -1,8 +1,10 @@
 package com.porquinho.controller;
 
+import com.porquinho.dto.CompleteCategoriesRequest;
 import com.porquinho.dto.OnboardingProgressResponse;
 import com.porquinho.service.OnboardingService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -15,7 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 /**
- * Guided onboarding endpoints (Story 3.1: tutorial; Story 3.2: bank accounts; Story 3.3: credit cards). The user always comes from the JWT.
+ * Guided onboarding endpoints (Story 3.1: tutorial; Story 3.2: bank accounts; Story 3.3: credit cards; Story 3.4: categories). The user always comes from the JWT.
  * Not exempt from SubscriptionAccessFilter: the trial is already active during onboarding.
  */
 @RestController
@@ -76,6 +78,19 @@ public class OnboardingController {
         boolean skipped = body != null && Boolean.TRUE.equals(body.skipped());
         return ResponseEntity.ok(OnboardingProgressResponse.of(
             onboardingService.completeCards(userId, skipped, request.getRemoteAddr())));
+    }
+
+    /**
+     * Step 4 done (Story 3.4): creates the chosen suggested categories and moves to step 5. 400 with no key or
+     * an unknown key; 409 while on steps 1 to 3; idempotent from step 5 on (200, nothing created).
+     */
+    @PostMapping("/me/categories")
+    public ResponseEntity<OnboardingProgressResponse> completeCategories(@AuthenticationPrincipal Jwt jwt,
+                                                                         @Valid @RequestBody CompleteCategoriesRequest body,
+                                                                         HttpServletRequest request) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(OnboardingProgressResponse.of(
+            onboardingService.completeCategories(userId, body.keys(), request.getRemoteAddr())));
     }
 
     public record StepRequest(Boolean skipped) { }
