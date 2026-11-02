@@ -15,6 +15,7 @@ const mockCompleteCustomization = vi.fn()
 const mockListCategories = vi.fn()
 const mockGetCategoryOptions = vi.fn()
 const mockCompleteImport = vi.fn()
+const mockCompleteDashboardTour = vi.fn()
 const mockPush = vi.fn()
 const mockReplace = vi.fn()
 
@@ -26,6 +27,7 @@ vi.mock('@/services/onboardingService', () => ({
   completeCategories: (...args: unknown[]) => mockCompleteCategories(...args),
   completeCustomization: (...args: unknown[]) => mockCompleteCustomization(...args),
   completeImport: (...args: unknown[]) => mockCompleteImport(...args),
+  completeDashboardTour: (...args: unknown[]) => mockCompleteDashboardTour(...args),
 }))
 
 vi.mock('@/services/categoryService', () => ({
@@ -98,6 +100,7 @@ const MY_CATEGORIES = [
 ]
 
 const STEP_SIX_DONE = [...STEP_FIVE_DONE, 'categories_customized']
+const STEP_SEVEN_DONE = [...STEP_SIX_DONE, 'import_skipped']
 
 function progress(overrides: Partial<OnboardingProgress> = {}): OnboardingProgress {
   return { currentStep: 1, stepsCompleted: [], completed: false, ...overrides }
@@ -165,6 +168,14 @@ describe('OnboardingView', () => {
       .mockReset()
       .mockResolvedValue(
         progress({ currentStep: 7, stepsCompleted: [...STEP_SIX_DONE, 'import_skipped'] }),
+      )
+    mockCompleteDashboardTour
+      .mockReset()
+      .mockResolvedValue(
+        progress({
+          currentStep: 8,
+          stepsCompleted: [...STEP_SEVEN_DONE, 'dashboard_gps_explained'],
+        }),
       )
     mockPush.mockReset().mockResolvedValue(undefined)
     mockReplace.mockReset().mockResolvedValue(undefined)
@@ -351,9 +362,9 @@ describe('OnboardingView', () => {
     expect(wrapper.text()).toContain('A importação de arquivos chega em breve.')
   })
 
-  it('redireciona para o dashboard a partir do passo 7', async () => {
+  it('redireciona para o dashboard a partir do passo 8', async () => {
     mockGetMyOnboarding.mockResolvedValue(
-      progress({ currentStep: 7, stepsCompleted: [...STEP_SIX_DONE, 'import_skipped'] }),
+      progress({ currentStep: 8, stepsCompleted: [...STEP_SEVEN_DONE, 'dashboard_gps_explained'] }),
     )
     await mountView()
 
@@ -377,7 +388,7 @@ describe('OnboardingView', () => {
     )
   })
 
-  it('"Importar depois" no passo 6 leva ao dashboard', async () => {
+  it('"Importar depois" no passo 6 leva ao passo 7 (tour do Dashboard GPS)', async () => {
     mockGetMyOnboarding.mockResolvedValue(
       progress({ currentStep: 6, stepsCompleted: STEP_SIX_DONE }),
     )
@@ -387,7 +398,98 @@ describe('OnboardingView', () => {
     await flushPromises()
 
     expect(mockCompleteImport).toHaveBeenCalledOnce()
+    expect(mockPush).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Conheça o Dashboard GPS')
+    expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+      'Passo 7 de 8',
+    )
+  })
+
+  it('mostra o passo 7 (tour do Dashboard GPS) com as 3 camadas e a dica de rolagem', async () => {
+    mockGetMyOnboarding.mockResolvedValue(
+      progress({ currentStep: 7, stepsCompleted: STEP_SEVEN_DONE }),
+    )
+    const wrapper = await mountView()
+
+    expect(mockReplace).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+      'Passo 7 de 8',
+    )
+    expect(wrapper.get('h1').text()).toBe('Conheça o Dashboard GPS')
+    expect(wrapper.find('[data-testid="tour-layers-diagram"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Role verticalmente para navegar entre camadas')
+  })
+
+  it('percorrer as 5 telas do passo 7 mantém "Passo 7 de 8" e o Próximo final leva ao dashboard', async () => {
+    mockGetMyOnboarding.mockResolvedValue(
+      progress({ currentStep: 7, stepsCompleted: STEP_SEVEN_DONE }),
+    )
+    const wrapper = await mountView()
+
+    for (let i = 0; i < 4; i++) {
+      await wrapper.get('[data-testid="next-button"]').trigger('click')
+      await flushPromises()
+      expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+        'Passo 7 de 8',
+      )
+    }
+    expect(mockCompleteDashboardTour).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Seu check-in semanal leva apenas 5 minutos')
+
+    await wrapper.get('[data-testid="next-button"]').trigger('click')
+    await flushPromises()
+
+    expect(mockCompleteDashboardTour).toHaveBeenCalledOnce()
     expect(mockPush).toHaveBeenCalledWith('/dashboard')
+  })
+
+  it('falha ao salvar o passo 7 mostra o erro e continua na última tela do tour', async () => {
+    mockGetMyOnboarding.mockResolvedValue(
+      progress({ currentStep: 7, stepsCompleted: STEP_SEVEN_DONE }),
+    )
+    mockCompleteDashboardTour.mockRejectedValue(new Error('Network Error'))
+    const wrapper = await mountView()
+
+    for (let i = 0; i < 5; i++) {
+      await wrapper.get('[data-testid="next-button"]').trigger('click')
+      await flushPromises()
+    }
+
+    expect(mockPush).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="onboarding-error"]').text()).toContain(
+      'Não foi possível salvar seu progresso',
+    )
+    expect(wrapper.text()).toContain('Seu check-in semanal leva apenas 5 minutos')
+  })
+
+  it('Voltar na tela 1 do passo 7 mostra a importação sem mexer no progresso; "Importar depois" volta ao tour', async () => {
+    mockGetMyOnboarding.mockResolvedValue(
+      progress({ currentStep: 7, stepsCompleted: STEP_SEVEN_DONE }),
+    )
+    // O POST da importação é idempotente e devolve o passo 7
+    mockCompleteImport.mockResolvedValue(
+      progress({ currentStep: 7, stepsCompleted: STEP_SEVEN_DONE }),
+    )
+    const wrapper = await mountView()
+
+    await wrapper.get('[data-testid="back-button"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Importe suas transações')
+    expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+      'Passo 6 de 8',
+    )
+    expect(mockCompleteImport).not.toHaveBeenCalled()
+    expect(mockCompleteDashboardTour).not.toHaveBeenCalled()
+
+    await wrapper.get('[data-testid="import-later-button"]').trigger('click')
+    await flushPromises()
+
+    expect(mockPush).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Conheça o Dashboard GPS')
+    expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+      'Passo 7 de 8',
+    )
   })
 
   it('falha ao salvar o passo 6 mostra o erro e continua na tela', async () => {

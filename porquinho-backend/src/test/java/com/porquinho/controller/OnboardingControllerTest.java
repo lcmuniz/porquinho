@@ -23,6 +23,7 @@ import java.util.UUID;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -317,6 +318,52 @@ class OnboardingControllerTest {
             .thenThrow(new ConflictException("Conclua os passos anteriores antes de importar suas transações."));
 
         mockMvc.perform(post("/api/v1/onboarding/me/import").with(authentication(authToken)))
+            .andExpect(status().isConflict());
+    }
+
+    // ---- Story 3.7: step 7, Dashboard GPS tour ----
+
+    @Test
+    void postDashboardTourWithoutBodyReturnsStepEight() throws Exception {
+        when(onboardingService.completeDashboardTour(eq(userId), anyString()))
+            .thenReturn(progress(8, "tutorial_viewed", "accounts_added", "cards_added", "categories_suggested",
+                "categories_customized", "import_skipped", "dashboard_gps_explained"));
+
+        mockMvc.perform(post("/api/v1/onboarding/me/dashboard-tour").with(authentication(authToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.currentStep").value(8))
+            .andExpect(jsonPath("$.completed").value(false))
+            .andExpect(jsonPath("$.stepsCompleted[6]").value("dashboard_gps_explained"));
+
+        verify(onboardingService).completeDashboardTour(eq(userId), anyString());
+    }
+
+    @Test
+    void postDashboardTourFromStepEightReturns200WithUnchangedProgress() throws Exception {
+        // Idempotent: the service returns the current progress as is (no change, no audit, covered in the
+        // service tests); the endpoint just answers 200 with it.
+        when(onboardingService.completeDashboardTour(eq(userId), anyString()))
+            .thenReturn(progress(8, "tutorial_viewed", "accounts_added", "cards_added", "categories_suggested",
+                "categories_customized", "import_skipped", "dashboard_gps_explained"));
+
+        mockMvc.perform(post("/api/v1/onboarding/me/dashboard-tour").with(authentication(authToken)))
+            .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/onboarding/me/dashboard-tour").with(authentication(authToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.currentStep").value(8))
+            .andExpect(jsonPath("$.completed").value(false))
+            .andExpect(jsonPath("$.stepsCompleted.length()").value(7))
+            .andExpect(jsonPath("$.stepsCompleted[6]").value("dashboard_gps_explained"));
+
+        verify(onboardingService, times(2)).completeDashboardTour(eq(userId), anyString());
+    }
+
+    @Test
+    void postDashboardTourBeforeStepSevenIs409() throws Exception {
+        when(onboardingService.completeDashboardTour(eq(userId), anyString()))
+            .thenThrow(new ConflictException("Conclua os passos anteriores antes de conhecer o Dashboard GPS."));
+
+        mockMvc.perform(post("/api/v1/onboarding/me/dashboard-tour").with(authentication(authToken)))
             .andExpect(status().isConflict());
     }
 }

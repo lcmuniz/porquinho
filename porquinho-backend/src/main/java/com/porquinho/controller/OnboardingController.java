@@ -18,7 +18,8 @@ import java.util.UUID;
 
 /**
  * Guided onboarding endpoints (Story 3.1: tutorial; Story 3.2: bank accounts; Story 3.3: credit cards; Story 3.4: categories;
- * Story 3.5: customizing the categories; Story 3.6: first import, without upload). The user always comes from the JWT.
+ * Story 3.5: customizing the categories; Story 3.6: first import, without upload; Story 3.7: Dashboard GPS tour).
+ * The user always comes from the JWT.
  * Not exempt from SubscriptionAccessFilter: the trial is already active during onboarding.
  */
 @RestController
@@ -119,6 +120,18 @@ public class OnboardingController {
         UUID userId = UUID.fromString(jwt.getSubject());
         return ResponseEntity.ok(OnboardingProgressResponse.of(
             onboardingService.completeImport(userId, request.getRemoteAddr())));
+    }
+
+    /**
+     * Step 7 done (Story 3.7): the Dashboard GPS tour records dashboard_gps_explained and moves to step 8.
+     * No body. 409 while on steps 1 to 6; idempotent from step 8 on.
+     */
+    @PostMapping("/me/dashboard-tour")
+    public ResponseEntity<OnboardingProgressResponse> completeDashboardTour(@AuthenticationPrincipal Jwt jwt,
+                                                                            HttpServletRequest request) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(OnboardingProgressResponse.of(
+            onboardingService.completeDashboardTour(userId, request.getRemoteAddr())));
     }
 
     public record StepRequest(Boolean skipped) { }

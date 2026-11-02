@@ -64,3 +64,12 @@ export async function completeImport(): Promise<OnboardingProgress> {
   const response = await api.post<OnboardingProgress>('/api/v1/onboarding/me/import')
   return response.data
 }
+
+/**
+ * Story 3.7: a última tela do tour do Dashboard GPS conclui o passo 7 e avança para o passo 8.
+ * Sem corpo; o backend grava `dashboard_gps_explained`. Idempotente a partir do passo 8.
+ */
+export async function completeDashboardTour(): Promise<OnboardingProgress> {
+  const response = await api.post<OnboardingProgress>('/api/v1/onboarding/me/dashboard-tour')
+  return response.data
+}
