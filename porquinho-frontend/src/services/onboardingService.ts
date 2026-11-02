@@ -35,3 +35,12 @@ export async function completeCards(skipped: boolean): Promise<OnboardingProgres
   const response = await api.post<OnboardingProgress>('/api/v1/onboarding/me/cards', { skipped })
   return response.data
 }
+
+/**
+ * Story 3.4: conclui o passo 4 criando as categorias sugeridas escolhidas e avança para o passo 5.
+ * Exige ao menos 1 chave válida (400). Idempotente a partir do passo 5 (nada é criado de novo).
+ */
+export async function completeCategories(keys: string[]): Promise<OnboardingProgress> {
+  const response = await api.post<OnboardingProgress>('/api/v1/onboarding/me/categories', { keys })
+  return response.data
+}

@@ -93,3 +93,15 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-1-display-welcome-envelope-budget-concept-tutorial.md`
   summary: Teste concorrente (duas threads, PostgreSQL real) provando que o lock de `findByUserIdForUpdate` em `OnboardingService.applyTutorial` grava um único audit `onboarding_tutorial_completed`.
   evidence: Revisão da 3.1 (Verification Gap); hoje a idempotência só é testada em sequência e não há precedente de teste concorrente no repositório.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-4-suggest-initial-spending-categories.md`
+  summary: Ordem determinística de `GET /api/v1/categories` (pai antes das filhas, ordem do catálogo), por exemplo com uma coluna `sort_order`, antes de a Story 3.5 listar as categorias.
+  evidence: Revisão da 3.4: `created_at` vem de chamadas separadas e o desempate é por UUID aleatório.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-4-suggest-initial-spending-categories.md`
+  summary: Integridade da hierarquia de categorias ao editar (Story 3.5/Epic 6): pai do mesmo usuário, profundidade máxima e o que acontece com as filhas quando o pai é excluído (soft delete).
+  evidence: Revisão da 3.4: o schema só impede auto-referência; hoje só o catálogo cria pais.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-4-suggest-initial-spending-categories.md`
+  summary: Teste HTTP do handler de `BadRequestException` (400 com `detail`) quando um endpoint passar a depender só da validação no serviço.
+  evidence: Revisão da 3.4 (Verification Gap): hoje os 400 param na validação do DTO.

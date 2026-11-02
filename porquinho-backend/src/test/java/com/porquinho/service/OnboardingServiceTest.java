@@ -30,6 +30,8 @@ class OnboardingServiceTest {
     private AccountService accountService;
     @Mock
     private CreditCardService creditCardService;
+    @Mock
+    private CategoryService categoryService;
 
     private OnboardingService service;
     private UUID userId;
@@ -37,8 +39,8 @@ class OnboardingServiceTest {
     @BeforeEach
     void setUp() {
         userId = UUID.randomUUID();
-        OnboardingService temp = new OnboardingService(repository, auditLogService, accountService, creditCardService, null);
-        service = new OnboardingService(repository, auditLogService, accountService, creditCardService, temp);
+        OnboardingService temp = new OnboardingService(repository, auditLogService, accountService, creditCardService, categoryService, null);
+        service = new OnboardingService(repository, auditLogService, accountService, creditCardService, categoryService, temp);
         // self == service: in production it is the Spring proxy of this same bean
         try {
             java.lang.reflect.Field selfField = OnboardingService.class.getDeclaredField("self");
@@ -353,6 +355,70 @@ class OnboardingServiceTest {
             assertEquals(step, progress.getCurrentStep());
         }
         verifyNoInteractions(creditCardService, auditLogService);
+        verify(repository, never()).save(any());
+    }
+
+    // ---- Story 3.4: step 4, suggested categories ----
+
+    private OnboardingProgress atCategoriesStep() {
+        OnboardingProgress progress = progressAt(4, OnboardingService.STEP_TUTORIAL_VIEWED,
+            OnboardingService.STEP_ACCOUNTS_ADDED, OnboardingService.STEP_CARDS_SKIPPED);
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+        when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+        return progress;
+    }
+
+    @Test
+    void categoriesCreatesTheChosenOnesRecordsSuggestedMovesToStepFiveAndAudits() {
+        OnboardingProgress progress = atCategoriesStep();
+        when(categoryService.createFromSuggestions(eq(userId), any())).thenReturn(2);
+        when(repository.save(progress)).thenReturn(progress);
+
+        OnboardingProgress result = service.completeCategories(userId, List.of("housing", "leisure", "housing"), "10.0.0.1");
+
+        assertEquals(5, result.getCurrentStep());
+        assertEquals(List.of("tutorial_viewed", "accounts_added", "cards_skipped", "categories_suggested"), result.getSteps());
+        // repeated keys are dropped before reaching the category service
+        verify(categoryService).createFromSuggestions(userId, new java.util.LinkedHashSet<>(List.of("housing", "leisure")));
+        verify(auditLogService).log("onboarding_categories_completed", userId, "10.0.0.1", "{\"count\":2}");
+    }
+
+    @Test
+    void categoriesWithNoKeyOrAnUnknownKeyIs400AndChangesNothing() {
+        for (List<String> keys : List.<List<String>>of(List.of(), List.of("xyz"), List.of("housing", "xyz"))) {
+            assertThrows(com.porquinho.exception.BadRequestException.class,
+                () -> service.completeCategories(userId, keys, "10.0.0.1"));
+        }
+        assertThrows(com.porquinho.exception.BadRequestException.class,
+            () -> service.completeCategories(userId, null, "10.0.0.1"));
+        verifyNoInteractions(categoryService, auditLogService, repository);
+    }
+
+    @Test
+    void categoriesStepIsIdempotentFromStepFive() {
+        OnboardingProgress progress = progressAt(5, "tutorial_viewed", "accounts_added", "cards_added", "categories_suggested");
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+        when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+
+        OnboardingProgress result = service.completeCategories(userId, List.of("housing"), "10.0.0.1");
+
+        assertEquals(5, result.getCurrentStep());
+        verifyNoInteractions(categoryService, auditLogService);
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void categoriesStepIsAConflictOnStepsOneToThree() {
+        for (int step : new int[] {1, 2, 3}) {
+            OnboardingProgress progress = progressAt(step);
+            when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+            when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+
+            assertThrows(ConflictException.class, () -> service.completeCategories(userId, List.of("housing"), "10.0.0.1"));
+
+            assertEquals(step, progress.getCurrentStep());
+        }
+        verifyNoInteractions(categoryService, auditLogService);
         verify(repository, never()).save(any());
     }
 }

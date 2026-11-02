@@ -17,11 +17,14 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -192,6 +195,62 @@ class OnboardingControllerTest {
 
         mockMvc.perform(post("/api/v1/onboarding/me/cards").with(authentication(authToken))
                 .contentType(MediaType.APPLICATION_JSON).content("{\"skipped\":false}"))
+            .andExpect(status().isConflict());
+    }
+
+    // ---- Story 3.4: step 4, suggested categories ----
+
+    @Test
+    void postCategoriesPassesTheKeysAndReturnsStepFive() throws Exception {
+        when(onboardingService.completeCategories(eq(userId), eq(List.of("housing", "leisure")), anyString()))
+            .thenReturn(progress(5, "tutorial_viewed", "accounts_added", "cards_added", "categories_suggested"));
+
+        mockMvc.perform(post("/api/v1/onboarding/me/categories").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"keys\":[\"housing\",\"leisure\"]}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.currentStep").value(5))
+            .andExpect(jsonPath("$.stepsCompleted[3]").value("categories_suggested"));
+    }
+
+    @Test
+    void postCategoriesWithNoKeyIs400() throws Exception {
+        for (String body : new String[] {"{\"keys\":[]}", "{}"}) {
+            mockMvc.perform(post("/api/v1/onboarding/me/categories").with(authentication(authToken))
+                    .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("Escolha ao menos uma categoria"));
+        }
+        mockMvc.perform(post("/api/v1/onboarding/me/categories").with(authentication(authToken)))
+            .andExpect(status().isBadRequest());
+        verifyNoInteractions(onboardingService);
+    }
+
+    @Test
+    void postCategoriesWithAnUnknownKeyIs400() throws Exception {
+        mockMvc.perform(post("/api/v1/onboarding/me/categories").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"keys\":[\"housing\",\"xyz\"]}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.detail").value("Categoria sugerida desconhecida. Recarregue a página e tente novamente."));
+        verifyNoInteractions(onboardingService);
+    }
+
+    @Test
+    void postCategoriesWithMoreThan50KeysIs400() throws Exception {
+        String keys = String.join(",", java.util.Collections.nCopies(51, "\"housing\""));
+        mockMvc.perform(post("/api/v1/onboarding/me/categories").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"keys\":[" + keys + "]}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.detail").value("Envie no máximo 50 categorias de uma vez"));
+        verifyNoInteractions(onboardingService);
+    }
+
+    @Test
+    void postCategoriesBeforeStepFourIs409() throws Exception {
+        when(onboardingService.completeCategories(eq(userId), any(), anyString()))
+            .thenThrow(new ConflictException("Conclua os passos anteriores antes de escolher suas categorias."));
+
+        mockMvc.perform(post("/api/v1/onboarding/me/categories").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"keys\":[\"housing\"]}"))
             .andExpect(status().isConflict());
     }
 }
