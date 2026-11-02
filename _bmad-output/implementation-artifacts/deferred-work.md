@@ -107,3 +107,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-4-suggest-initial-spending-categories.md`
   summary: Teste HTTP do handler de `BadRequestException` (400 com `detail`) quando um endpoint passar a depender só da validação no serviço.
   evidence: Revisão da 3.4 (Verification Gap): hoje os 400 param na validação do DTO.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-6-guided-first-transaction-import.md`
+  summary: Epic 5 — ligar o upload (Stories 5.1–5.3) ao passo 6 do onboarding (`ImportStep.vue`): área de arrastar e soltar, barra de progresso, prévia classificada e gravação de `first_import_completed` em `POST /api/v1/onboarding/me/import` (corpo opcional).
+  evidence: Decisão A da 3.6: o passo 6 foi entregue sem upload porque a importação ainda não existia.

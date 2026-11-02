@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatBRL, parseBRL } from '../money'
+import { formatBRL, formatBRLInput, parseBRL } from '../money'
 
 /** Intl usa espaço não separável depois de "R$"; normaliza para comparar. */
 const plain = (s: string) => s.replace(/\s/g, ' ')
@@ -52,5 +52,14 @@ describe('formatBRL', () => {
 
   it('formata valores negativos (cheque especial)', () => {
     expect(plain(formatBRL(-150))).toBe('-R$ 150,00')
+  })
+})
+
+describe('formatBRLInput', () => {
+  it('formata sem "R$" e o resultado volta pelo parseBRL', () => {
+    expect(formatBRLInput(25000)).toBe('25.000,00')
+    expect(formatBRLInput(2083.34)).toBe('2.083,34')
+    expect(formatBRLInput(0.5)).toBe('0,50')
+    expect(parseBRL(formatBRLInput(1234567.89))).toBe(1234567.89)
   })
 })

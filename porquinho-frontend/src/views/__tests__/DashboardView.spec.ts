@@ -5,6 +5,8 @@ import DashboardView from '../DashboardView.vue'
 
 const mockGetMySubscription = vi.fn()
 const mockPush = vi.fn()
+const mockReplace = vi.fn()
+let mockRoute: { path: string; query: Record<string, string> } = { path: '/dashboard', query: {} }
 const mockSignOut = vi.fn()
 
 vi.mock('@/services/subscriptionService', () => ({
@@ -13,7 +15,8 @@ vi.mock('@/services/subscriptionService', () => ({
 
 vi.mock('vue-router', async (importOriginal) => ({
   ...(await importOriginal<typeof import('vue-router')>()),
-  useRouter: () => ({ push: mockPush }),
+  useRouter: () => ({ push: mockPush, replace: mockReplace }),
+  useRoute: () => mockRoute,
 }))
 
 vi.mock('@/services/supabase', () => ({
@@ -33,6 +36,8 @@ describe('DashboardView', () => {
     setActivePinia(createPinia())
     mockGetMySubscription.mockReset()
     mockPush.mockReset()
+    mockReplace.mockReset()
+    mockRoute = { path: '/dashboard', query: {} }
     mockSignOut.mockReset().mockResolvedValue({ error: null })
   })
 
@@ -112,7 +117,9 @@ describe('DashboardView', () => {
     const wrapper = mountView()
     await flushPromises()
 
-    expect(wrapper.get('[data-testid="subscription-expired-badge"]').text()).toBe('Assinatura expirada')
+    expect(wrapper.get('[data-testid="subscription-expired-badge"]').text()).toBe(
+      'Assinatura expirada',
+    )
     expect(wrapper.get('[data-testid="subscribe-cta"]').text()).toBe('Reativar')
   })
 
@@ -170,7 +177,9 @@ describe('DashboardView', () => {
     const wrapper = mountView()
     await flushPromises()
 
-    expect(wrapper.get('[data-testid="subscription-payment-failed-badge"]').text()).toBe('Pagamento falhou')
+    expect(wrapper.get('[data-testid="subscription-payment-failed-badge"]').text()).toBe(
+      'Pagamento falhou',
+    )
     const banner = wrapper.get('[data-testid="payment-failed-banner"]')
     expect(banner.attributes('role')).toBe('alert')
     expect(banner.text()).toContain('Pagamento falhou')
@@ -222,8 +231,46 @@ describe('DashboardView', () => {
     const wrapper = mountView()
     await flushPromises()
 
-    expect(wrapper.get('[data-testid="subscription-suspended-badge"]').text()).toBe('Assinatura suspensa')
+    expect(wrapper.get('[data-testid="subscription-suspended-badge"]').text()).toBe(
+      'Assinatura suspensa',
+    )
     expect(wrapper.get('[data-testid="subscribe-cta"]').text()).toBe('Reativar')
     expect(wrapper.find('[data-testid="payment-failed-banner"]').exists()).toBe(false)
+  })
+
+  describe('Story 3.8: fim do onboarding', () => {
+    it('com ?onboarding=done mostra "Parabéns! Sua conta está configurada" e limpa o parâmetro', async () => {
+      mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
+      mockRoute = { path: '/dashboard', query: { onboarding: 'done', outro: '1' } }
+
+      const wrapper = mountView()
+      await flushPromises()
+
+      const message = wrapper.get('[data-testid="onboarding-done-message"]')
+      expect(message.attributes('role')).toBe('status')
+      expect(message.text()).toContain('Parabéns! Sua conta está configurada')
+      expect(mockReplace).toHaveBeenCalledWith({ path: '/dashboard', query: { outro: '1' } })
+    })
+
+    it('Fechar esconde a mensagem', async () => {
+      mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
+      mockRoute = { path: '/dashboard', query: { onboarding: 'done' } }
+
+      const wrapper = mountView()
+      await flushPromises()
+      await wrapper.get('[data-testid="onboarding-done-close"]').trigger('click')
+
+      expect(wrapper.find('[data-testid="onboarding-done-message"]').exists()).toBe(false)
+    })
+
+    it('sem o parâmetro não mostra a mensagem nem mexe na URL', async () => {
+      mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
+
+      const wrapper = mountView()
+      await flushPromises()
+
+      expect(wrapper.find('[data-testid="onboarding-done-message"]').exists()).toBe(false)
+      expect(mockReplace).not.toHaveBeenCalled()
+    })
   })
 })

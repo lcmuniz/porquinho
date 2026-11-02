@@ -17,7 +17,7 @@ import java.util.UUID;
  * Guided onboarding progress (Story 3.1: step 1, the envelope budget tutorial; Story 3.2: step 2,
  * the bank accounts; Story 3.3: step 3, the credit cards; Story 3.4: step 4, the suggested categories;
  * Story 3.5: step 5, customizing the categories; Story 3.6: step 6, the first import, still without upload;
- * Story 3.7: step 7, the Dashboard GPS tour).
+ * Story 3.7: step 7, the Dashboard GPS tour; Story 3.8: step 8, the emergency fund goal, which completes it).
  *
  * The row is created on the first read. Two tabs opening /onboarding at the same time race on the
  * insert: UNIQUE(user_id) lets only one win and the loser re-reads the winner's row. The insert runs
@@ -45,6 +45,9 @@ public class OnboardingService {
     public static final String AUDIT_IMPORT_COMPLETED = "onboarding_import_completed";
     public static final String STEP_DASHBOARD_GPS_EXPLAINED = "dashboard_gps_explained";
     public static final String AUDIT_DASHBOARD_TOUR_COMPLETED = "onboarding_dashboard_tour_completed";
+    public static final String STEP_EMERGENCY_FUND_CREATED = "emergency_fund_created";
+    public static final String STEP_EMERGENCY_FUND_SKIPPED = "emergency_fund_skipped";
+    public static final String AUDIT_ONBOARDING_COMPLETED = "onboarding_completed";
 
     private static final int TUTORIAL_STEP = 1;
     private static final int ACCOUNTS_STEP = 2;
@@ -55,13 +58,15 @@ public class OnboardingService {
     private static final int NEXT_STEP_AFTER_CUSTOMIZATION = IMPORT_STEP;
     private static final int DASHBOARD_TOUR_STEP = 7;
     private static final int NEXT_STEP_AFTER_IMPORT = DASHBOARD_TOUR_STEP;
-    private static final int NEXT_STEP_AFTER_DASHBOARD_TOUR = 8;
+    private static final int GOAL_STEP = 8;
+    private static final int NEXT_STEP_AFTER_DASHBOARD_TOUR = GOAL_STEP;
 
     private final OnboardingProgressRepository onboardingProgressRepository;
     private final AuditLogService auditLogService;
     private final AccountService accountService;
     private final CreditCardService creditCardService;
     private final CategoryService categoryService;
+    private final GoalService goalService;
 
     /** Spring proxy of this bean, so the calls to the apply* methods go through @Transactional. */
     private final OnboardingService self;
@@ -71,12 +76,14 @@ public class OnboardingService {
                              AccountService accountService,
                              CreditCardService creditCardService,
                              CategoryService categoryService,
+                             GoalService goalService,
                              @Lazy OnboardingService self) {
         this.onboardingProgressRepository = onboardingProgressRepository;
         this.auditLogService = auditLogService;
         this.accountService = accountService;
         this.creditCardService = creditCardService;
         this.categoryService = categoryService;
+        this.goalService = goalService;
         this.self = self;
     }
 
@@ -341,6 +348,54 @@ public class OnboardingService {
         OnboardingProgress saved = onboardingProgressRepository.save(progress);
 
         auditLogService.log(AUDIT_DASHBOARD_TOUR_COMPLETED, userId, ipAddress);
+        return saved;
+    }
+
+    /**
+     * Step 8 done (Story 3.8), the last one: "Criar meta e concluir" (skipped=false) needs at least one active goal
+     * (409 otherwise; the goal itself is created through /api/v1/goals) and records emergency_fund_created;
+     * "Pular por agora" records emergency_fund_skipped and creates nothing; skipping while the user already has an
+     * active goal records emergency_fund_created with skipped=false instead. Both mark the onboarding completed
+     * (current_step stays 8) and write the onboarding_completed audit {skipped, goals}, the completion metric.
+     * 409 while steps 1 to 7 are pending. Idempotent: once completed, repeating returns the current state with no
+     * change and no audit.
+     */
+    public OnboardingProgress finish(UUID userId, boolean skipped, String ipAddress) {
+        getOrCreate(userId);
+        return self.applyFinish(userId, skipped, ipAddress);
+    }
+
+    /** Transactional half of {@link #finish}; public only so the Spring proxy can apply @Transactional. */
+    @Transactional
+    public OnboardingProgress applyFinish(UUID userId, boolean skipped, String ipAddress) {
+        // Row lock (same as the other steps): it serializes concurrent POSTs, so only the first completes and audits.
+        OnboardingProgress progress = onboardingProgressRepository.findByUserIdForUpdate(userId)
+            .orElseThrow(() -> new ResourceNotFoundException("Onboarding progress not found"));
+
+        if (progress.isCompleted()) {
+            return progress;
+        }
+        if (progress.getCurrentStep() < GOAL_STEP) {
+            throw new ConflictException("Conclua os passos anteriores antes de criar sua primeira meta.");
+        }
+
+        long goals = goalService.countActive(userId);
+        if (!skipped && goals == 0) {
+            throw new ConflictException(
+                "Crie sua meta para concluir, ou toque em \"Pular por agora\".");
+        }
+        // A goal already exists (e.g. created before a failed /finish, then "Pular" from another tab): it was
+        // not skipped, so record it as created
+        if (goals > 0) {
+            skipped = false;
+        }
+
+        progress.addStep(skipped ? STEP_EMERGENCY_FUND_SKIPPED : STEP_EMERGENCY_FUND_CREATED);
+        progress.setCompleted(true);
+        OnboardingProgress saved = onboardingProgressRepository.save(progress);
+
+        auditLogService.log(AUDIT_ONBOARDING_COMPLETED, userId, ipAddress,
+            "{\"skipped\":" + skipped + ",\"goals\":" + goals + "}");
         return saved;
     }
 }

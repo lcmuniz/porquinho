@@ -262,7 +262,7 @@ import type { OnboardingProgress } from '@/types/onboarding'
  * Story 3.7: passo 7 do onboarding, um tour curto de 5 telas pelo Dashboard GPS (visão geral das 3 camadas,
  * uma tela por camada e o fechamento com o check-in semanal). As ilustrações são esquemáticas, sem valores
  * reais. Próximo nas telas 1 a 4 só troca de tela; na última conclui o passo (o backend grava
- * `dashboard_gps_explained`). Voltar na primeira tela devolve ao passo 6. Sem Pular: não há nada a configurar.
+ * `dashboard_gps_explained`) e leva ao passo 8. Voltar na primeira tela devolve ao passo 6. Sem Pular: não há nada a configurar.
  */
 const emit = defineEmits<{
   back: []
@@ -272,13 +272,20 @@ const emit = defineEmits<{
 
 const TOUR_SCREENS = 5
 
+/** Story 3.8: Voltar no passo 8 reabre o tour na última tela ('last'). */
+const props = withDefaults(defineProps<{ initialScreen?: number | 'last' }>(), { initialScreen: 0 })
+
 const LAYERS = [
   { number: 1, question: 'Onde estou?' },
   { number: 2, question: 'Para onde vou?' },
   { number: 3, question: 'Preciso ajustar?' },
 ]
 
-const screen = ref(0)
+const screen = ref(
+  props.initialScreen === 'last'
+    ? TOUR_SCREENS - 1
+    : Math.min(Math.max(props.initialScreen, 0), TOUR_SCREENS - 1),
+)
 const finishing = ref(false)
 const heading = ref<HTMLElement | null>(null)
 

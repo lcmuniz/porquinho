@@ -14,6 +14,7 @@ import com.porquinho.repository.SubscriptionRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.CategoryRepository;
 import com.porquinho.repository.CreditCardRepository;
+import com.porquinho.repository.GoalRepository;
 import com.porquinho.repository.AuditLogRepository;
 import com.porquinho.repository.BillingTransactionRepository;
 import com.porquinho.repository.DataExportRepository;
@@ -83,6 +84,8 @@ class AccountDeletionServiceTest {
     private CreditCardRepository creditCardRepository;
     @Mock
     private CategoryRepository categoryRepository;
+    @Mock
+    private GoalRepository goalRepository;
 
     private AccountDeletionService service;
 
@@ -108,13 +111,13 @@ class AccountDeletionServiceTest {
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
             supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService,
             billingTransactionRepository, subscriptionService, onboardingProgressRepository, accountRepository,
-            creditCardRepository, categoryRepository, null);
+            creditCardRepository, categoryRepository, goalRepository, null);
         service = new AccountDeletionService(
             userRepository, userSessionRepository, auditLogRepository, dataExportRepository,
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
             supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService,
             billingTransactionRepository, subscriptionService, onboardingProgressRepository, accountRepository,
-            creditCardRepository, categoryRepository, temp);
+            creditCardRepository, categoryRepository, goalRepository, temp);
         // After construction, swap in the real reference so self == service (recursive ref ok
         // for tests because Spring's proxy would similarly route the call into this same bean).
         try {
@@ -335,6 +338,11 @@ class AccountDeletionServiceTest {
         InOrder categoriesOrder = inOrder(categoryRepository, userRepository);
         categoriesOrder.verify(categoryRepository).deleteByUserId(userId);
         categoriesOrder.verify(userRepository).deleteByIdNative(userId);
+
+        // Story 3.8: goals deleted BEFORE the user (FK goals.user_id -> users.id)
+        InOrder goalsOrder = inOrder(goalRepository, userRepository);
+        goalsOrder.verify(goalRepository).deleteByUserId(userId);
+        goalsOrder.verify(userRepository).deleteByIdNative(userId);
 
         // Supabase admin called
         verify(supabaseAdminClient).deleteUser(userId);

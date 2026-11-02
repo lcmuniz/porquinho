@@ -16,6 +16,8 @@ const mockListCategories = vi.fn()
 const mockGetCategoryOptions = vi.fn()
 const mockCompleteImport = vi.fn()
 const mockCompleteDashboardTour = vi.fn()
+const mockFinishOnboarding = vi.fn()
+const mockCreateGoal = vi.fn()
 const mockPush = vi.fn()
 const mockReplace = vi.fn()
 
@@ -28,6 +30,12 @@ vi.mock('@/services/onboardingService', () => ({
   completeCustomization: (...args: unknown[]) => mockCompleteCustomization(...args),
   completeImport: (...args: unknown[]) => mockCompleteImport(...args),
   completeDashboardTour: (...args: unknown[]) => mockCompleteDashboardTour(...args),
+  finishOnboarding: (...args: unknown[]) => mockFinishOnboarding(...args),
+}))
+
+vi.mock('@/services/goalService', () => ({
+  createGoal: (...args: unknown[]) => mockCreateGoal(...args),
+  listGoals: vi.fn().mockResolvedValue([]),
 }))
 
 vi.mock('@/services/categoryService', () => ({
@@ -101,6 +109,7 @@ const MY_CATEGORIES = [
 
 const STEP_SIX_DONE = [...STEP_FIVE_DONE, 'categories_customized']
 const STEP_SEVEN_DONE = [...STEP_SIX_DONE, 'import_skipped']
+const STEP_EIGHT_DONE = [...STEP_SEVEN_DONE, 'dashboard_gps_explained']
 
 function progress(overrides: Partial<OnboardingProgress> = {}): OnboardingProgress {
   return { currentStep: 1, stepsCompleted: [], completed: false, ...overrides }
@@ -169,14 +178,20 @@ describe('OnboardingView', () => {
       .mockResolvedValue(
         progress({ currentStep: 7, stepsCompleted: [...STEP_SIX_DONE, 'import_skipped'] }),
       )
-    mockCompleteDashboardTour
-      .mockReset()
-      .mockResolvedValue(
-        progress({
-          currentStep: 8,
-          stepsCompleted: [...STEP_SEVEN_DONE, 'dashboard_gps_explained'],
-        }),
-      )
+    mockCompleteDashboardTour.mockReset().mockResolvedValue(
+      progress({
+        currentStep: 8,
+        stepsCompleted: [...STEP_SEVEN_DONE, 'dashboard_gps_explained'],
+      }),
+    )
+    mockFinishOnboarding.mockReset().mockResolvedValue(
+      progress({
+        currentStep: 8,
+        stepsCompleted: [...STEP_EIGHT_DONE, 'emergency_fund_created'],
+        completed: true,
+      }),
+    )
+    mockCreateGoal.mockReset().mockResolvedValue({ id: 'g1' })
     mockPush.mockReset().mockResolvedValue(undefined)
     mockReplace.mockReset().mockResolvedValue(undefined)
   })
@@ -362,13 +377,101 @@ describe('OnboardingView', () => {
     expect(wrapper.text()).toContain('A importação de arquivos chega em breve.')
   })
 
-  it('redireciona para o dashboard a partir do passo 8', async () => {
+  it('mostra o passo 8 (meta de Reserva de Emergência) pré-preenchido', async () => {
     mockGetMyOnboarding.mockResolvedValue(
-      progress({ currentStep: 8, stepsCompleted: [...STEP_SEVEN_DONE, 'dashboard_gps_explained'] }),
+      progress({ currentStep: 8, stepsCompleted: STEP_EIGHT_DONE }),
     )
-    await mountView()
+    const wrapper = await mountView()
 
-    expect(mockReplace).toHaveBeenCalledWith('/dashboard')
+    expect(mockReplace).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+      'Passo 8 de 8',
+    )
+    expect(wrapper.get('h1').text()).toBe('Crie sua primeira meta: Reserva de Emergência')
+    expect(
+      wrapper.get<HTMLInputElement>('[data-testid="goal-target-amount-input"]').element.value,
+    ).toBe('25.000,00')
+    expect(wrapper.get('[data-testid="goal-progress"]').attributes('aria-valuenow')).toBe('0')
+  })
+
+  it('"Criar meta e concluir" no passo 8 leva ao dashboard com a mensagem de parabéns', async () => {
+    mockGetMyOnboarding.mockResolvedValue(
+      progress({ currentStep: 8, stepsCompleted: STEP_EIGHT_DONE }),
+    )
+    const wrapper = await mountView()
+
+    await wrapper.get('[data-testid="create-goal-button"]').trigger('click')
+    await flushPromises()
+
+    expect(mockCreateGoal).toHaveBeenCalledOnce()
+    expect(mockFinishOnboarding).toHaveBeenCalledWith(false)
+    expect(mockPush).toHaveBeenCalledWith({ path: '/dashboard', query: { onboarding: 'done' } })
+  })
+
+  it('"Pular por agora" no passo 8 conclui sem criar meta e leva ao dashboard com a mensagem', async () => {
+    mockGetMyOnboarding.mockResolvedValue(
+      progress({ currentStep: 8, stepsCompleted: STEP_EIGHT_DONE }),
+    )
+    mockFinishOnboarding.mockResolvedValue(
+      progress({
+        currentStep: 8,
+        stepsCompleted: [...STEP_EIGHT_DONE, 'emergency_fund_skipped'],
+        completed: true,
+      }),
+    )
+    const wrapper = await mountView()
+
+    await wrapper.get('[data-testid="skip-button"]').trigger('click')
+    await flushPromises()
+
+    expect(mockCreateGoal).not.toHaveBeenCalled()
+    expect(mockFinishOnboarding).toHaveBeenCalledWith(true)
+    expect(mockPush).toHaveBeenCalledWith({ path: '/dashboard', query: { onboarding: 'done' } })
+  })
+
+  it('falha ao concluir o passo 8 mostra o toast e continua na meta', async () => {
+    mockGetMyOnboarding.mockResolvedValue(
+      progress({ currentStep: 8, stepsCompleted: STEP_EIGHT_DONE }),
+    )
+    mockFinishOnboarding.mockRejectedValue(new Error('Network Error'))
+    const wrapper = await mountView()
+
+    await wrapper.get('[data-testid="skip-button"]').trigger('click')
+    await flushPromises()
+
+    expect(mockPush).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="onboarding-error"]').text()).toContain(
+      'Não foi possível concluir o onboarding',
+    )
+    expect(wrapper.get('h1').text()).toBe('Crie sua primeira meta: Reserva de Emergência')
+  })
+
+  it('Voltar no passo 8 mostra a última tela do tour sem mexer no progresso; Próximo ali volta à meta', async () => {
+    mockGetMyOnboarding.mockResolvedValue(
+      progress({ currentStep: 8, stepsCompleted: STEP_EIGHT_DONE }),
+    )
+    const wrapper = await mountView()
+
+    await wrapper.get('[data-testid="back-button"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Seu check-in semanal leva apenas 5 minutos')
+    expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+      'Passo 7 de 8',
+    )
+    expect(mockCompleteDashboardTour).not.toHaveBeenCalled()
+    expect(mockFinishOnboarding).not.toHaveBeenCalled()
+
+    // O POST do tour é idempotente e devolve o passo 8
+    await wrapper.get('[data-testid="next-button"]').trigger('click')
+    await flushPromises()
+
+    expect(mockCompleteDashboardTour).toHaveBeenCalledOnce()
+    expect(mockPush).not.toHaveBeenCalled()
+    expect(wrapper.get('h1').text()).toBe('Crie sua primeira meta: Reserva de Emergência')
+    expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+      'Passo 8 de 8',
+    )
   })
 
   it('concluir o passo 5 leva ao passo 6 (importação)', async () => {
@@ -420,7 +523,7 @@ describe('OnboardingView', () => {
     expect(wrapper.text()).toContain('Role verticalmente para navegar entre camadas')
   })
 
-  it('percorrer as 5 telas do passo 7 mantém "Passo 7 de 8" e o Próximo final leva ao dashboard', async () => {
+  it('percorrer as 5 telas do passo 7 mantém "Passo 7 de 8" e o Próximo final leva ao passo 8', async () => {
     mockGetMyOnboarding.mockResolvedValue(
       progress({ currentStep: 7, stepsCompleted: STEP_SEVEN_DONE }),
     )
@@ -440,7 +543,11 @@ describe('OnboardingView', () => {
     await flushPromises()
 
     expect(mockCompleteDashboardTour).toHaveBeenCalledOnce()
-    expect(mockPush).toHaveBeenCalledWith('/dashboard')
+    expect(mockPush).not.toHaveBeenCalled()
+    expect(wrapper.get('h1').text()).toBe('Crie sua primeira meta: Reserva de Emergência')
+    expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+      'Passo 8 de 8',
+    )
   })
 
   it('falha ao salvar o passo 7 mostra o erro e continua na última tela do tour', async () => {

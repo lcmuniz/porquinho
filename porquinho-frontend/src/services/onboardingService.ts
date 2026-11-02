@@ -73,3 +73,12 @@ export async function completeDashboardTour(): Promise<OnboardingProgress> {
   const response = await api.post<OnboardingProgress>('/api/v1/onboarding/me/dashboard-tour')
   return response.data
 }
+
+/**
+ * Story 3.8: conclui o passo 8, o último, e marca o onboarding como concluído.
+ * Sem pular, exige ao menos 1 meta ativa (409); pulando, não cria meta. Idempotente depois de concluído.
+ */
+export async function finishOnboarding(skipped: boolean): Promise<OnboardingProgress> {
+  const response = await api.post<OnboardingProgress>('/api/v1/onboarding/me/finish', { skipped })
+  return response.data
+}

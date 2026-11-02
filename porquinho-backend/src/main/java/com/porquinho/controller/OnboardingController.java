@@ -18,7 +18,8 @@ import java.util.UUID;
 
 /**
  * Guided onboarding endpoints (Story 3.1: tutorial; Story 3.2: bank accounts; Story 3.3: credit cards; Story 3.4: categories;
- * Story 3.5: customizing the categories; Story 3.6: first import, without upload; Story 3.7: Dashboard GPS tour).
+ * Story 3.5: customizing the categories; Story 3.6: first import, without upload; Story 3.7: Dashboard GPS tour; Story 3.8: emergency fund goal
+ * and completion).
  * The user always comes from the JWT.
  * Not exempt from SubscriptionAccessFilter: the trial is already active during onboarding.
  */
@@ -132,6 +133,21 @@ public class OnboardingController {
         UUID userId = UUID.fromString(jwt.getSubject());
         return ResponseEntity.ok(OnboardingProgressResponse.of(
             onboardingService.completeDashboardTour(userId, request.getRemoteAddr())));
+    }
+
+    /**
+     * Step 8 done (Story 3.8), the last one: "Criar meta e concluir" needs at least 1 active goal (409 otherwise);
+     * "Pular por agora" ({@code skipped: true}) creates nothing. Marks the onboarding completed. 409 while on steps
+     * 1 to 7; idempotent once completed (200, no change). Missing body means "not skipped".
+     */
+    @PostMapping("/me/finish")
+    public ResponseEntity<OnboardingProgressResponse> finish(@AuthenticationPrincipal Jwt jwt,
+                                                             @RequestBody(required = false) StepRequest body,
+                                                             HttpServletRequest request) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        boolean skipped = body != null && Boolean.TRUE.equals(body.skipped());
+        return ResponseEntity.ok(OnboardingProgressResponse.of(
+            onboardingService.finish(userId, skipped, request.getRemoteAddr())));
     }
 
     public record StepRequest(Boolean skipped) { }

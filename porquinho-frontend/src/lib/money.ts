@@ -27,3 +27,13 @@ export function parseBRL(input: string | null | undefined): number | null {
 export function formatBRL(value: number): string {
   return BRL.format(value)
 }
+
+const BRL_INPUT_FORMAT = new Intl.NumberFormat('pt-BR', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
+/** Valor para pré-preencher um campo de dinheiro, sem "R$": 25000 → "25.000,00" (aceito por parseBRL). */
+export function formatBRLInput(value: number): string {
+  return BRL_INPUT_FORMAT.format(value)
+}

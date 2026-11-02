@@ -19,6 +19,7 @@ import {
   completeCustomization,
   completeImport,
   completeDashboardTour,
+  finishOnboarding,
 } from '../onboardingService'
 
 const progress = { currentStep: 2, stepsCompleted: ['tutorial_skipped'], completed: false }
@@ -71,5 +72,12 @@ describe('onboardingService', () => {
   it('completeDashboardTour faz POST em /api/v1/onboarding/me/dashboard-tour sem corpo', async () => {
     await expect(completeDashboardTour()).resolves.toEqual(progress)
     expect(mockPost).toHaveBeenCalledWith('/api/v1/onboarding/me/dashboard-tour')
+  })
+
+  it('finishOnboarding faz POST em /api/v1/onboarding/me/finish com skipped', async () => {
+    await expect(finishOnboarding(false)).resolves.toEqual(progress)
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/onboarding/me/finish', { skipped: false })
+    await finishOnboarding(true)
+    expect(mockPost).toHaveBeenLastCalledWith('/api/v1/onboarding/me/finish', { skipped: true })
   })
 })
