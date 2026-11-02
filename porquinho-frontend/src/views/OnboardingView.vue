@@ -52,6 +52,14 @@
         @error="showError"
       />
 
+      <!-- Passo 7: tour do Dashboard GPS (Story 3.7) -->
+      <DashboardTourStep
+        v-else-if="stage === 'tour'"
+        @back="backToImport"
+        @done="goToStep"
+        @error="showError"
+      />
+
       <section
         v-else
         aria-live="polite"
@@ -322,6 +330,7 @@ import AccountsStep from '@/components/onboarding/AccountsStep.vue'
 import CardsStep from '@/components/onboarding/CardsStep.vue'
 import CategoriesStep from '@/components/onboarding/CategoriesStep.vue'
 import CustomizeCategoriesStep from '@/components/onboarding/CustomizeCategoriesStep.vue'
+import DashboardTourStep from '@/components/onboarding/DashboardTourStep.vue'
 import ImportStep from '@/components/onboarding/ImportStep.vue'
 import OnboardingStepIndicator from '@/components/onboarding/OnboardingStepIndicator.vue'
 import { Button } from '@/components/ui/button'
@@ -339,18 +348,19 @@ import type { OnboardingProgress } from '@/types/onboarding'
 // Story 3.1: passo 1 do onboarding = boas-vindas (tela 0) + tutorial de 4 telas.
 // Story 3.2: passo 2 = contas bancárias. Story 3.3: passo 3 = cartões de crédito. Story 3.4: passo 4 =
 // categorias sugeridas. Story 3.5: passo 5 = personalizar as categorias. Story 3.6: passo 6 = importar
-// transações (ainda sem upload). A tela sai do progresso salvo no servidor: passo 1 → tutorial, 2 → contas,
-// 3 → cartões, 4 → categorias, 5 → personalização, 6 → importação, passo ≥ 7 ou concluído → DONE_ROUTE.
-// Decisão B da 3.1 estendida: enquanto o passo 7 (Story 3.7) não existe, quem passa do passo 6 vai para o
-// dashboard.
+// transações (ainda sem upload). Story 3.7: passo 7 = tour do Dashboard GPS. A tela sai do progresso salvo
+// no servidor: passo 1 → tutorial, 2 → contas, 3 → cartões, 4 → categorias, 5 → personalização,
+// 6 → importação, 7 → tour do dashboard, passo ≥ 8 ou concluído → DONE_ROUTE. Decisão B da 3.1 estendida:
+// enquanto o passo 8 (Story 3.8) não existe, quem passa do passo 7 vai para o dashboard.
 const DONE_ROUTE = '/dashboard'
 const ACCOUNTS_STEP = 2
 const CARDS_STEP = 3
 const CATEGORIES_STEP = 4
 const CUSTOMIZE_STEP = 5
 const IMPORT_STEP = 6
+const TOUR_STEP = 7
 /** Último passo com tela; acima dele (ou com o onboarding concluído) vai para DONE_ROUTE. */
-const LAST_STEP = IMPORT_STEP
+const LAST_STEP = TOUR_STEP
 const TUTORIAL_SCREENS = 4
 const TOAST_MS = 5000
 
@@ -386,7 +396,7 @@ const nextSteps = [
   { icon: Target, text: 'Criar sua reserva de emergência' },
 ]
 
-type Stage = 'tutorial' | 'accounts' | 'cards' | 'categories' | 'customize' | 'import'
+type Stage = 'tutorial' | 'accounts' | 'cards' | 'categories' | 'customize' | 'import' | 'tour'
 const STAGE_STEP: Record<Stage, number> = {
   tutorial: 1,
   accounts: ACCOUNTS_STEP,
@@ -394,6 +404,7 @@ const STAGE_STEP: Record<Stage, number> = {
   categories: CATEGORIES_STEP,
   customize: CUSTOMIZE_STEP,
   import: IMPORT_STEP,
+  tour: TOUR_STEP,
 }
 const STEP_STAGE: Record<number, Stage> = {
   [ACCOUNTS_STEP]: 'accounts',
@@ -401,6 +412,7 @@ const STEP_STAGE: Record<number, Stage> = {
   [CATEGORIES_STEP]: 'categories',
   [CUSTOMIZE_STEP]: 'customize',
   [IMPORT_STEP]: 'import',
+  [TOUR_STEP]: 'tour',
 }
 
 const router = useRouter()
@@ -425,7 +437,7 @@ function showError(message: string) {
 }
 
 // Leitores de tela e teclado: a cada tela nova o foco vai para o título
-// (os componentes dos passos 2 a 6 focam o próprio título ao aparecer)
+// (os componentes dos passos 2 a 7 focam o próprio título ao aparecer)
 watch([screen, stage], async () => {
   await nextTick()
   heading.value?.focus()
@@ -464,7 +476,7 @@ async function finish(skipped: boolean) {
 
 /**
  * Passo 2 → contas; 3 → cartões; 4 → categorias; 5 → personalização; 6 → importação;
- * ≥ 7 ou concluído → DONE_ROUTE.
+ * 7 → tour do dashboard; ≥ 8 ou concluído → DONE_ROUTE.
  */
 async function goToStep(progress: OnboardingProgress) {
   savedStep.value = progress.currentStep
@@ -511,6 +523,14 @@ function backToCategories() {
  */
 function backToCustomize() {
   stage.value = 'customize'
+}
+
+/**
+ * Voltar na primeira tela do passo 7: mostra a importação sem mexer no progresso salvo. O "Importar depois"
+ * ali usa o POST idempotente da importação, que devolve o passo 7 e traz o usuário de volta ao tour.
+ */
+function backToImport() {
+  stage.value = 'import'
 }
 
 onMounted(async () => {

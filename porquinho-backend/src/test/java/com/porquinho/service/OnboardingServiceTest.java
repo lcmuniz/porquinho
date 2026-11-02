@@ -556,4 +556,71 @@ class OnboardingServiceTest {
         verifyNoInteractions(auditLogService);
         verify(repository, never()).save(any());
     }
+
+    // ---- Story 3.7: step 7, Dashboard GPS tour ----
+
+    @Test
+    void dashboardTourRecordsDashboardGpsExplainedMovesToStepEightAndAudits() {
+        OnboardingProgress progress = progressAt(7, "tutorial_viewed", "accounts_added", "cards_skipped",
+            "categories_suggested", "categories_customized", "import_skipped");
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+        when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+        when(repository.save(progress)).thenReturn(progress);
+
+        OnboardingProgress result = service.completeDashboardTour(userId, "10.0.0.1");
+
+        assertEquals(8, result.getCurrentStep());
+        assertFalse(result.isCompleted());
+        assertEquals(List.of("tutorial_viewed", "accounts_added", "cards_skipped", "categories_suggested",
+            "categories_customized", "import_skipped", "dashboard_gps_explained"), result.getSteps());
+        verify(auditLogService).log("onboarding_dashboard_tour_completed", userId, "10.0.0.1");
+        verifyNoInteractions(categoryService);
+    }
+
+    @Test
+    void dashboardTourIsIdempotentFromStepEight() {
+        OnboardingProgress progress = progressAt(8, "tutorial_viewed", "accounts_added", "cards_added",
+            "categories_suggested", "categories_customized", "import_skipped", "dashboard_gps_explained");
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+        when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+
+        OnboardingProgress result = service.completeDashboardTour(userId, "10.0.0.1");
+
+        assertEquals(8, result.getCurrentStep());
+        assertEquals(7, result.getSteps().size());
+        verifyNoInteractions(auditLogService);
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void dashboardTourReturnsCompletedProgressUnchangedEvenAtStepSevenOrBelow() {
+        for (int step : new int[] {1, 6, 7}) {
+            OnboardingProgress progress = progressAt(step);
+            progress.setCompleted(true);
+            when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+            when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+
+            OnboardingProgress result = service.completeDashboardTour(userId, "10.0.0.1");
+
+            assertEquals(step, result.getCurrentStep());
+            assertTrue(result.getSteps().isEmpty());
+        }
+        verifyNoInteractions(auditLogService);
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void dashboardTourIsAConflictOnStepsOneToSix() {
+        for (int step : new int[] {1, 2, 3, 4, 5, 6}) {
+            OnboardingProgress progress = progressAt(step);
+            when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+            when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+
+            assertThrows(ConflictException.class, () -> service.completeDashboardTour(userId, "10.0.0.1"));
+
+            assertEquals(step, progress.getCurrentStep());
+        }
+        verifyNoInteractions(auditLogService);
+        verify(repository, never()).save(any());
+    }
 }
