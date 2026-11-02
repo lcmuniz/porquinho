@@ -294,4 +294,29 @@ class OnboardingControllerTest {
                 .contentType(MediaType.APPLICATION_JSON).content("{\"skipped\":false}"))
             .andExpect(status().isConflict());
     }
+
+    // ---- Story 3.6: step 6, first import (no upload yet) ----
+
+    @Test
+    void postImportWithoutBodyReturnsStepSeven() throws Exception {
+        when(onboardingService.completeImport(eq(userId), anyString()))
+            .thenReturn(progress(7, "tutorial_viewed", "accounts_added", "cards_added", "categories_suggested",
+                "categories_customized", "import_skipped"));
+
+        mockMvc.perform(post("/api/v1/onboarding/me/import").with(authentication(authToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.currentStep").value(7))
+            .andExpect(jsonPath("$.stepsCompleted[5]").value("import_skipped"));
+
+        verify(onboardingService).completeImport(eq(userId), anyString());
+    }
+
+    @Test
+    void postImportBeforeStepSixIs409() throws Exception {
+        when(onboardingService.completeImport(eq(userId), anyString()))
+            .thenThrow(new ConflictException("Conclua os passos anteriores antes de importar suas transações."));
+
+        mockMvc.perform(post("/api/v1/onboarding/me/import").with(authentication(authToken)))
+            .andExpect(status().isConflict());
+    }
 }

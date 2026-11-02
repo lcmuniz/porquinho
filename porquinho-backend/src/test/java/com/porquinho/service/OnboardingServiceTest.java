@@ -489,4 +489,71 @@ class OnboardingServiceTest {
         verifyNoInteractions(auditLogService);
         verify(repository, never()).save(any());
     }
+
+    // ---- Story 3.6: step 6, first import (no upload yet) ----
+
+    @Test
+    void importLaterRecordsImportSkippedMovesToStepSevenAndAudits() {
+        OnboardingProgress progress = progressAt(6, "tutorial_viewed", "accounts_added", "cards_skipped",
+            "categories_suggested", "categories_customized");
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+        when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+        when(repository.save(progress)).thenReturn(progress);
+
+        OnboardingProgress result = service.completeImport(userId, "10.0.0.1");
+
+        assertEquals(7, result.getCurrentStep());
+        assertEquals(List.of("tutorial_viewed", "accounts_added", "cards_skipped", "categories_suggested",
+            "categories_customized", "import_skipped"), result.getSteps());
+        assertFalse(result.getSteps().contains("first_import_completed"));
+        verify(auditLogService).log("onboarding_import_completed", userId, "10.0.0.1", "{\"skipped\":true}");
+        verifyNoInteractions(categoryService);
+    }
+
+    @Test
+    void importStepIsIdempotentFromStepSeven() {
+        OnboardingProgress progress = progressAt(7, "tutorial_viewed", "accounts_added", "cards_added",
+            "categories_suggested", "categories_customized", "import_skipped");
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+        when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+
+        OnboardingProgress result = service.completeImport(userId, "10.0.0.1");
+
+        assertEquals(7, result.getCurrentStep());
+        assertEquals(6, result.getSteps().size());
+        verifyNoInteractions(auditLogService);
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void importStepReturnsCompletedProgressUnchangedEvenAtStepSixOrBelow() {
+        for (int step : new int[] {1, 5, 6}) {
+            OnboardingProgress progress = progressAt(step);
+            progress.setCompleted(true);
+            when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+            when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+
+            OnboardingProgress result = service.completeImport(userId, "10.0.0.1");
+
+            assertEquals(step, result.getCurrentStep());
+            assertTrue(result.getSteps().isEmpty());
+        }
+        verifyNoInteractions(auditLogService);
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void importStepIsAConflictOnStepsOneToFive() {
+        for (int step : new int[] {1, 2, 3, 4, 5}) {
+            OnboardingProgress progress = progressAt(step);
+            when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+            when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+
+            assertThrows(ConflictException.class, () -> service.completeImport(userId, "10.0.0.1"));
+
+            assertEquals(step, progress.getCurrentStep());
+        }
+        verifyNoInteractions(auditLogService);
+        verify(repository, never()).save(any());
+    }
 }

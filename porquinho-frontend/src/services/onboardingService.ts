@@ -55,3 +55,12 @@ export async function completeCustomization(skipped: boolean): Promise<Onboardin
   })
   return response.data
 }
+
+/**
+ * Story 3.6 (versão sem upload): "Importar depois" conclui o passo 6 e avança para o passo 7.
+ * Sem corpo; o backend grava `import_skipped`. Idempotente a partir do passo 7.
+ */
+export async function completeImport(): Promise<OnboardingProgress> {
+  const response = await api.post<OnboardingProgress>('/api/v1/onboarding/me/import')
+  return response.data
+}
