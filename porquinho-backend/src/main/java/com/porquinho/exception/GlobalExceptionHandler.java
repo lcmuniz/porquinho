@@ -2,10 +2,15 @@ package com.porquinho.exception;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.net.URI;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Global exception handler for the application.
@@ -111,6 +116,42 @@ public class GlobalExceptionHandler {
         );
         problemDetail.setTitle("Resource Not Found");
         problemDetail.setType(URI.create("https://api.porquinho.com/errors/not-found"));
+        return problemDetail;
+    }
+
+    /**
+     * Handle @Valid failures and return 400 (Story 3.2). {@code detail} is the first field message
+     * (already in pt-BR with the fix, e.g. "Informe o nome da conta"); {@code errors} maps each
+     * invalid field to its message so the form can show it next to the field.
+     */
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ProblemDetail handleMethodArgumentNotValidException(MethodArgumentNotValidException ex) {
+        Map<String, String> errors = new LinkedHashMap<>();
+        for (FieldError fieldError : ex.getBindingResult().getFieldErrors()) {
+            errors.putIfAbsent(fieldError.getField(), fieldError.getDefaultMessage());
+        }
+        String detail = errors.isEmpty()
+            ? "Dados inválidos. Confira os campos e tente novamente."
+            : errors.values().iterator().next();
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, detail);
+        problemDetail.setTitle("Dados inválidos");
+        problemDetail.setType(URI.create("https://api.porquinho.com/errors/validation"));
+        problemDetail.setProperty("errors", errors);
+        return problemDetail;
+    }
+
+    /**
+     * Handle unreadable JSON (malformed body or a value of the wrong type, e.g. text in a number field)
+     * and return 400 (Story 3.2). Fixed detail: the parser message exposes internal class names.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ProblemDetail handleHttpMessageNotReadableException(HttpMessageNotReadableException ex) {
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(
+            HttpStatus.BAD_REQUEST,
+            "Dados inválidos. Confira os campos e tente novamente."
+        );
+        problemDetail.setTitle("Dados inválidos");
+        problemDetail.setType(URI.create("https://api.porquinho.com/errors/validation"));
         return problemDetail;
     }
 }

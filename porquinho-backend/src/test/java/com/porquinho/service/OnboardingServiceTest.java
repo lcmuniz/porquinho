@@ -9,6 +9,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
+import com.porquinho.exception.ConflictException;
 
 import java.util.List;
 import java.util.Optional;
@@ -25,6 +26,8 @@ class OnboardingServiceTest {
     private OnboardingProgressRepository repository;
     @Mock
     private AuditLogService auditLogService;
+    @Mock
+    private AccountService accountService;
 
     private OnboardingService service;
     private UUID userId;
@@ -32,8 +35,8 @@ class OnboardingServiceTest {
     @BeforeEach
     void setUp() {
         userId = UUID.randomUUID();
-        OnboardingService temp = new OnboardingService(repository, auditLogService, null);
-        service = new OnboardingService(repository, auditLogService, temp);
+        OnboardingService temp = new OnboardingService(repository, auditLogService, accountService, null);
+        service = new OnboardingService(repository, auditLogService, accountService, temp);
         // self == service: in production it is the Spring proxy of this same bean
         try {
             java.lang.reflect.Field selfField = OnboardingService.class.getDeclaredField("self");
@@ -175,5 +178,98 @@ class OnboardingServiceTest {
         progress.addStep("tutorial_viewed");
 
         assertEquals("[\"tutorial_viewed\"]", progress.getStepsCompleted());
+    }
+
+    // ---- Story 3.2: step 2 (bank accounts) ----
+
+    private OnboardingProgress atAccountsStep() {
+        OnboardingProgress progress = progressAt(2, OnboardingService.STEP_TUTORIAL_VIEWED);
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+        when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+        return progress;
+    }
+
+    @Test
+    void nextWithAccountsRecordsAddedMovesToStepThreeAndAudits() {
+        OnboardingProgress progress = atAccountsStep();
+        when(accountService.countActive(userId)).thenReturn(2L);
+        when(repository.save(progress)).thenReturn(progress);
+
+        OnboardingProgress result = service.completeAccounts(userId, false, "10.0.0.1");
+
+        assertEquals(3, result.getCurrentStep());
+        assertEquals(List.of("tutorial_viewed", "accounts_added"), result.getSteps());
+        verify(accountService, never()).createDefault(any());
+        verify(auditLogService).log("onboarding_accounts_completed", userId, "10.0.0.1",
+            "{\"skipped\":false,\"accounts\":2}");
+    }
+
+    @Test
+    void nextWithoutAccountsIsAConflict() {
+        OnboardingProgress progress = atAccountsStep();
+        when(accountService.countActive(userId)).thenReturn(0L);
+
+        assertThrows(ConflictException.class, () -> service.completeAccounts(userId, false, "10.0.0.1"));
+
+        assertEquals(2, progress.getCurrentStep());
+        verify(accountService, never()).createDefault(any());
+        verify(repository, never()).save(any());
+        verifyNoInteractions(auditLogService);
+    }
+
+    @Test
+    void skippingWithoutAccountsCreatesTheDefaultAccount() {
+        OnboardingProgress progress = atAccountsStep();
+        when(accountService.countActive(userId)).thenReturn(0L);
+        when(repository.save(progress)).thenReturn(progress);
+
+        OnboardingProgress result = service.completeAccounts(userId, true, "10.0.0.1");
+
+        verify(accountService).createDefault(userId);
+        assertEquals(3, result.getCurrentStep());
+        assertEquals(List.of("tutorial_viewed", "accounts_skipped"), result.getSteps());
+        verify(auditLogService).log("onboarding_accounts_completed", userId, "10.0.0.1",
+            "{\"skipped\":true,\"accounts\":1}");
+    }
+
+    @Test
+    void skippingWithAccountsOnlyAdvances() {
+        OnboardingProgress progress = atAccountsStep();
+        when(accountService.countActive(userId)).thenReturn(1L);
+        when(repository.save(progress)).thenReturn(progress);
+
+        OnboardingProgress result = service.completeAccounts(userId, true, "10.0.0.1");
+
+        verify(accountService, never()).createDefault(any());
+        assertEquals(3, result.getCurrentStep());
+        assertEquals(List.of("tutorial_viewed", "accounts_skipped"), result.getSteps());
+        verify(auditLogService).log("onboarding_accounts_completed", userId, "10.0.0.1",
+            "{\"skipped\":true,\"accounts\":1}");
+    }
+
+    @Test
+    void accountsStepIsIdempotentFromStepThree() {
+        OnboardingProgress progress = progressAt(3, OnboardingService.STEP_TUTORIAL_VIEWED, OnboardingService.STEP_ACCOUNTS_ADDED);
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+        when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+
+        OnboardingProgress result = service.completeAccounts(userId, true, "10.0.0.1");
+
+        assertEquals(3, result.getCurrentStep());
+        assertEquals(List.of("tutorial_viewed", "accounts_added"), result.getSteps());
+        verifyNoInteractions(accountService, auditLogService);
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void accountsStepIsAConflictWhileTheTutorialIsPending() {
+        OnboardingProgress progress = progressAt(1);
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+        when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+
+        assertThrows(ConflictException.class, () -> service.completeAccounts(userId, true, "10.0.0.1"));
+
+        assertEquals(1, progress.getCurrentStep());
+        verifyNoInteractions(accountService, auditLogService);
     }
 }

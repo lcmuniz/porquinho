@@ -11,6 +11,7 @@ import com.porquinho.exception.RateLimitExceededException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountDeletionRepository;
 import com.porquinho.repository.SubscriptionRepository;
+import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.AuditLogRepository;
 import com.porquinho.repository.BillingTransactionRepository;
 import com.porquinho.repository.DataExportRepository;
@@ -74,6 +75,8 @@ class AccountDeletionServiceTest {
     private SubscriptionService subscriptionService;
     @Mock
     private OnboardingProgressRepository onboardingProgressRepository;
+    @Mock
+    private AccountRepository accountRepository;
 
     private AccountDeletionService service;
 
@@ -98,12 +101,12 @@ class AccountDeletionServiceTest {
             userRepository, userSessionRepository, auditLogRepository, dataExportRepository,
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
             supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService,
-            billingTransactionRepository, subscriptionService, onboardingProgressRepository, null);
+            billingTransactionRepository, subscriptionService, onboardingProgressRepository, accountRepository, null);
         service = new AccountDeletionService(
             userRepository, userSessionRepository, auditLogRepository, dataExportRepository,
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
             supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService,
-            billingTransactionRepository, subscriptionService, onboardingProgressRepository, temp);
+            billingTransactionRepository, subscriptionService, onboardingProgressRepository, accountRepository, temp);
         // After construction, swap in the real reference so self == service (recursive ref ok
         // for tests because Spring's proxy would similarly route the call into this same bean).
         try {
@@ -309,6 +312,11 @@ class AccountDeletionServiceTest {
         InOrder onboardingOrder = inOrder(onboardingProgressRepository, userRepository);
         onboardingOrder.verify(onboardingProgressRepository).deleteByUserId(userId);
         onboardingOrder.verify(userRepository).deleteByIdNative(userId);
+
+        // Story 3.2: accounts deleted BEFORE the user (FK accounts.user_id -> users.id)
+        InOrder accountsOrder = inOrder(accountRepository, userRepository);
+        accountsOrder.verify(accountRepository).deleteByUserId(userId);
+        accountsOrder.verify(userRepository).deleteByIdNative(userId);
 
         // Supabase admin called
         verify(supabaseAdminClient).deleteUser(userId);

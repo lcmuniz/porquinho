@@ -10,6 +10,7 @@ import com.porquinho.entity.UserSession;
 import com.porquinho.exception.RateLimitExceededException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountDeletionRepository;
+import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.AuditLogRepository;
 import com.porquinho.repository.BillingTransactionRepository;
 import com.porquinho.repository.DataExportRepository;
@@ -48,7 +49,7 @@ import java.util.UUID;
  * - Each AccountDeletion is processed in its own transaction (REQUIRES_NEW) so a single
  *   failure does not block the queue.
  * - Hard-deletes data_exports, user_sessions, audit_logs, billing_transactions, subscriptions,
- *   onboarding_progress, users
+ *   onboarding_progress, accounts, users
  *   (in that order, native SQL to bypass @Where filters on User and UserSession; billing_transactions
  *   has FKs to subscriptions and users, so it goes before both).
  * - Calls Supabase Admin API best-effort.
@@ -77,6 +78,7 @@ public class AccountDeletionService {
     private final BillingTransactionRepository billingTransactionRepository;
     private final SubscriptionService subscriptionService;
     private final OnboardingProgressRepository onboardingProgressRepository;
+    private final AccountRepository accountRepository;
 
     @Value("${app.export.directory:./exports}")
     private String exportDirectory;
@@ -105,6 +107,7 @@ public class AccountDeletionService {
             BillingTransactionRepository billingTransactionRepository,
             SubscriptionService subscriptionService,
             OnboardingProgressRepository onboardingProgressRepository,
+            AccountRepository accountRepository,
             @Lazy AccountDeletionService self) {
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -121,6 +124,7 @@ public class AccountDeletionService {
         this.billingTransactionRepository = billingTransactionRepository;
         this.subscriptionService = subscriptionService;
         this.onboardingProgressRepository = onboardingProgressRepository;
+        this.accountRepository = accountRepository;
         this.self = self;
     }
 
@@ -326,6 +330,7 @@ public class AccountDeletionService {
         billingTransactionRepository.deleteByUserId(userId);  // Story 2.6: FKs to subscriptions and users
         subscriptionRepository.deleteByUserId(userId);  // Story 2.1: FK to users, must go first
         onboardingProgressRepository.deleteByUserId(userId);  // Story 3.1: FK to users
+        accountRepository.deleteByUserId(userId);  // Story 3.2: FK to users (removed accounts too)
         userRepository.deleteByIdNative(userId);
 
         // 4. Best-effort Supabase removal (SupabaseAdminClient already swallows failures).

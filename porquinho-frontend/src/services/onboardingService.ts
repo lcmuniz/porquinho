@@ -15,3 +15,13 @@ export async function completeTutorial(skipped: boolean): Promise<OnboardingProg
   const response = await api.post<OnboardingProgress>('/api/v1/onboarding/me/tutorial', { skipped })
   return response.data
 }
+
+/**
+ * Story 3.2: conclui o passo 2 (contas) e avança para o passo 3.
+ * Sem pular, exige ao menos 1 conta (409). Pulando sem contas, o backend cria "Minha Conta Principal".
+ * Idempotente a partir do passo 3.
+ */
+export async function completeAccounts(skipped: boolean): Promise<OnboardingProgress> {
+  const response = await api.post<OnboardingProgress>('/api/v1/onboarding/me/accounts', { skipped })
+  return response.data
+}

@@ -2,6 +2,7 @@ package com.porquinho.controller;
 
 import com.porquinho.config.TestWebSecurityConfig;
 import com.porquinho.entity.OnboardingProgress;
+import com.porquinho.exception.ConflictException;
 import com.porquinho.service.OnboardingService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -108,5 +109,43 @@ class OnboardingControllerTest {
         mockMvc.perform(post("/api/v1/onboarding/me/tutorial").with(authentication(authToken)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.currentStep").value(2));
+    }
+
+    // ---- Story 3.2 ----
+
+    @Test
+    void postAccountsReturnsStepThree() throws Exception {
+        when(onboardingService.completeAccounts(eq(userId), eq(false), anyString()))
+            .thenReturn(progress(3, "tutorial_viewed", "accounts_added"));
+
+        mockMvc.perform(post("/api/v1/onboarding/me/accounts").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"skipped\":false}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.currentStep").value(3))
+            .andExpect(jsonPath("$.stepsCompleted[1]").value("accounts_added"));
+    }
+
+    @Test
+    void postAccountsSkippedPassesSkippedToTheService() throws Exception {
+        when(onboardingService.completeAccounts(eq(userId), eq(true), anyString()))
+            .thenReturn(progress(3, "tutorial_viewed", "accounts_skipped"));
+
+        mockMvc.perform(post("/api/v1/onboarding/me/accounts").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"skipped\":true}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.stepsCompleted[1]").value("accounts_skipped"));
+
+        verify(onboardingService).completeAccounts(eq(userId), eq(true), anyString());
+    }
+
+    @Test
+    void postAccountsWithoutAccountsIs409() throws Exception {
+        when(onboardingService.completeAccounts(eq(userId), eq(false), anyString()))
+            .thenThrow(new ConflictException("Adicione ao menos uma conta para continuar"));
+
+        mockMvc.perform(post("/api/v1/onboarding/me/accounts").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"skipped\":false}"))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.detail").value("Adicione ao menos uma conta para continuar"));
     }
 }
