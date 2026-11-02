@@ -209,16 +209,25 @@ public class DataExportService {
         data.put("audit_logs", auditLogList);
 
         // Subscription (Story 2.1) - 0..1 item: every stored column plus computed days_remaining/has_access
+        // (DataExportServiceTest checks the keys against the entity's @Column names)
         List<Map<String, Object>> subscriptionList = new ArrayList<>();
         subscriptionService.findByUserId(userId).ifPresent(sub -> {
             Map<String, Object> subMap = new LinkedHashMap<>();
             subMap.put("id", sub.getId() != null ? sub.getId().toString() : null);
+            subMap.put("user_id", sub.getUserId() != null ? sub.getUserId().toString() : null);
             subMap.put("plan_type", sub.getPlanType().name());
             subMap.put("status", sub.getStatus().name());
             subMap.put("trial_start_date", sub.getTrialStartDate() != null ? sub.getTrialStartDate().toString() : null);
             subMap.put("trial_end_date", sub.getTrialEndDate() != null ? sub.getTrialEndDate().toString() : null);
             subMap.put("next_billing_date", sub.getNextBillingDate() != null ? sub.getNextBillingDate().toString() : null);
             subMap.put("payment_method_id", sub.getPaymentMethodId());
+            subMap.put("stripe_customer_id", sub.getStripeCustomerId());
+            subMap.put("stripe_subscription_id", sub.getStripeSubscriptionId());
+            subMap.put("trial_reminder_7d_sent_at", sub.getTrialReminder7dSentAt() != null ? sub.getTrialReminder7dSentAt().toString() : null);
+            subMap.put("trial_reminder_1d_sent_at", sub.getTrialReminder1dSentAt() != null ? sub.getTrialReminder1dSentAt().toString() : null);
+            subMap.put("cancellation_date", sub.getCancellationDate() != null ? sub.getCancellationDate().toString() : null);
+            subMap.put("failed_payment_attempts", sub.getFailedPaymentAttempts());
+            subMap.put("payment_update_url", sub.getPaymentUpdateUrl());
             subMap.put("created_at", sub.getCreatedAt() != null ? sub.getCreatedAt().toString() : null);
             subMap.put("updated_at", sub.getUpdatedAt() != null ? sub.getUpdatedAt().toString() : null);
             subMap.put("deleted_at", sub.getDeletedAt() != null ? sub.getDeletedAt().toString() : null);
@@ -234,6 +243,7 @@ public class DataExportService {
             Map<String, Object> txMap = new LinkedHashMap<>();
             txMap.put("id", tx.getId() != null ? tx.getId().toString() : null);
             txMap.put("subscription_id", tx.getSubscriptionId() != null ? tx.getSubscriptionId().toString() : null);
+            txMap.put("user_id", tx.getUserId() != null ? tx.getUserId().toString() : null);
             txMap.put("amount", tx.getAmount());
             txMap.put("currency", tx.getCurrency());
             txMap.put("status", tx.getStatus() != null ? tx.getStatus().name() : null);
