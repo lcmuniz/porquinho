@@ -15,6 +15,7 @@ import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AuditLogRepository;
 import com.porquinho.repository.BillingTransactionRepository;
 import com.porquinho.repository.DataExportRepository;
+import com.porquinho.repository.OnboardingProgressRepository;
 import com.porquinho.repository.UserRepository;
 import com.porquinho.repository.UserSessionRepository;
 import org.slf4j.Logger;
@@ -53,6 +54,7 @@ public class DataExportService {
     private final AuditLogService auditLogService;
     private final SubscriptionService subscriptionService;
     private final BillingTransactionRepository billingTransactionRepository;
+    private final OnboardingProgressRepository onboardingProgressRepository;
     private final ObjectMapper objectMapper;
 
     @Value("${app.export.directory:./exports}")
@@ -73,7 +75,8 @@ public class DataExportService {
             EmailService emailService,
             AuditLogService auditLogService,
             SubscriptionService subscriptionService,
-            BillingTransactionRepository billingTransactionRepository) {
+            BillingTransactionRepository billingTransactionRepository,
+            OnboardingProgressRepository onboardingProgressRepository) {
         this.dataExportRepository = dataExportRepository;
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -83,6 +86,7 @@ public class DataExportService {
         this.auditLogService = auditLogService;
         this.subscriptionService = subscriptionService;
         this.billingTransactionRepository = billingTransactionRepository;
+        this.onboardingProgressRepository = onboardingProgressRepository;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
         this.objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
@@ -161,7 +165,7 @@ public class DataExportService {
         metadata.put("user_id", userId.toString());
         metadata.put("data_version", "1.0");
         metadata.put("exported_tables", List.of("users", "user_sessions", "audit_logs", "subscriptions",
-            "billing_transactions"));
+            "billing_transactions", "onboarding_progress"));
         data.put("metadata", metadata);
 
         // User profile (sanitized)
@@ -254,6 +258,21 @@ public class DataExportService {
             paymentList.add(txMap);
         }
         data.put("billing_transactions", paymentList);
+
+        // Onboarding progress (Story 3.1) - 0..1 item, every stored column; steps_completed as a JSON array
+        List<Map<String, Object>> onboardingList = new ArrayList<>();
+        onboardingProgressRepository.findByUserId(userId).ifPresent(progress -> {
+            Map<String, Object> progressMap = new LinkedHashMap<>();
+            progressMap.put("id", progress.getId() != null ? progress.getId().toString() : null);
+            progressMap.put("user_id", progress.getUserId() != null ? progress.getUserId().toString() : null);
+            progressMap.put("current_step", progress.getCurrentStep());
+            progressMap.put("steps_completed", progress.getSteps());
+            progressMap.put("is_completed", progress.isCompleted());
+            progressMap.put("created_at", progress.getCreatedAt() != null ? progress.getCreatedAt().toString() : null);
+            progressMap.put("updated_at", progress.getUpdatedAt() != null ? progress.getUpdatedAt().toString() : null);
+            onboardingList.add(progressMap);
+        });
+        data.put("onboarding_progress", onboardingList);
 
         return data;
     }
