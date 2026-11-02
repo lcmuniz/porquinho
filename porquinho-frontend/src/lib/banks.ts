@@ -1,0 +1,21 @@
+/** Sugestões de banco (`<datalist>`) dos passos de contas e cartões do onboarding (Stories 3.2 e 3.3). */
+export const BANKS = [
+  'Nubank',
+  'Itaú',
+  'Bradesco',
+  'Banco do Brasil',
+  'Caixa Econômica Federal',
+  'Santander',
+  'Inter',
+  'C6 Bank',
+  'BTG Pactual',
+  'PicPay',
+  'Mercado Pago',
+  'PagBank',
+  'Sicoob',
+  'Sicredi',
+  'Banrisul',
+  'Banco Original',
+  'Neon',
+  'Next',
+]

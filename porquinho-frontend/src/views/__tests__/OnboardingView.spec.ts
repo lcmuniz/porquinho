@@ -7,6 +7,8 @@ const mockGetMyOnboarding = vi.fn()
 const mockCompleteTutorial = vi.fn()
 const mockCompleteAccounts = vi.fn()
 const mockListAccounts = vi.fn()
+const mockCompleteCards = vi.fn()
+const mockListCards = vi.fn()
 const mockPush = vi.fn()
 const mockReplace = vi.fn()
 
@@ -14,6 +16,13 @@ vi.mock('@/services/onboardingService', () => ({
   getMyOnboarding: (...args: unknown[]) => mockGetMyOnboarding(...args),
   completeTutorial: (...args: unknown[]) => mockCompleteTutorial(...args),
   completeAccounts: (...args: unknown[]) => mockCompleteAccounts(...args),
+  completeCards: (...args: unknown[]) => mockCompleteCards(...args),
+}))
+
+vi.mock('@/services/cardService', () => ({
+  listCards: (...args: unknown[]) => mockListCards(...args),
+  createCard: vi.fn(),
+  deleteCard: vi.fn(),
 }))
 
 vi.mock('@/services/accountService', () => ({
@@ -63,6 +72,13 @@ describe('OnboardingView', () => {
         progress({ currentStep: 3, stepsCompleted: ['tutorial_viewed', 'accounts_added'] }),
       )
     mockListAccounts.mockReset().mockResolvedValue([])
+    mockCompleteCards.mockReset().mockResolvedValue(
+      progress({
+        currentStep: 4,
+        stepsCompleted: ['tutorial_viewed', 'accounts_added', 'cards_added'],
+      }),
+    )
+    mockListCards.mockReset().mockResolvedValue([])
     mockPush.mockReset().mockResolvedValue(undefined)
     mockReplace.mockReset().mockResolvedValue(undefined)
   })
@@ -186,13 +202,82 @@ describe('OnboardingView', () => {
     expect(mockListAccounts).toHaveBeenCalledOnce()
   })
 
-  it('redireciona para o dashboard a partir do passo 3', async () => {
+  it('mostra o passo 3 (cartões) quando as contas já foram concluídas', async () => {
     mockGetMyOnboarding.mockResolvedValue(
       progress({ currentStep: 3, stepsCompleted: ['tutorial_viewed', 'accounts_added'] }),
+    )
+    const wrapper = await mountView()
+
+    expect(mockReplace).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+      'Passo 3 de 8',
+    )
+    expect(wrapper.text()).toContain('Adicione seus cartões de crédito')
+    expect(mockListCards).toHaveBeenCalledOnce()
+  })
+
+  it('redireciona para o dashboard a partir do passo 4', async () => {
+    mockGetMyOnboarding.mockResolvedValue(
+      progress({
+        currentStep: 4,
+        stepsCompleted: ['tutorial_viewed', 'accounts_added', 'cards_skipped'],
+      }),
     )
     await mountView()
 
     expect(mockReplace).toHaveBeenCalledWith('/dashboard')
+  })
+
+  it('concluir o passo 3 leva ao dashboard', async () => {
+    mockGetMyOnboarding.mockResolvedValue(
+      progress({ currentStep: 3, stepsCompleted: ['tutorial_viewed', 'accounts_added'] }),
+    )
+    const wrapper = await mountView()
+
+    await wrapper.get('[data-testid="next-button"]').trigger('click')
+    await flushPromises()
+
+    expect(mockCompleteCards).toHaveBeenCalledWith(false)
+    expect(mockPush).toHaveBeenCalledWith('/dashboard')
+  })
+
+  it('Voltar no passo 3 mostra as contas sem mexer no progresso; Próximo ali volta aos cartões', async () => {
+    mockGetMyOnboarding.mockResolvedValue(
+      progress({ currentStep: 3, stepsCompleted: ['tutorial_viewed', 'accounts_added'] }),
+    )
+    mockListAccounts.mockResolvedValue([
+      {
+        id: 'a1',
+        accountName: 'Nubank',
+        bankName: null,
+        accountType: 'CHECKING',
+        initialBalance: 10,
+        currentBalance: 10,
+        createdAt: '2026-11-02T12:00:00Z',
+      },
+    ])
+    const wrapper = await mountView()
+
+    await wrapper.get('[data-testid="back-button"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Adicione suas contas bancárias')
+    expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+      'Passo 2 de 8',
+    )
+    expect(mockCompleteAccounts).not.toHaveBeenCalled()
+    expect(mockCompleteCards).not.toHaveBeenCalled()
+
+    // O POST das contas é idempotente e devolve o passo 3
+    await wrapper.get('[data-testid="next-button"]').trigger('click')
+    await flushPromises()
+
+    expect(mockCompleteAccounts).toHaveBeenCalledWith(false)
+    expect(mockPush).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Adicione seus cartões de crédito')
+    expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+      'Passo 3 de 8',
+    )
   })
 
   it('Voltar no passo 2 mostra o tutorial sem mexer no progresso; ao terminá-lo volta ao passo 2', async () => {
@@ -218,7 +303,7 @@ describe('OnboardingView', () => {
     expect(wrapper.text()).toContain('Adicione suas contas bancárias')
   })
 
-  it('concluir o passo 2 leva ao dashboard', async () => {
+  it('concluir o passo 2 leva ao passo 3 (cartões)', async () => {
     mockGetMyOnboarding.mockResolvedValue(
       progress({ currentStep: 2, stepsCompleted: ['tutorial_viewed'] }),
     )
@@ -228,7 +313,11 @@ describe('OnboardingView', () => {
     await flushPromises()
 
     expect(mockCompleteAccounts).toHaveBeenCalledWith(true)
-    expect(mockPush).toHaveBeenCalledWith('/dashboard')
+    expect(mockPush).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Adicione seus cartões de crédito')
+    expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+      'Passo 3 de 8',
+    )
   })
 
   it('mostra erro e continua na tela quando salvar falha', async () => {

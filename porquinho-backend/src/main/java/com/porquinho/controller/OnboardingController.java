@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.UUID;
 
 /**
- * Guided onboarding endpoints (Story 3.1: tutorial; Story 3.2: bank accounts). The user always comes from the JWT.
+ * Guided onboarding endpoints (Story 3.1: tutorial; Story 3.2: bank accounts; Story 3.3: credit cards). The user always comes from the JWT.
  * Not exempt from SubscriptionAccessFilter: the trial is already active during onboarding.
  */
 @RestController
@@ -62,6 +62,20 @@ public class OnboardingController {
         boolean skipped = body != null && Boolean.TRUE.equals(body.skipped());
         return ResponseEntity.ok(OnboardingProgressResponse.of(
             onboardingService.completeAccounts(userId, skipped, request.getRemoteAddr())));
+    }
+
+    /**
+     * Step 3 done (Story 3.3). Cards are optional: "Próximo" with no card records cards_skipped, like "Pular".
+     * Moves to step 4. 409 while on step 1 or 2; idempotent from step 4 on. Missing body means "not skipped".
+     */
+    @PostMapping("/me/cards")
+    public ResponseEntity<OnboardingProgressResponse> completeCards(@AuthenticationPrincipal Jwt jwt,
+                                                                    @RequestBody(required = false) StepRequest body,
+                                                                    HttpServletRequest request) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        boolean skipped = body != null && Boolean.TRUE.equals(body.skipped());
+        return ResponseEntity.ok(OnboardingProgressResponse.of(
+            onboardingService.completeCards(userId, skipped, request.getRemoteAddr())));
     }
 
     public record StepRequest(Boolean skipped) { }

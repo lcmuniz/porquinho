@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.porquinho.dto.DataExportResponse;
 import com.porquinho.entity.Account;
+import com.porquinho.entity.CreditCard;
 import com.porquinho.entity.AuditLog;
 import com.porquinho.entity.BillingTransaction;
 import com.porquinho.entity.DataExport;
@@ -14,6 +15,7 @@ import com.porquinho.entity.UserSession;
 import com.porquinho.exception.RateLimitExceededException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountRepository;
+import com.porquinho.repository.CreditCardRepository;
 import com.porquinho.repository.AuditLogRepository;
 import com.porquinho.repository.BillingTransactionRepository;
 import com.porquinho.repository.DataExportRepository;
@@ -58,6 +60,7 @@ public class DataExportService {
     private final BillingTransactionRepository billingTransactionRepository;
     private final OnboardingProgressRepository onboardingProgressRepository;
     private final AccountRepository accountRepository;
+    private final CreditCardRepository creditCardRepository;
     private final ObjectMapper objectMapper;
 
     @Value("${app.export.directory:./exports}")
@@ -80,7 +83,8 @@ public class DataExportService {
             SubscriptionService subscriptionService,
             BillingTransactionRepository billingTransactionRepository,
             OnboardingProgressRepository onboardingProgressRepository,
-            AccountRepository accountRepository) {
+            AccountRepository accountRepository,
+            CreditCardRepository creditCardRepository) {
         this.dataExportRepository = dataExportRepository;
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -92,6 +96,7 @@ public class DataExportService {
         this.billingTransactionRepository = billingTransactionRepository;
         this.onboardingProgressRepository = onboardingProgressRepository;
         this.accountRepository = accountRepository;
+        this.creditCardRepository = creditCardRepository;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
         this.objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
@@ -170,7 +175,7 @@ public class DataExportService {
         metadata.put("user_id", userId.toString());
         metadata.put("data_version", "1.0");
         metadata.put("exported_tables", List.of("users", "user_sessions", "audit_logs", "subscriptions",
-            "billing_transactions", "onboarding_progress", "accounts"));
+            "billing_transactions", "onboarding_progress", "accounts", "credit_cards"));
         data.put("metadata", metadata);
 
         // User profile (sanitized)
@@ -296,6 +301,23 @@ public class DataExportService {
             accountList.add(accountMap);
         }
         data.put("accounts", accountList);
+
+        // Credit cards (Story 3.3) - every stored column, removed cards included (deleted_at filled)
+        List<Map<String, Object>> cardList = new ArrayList<>();
+        for (CreditCard card : creditCardRepository.findByUserIdOrderByCreatedAtAsc(userId)) {
+            Map<String, Object> cardMap = new LinkedHashMap<>();
+            cardMap.put("id", card.getId() != null ? card.getId().toString() : null);
+            cardMap.put("user_id", card.getUserId() != null ? card.getUserId().toString() : null);
+            cardMap.put("card_name", card.getCardName());
+            cardMap.put("bank_name", card.getBankName());
+            cardMap.put("card_limit", card.getCardLimit());
+            cardMap.put("due_day", card.getDueDay());
+            cardMap.put("created_at", card.getCreatedAt() != null ? card.getCreatedAt().toString() : null);
+            cardMap.put("updated_at", card.getUpdatedAt() != null ? card.getUpdatedAt().toString() : null);
+            cardMap.put("deleted_at", card.getDeletedAt() != null ? card.getDeletedAt().toString() : null);
+            cardList.add(cardMap);
+        }
+        data.put("credit_cards", cardList);
 
         return data;
     }

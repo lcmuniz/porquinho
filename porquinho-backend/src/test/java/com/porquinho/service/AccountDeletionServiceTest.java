@@ -12,6 +12,7 @@ import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountDeletionRepository;
 import com.porquinho.repository.SubscriptionRepository;
 import com.porquinho.repository.AccountRepository;
+import com.porquinho.repository.CreditCardRepository;
 import com.porquinho.repository.AuditLogRepository;
 import com.porquinho.repository.BillingTransactionRepository;
 import com.porquinho.repository.DataExportRepository;
@@ -77,6 +78,8 @@ class AccountDeletionServiceTest {
     private OnboardingProgressRepository onboardingProgressRepository;
     @Mock
     private AccountRepository accountRepository;
+    @Mock
+    private CreditCardRepository creditCardRepository;
 
     private AccountDeletionService service;
 
@@ -101,12 +104,14 @@ class AccountDeletionServiceTest {
             userRepository, userSessionRepository, auditLogRepository, dataExportRepository,
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
             supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService,
-            billingTransactionRepository, subscriptionService, onboardingProgressRepository, accountRepository, null);
+            billingTransactionRepository, subscriptionService, onboardingProgressRepository, accountRepository,
+            creditCardRepository, null);
         service = new AccountDeletionService(
             userRepository, userSessionRepository, auditLogRepository, dataExportRepository,
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
             supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService,
-            billingTransactionRepository, subscriptionService, onboardingProgressRepository, accountRepository, temp);
+            billingTransactionRepository, subscriptionService, onboardingProgressRepository, accountRepository,
+            creditCardRepository, temp);
         // After construction, swap in the real reference so self == service (recursive ref ok
         // for tests because Spring's proxy would similarly route the call into this same bean).
         try {
@@ -317,6 +322,11 @@ class AccountDeletionServiceTest {
         InOrder accountsOrder = inOrder(accountRepository, userRepository);
         accountsOrder.verify(accountRepository).deleteByUserId(userId);
         accountsOrder.verify(userRepository).deleteByIdNative(userId);
+
+        // Story 3.3: credit cards deleted BEFORE the user (FK credit_cards.user_id -> users.id)
+        InOrder cardsOrder = inOrder(creditCardRepository, userRepository);
+        cardsOrder.verify(creditCardRepository).deleteByUserId(userId);
+        cardsOrder.verify(userRepository).deleteByIdNative(userId);
 
         // Supabase admin called
         verify(supabaseAdminClient).deleteUser(userId);
