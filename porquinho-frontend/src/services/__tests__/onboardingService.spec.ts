@@ -17,6 +17,7 @@ import {
   getMyOnboarding,
   completeCategories,
   completeCustomization,
+  completeImport,
 } from '../onboardingService'
 
 const progress = { currentStep: 2, stepsCompleted: ['tutorial_skipped'], completed: false }
@@ -59,5 +60,10 @@ describe('onboardingService', () => {
     expect(mockPost).toHaveBeenCalledWith('/api/v1/onboarding/me/customization', {
       skipped: true,
     })
+  })
+
+  it('completeImport faz POST em /api/v1/onboarding/me/import sem corpo', async () => {
+    await expect(completeImport()).resolves.toEqual(progress)
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/onboarding/me/import')
   })
 })

@@ -16,7 +16,7 @@ import java.util.UUID;
 /**
  * Guided onboarding progress (Story 3.1: step 1, the envelope budget tutorial; Story 3.2: step 2,
  * the bank accounts; Story 3.3: step 3, the credit cards; Story 3.4: step 4, the suggested categories;
- * Story 3.5: step 5, customizing the categories).
+ * Story 3.5: step 5, customizing the categories; Story 3.6: step 6, the first import, still without upload).
  *
  * The row is created on the first read. Two tabs opening /onboarding at the same time race on the
  * insert: UNIQUE(user_id) lets only one win and the loser re-reads the winner's row. The insert runs
@@ -40,13 +40,17 @@ public class OnboardingService {
     public static final String STEP_CATEGORIES_CUSTOMIZED = "categories_customized";
     public static final String STEP_CUSTOMIZATION_SKIPPED = "customization_skipped";
     public static final String AUDIT_CUSTOMIZATION_COMPLETED = "onboarding_customization_completed";
+    public static final String STEP_IMPORT_SKIPPED = "import_skipped";
+    public static final String AUDIT_IMPORT_COMPLETED = "onboarding_import_completed";
 
     private static final int TUTORIAL_STEP = 1;
     private static final int ACCOUNTS_STEP = 2;
     private static final int CARDS_STEP = 3;
     private static final int CATEGORIES_STEP = 4;
     private static final int CUSTOMIZATION_STEP = 5;
-    private static final int NEXT_STEP_AFTER_CUSTOMIZATION = 6;
+    private static final int IMPORT_STEP = 6;
+    private static final int NEXT_STEP_AFTER_CUSTOMIZATION = IMPORT_STEP;
+    private static final int NEXT_STEP_AFTER_IMPORT = 7;
 
     private final OnboardingProgressRepository onboardingProgressRepository;
     private final AuditLogService auditLogService;
@@ -264,6 +268,40 @@ public class OnboardingService {
         OnboardingProgress saved = onboardingProgressRepository.save(progress);
 
         auditLogService.log(AUDIT_CUSTOMIZATION_COMPLETED, userId, ipAddress, "{\"skipped\":" + skipped + "}");
+        return saved;
+    }
+
+    /**
+     * Step 6 done (Story 3.6, version without upload): file import arrives with Epic 5, so the only way forward
+     * is "Importar depois". Records import_skipped (never first_import_completed), moves to step 7 and writes the
+     * onboarding_import_completed audit {skipped: true}. 409 while steps 1 to 5 are pending. Idempotent: once
+     * past step 6, repeating returns the current state with no change and no audit.
+     */
+    public OnboardingProgress completeImport(UUID userId, String ipAddress) {
+        getOrCreate(userId);
+        return self.applyImport(userId, ipAddress);
+    }
+
+    /** Transactional half of {@link #completeImport}; public only so the Spring proxy can apply @Transactional. */
+    @Transactional
+    public OnboardingProgress applyImport(UUID userId, String ipAddress) {
+        // Row lock (same as the other steps): it serializes concurrent POSTs, so only the first should advance
+        // and audit.
+        OnboardingProgress progress = onboardingProgressRepository.findByUserIdForUpdate(userId)
+            .orElseThrow(() -> new ResourceNotFoundException("Onboarding progress not found"));
+
+        if (progress.isCompleted() || progress.getCurrentStep() > IMPORT_STEP) {
+            return progress;
+        }
+        if (progress.getCurrentStep() < IMPORT_STEP) {
+            throw new ConflictException("Conclua os passos anteriores antes de importar suas transações.");
+        }
+
+        progress.addStep(STEP_IMPORT_SKIPPED);
+        progress.setCurrentStep(NEXT_STEP_AFTER_IMPORT);
+        OnboardingProgress saved = onboardingProgressRepository.save(progress);
+
+        auditLogService.log(AUDIT_IMPORT_COMPLETED, userId, ipAddress, "{\"skipped\":true}");
         return saved;
     }
 }

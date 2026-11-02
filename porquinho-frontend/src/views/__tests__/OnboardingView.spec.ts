@@ -14,6 +14,7 @@ const mockGetCategorySuggestions = vi.fn()
 const mockCompleteCustomization = vi.fn()
 const mockListCategories = vi.fn()
 const mockGetCategoryOptions = vi.fn()
+const mockCompleteImport = vi.fn()
 const mockPush = vi.fn()
 const mockReplace = vi.fn()
 
@@ -24,6 +25,7 @@ vi.mock('@/services/onboardingService', () => ({
   completeCards: (...args: unknown[]) => mockCompleteCards(...args),
   completeCategories: (...args: unknown[]) => mockCompleteCategories(...args),
   completeCustomization: (...args: unknown[]) => mockCompleteCustomization(...args),
+  completeImport: (...args: unknown[]) => mockCompleteImport(...args),
 }))
 
 vi.mock('@/services/categoryService', () => ({
@@ -95,6 +97,8 @@ const MY_CATEGORIES = [
   },
 ]
 
+const STEP_SIX_DONE = [...STEP_FIVE_DONE, 'categories_customized']
+
 function progress(overrides: Partial<OnboardingProgress> = {}): OnboardingProgress {
   return { currentStep: 1, stepsCompleted: [], completed: false, ...overrides }
 }
@@ -156,6 +160,11 @@ describe('OnboardingView', () => {
       .mockReset()
       .mockResolvedValue(
         progress({ currentStep: 6, stepsCompleted: [...STEP_FIVE_DONE, 'categories_customized'] }),
+      )
+    mockCompleteImport
+      .mockReset()
+      .mockResolvedValue(
+        progress({ currentStep: 7, stepsCompleted: [...STEP_SIX_DONE, 'import_skipped'] }),
       )
     mockPush.mockReset().mockResolvedValue(undefined)
     mockReplace.mockReset().mockResolvedValue(undefined)
@@ -325,16 +334,33 @@ describe('OnboardingView', () => {
     expect(mockListCategories).toHaveBeenCalledOnce()
   })
 
-  it('redireciona para o dashboard a partir do passo 6', async () => {
+  it('mostra o passo 6 (importação) com os 5 bancos e o aviso de que chega em breve', async () => {
     mockGetMyOnboarding.mockResolvedValue(
-      progress({ currentStep: 6, stepsCompleted: [...STEP_FIVE_DONE, 'categories_customized'] }),
+      progress({ currentStep: 6, stepsCompleted: STEP_SIX_DONE }),
+    )
+    const wrapper = await mountView()
+
+    expect(mockReplace).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+      'Passo 6 de 8',
+    )
+    expect(wrapper.text()).toContain('Importe suas transações')
+    for (const bank of ['Nubank', 'Banco do Brasil', 'Itaú', 'Bradesco', 'Caixa']) {
+      expect(wrapper.text()).toContain(bank)
+    }
+    expect(wrapper.text()).toContain('A importação de arquivos chega em breve.')
+  })
+
+  it('redireciona para o dashboard a partir do passo 7', async () => {
+    mockGetMyOnboarding.mockResolvedValue(
+      progress({ currentStep: 7, stepsCompleted: [...STEP_SIX_DONE, 'import_skipped'] }),
     )
     await mountView()
 
     expect(mockReplace).toHaveBeenCalledWith('/dashboard')
   })
 
-  it('concluir o passo 5 leva ao dashboard', async () => {
+  it('concluir o passo 5 leva ao passo 6 (importação)', async () => {
     mockGetMyOnboarding.mockResolvedValue(
       progress({ currentStep: 5, stepsCompleted: STEP_FIVE_DONE }),
     )
@@ -344,7 +370,68 @@ describe('OnboardingView', () => {
     await flushPromises()
 
     expect(mockCompleteCustomization).toHaveBeenCalledWith(false)
+    expect(mockPush).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Importe suas transações')
+    expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+      'Passo 6 de 8',
+    )
+  })
+
+  it('"Importar depois" no passo 6 leva ao dashboard', async () => {
+    mockGetMyOnboarding.mockResolvedValue(
+      progress({ currentStep: 6, stepsCompleted: STEP_SIX_DONE }),
+    )
+    const wrapper = await mountView()
+
+    await wrapper.get('[data-testid="import-later-button"]').trigger('click')
+    await flushPromises()
+
+    expect(mockCompleteImport).toHaveBeenCalledOnce()
     expect(mockPush).toHaveBeenCalledWith('/dashboard')
+  })
+
+  it('falha ao salvar o passo 6 mostra o erro e continua na tela', async () => {
+    mockGetMyOnboarding.mockResolvedValue(
+      progress({ currentStep: 6, stepsCompleted: STEP_SIX_DONE }),
+    )
+    mockCompleteImport.mockRejectedValue(new Error('Network Error'))
+    const wrapper = await mountView()
+
+    await wrapper.get('[data-testid="import-later-button"]').trigger('click')
+    await flushPromises()
+
+    expect(mockPush).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="onboarding-error"]').text()).toContain(
+      'Não foi possível salvar seu progresso',
+    )
+    expect(wrapper.text()).toContain('Importe suas transações')
+  })
+
+  it('Voltar no passo 6 mostra a personalização sem mexer no progresso; Próximo ali volta à importação', async () => {
+    mockGetMyOnboarding.mockResolvedValue(
+      progress({ currentStep: 6, stepsCompleted: STEP_SIX_DONE }),
+    )
+    const wrapper = await mountView()
+
+    await wrapper.get('[data-testid="back-button"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Personalize suas categorias')
+    expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+      'Passo 5 de 8',
+    )
+    expect(mockCompleteCustomization).not.toHaveBeenCalled()
+    expect(mockCompleteImport).not.toHaveBeenCalled()
+
+    // O POST da personalização é idempotente e devolve o passo 6
+    await wrapper.get('[data-testid="next-button"]').trigger('click')
+    await flushPromises()
+
+    expect(mockPush).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Importe suas transações')
+    expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+      'Passo 6 de 8',
+    )
   })
 
   it('Voltar no passo 5 mostra as categorias sugeridas; Próximo ali volta à personalização', async () => {

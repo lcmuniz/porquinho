@@ -18,7 +18,7 @@ import java.util.UUID;
 
 /**
  * Guided onboarding endpoints (Story 3.1: tutorial; Story 3.2: bank accounts; Story 3.3: credit cards; Story 3.4: categories;
- * Story 3.5: customizing the categories). The user always comes from the JWT.
+ * Story 3.5: customizing the categories; Story 3.6: first import, without upload). The user always comes from the JWT.
  * Not exempt from SubscriptionAccessFilter: the trial is already active during onboarding.
  */
 @RestController
@@ -107,6 +107,18 @@ public class OnboardingController {
         boolean skipped = body != null && Boolean.TRUE.equals(body.skipped());
         return ResponseEntity.ok(OnboardingProgressResponse.of(
             onboardingService.completeCustomization(userId, skipped, request.getRemoteAddr())));
+    }
+
+    /**
+     * Step 6 done (Story 3.6, no upload yet): "Importar depois" records import_skipped and moves to step 7.
+     * No body. 409 while on steps 1 to 5; idempotent from step 7 on.
+     */
+    @PostMapping("/me/import")
+    public ResponseEntity<OnboardingProgressResponse> completeImport(@AuthenticationPrincipal Jwt jwt,
+                                                                     HttpServletRequest request) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(OnboardingProgressResponse.of(
+            onboardingService.completeImport(userId, request.getRemoteAddr())));
     }
 
     public record StepRequest(Boolean skipped) { }
