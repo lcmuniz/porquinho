@@ -85,9 +85,6 @@
   summary: Deploy: configurar no Stripe Dashboard (test e live) Billing → Revenue recovery → Retries com agendamento customizado de 2 novas tentativas (3 e 10 dias depois da falha) e, após a última falha, **cancelar a assinatura**; o webhook endpoint precisa assinar também `invoice.payment_failed`.
   evidence: Sem o cancelamento ao final, o Stripe deixa a assinatura `past_due`/`unpaid`, nenhum `customer.subscription.deleted` chega e a linha fica em PAYMENT_FAILED com acesso indefinidamente (decisão 2A). Só o `.env.example` documenta isso hoje.
 
-- source_spec: none
-  summary: Ajustes menores da retro Epic 2: o front mostra o `detail` do 409 do checkout; o e-mail da última tentativa (`willRetry=false`) sai sem link; corrigir o comentário do `SubscriptionAccessFilter.java:24`.
-  evidence: Separado da correção de F1 na divisão de escopo; achados A5, F5 e A6 da retro.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-retro-epic2-f1-stop-billing-on-account-deletion.md`
   summary: Teste de integração com transação Spring real para os fluxos com `afterCommit` (exclusão de conta, cancel, reactivate, activate): chamar o Stripe só depois do commit externo e nunca em rollback.

@@ -281,7 +281,7 @@ class EmailServiceTest {
         assertThat(captor.getValue().getText())
             .contains("Esta foi a última tentativa de cobrança")
             .contains("Sem o pagamento, a assinatura será suspensa")
-            .contains("https://invoice.stripe.com/i/in_1")
+            .doesNotContain("https://invoice.stripe.com/i/in_1")
             .doesNotContain("Vamos tentar de novo")
             .doesNotContain("seu acesso continua");
     }
