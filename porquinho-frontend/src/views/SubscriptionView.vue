@@ -332,10 +332,11 @@ async function subscribe() {
     const { url } = await createCheckout()
     window.location.assign(url)
   } catch (err) {
-    const status = (err as { response?: { status?: number } }).response?.status
+    const response = (err as { response?: { status?: number; data?: { detail?: string } } }).response
+    // 409: o backend diz o motivo (ativa, cancelada com acesso, fatura pendente)
     error.value =
-      status === 409
-        ? 'Você já possui uma assinatura ativa.'
+      response?.status === 409
+        ? (response.data?.detail ?? 'Você já possui uma assinatura ativa.')
         : 'Pagamento indisponível no momento. Tente novamente em alguns minutos.'
     loading.value = false
   }

@@ -21,7 +21,8 @@ import java.util.UUID;
 
 /**
  * Blocks authenticated /api/v1/** requests with 402 Payment Required when the user has no
- * access (trial expired, no subscription, or status != ACTIVE). Story 2.1, AC4.
+ * access (SubscriptionService.hasAccess: no subscription, trial ended, cancelled past the paid period,
+ * EXPIRED or SUSPENDED; PAYMENT_FAILED keeps access). Story 2.1, AC4.
  *
  * Intentionally NOT a @Component: Spring Boot would register it as a global servlet filter,
  * including in the test profile. It is added to the security chain in SecurityConfig, after

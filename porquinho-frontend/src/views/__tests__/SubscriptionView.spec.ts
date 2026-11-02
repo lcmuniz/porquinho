@@ -105,6 +105,21 @@ describe('SubscriptionView', () => {
     expect(assign).not.toHaveBeenCalled()
   })
 
+  it('mostra o motivo do backend quando o 409 do checkout traz detail', async () => {
+    mockCreateCheckout.mockRejectedValue({
+      response: { status: 409, data: { detail: 'Seu último pagamento falhou. Pague a fatura pendente para manter sua assinatura.' } },
+    })
+    const wrapper = mountView()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="subscribe-button"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="checkout-error"]').text()).toBe(
+      'Seu último pagamento falhou. Pague a fatura pendente para manter sua assinatura.',
+    )
+  })
+
   it('confirma a assinatura e esconde o botão no retorno com ?status=sucesso', async () => {
     mockRoute.query = { status: 'sucesso' }
     const wrapper = mountView()

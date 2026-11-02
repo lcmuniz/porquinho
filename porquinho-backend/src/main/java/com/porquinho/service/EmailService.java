@@ -336,7 +336,7 @@ public class EmailService {
      * No failure reason (decision 3A): Stripe does not put the decline reason on the invoice.
      *
      * @param email Recipient email address
-     * @param payUrl Stripe hosted invoice page (or the subscription page as fallback)
+     * @param payUrl Stripe hosted invoice page (or the subscription page as fallback); left out when willRetry is false
      * @param willRetry false on the last attempt: no retry sentence, the subscription will be suspended
      */
     public void sendPaymentFailed(String email, String payUrl, boolean willRetry) {
@@ -350,14 +350,18 @@ public class EmailService {
                 ? "Vamos tentar de novo automaticamente nos próximos dias e, enquanto isso, seu acesso continua normal. " +
                   "Se todas as tentativas falharem, a assinatura será suspensa.\n\n"
                 : "Esta foi a última tentativa de cobrança. Sem o pagamento, a assinatura será suspensa " +
-                  "e o acesso ao app será bloqueado.\n\n";
+                  "e o acesso ao app será bloqueado. Você vai receber um e-mail com o link para assinar de novo.\n\n";
+            // Last attempt: the suspension voids this invoice seconds later, so its link would be dead;
+            // the suspension email carries the link to subscribe again
+            String payStep = willRetry
+                ? "Para resolver agora, pague a fatura com o cartão cadastrado ou com outro cartão:\n" + payUrl + "\n\n"
+                : "";
             SimpleMailMessage message = newMessage(email, "Porquinho - Pagamento falhou");
             message.setText(
                 "Olá!\n\n" +
                 "Não conseguimos cobrar a mensalidade da sua assinatura do Porquinho.\n\n" +
                 nextStep +
-                "Para resolver agora, pague a fatura com o cartão cadastrado ou com outro cartão:\n" +
-                payUrl + "\n\n" +
+                payStep +
                 "Atenciosamente,\nEquipe Porquinho"
             );
             mailSender.send(message);
