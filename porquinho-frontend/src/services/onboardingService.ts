@@ -25,3 +25,13 @@ export async function completeAccounts(skipped: boolean): Promise<OnboardingProg
   const response = await api.post<OnboardingProgress>('/api/v1/onboarding/me/accounts', { skipped })
   return response.data
 }
+
+/**
+ * Story 3.3: conclui o passo 3 (cartões, opcionais) e avança para o passo 4.
+ * Próximo sem cartões é permitido (grava `cards_skipped`). Pular não cria cartão.
+ * Idempotente a partir do passo 4.
+ */
+export async function completeCards(skipped: boolean): Promise<OnboardingProgress> {
+  const response = await api.post<OnboardingProgress>('/api/v1/onboarding/me/cards', { skipped })
+  return response.data
+}

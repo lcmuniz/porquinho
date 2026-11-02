@@ -1,6 +1,7 @@
 package com.porquinho.service;
 
 import com.porquinho.entity.Account;
+import com.porquinho.entity.CreditCard;
 import com.porquinho.entity.AuditLog;
 import com.porquinho.entity.BillingTransaction;
 import com.porquinho.entity.DataExport;
@@ -13,6 +14,7 @@ import com.porquinho.entity.UserSession;
 import com.porquinho.exception.RateLimitExceededException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountRepository;
+import com.porquinho.repository.CreditCardRepository;
 import com.porquinho.repository.AuditLogRepository;
 import com.porquinho.repository.BillingTransactionRepository;
 import com.porquinho.repository.DataExportRepository;
@@ -78,6 +80,9 @@ class DataExportServiceTest {
 
     @Mock
     private AccountRepository accountRepository;
+
+    @Mock
+    private CreditCardRepository creditCardRepository;
 
     @InjectMocks
     private DataExportService dataExportService;
@@ -342,6 +347,56 @@ class DataExportServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
 
         assertEquals(List.of(), dataExportService.collectUserData(userId).get("accounts"));
+    }
+
+    @Test
+    void collectUserDataShouldExportCreditCardsIncludingRemovedOnes() {
+        // Story 3.3: credit cards are exported with every stored column, removed (soft-deleted) ones included
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        OffsetDateTime created = OffsetDateTime.parse("2026-11-02T12:00:00Z");
+        CreditCard active = new CreditCard(userId, "Nubank Roxinho", "Nubank", new java.math.BigDecimal("5000.00"), 10);
+        active.setId(UUID.randomUUID());
+        active.setCreatedAt(created);
+        active.setUpdatedAt(created);
+        CreditCard removed = new CreditCard(userId, "Inter Gold", null, new java.math.BigDecimal("0.00"), 31);
+        removed.setId(UUID.randomUUID());
+        removed.setCreatedAt(created.plusMinutes(1));
+        removed.setUpdatedAt(created.plusMinutes(2));
+        removed.setDeletedAt(created.plusMinutes(2));
+        when(creditCardRepository.findByUserIdOrderByCreatedAtAsc(userId)).thenReturn(List.of(active, removed));
+
+        Map<String, Object> data = dataExportService.collectUserData(userId);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
+        assertTrue(((List<?>) metadata.get("exported_tables")).contains("credit_cards"));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("credit_cards");
+        assertEquals(2, rows.size());
+        Map<String, Object> first = rows.get(0);
+        assertExportsEveryColumn(CreditCard.class, first);
+        assertEquals(active.getId().toString(), first.get("id"));
+        assertEquals(userId.toString(), first.get("user_id"));
+        assertEquals("Nubank Roxinho", first.get("card_name"));
+        assertEquals("Nubank", first.get("bank_name"));
+        assertEquals(new java.math.BigDecimal("5000.00"), first.get("card_limit"));
+        assertEquals(10, first.get("due_day"));
+        assertEquals(created.toString(), first.get("created_at"));
+        assertNull(first.get("deleted_at"));
+
+        Map<String, Object> second = rows.get(1);
+        assertExportsEveryColumn(CreditCard.class, second);
+        assertNull(second.get("bank_name"));
+        assertEquals(31, second.get("due_day"));
+        assertEquals(created.plusMinutes(2).toString(), second.get("deleted_at"));
+    }
+
+    @Test
+    void collectUserDataShouldExportEmptyCreditCardListWhenNone() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+
+        assertEquals(List.of(), dataExportService.collectUserData(userId).get("credit_cards"));
     }
 
     /** LGPD portability: every mapped column of the entity appears as a key in the exported map. */

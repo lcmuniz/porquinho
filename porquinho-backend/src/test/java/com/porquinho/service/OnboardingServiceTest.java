@@ -28,6 +28,8 @@ class OnboardingServiceTest {
     private AuditLogService auditLogService;
     @Mock
     private AccountService accountService;
+    @Mock
+    private CreditCardService creditCardService;
 
     private OnboardingService service;
     private UUID userId;
@@ -35,8 +37,8 @@ class OnboardingServiceTest {
     @BeforeEach
     void setUp() {
         userId = UUID.randomUUID();
-        OnboardingService temp = new OnboardingService(repository, auditLogService, accountService, null);
-        service = new OnboardingService(repository, auditLogService, accountService, temp);
+        OnboardingService temp = new OnboardingService(repository, auditLogService, accountService, creditCardService, null);
+        service = new OnboardingService(repository, auditLogService, accountService, creditCardService, temp);
         // self == service: in production it is the Spring proxy of this same bean
         try {
             java.lang.reflect.Field selfField = OnboardingService.class.getDeclaredField("self");
@@ -271,5 +273,86 @@ class OnboardingServiceTest {
 
         assertEquals(1, progress.getCurrentStep());
         verifyNoInteractions(accountService, auditLogService);
+    }
+
+    // ---- Story 3.3: step 3, credit cards ----
+
+    private OnboardingProgress atCardsStep() {
+        OnboardingProgress progress = progressAt(3, OnboardingService.STEP_TUTORIAL_VIEWED, OnboardingService.STEP_ACCOUNTS_ADDED);
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+        when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+        return progress;
+    }
+
+    @Test
+    void nextWithCardsRecordsAddedMovesToStepFourAndAudits() {
+        OnboardingProgress progress = atCardsStep();
+        when(creditCardService.countActive(userId)).thenReturn(2L);
+        when(repository.save(progress)).thenReturn(progress);
+
+        OnboardingProgress result = service.completeCards(userId, false, "10.0.0.1");
+
+        assertEquals(4, result.getCurrentStep());
+        assertEquals(List.of("tutorial_viewed", "accounts_added", "cards_added"), result.getSteps());
+        verify(auditLogService).log("onboarding_cards_completed", userId, "10.0.0.1",
+            "{\"skipped\":false,\"cards\":2}");
+    }
+
+    @Test
+    void nextWithoutCardsIsAllowedAndRecordsSkipped() {
+        OnboardingProgress progress = atCardsStep();
+        when(creditCardService.countActive(userId)).thenReturn(0L);
+        when(repository.save(progress)).thenReturn(progress);
+
+        OnboardingProgress result = service.completeCards(userId, false, "10.0.0.1");
+
+        assertEquals(4, result.getCurrentStep());
+        assertEquals(List.of("tutorial_viewed", "accounts_added", "cards_skipped"), result.getSteps());
+        verify(auditLogService).log("onboarding_cards_completed", userId, "10.0.0.1",
+            "{\"skipped\":false,\"cards\":0}");
+    }
+
+    @Test
+    void skippingWithCardsRecordsSkipped() {
+        OnboardingProgress progress = atCardsStep();
+        when(creditCardService.countActive(userId)).thenReturn(1L);
+        when(repository.save(progress)).thenReturn(progress);
+
+        OnboardingProgress result = service.completeCards(userId, true, "10.0.0.1");
+
+        assertEquals(4, result.getCurrentStep());
+        assertEquals(List.of("tutorial_viewed", "accounts_added", "cards_skipped"), result.getSteps());
+        verify(auditLogService).log("onboarding_cards_completed", userId, "10.0.0.1",
+            "{\"skipped\":true,\"cards\":1}");
+        verify(creditCardService, never()).create(any(), any());
+    }
+
+    @Test
+    void cardsStepIsIdempotentFromStepFour() {
+        OnboardingProgress progress = progressAt(4, "tutorial_viewed", "accounts_added", "cards_added");
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+        when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+
+        OnboardingProgress result = service.completeCards(userId, true, "10.0.0.1");
+
+        assertEquals(4, result.getCurrentStep());
+        assertEquals(List.of("tutorial_viewed", "accounts_added", "cards_added"), result.getSteps());
+        verifyNoInteractions(creditCardService, auditLogService);
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void cardsStepIsAConflictOnStepsOneAndTwo() {
+        for (int step : new int[] {1, 2}) {
+            OnboardingProgress progress = progressAt(step);
+            when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+            when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+
+            assertThrows(ConflictException.class, () -> service.completeCards(userId, false, "10.0.0.1"));
+
+            assertEquals(step, progress.getCurrentStep());
+        }
+        verifyNoInteractions(creditCardService, auditLogService);
+        verify(repository, never()).save(any());
     }
 }

@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-13
-last_updated: 11-02-2026 09:40
+last_updated: 11-02-2026 15:50
 project: porquinho
 project_key: NOKEY
 tracking_system: file-system
@@ -81,7 +81,7 @@ development_status:
   epic-3: in-progress
   3-1-display-welcome-envelope-budget-concept-tutorial: done
   3-2-add-bank-accounts-during-setup: done
-  3-3-add-credit-cards-during-setup: backlog
+  3-3-add-credit-cards-during-setup: done
   3-4-suggest-initial-spending-categories: backlog
   3-5-customize-suggested-categories: backlog
   3-6-guided-first-transaction-import: backlog

@@ -1,7 +1,7 @@
 <template>
   <main class="min-h-screen bg-white px-4 py-8">
     <div class="mx-auto flex max-w-xl flex-col gap-8">
-      <OnboardingStepIndicator :step="stage === 'accounts' ? 2 : 1" />
+      <OnboardingStepIndicator :step="STAGE_STEP[stage]" />
 
       <!-- Carregando: skeleton em vez de spinner -->
       <div v-if="loading" data-testid="onboarding-skeleton" class="space-y-4" aria-busy="true">
@@ -15,7 +15,15 @@
       <AccountsStep
         v-else-if="stage === 'accounts'"
         @back="backToTutorial"
-        @done="onAccountsDone"
+        @done="goToStep"
+        @error="showError"
+      />
+
+      <!-- Passo 3: cartões de crédito (Story 3.3) -->
+      <CardsStep
+        v-else-if="stage === 'cards'"
+        @back="backToAccounts"
+        @done="goToStep"
         @error="showError"
       />
 
@@ -286,6 +294,7 @@ import {
   Wallet,
 } from 'lucide-vue-next'
 import AccountsStep from '@/components/onboarding/AccountsStep.vue'
+import CardsStep from '@/components/onboarding/CardsStep.vue'
 import OnboardingStepIndicator from '@/components/onboarding/OnboardingStepIndicator.vue'
 import { Button } from '@/components/ui/button'
 import {
@@ -300,11 +309,13 @@ import { completeTutorial, getMyOnboarding } from '@/services/onboardingService'
 import type { OnboardingProgress } from '@/types/onboarding'
 
 // Story 3.1: passo 1 do onboarding = boas-vindas (tela 0) + tutorial de 4 telas.
-// Story 3.2: passo 2 = contas bancárias. A tela sai do progresso salvo no servidor: passo 1 → tutorial,
-// passo 2 → contas, passo ≥ 3 ou concluído → DONE_ROUTE. Decisão B da 3.1 estendida: enquanto o passo 3
-// (Story 3.3) não existe, quem passa do passo 2 vai para o dashboard.
+// Story 3.2: passo 2 = contas bancárias. Story 3.3: passo 3 = cartões de crédito. A tela sai do progresso
+// salvo no servidor: passo 1 → tutorial, passo 2 → contas, passo 3 → cartões, passo ≥ 4 ou concluído →
+// DONE_ROUTE. Decisão B da 3.1 estendida: enquanto o passo 4 (Story 3.4) não existe, quem passa do passo 3
+// vai para o dashboard.
 const DONE_ROUTE = '/dashboard'
 const ACCOUNTS_STEP = 2
+const CARDS_STEP = 3
 const TUTORIAL_SCREENS = 4
 const TOAST_MS = 5000
 
@@ -340,7 +351,8 @@ const nextSteps = [
   { icon: Target, text: 'Criar sua reserva de emergência' },
 ]
 
-type Stage = 'tutorial' | 'accounts'
+type Stage = 'tutorial' | 'accounts' | 'cards'
+const STAGE_STEP: Record<Stage, number> = { tutorial: 1, accounts: ACCOUNTS_STEP, cards: CARDS_STEP }
 
 const router = useRouter()
 const loading = ref(true)
@@ -362,7 +374,7 @@ function showError(message: string) {
 }
 
 // Leitores de tela e teclado: a cada tela nova o foco vai para o título
-// (o AccountsStep foca o próprio título ao aparecer)
+// (o AccountsStep e o CardsStep focam o próprio título ao aparecer)
 watch([screen, stage], async () => {
   await nextTick()
   heading.value?.focus()
@@ -399,12 +411,12 @@ async function finish(skipped: boolean) {
   await goToStep(progress)
 }
 
-/** Passo 2 → contas; passo ≥ 3 ou onboarding concluído → DONE_ROUTE. */
+/** Passo 2 → contas; passo 3 → cartões; passo ≥ 4 ou onboarding concluído → DONE_ROUTE. */
 async function goToStep(progress: OnboardingProgress) {
-  if (progress.completed || progress.currentStep > ACCOUNTS_STEP) {
+  if (progress.completed || progress.currentStep > CARDS_STEP) {
     await router.push(DONE_ROUTE)
   } else {
-    stage.value = 'accounts'
+    stage.value = progress.currentStep === CARDS_STEP ? 'cards' : 'accounts'
   }
 }
 
@@ -414,18 +426,23 @@ function backToTutorial() {
   stage.value = 'tutorial'
 }
 
-async function onAccountsDone(progress: OnboardingProgress) {
-  await goToStep(progress)
+/**
+ * Voltar no passo 3: mostra as contas sem mexer no progresso salvo. O Próximo ali usa o POST
+ * idempotente das contas, que devolve o passo 3 e traz o usuário de volta aos cartões.
+ */
+function backToAccounts() {
+  stage.value = 'accounts'
 }
 
 onMounted(async () => {
   try {
     const progress = await getMyOnboarding()
-    if (progress.completed || progress.currentStep > ACCOUNTS_STEP) {
+    if (progress.completed || progress.currentStep > CARDS_STEP) {
       await router.replace(DONE_ROUTE)
       return
     }
     if (progress.currentStep === ACCOUNTS_STEP) stage.value = 'accounts'
+    if (progress.currentStep === CARDS_STEP) stage.value = 'cards'
   } catch {
     // Sem o progresso o tutorial ainda pode ser visto; salvar no fim tenta de novo
     showError(

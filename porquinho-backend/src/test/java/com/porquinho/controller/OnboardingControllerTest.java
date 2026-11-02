@@ -148,4 +148,50 @@ class OnboardingControllerTest {
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.detail").value("Adicione ao menos uma conta para continuar"));
     }
+
+    @Test
+    void postCardsReturnsStepFour() throws Exception {
+        when(onboardingService.completeCards(eq(userId), eq(false), anyString()))
+            .thenReturn(progress(4, "tutorial_viewed", "accounts_added", "cards_added"));
+
+        mockMvc.perform(post("/api/v1/onboarding/me/cards").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"skipped\":false}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.currentStep").value(4))
+            .andExpect(jsonPath("$.stepsCompleted[2]").value("cards_added"));
+    }
+
+    @Test
+    void postCardsSkippedPassesSkippedToTheService() throws Exception {
+        when(onboardingService.completeCards(eq(userId), eq(true), anyString()))
+            .thenReturn(progress(4, "tutorial_viewed", "accounts_added", "cards_skipped"));
+
+        mockMvc.perform(post("/api/v1/onboarding/me/cards").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"skipped\":true}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.stepsCompleted[2]").value("cards_skipped"));
+
+        verify(onboardingService).completeCards(eq(userId), eq(true), anyString());
+    }
+
+    @Test
+    void postCardsWithoutBodyCountsAsNotSkipped() throws Exception {
+        when(onboardingService.completeCards(eq(userId), eq(false), anyString()))
+            .thenReturn(progress(4, "tutorial_viewed", "accounts_added", "cards_skipped"));
+
+        mockMvc.perform(post("/api/v1/onboarding/me/cards").with(authentication(authToken)))
+            .andExpect(status().isOk());
+
+        verify(onboardingService).completeCards(eq(userId), eq(false), anyString());
+    }
+
+    @Test
+    void postCardsBeforeStepThreeIs409() throws Exception {
+        when(onboardingService.completeCards(eq(userId), eq(false), anyString()))
+            .thenThrow(new ConflictException("Conclua o tutorial e as contas antes de adicionar seus cartões."));
+
+        mockMvc.perform(post("/api/v1/onboarding/me/cards").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"skipped\":false}"))
+            .andExpect(status().isConflict());
+    }
 }

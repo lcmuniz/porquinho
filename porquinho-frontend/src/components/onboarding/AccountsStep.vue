@@ -223,6 +223,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ChevronLeft, ChevronRight, Landmark, Plus, Trash2 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { BANKS } from '@/lib/banks'
 import { formatBRL, parseBRL } from '@/lib/money'
 import { createAccount, deleteAccount, listAccounts } from '@/services/accountService'
 import { completeAccounts } from '@/services/onboardingService'
@@ -235,27 +236,6 @@ const emit = defineEmits<{
   done: [progress: OnboardingProgress]
   error: [message: string]
 }>()
-
-const BANKS = [
-  'Nubank',
-  'Itaú',
-  'Bradesco',
-  'Banco do Brasil',
-  'Caixa Econômica Federal',
-  'Santander',
-  'Inter',
-  'C6 Bank',
-  'BTG Pactual',
-  'PicPay',
-  'Mercado Pago',
-  'PagBank',
-  'Sicoob',
-  'Sicredi',
-  'Banrisul',
-  'Banco Original',
-  'Neon',
-  'Next',
-]
 
 const TYPE_LABEL: Record<AccountType, string> = {
   CHECKING: 'Conta corrente',
@@ -385,14 +365,14 @@ async function finish(skipped: boolean) {
   try {
     progress = await completeAccounts(skipped)
   } catch (err) {
+    // Só libera os botões no erro: no sucesso a tela troca, e liberar antes permitiria outro POST
+    finishing.value = null
     emit(
       'error',
       apiDetail(err) ??
         'Não foi possível salvar seu progresso. Verifique sua conexão e tente novamente.',
     )
     return
-  } finally {
-    finishing.value = null
   }
   emit('done', progress)
 }
