@@ -9,8 +9,8 @@ import java.util.UUID;
 
 /**
  * One snapshot of an account's current balance (Story 4.3, V20). Append-only: written on creation
- * ("initial") and when an edit changes the balance ("edit"); transactions, reconciliation and transfers
- * come later. Read by the balance chart of Story 4.7.
+ * ("initial"), when an edit changes the balance ("edit") and on both sides of a transfer ("transfer", Story 4.5);
+ * transactions and reconciliation come later. Read by the balance chart of Story 4.7.
  */
 @Entity
 @Table(name = "account_balance_history")
@@ -18,6 +18,7 @@ public class AccountBalanceHistory {
 
     public static final String EVENT_INITIAL = "initial";
     public static final String EVENT_EDIT = "edit";
+    public static final String EVENT_TRANSFER = "transfer";
 
     @Id
     @GeneratedValue(generator = "UUID")
@@ -42,6 +43,10 @@ public class AccountBalanceHistory {
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
+
+    /** The transfer that produced a "transfer" snapshot (Story 4.5, V22); null for the other events. */
+    @Column(name = "transfer_id", updatable = false)
+    private UUID transferId;
 
     public AccountBalanceHistory() {
     }
@@ -82,4 +87,7 @@ public class AccountBalanceHistory {
 
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }
+
+    public UUID getTransferId() { return transferId; }
+    public void setTransferId(UUID transferId) { this.transferId = transferId; }
 }

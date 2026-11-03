@@ -9,6 +9,7 @@ import com.porquinho.entity.AccountBalanceHistory;
 import com.porquinho.entity.Category;
 import com.porquinho.entity.CreditCard;
 import com.porquinho.entity.Goal;
+import com.porquinho.entity.Transfer;
 import com.porquinho.entity.AuditLog;
 import com.porquinho.entity.BillingTransaction;
 import com.porquinho.entity.DataExport;
@@ -26,6 +27,7 @@ import com.porquinho.repository.AuditLogRepository;
 import com.porquinho.repository.BillingTransactionRepository;
 import com.porquinho.repository.DataExportRepository;
 import com.porquinho.repository.OnboardingProgressRepository;
+import com.porquinho.repository.TransferRepository;
 import com.porquinho.repository.UserRepository;
 import com.porquinho.repository.UserSessionRepository;
 import org.slf4j.Logger;
@@ -70,6 +72,7 @@ public class DataExportService {
     private final CategoryRepository categoryRepository;
     private final GoalRepository goalRepository;
     private final AccountBalanceHistoryRepository accountBalanceHistoryRepository;
+    private final TransferRepository transferRepository;
     private final ObjectMapper objectMapper;
 
     @Value("${app.export.directory:./exports}")
@@ -96,7 +99,8 @@ public class DataExportService {
             CreditCardRepository creditCardRepository,
             CategoryRepository categoryRepository,
             GoalRepository goalRepository,
-            AccountBalanceHistoryRepository accountBalanceHistoryRepository) {
+            AccountBalanceHistoryRepository accountBalanceHistoryRepository,
+            TransferRepository transferRepository) {
         this.dataExportRepository = dataExportRepository;
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -112,6 +116,7 @@ public class DataExportService {
         this.categoryRepository = categoryRepository;
         this.goalRepository = goalRepository;
         this.accountBalanceHistoryRepository = accountBalanceHistoryRepository;
+        this.transferRepository = transferRepository;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
         this.objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
@@ -190,7 +195,7 @@ public class DataExportService {
         metadata.put("user_id", userId.toString());
         metadata.put("data_version", "1.0");
         metadata.put("exported_tables", List.of("users", "user_sessions", "audit_logs", "subscriptions",
-            "billing_transactions", "onboarding_progress", "accounts", "account_balance_history", "credit_cards", "categories", "goals"));
+            "billing_transactions", "onboarding_progress", "accounts", "account_balance_history", "transfers", "credit_cards", "categories", "goals"));
         data.put("metadata", metadata);
 
         // User profile (sanitized)
@@ -329,9 +334,28 @@ public class DataExportService {
             snapshotMap.put("snapshot_date", snapshot.getSnapshotDate() != null ? snapshot.getSnapshotDate().toString() : null);
             snapshotMap.put("created_by_event", snapshot.getCreatedByEvent());
             snapshotMap.put("created_at", snapshot.getCreatedAt() != null ? snapshot.getCreatedAt().toString() : null);
+            snapshotMap.put("transfer_id", snapshot.getTransferId() != null ? snapshot.getTransferId().toString() : null);
             historyList.add(snapshotMap);
         }
         data.put("account_balance_history", historyList);
+
+        // Transfers (Story 4.5) - every stored column, oldest first, removed transfers included; amount as a JSON number
+        List<Map<String, Object>> transferList = new ArrayList<>();
+        for (Transfer transfer : transferRepository.findByUserIdOrdered(userId)) {
+            Map<String, Object> transferMap = new LinkedHashMap<>();
+            transferMap.put("id", transfer.getId() != null ? transfer.getId().toString() : null);
+            transferMap.put("user_id", transfer.getUserId() != null ? transfer.getUserId().toString() : null);
+            transferMap.put("from_account_id",
+                transfer.getFromAccountId() != null ? transfer.getFromAccountId().toString() : null);
+            transferMap.put("to_account_id", transfer.getToAccountId() != null ? transfer.getToAccountId().toString() : null);
+            transferMap.put("amount", transfer.getAmount());
+            transferMap.put("transfer_date", transfer.getTransferDate() != null ? transfer.getTransferDate().toString() : null);
+            transferMap.put("description", transfer.getDescription());
+            transferMap.put("created_at", transfer.getCreatedAt() != null ? transfer.getCreatedAt().toString() : null);
+            transferMap.put("deleted_at", transfer.getDeletedAt() != null ? transfer.getDeletedAt().toString() : null);
+            transferList.add(transferMap);
+        }
+        data.put("transfers", transferList);
 
         // Credit cards (Story 3.3) - every stored column, removed cards included (deleted_at filled)
         List<Map<String, Object>> cardList = new ArrayList<>();

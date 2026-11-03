@@ -2,6 +2,7 @@ package com.porquinho.service;
 
 import com.porquinho.entity.Account;
 import com.porquinho.entity.AccountBalanceHistory;
+import com.porquinho.entity.Transfer;
 import com.porquinho.entity.Category;
 import com.porquinho.entity.CreditCard;
 import com.porquinho.entity.Goal;
@@ -17,6 +18,7 @@ import com.porquinho.entity.UserSession;
 import com.porquinho.exception.RateLimitExceededException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountBalanceHistoryRepository;
+import com.porquinho.repository.TransferRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.CategoryRepository;
 import com.porquinho.repository.CreditCardRepository;
@@ -98,6 +100,9 @@ class DataExportServiceTest {
 
     @Mock
     private AccountBalanceHistoryRepository accountBalanceHistoryRepository;
+
+    @Mock
+    private TransferRepository transferRepository;
 
     @InjectMocks
     private DataExportService dataExportService;
@@ -566,6 +571,58 @@ class DataExportServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
 
         assertEquals(List.of(), dataExportService.collectUserData(userId).get("account_balance_history"));
+    }
+
+    @Test
+    void collectUserDataShouldExportTheTransfers() {
+        // Story 4.5: every stored column of transfers, oldest first, removed ones included
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        OffsetDateTime created = OffsetDateTime.parse("2026-11-03T12:00:00Z");
+        UUID fromId = UUID.randomUUID();
+        UUID toId = UUID.randomUUID();
+        Transfer active = new Transfer(UUID.randomUUID(), userId, fromId, toId, new java.math.BigDecimal("200.00"),
+            java.time.LocalDate.parse("2026-11-03"), "Reserva");
+        active.setId(UUID.randomUUID());
+        active.setCreatedAt(created);
+        Transfer removed = new Transfer(UUID.randomUUID(), userId, toId, fromId, new java.math.BigDecimal("50.00"),
+            java.time.LocalDate.parse("2026-11-02"), null);
+        removed.setId(UUID.randomUUID());
+        removed.setCreatedAt(created.plusMinutes(5));
+        removed.setDeletedAt(created.plusMinutes(10));
+        when(transferRepository.findByUserIdOrdered(userId)).thenReturn(List.of(active, removed));
+
+        Map<String, Object> data = dataExportService.collectUserData(userId);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
+        assertTrue(((List<?>) metadata.get("exported_tables")).contains("transfers"));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("transfers");
+        assertEquals(2, rows.size());
+        Map<String, Object> first = rows.get(0);
+        assertExportsEveryColumn(Transfer.class, first);
+        assertEquals(active.getId().toString(), first.get("id"));
+        assertEquals(userId.toString(), first.get("user_id"));
+        assertEquals(fromId.toString(), first.get("from_account_id"));
+        assertEquals(toId.toString(), first.get("to_account_id"));
+        assertEquals(new java.math.BigDecimal("200.00"), first.get("amount"));
+        assertEquals("2026-11-03", first.get("transfer_date"));
+        assertEquals("Reserva", first.get("description"));
+        assertEquals(created.toString(), first.get("created_at"));
+        assertNull(first.get("deleted_at"));
+
+        Map<String, Object> second = rows.get(1);
+        assertExportsEveryColumn(Transfer.class, second);
+        assertNull(second.get("description"));
+        assertEquals(created.plusMinutes(10).toString(), second.get("deleted_at"));
+    }
+
+    @Test
+    void collectUserDataShouldExportEmptyTransferListWhenNone() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+
+        assertEquals(List.of(), dataExportService.collectUserData(userId).get("transfers"));
     }
 
     /** LGPD portability: every mapped column of the entity appears as a key in the exported map. */

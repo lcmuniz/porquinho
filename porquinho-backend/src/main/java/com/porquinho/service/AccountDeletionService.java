@@ -20,6 +20,7 @@ import com.porquinho.repository.BillingTransactionRepository;
 import com.porquinho.repository.DataExportRepository;
 import com.porquinho.repository.OnboardingProgressRepository;
 import com.porquinho.repository.SubscriptionRepository;
+import com.porquinho.repository.TransferRepository;
 import com.porquinho.repository.UserRepository;
 import com.porquinho.repository.UserSessionRepository;
 import org.slf4j.Logger;
@@ -87,6 +88,7 @@ public class AccountDeletionService {
     private final CategoryRepository categoryRepository;
     private final GoalRepository goalRepository;
     private final AccountBalanceHistoryRepository accountBalanceHistoryRepository;
+    private final TransferRepository transferRepository;
 
     @Value("${app.export.directory:./exports}")
     private String exportDirectory;
@@ -120,6 +122,7 @@ public class AccountDeletionService {
             CategoryRepository categoryRepository,
             GoalRepository goalRepository,
             AccountBalanceHistoryRepository accountBalanceHistoryRepository,
+            TransferRepository transferRepository,
             @Lazy AccountDeletionService self) {
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -141,6 +144,7 @@ public class AccountDeletionService {
         this.categoryRepository = categoryRepository;
         this.goalRepository = goalRepository;
         this.accountBalanceHistoryRepository = accountBalanceHistoryRepository;
+        this.transferRepository = transferRepository;
         this.self = self;
     }
 
@@ -346,6 +350,7 @@ public class AccountDeletionService {
         billingTransactionRepository.deleteByUserId(userId);  // Story 2.6: FKs to subscriptions and users
         subscriptionRepository.deleteByUserId(userId);  // Story 2.1: FK to users, must go first
         onboardingProgressRepository.deleteByUserId(userId);  // Story 3.1: FK to users
+        transferRepository.deleteByUserId(userId);  // Story 4.5: FKs to accounts and users (removed transfers too)
         accountBalanceHistoryRepository.deleteByUserId(userId);  // Story 4.3: FK to users (accounts FK cascades); explicit anyway
         accountRepository.deleteByUserId(userId);  // Story 3.2: FK to users (removed accounts too)
         creditCardRepository.deleteByUserId(userId);  // Story 3.3: FK to users (removed cards too)
