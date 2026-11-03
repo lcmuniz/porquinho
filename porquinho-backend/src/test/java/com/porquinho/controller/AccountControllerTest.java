@@ -3,6 +3,7 @@ package com.porquinho.controller;
 import com.porquinho.config.TestWebSecurityConfig;
 import com.porquinho.dto.CreateAccountRequest;
 import com.porquinho.entity.Account;
+import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.dto.UpdateAccountRequest;
 import com.porquinho.service.AccountService;
@@ -29,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -207,21 +209,89 @@ class AccountControllerTest {
     }
 
     @Test
-    void deleteReturns204() throws Exception {
+    void deleteReturns204AndPassesTheClientIp() throws Exception {
         UUID id = UUID.randomUUID();
 
-        mockMvc.perform(delete("/api/v1/accounts/" + id).with(authentication(authToken)))
+        mockMvc.perform(delete("/api/v1/accounts/" + id).with(authentication(authToken))
+                .with(req -> { req.setRemoteAddr("10.0.0.7"); return req; }))
             .andExpect(status().isNoContent());
 
-        verify(accountService).delete(userId, id);
+        verify(accountService).delete(userId, id, "10.0.0.7");
     }
 
     @Test
     void deleteOfAnotherUsersAccountIs404() throws Exception {
         UUID id = UUID.randomUUID();
-        doThrow(new ResourceNotFoundException("Conta não encontrada")).when(accountService).delete(userId, id);
+        doThrow(new ResourceNotFoundException("Conta não encontrada")).when(accountService).delete(eq(userId), eq(id), any());
 
         mockMvc.perform(delete("/api/v1/accounts/" + id).with(authentication(authToken)))
+            .andExpect(status().isNotFound());
+    }
+
+    // Story 4.4: last active account, removed list and restore
+
+    @Test
+    void deleteOfTheLastActiveAccountIs409WithTheMessage() throws Exception {
+        UUID id = UUID.randomUUID();
+        doThrow(new ConflictException("Mantenha ao menos uma conta ativa"))
+            .when(accountService).delete(eq(userId), eq(id), any());
+
+        mockMvc.perform(delete("/api/v1/accounts/" + id).with(authentication(authToken)))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.detail").value("Mantenha ao menos uma conta ativa"));
+    }
+
+    @Test
+    void getWithStatusDeletedListsTheRemovedAccounts() throws Exception {
+        Account removed = account("BB", "10.00");
+        removed.setDeletedAt(OffsetDateTime.parse("2026-11-03T12:00:00Z"));
+        when(accountService.listDeleted(userId)).thenReturn(List.of(removed));
+
+        mockMvc.perform(get("/api/v1/accounts").param("status", "deleted").with(authentication(authToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.length()").value(1))
+            .andExpect(jsonPath("$[0].accountName").value("BB"));
+
+        verify(accountService, never()).listActive(any());
+    }
+
+    @Test
+    void getWithAnUnknownStatusIs400() throws Exception {
+        mockMvc.perform(get("/api/v1/accounts").param("status", "all").with(authentication(authToken)))
+            .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(accountService);
+    }
+
+    @Test
+    void restoreReturns200WithTheRestoredAccount() throws Exception {
+        Account restored = account("BB", "10.00");
+        when(accountService.restore(eq(userId), eq(restored.getId()), any())).thenReturn(restored);
+
+        mockMvc.perform(post("/api/v1/accounts/" + restored.getId() + "/restore").with(authentication(authToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(restored.getId().toString()))
+            .andExpect(jsonPath("$.accountName").value("BB"));
+    }
+
+    @Test
+    void restorePassesTheClientIp() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(accountService.restore(userId, id, "10.0.0.7")).thenReturn(account("BB", "10.00"));
+
+        mockMvc.perform(post("/api/v1/accounts/" + id + "/restore").with(authentication(authToken))
+                .with(req -> { req.setRemoteAddr("10.0.0.7"); return req; }))
+            .andExpect(status().isOk());
+
+        verify(accountService).restore(userId, id, "10.0.0.7");
+    }
+
+    @Test
+    void restoreOfAnActiveForeignOrMissingAccountIs404() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(accountService.restore(eq(userId), eq(id), any())).thenThrow(new ResourceNotFoundException("Conta não encontrada"));
+
+        mockMvc.perform(post("/api/v1/accounts/" + id + "/restore").with(authentication(authToken)))
             .andExpect(status().isNotFound());
     }
 

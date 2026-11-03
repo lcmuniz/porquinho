@@ -52,6 +52,10 @@ public class Account {
     @Column(name = "deleted_at")
     private OffsetDateTime deletedAt;
 
+    /** Who removed the row (Story 4.4, V21); cleared together with deleted_at on restore. */
+    @Column(name = "deleted_by")
+    private UUID deletedBy;
+
     public Account() {
     }
 
@@ -108,4 +112,7 @@ public class Account {
 
     public OffsetDateTime getDeletedAt() { return deletedAt; }
     public void setDeletedAt(OffsetDateTime deletedAt) { this.deletedAt = deletedAt; }
+
+    public UUID getDeletedBy() { return deletedBy; }
+    public void setDeletedBy(UUID deletedBy) { this.deletedBy = deletedBy; }
 }

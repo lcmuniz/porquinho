@@ -30,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -216,21 +217,78 @@ class CreditCardControllerTest {
     }
 
     @Test
-    void deleteReturns204() throws Exception {
+    void deleteReturns204AndPassesTheClientIp() throws Exception {
         UUID id = UUID.randomUUID();
 
-        mockMvc.perform(delete("/api/v1/credit-cards/" + id).with(authentication(authToken)))
+        mockMvc.perform(delete("/api/v1/credit-cards/" + id).with(authentication(authToken))
+                .with(req -> { req.setRemoteAddr("10.0.0.7"); return req; }))
             .andExpect(status().isNoContent());
 
-        verify(creditCardService).delete(userId, id);
+        verify(creditCardService).delete(userId, id, "10.0.0.7");
     }
 
     @Test
     void deleteOfAnotherUsersCardIs404() throws Exception {
         UUID id = UUID.randomUUID();
-        doThrow(new ResourceNotFoundException("Cartão não encontrado")).when(creditCardService).delete(userId, id);
+        doThrow(new ResourceNotFoundException("Cartão não encontrado")).when(creditCardService).delete(eq(userId), eq(id), any());
 
         mockMvc.perform(delete("/api/v1/credit-cards/" + id).with(authentication(authToken)))
+            .andExpect(status().isNotFound());
+    }
+
+    // Story 4.4: removed list and restore
+
+    @Test
+    void getWithStatusDeletedListsTheRemovedCards() throws Exception {
+        CreditCard removed = card("Inter", "1000.00", 5);
+        removed.setDeletedAt(OffsetDateTime.parse("2026-11-03T12:00:00Z"));
+        when(creditCardService.listDeleted(userId)).thenReturn(List.of(removed));
+
+        mockMvc.perform(get("/api/v1/credit-cards").param("status", "deleted").with(authentication(authToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.length()").value(1))
+            .andExpect(jsonPath("$[0].cardName").value("Inter"));
+
+        verify(creditCardService, never()).listActive(any());
+    }
+
+    @Test
+    void getWithAnUnknownStatusIs400() throws Exception {
+        mockMvc.perform(get("/api/v1/credit-cards").param("status", "all").with(authentication(authToken)))
+            .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(creditCardService);
+    }
+
+    @Test
+    void restoreReturns200WithTheRestoredCard() throws Exception {
+        CreditCard restored = card("Inter", "1000.00", 5);
+        when(creditCardService.restore(eq(userId), eq(restored.getId()), any())).thenReturn(restored);
+
+        mockMvc.perform(post("/api/v1/credit-cards/" + restored.getId() + "/restore").with(authentication(authToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(restored.getId().toString()))
+            .andExpect(jsonPath("$.cardName").value("Inter"));
+    }
+
+    @Test
+    void restorePassesTheClientIp() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(creditCardService.restore(userId, id, "10.0.0.7")).thenReturn(card("Inter", "1000.00", 5));
+
+        mockMvc.perform(post("/api/v1/credit-cards/" + id + "/restore").with(authentication(authToken))
+                .with(req -> { req.setRemoteAddr("10.0.0.7"); return req; }))
+            .andExpect(status().isOk());
+
+        verify(creditCardService).restore(userId, id, "10.0.0.7");
+    }
+
+    @Test
+    void restoreOfAnActiveForeignOrMissingCardIs404() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(creditCardService.restore(eq(userId), eq(id), any())).thenThrow(new ResourceNotFoundException("Cartão não encontrado"));
+
+        mockMvc.perform(post("/api/v1/credit-cards/" + id + "/restore").with(authentication(authToken)))
             .andExpect(status().isNotFound());
     }
 

@@ -2,6 +2,7 @@ package com.porquinho.service;
 
 import com.porquinho.dto.CreateAccountRequest;
 import com.porquinho.entity.Account;
+import com.porquinho.entity.OnboardingProgress;
 import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountBalanceHistoryRepository;
@@ -30,7 +31,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * Story 3.2: accounts and onboarding step 2 against the real schema (PostgreSQL via Testcontainers, Flyway V16):
  * create/list/remove scoped by user, the step-2 matrix (next, skip with/without accounts, repeat, step 1),
  * the CHECK on account_type, the purge order and the export. Story 4.3: editing (PUT) and the balance
- * history (V20) against the same schema.
+ * history (V20) against the same schema. Story 4.4: audited removal, the last-active-account rule, deleted_by (V21),
+ * the removed list and restore, with the balance history preserved.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -122,7 +124,7 @@ class AccountOnboardingIntegrationTest {
         Account removed = add(userId, "Antiga", "0");
         add(newUser(), "De outra pessoa", "99.99");
 
-        accountService.delete(userId, removed.getId());
+        accountService.delete(userId, removed.getId(), "127.0.0.1");
         accountRepository.flush();
 
         assertThat(accountService.listActive(userId)).extracting(Account::getId).containsExactly(first.getId(), second.getId());
@@ -135,18 +137,18 @@ class AccountOnboardingIntegrationTest {
     void removingAnotherUsersOrAnAlreadyRemovedAccountIsNotFound() {
         Account foreign = add(newUser(), "De outra pessoa", "1.00");
         Account mine = add(userId, "Minha", "1.00");
-        accountService.delete(userId, mine.getId());
+        accountService.delete(userId, mine.getId(), "127.0.0.1");
 
-        assertThatThrownBy(() -> accountService.delete(userId, foreign.getId())).isInstanceOf(ResourceNotFoundException.class);
-        assertThatThrownBy(() -> accountService.delete(userId, mine.getId())).isInstanceOf(ResourceNotFoundException.class);
-        assertThatThrownBy(() -> accountService.delete(userId, UUID.randomUUID())).isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> accountService.delete(userId, foreign.getId(), "127.0.0.1")).isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> accountService.delete(userId, mine.getId(), "127.0.0.1")).isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> accountService.delete(userId, UUID.randomUUID(), "127.0.0.1")).isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
     void nextWithOnlyRemovedAccountsIsAConflict() {
         atStepTwo();
         Account account = add(userId, "Nubank", "1.00");
-        accountService.delete(userId, account.getId());
+        accountService.delete(userId, account.getId(), "127.0.0.1");
         accountRepository.flush();
 
         assertThatThrownBy(() -> onboardingService.completeAccounts(userId, false, "127.0.0.1"))
@@ -209,13 +211,15 @@ class AccountOnboardingIntegrationTest {
         // Purge SQL: removed accounts go too, other users keep theirs (the call order is in AccountDeletionServiceTest)
         Account removed = add(userId, "Removida", "1.00");
         add(userId, "Ativa", "1.00");
-        accountService.delete(userId, removed.getId());
+        accountService.delete(userId, removed.getId(), "127.0.0.1");
         accountRepository.flush();
         UUID other = newUser();
         add(other, "De outra pessoa", "1.00");
 
         assertThat(balanceHistoryRepository.deleteByUserId(userId)).isEqualTo(2);  // Story 4.3: one "initial" each
         assertThat(accountRepository.deleteByUserId(userId)).isEqualTo(2);
+        // Story 4.4: removing writes an audit; the real purge hard-deletes audit_logs before the user
+        jdbc.update("DELETE FROM audit_logs WHERE user_id = ?", userId);
         assertThat(userRepository.deleteByIdNative(userId)).isEqualTo(1);
         assertThat(accountService.countActive(other)).isEqualTo(1);
     }
@@ -232,7 +236,7 @@ class AccountOnboardingIntegrationTest {
     void exportIncludesActiveAndRemovedAccounts() {
         add(userId, "Nubank", "1234.56");
         Account removed = add(userId, "Antiga", "-150.00");
-        accountService.delete(userId, removed.getId());
+        accountService.delete(userId, removed.getId(), "127.0.0.1");
         accountRepository.flush();
 
         @SuppressWarnings("unchecked")
@@ -324,7 +328,7 @@ class AccountOnboardingIntegrationTest {
     void editingAnotherUsersARemovedOrAMissingAccountIsNotFoundAndChangesNothing() {
         Account foreign = add(newUser(), "De outra pessoa", "1.00");
         Account removed = add(userId, "Removida", "1.00");
-        accountService.delete(userId, removed.getId());
+        accountService.delete(userId, removed.getId(), "127.0.0.1");
         accountRepository.flush();
         UpdateAccountRequest request = new UpdateAccountRequest("Minha", null, "CHECKING", new BigDecimal("999.00"));
 
@@ -388,5 +392,129 @@ class AccountOnboardingIntegrationTest {
         assertThat(rows).extracting(r -> r.get("created_by_event")).containsExactly("initial", "edit");
         assertThat(rows).allSatisfy(r -> assertThat(r).containsEntry("account_id", account.getId().toString()));
         assertThat((BigDecimal) rows.get(1).get("balance_snapshot")).isEqualByComparingTo("250.00");
+    }
+
+    // Story 4.4: remove and restore
+
+    private void onboardingCompleted() {
+        OnboardingProgress progress = onboardingService.getOrCreate(userId);
+        progress.setCompleted(true);
+        onboardingProgressRepository.saveAndFlush(progress);
+    }
+
+    private Map<String, Object> deletionRow(UUID accountId) {
+        return jdbc.queryForMap("SELECT deleted_at, deleted_by FROM accounts WHERE id = ?", accountId);
+    }
+
+    private List<String> audits(String eventType) {
+        return jdbc.queryForList("SELECT metadata FROM audit_logs WHERE user_id = ? AND event_type = ?",
+            String.class, userId, eventType);
+    }
+
+    @Test
+    void removingBbWithTwoActiveAccountsFillsDeletedByAuditsAndKeepsTheHistory() throws Exception {
+        onboardingCompleted();
+        add(userId, "Nubank", "100.00");
+        Account bb = add(userId, "BB", "50.00");
+        Thread.sleep(5);  // distinct snapshot_date, so the history order is deterministic
+        accountService.update(userId, bb.getId(), new UpdateAccountRequest("BB", null, "CHECKING", new BigDecimal("75.00")));
+        accountRepository.flush();
+
+        accountService.delete(userId, bb.getId(), "127.0.0.1");
+        accountRepository.flush();
+
+        assertThat(accountService.listActive(userId)).extracting(Account::getAccountName).containsExactly("Nubank");
+        assertThat(deletionRow(bb.getId())).containsEntry("deleted_by", userId);
+        assertThat(deletionRow(bb.getId()).get("deleted_at")).isNotNull();
+        assertThat(audits("account_deleted")).singleElement().satisfies(m -> assertThat(m).contains(bb.getId().toString()));
+        assertThat(history(bb.getId())).extracting(r -> r.get("created_by_event")).containsExactly("initial", "edit");
+
+        Account restored = accountService.restore(userId, bb.getId(), "127.0.0.1");
+        accountRepository.flush();
+
+        assertThat(restored.getDeletedAt()).isNull();
+        assertThat(deletionRow(bb.getId())).containsEntry("deleted_at", null).containsEntry("deleted_by", null);
+        assertThat(accountService.listActive(userId)).extracting(Account::getAccountName).containsExactly("Nubank", "BB");
+        assertThat(audits("account_restored")).singleElement().satisfies(m -> assertThat(m).contains(bb.getId().toString()));
+        assertThat(history(bb.getId())).extracting(r -> r.get("created_by_event")).containsExactly("initial", "edit");
+    }
+
+    @Test
+    void removingTheLastActiveAccountAfterTheOnboardingIsAConflictAndKeepsItActive() {
+        onboardingCompleted();
+        Account only = add(userId, "Nubank", "100.00");
+        Account removed = add(userId, "Antiga", "1.00");
+        accountService.delete(userId, removed.getId(), "127.0.0.1");
+        accountRepository.flush();
+
+        assertThatThrownBy(() -> accountService.delete(userId, only.getId(), "127.0.0.1"))
+            .isInstanceOf(ConflictException.class)
+            .hasMessage("Mantenha ao menos uma conta ativa");
+        accountRepository.flush();
+
+        assertThat(deletionRow(only.getId())).containsEntry("deleted_at", null).containsEntry("deleted_by", null);
+        assertThat(audits("account_deleted")).hasSize(1);
+    }
+
+    @Test
+    void removingTheLastAccountDuringStepTwoIsAllowedAndSkippingCreatesMinhaContaPrincipal() {
+        atStepTwo();
+        Account only = add(userId, "Nubank", "100.00");
+
+        accountService.delete(userId, only.getId(), "127.0.0.1");
+        accountRepository.flush();
+        onboardingService.completeAccounts(userId, true, "127.0.0.1");
+        accountRepository.flush();
+
+        assertThat(accountService.listActive(userId)).extracting(Account::getAccountName)
+            .containsExactly(AccountService.DEFAULT_ACCOUNT_NAME);
+    }
+
+    @Test
+    void removedListIsScopedByUserMostRecentlyRemovedFirst() throws Exception {
+        Account first = add(userId, "Primeira", "1.00");
+        Account second = add(userId, "Segunda", "1.00");
+        add(userId, "Ativa", "1.00");
+        Account foreign = add(newUser(), "De outra pessoa", "1.00");
+        accountService.delete(userId, first.getId(), "127.0.0.1");
+        accountRepository.flush();
+        Thread.sleep(5);  // distinct deleted_at
+        accountService.delete(userId, second.getId(), "127.0.0.1");
+        accountService.delete(foreign.getUserId(), foreign.getId(), "127.0.0.1");
+        accountRepository.flush();
+
+        assertThat(accountService.listDeleted(userId)).extracting(Account::getAccountName)
+            .containsExactly("Segunda", "Primeira");
+    }
+
+    @Test
+    void restoringAnActiveAnotherUsersOrAMissingAccountIsNotFound() {
+        Account active = add(userId, "Ativa", "1.00");
+        Account foreign = add(newUser(), "De outra pessoa", "1.00");
+        accountService.delete(foreign.getUserId(), foreign.getId(), "127.0.0.1");
+        accountRepository.flush();
+
+        assertThatThrownBy(() -> accountService.restore(userId, active.getId(), "127.0.0.1"))
+            .isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> accountService.restore(userId, foreign.getId(), "127.0.0.1"))
+            .isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> accountService.restore(userId, UUID.randomUUID(), "127.0.0.1"))
+            .isInstanceOf(ResourceNotFoundException.class);
+        assertThat(deletionRow(foreign.getId()).get("deleted_at")).isNotNull();
+        assertThat(audits("account_restored")).isEmpty();
+    }
+
+    @Test
+    void exportIncludesDeletedBy() {
+        add(userId, "Nubank", "1.00");
+        Account removed = add(userId, "Antiga", "1.00");
+        accountService.delete(userId, removed.getId(), "127.0.0.1");
+        accountRepository.flush();
+
+        @SuppressWarnings("unchecked")
+        var rows = (List<Map<String, Object>>) dataExportService.collectUserData(userId).get("accounts");
+
+        assertThat(rows.get(0)).containsEntry("deleted_by", null);
+        assertThat(rows.get(1)).containsEntry("deleted_by", userId.toString());
     }
 }

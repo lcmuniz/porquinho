@@ -4,9 +4,12 @@ import com.porquinho.dto.CreateAccountRequest;
 import com.porquinho.dto.UpdateAccountRequest;
 import com.porquinho.entity.Account;
 import com.porquinho.entity.AccountBalanceHistory;
+import com.porquinho.entity.OnboardingProgress;
+import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.AccountRepository;
+import com.porquinho.repository.OnboardingProgressRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -15,11 +18,14 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -31,12 +37,19 @@ class AccountServiceTest {
     @Mock
     private AccountBalanceHistoryRepository balanceHistoryRepository;
 
+    @Mock
+    private OnboardingProgressRepository onboardingProgressRepository;
+
+    @Mock
+    private AuditLogService auditLogService;
+
     private AccountService service;
     private UUID userId;
 
     @BeforeEach
     void setUp() {
-        service = new AccountService(accountRepository, balanceHistoryRepository);
+        service = new AccountService(accountRepository, balanceHistoryRepository,
+            onboardingProgressRepository, auditLogService);
         userId = UUID.randomUUID();
     }
 
@@ -98,26 +111,119 @@ class AccountServiceTest {
         assertEquals(new BigDecimal("0.00"), saved.getCurrentBalance());
     }
 
-    @Test
-    void deleteSoftDeletesTheUsersAccount() {
-        UUID accountId = UUID.randomUUID();
-        Account account = new Account(userId, "Nubank", null, Account.AccountType.CHECKING, BigDecimal.TEN);
-        when(accountRepository.findByIdAndUserIdAndDeletedAtIsNull(accountId, userId)).thenReturn(Optional.of(account));
+    private Account active(String name) {
+        Account account = new Account(userId, name, null, Account.AccountType.CHECKING, BigDecimal.TEN);
+        account.setId(UUID.randomUUID());
+        return account;
+    }
 
-        service.delete(userId, accountId);
-
-        assertNotNull(account.getDeletedAt());
-        verify(accountRepository).save(account);
-        verify(accountRepository, never()).delete(any());
+    private void onboardingCompleted(boolean completed) {
+        OnboardingProgress progress = new OnboardingProgress(userId);
+        progress.setCompleted(completed);
+        when(onboardingProgressRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
     }
 
     @Test
-    void deletingSomeoneElsesOrMissingAccountIsNotFound() {
-        UUID accountId = UUID.randomUUID();
-        when(accountRepository.findByIdAndUserIdAndDeletedAtIsNull(accountId, userId)).thenReturn(Optional.empty());
+    void deleteSoftDeletesTheUsersAccountFillsDeletedByAndAudits() {
+        Account bb = active("BB");
+        Account nubank = active("Nubank");
+        when(accountRepository.findActiveByUserIdForUpdate(userId)).thenReturn(List.of(bb, nubank));
 
-        assertThrows(ResourceNotFoundException.class, () -> service.delete(userId, accountId));
+        service.delete(userId, bb.getId(), "10.0.0.1");
+
+        assertNotNull(bb.getDeletedAt());
+        assertEquals(userId, bb.getDeletedBy());
+        assertNull(nubank.getDeletedAt());
+        verify(accountRepository).save(bb);
+        verify(accountRepository, never()).delete(any());
+        verify(auditLogService).log("account_deleted", userId, "10.0.0.1", "{\"id\":\"" + bb.getId() + "\"}");
+        verifyNoInteractions(balanceHistoryRepository);
+    }
+
+    @Test
+    void deletingTheLastActiveAccountAfterTheOnboardingIsAConflict() {
+        Account bb = active("BB");
+        when(accountRepository.findActiveByUserIdForUpdate(userId)).thenReturn(List.of(bb));
+        onboardingCompleted(true);
+
+        ConflictException ex = assertThrows(ConflictException.class, () -> service.delete(userId, bb.getId(), "ip"));
+
+        assertEquals("Mantenha ao menos uma conta ativa", ex.getMessage());
+        // Same lock order as OnboardingService.applyAccounts: onboarding progress first, then the accounts
+        var order = inOrder(onboardingProgressRepository, accountRepository);
+        order.verify(onboardingProgressRepository).findByUserIdForUpdate(userId);
+        order.verify(accountRepository).findActiveByUserIdForUpdate(userId);
+        assertNull(bb.getDeletedAt());
+        assertNull(bb.getDeletedBy());
         verify(accountRepository, never()).save(any());
+        verifyNoInteractions(auditLogService);
+    }
+
+    @Test
+    void deletingTheLastActiveAccountDuringTheOnboardingIsAllowed() {
+        Account bb = active("BB");
+        when(accountRepository.findActiveByUserIdForUpdate(userId)).thenReturn(List.of(bb));
+        onboardingCompleted(false);
+
+        service.delete(userId, bb.getId(), "ip");
+
+        assertNotNull(bb.getDeletedAt());
+        verify(auditLogService).log(eq("account_deleted"), eq(userId), eq("ip"), anyString());
+    }
+
+    @Test
+    void deletingTheLastActiveAccountWithoutOnboardingProgressIsAllowed() {
+        Account bb = active("BB");
+        when(accountRepository.findActiveByUserIdForUpdate(userId)).thenReturn(List.of(bb));
+        when(onboardingProgressRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.empty());
+
+        service.delete(userId, bb.getId(), "ip");
+
+        assertNotNull(bb.getDeletedAt());
+    }
+
+    @Test
+    void deletingSomeoneElsesMissingOrRemovedAccountIsNotFound() {
+        when(accountRepository.findActiveByUserIdForUpdate(userId)).thenReturn(List.of(active("BB")));
+
+        assertThrows(ResourceNotFoundException.class, () -> service.delete(userId, UUID.randomUUID(), "ip"));
+        verify(accountRepository, never()).save(any());
+        verifyNoInteractions(auditLogService);
+    }
+
+    @Test
+    void listDeletedReturnsTheRemovedAccounts() {
+        List<Account> removed = List.of(active("BB"));
+        when(accountRepository.findDeletedByUserId(userId)).thenReturn(removed);
+
+        assertSame(removed, service.listDeleted(userId));
+    }
+
+    @Test
+    void restoreClearsDeletedAtAndDeletedByAndAudits() {
+        Account bb = active("BB");
+        bb.setDeletedAt(OffsetDateTime.now());
+        bb.setDeletedBy(userId);
+        when(accountRepository.findDeletedByIdForUpdate(bb.getId(), userId)).thenReturn(Optional.of(bb));
+        when(accountRepository.save(any(Account.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Account restored = service.restore(userId, bb.getId(), "ip");
+
+        assertSame(bb, restored);
+        assertNull(restored.getDeletedAt());
+        assertNull(restored.getDeletedBy());
+        verify(auditLogService).log("account_restored", userId, "ip", "{\"id\":\"" + bb.getId() + "\"}");
+        verifyNoInteractions(balanceHistoryRepository);
+    }
+
+    @Test
+    void restoringAnActiveSomeoneElsesOrMissingAccountIsNotFound() {
+        UUID accountId = UUID.randomUUID();
+        when(accountRepository.findDeletedByIdForUpdate(accountId, userId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> service.restore(userId, accountId, "ip"));
+        verify(accountRepository, never()).save(any());
+        verifyNoInteractions(auditLogService);
     }
 
     private AccountBalanceHistory savedSnapshot() {
@@ -129,7 +235,7 @@ class AccountServiceTest {
     private Account existing(UUID accountId, String balance) {
         Account account = new Account(userId, "Nubank", "Nubank", Account.AccountType.CHECKING, new BigDecimal(balance));
         account.setId(accountId);
-        when(accountRepository.findByIdAndUserIdAndDeletedAtIsNull(accountId, userId)).thenReturn(Optional.of(account));
+        when(accountRepository.findActiveByIdForUpdate(accountId, userId)).thenReturn(Optional.of(account));
         when(accountRepository.save(any(Account.class))).thenAnswer(inv -> inv.getArgument(0));
         return account;
     }
@@ -208,7 +314,7 @@ class AccountServiceTest {
     @Test
     void updatingSomeoneElsesMissingOrRemovedAccountIsNotFound() {
         UUID accountId = UUID.randomUUID();
-        when(accountRepository.findByIdAndUserIdAndDeletedAtIsNull(accountId, userId)).thenReturn(Optional.empty());
+        when(accountRepository.findActiveByIdForUpdate(accountId, userId)).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class, () -> service.update(userId, accountId,
             new UpdateAccountRequest("Nubank", null, "CHECKING", BigDecimal.ONE)));

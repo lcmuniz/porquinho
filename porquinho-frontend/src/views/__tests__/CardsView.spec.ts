@@ -8,11 +8,17 @@ import type { CreditCard } from '@/types/creditCard'
 const mockList = vi.fn()
 const mockCreate = vi.fn()
 const mockUpdate = vi.fn()
+const mockDelete = vi.fn()
+const mockListDeleted = vi.fn()
+const mockRestore = vi.fn()
 
 vi.mock('@/services/cardService', () => ({
   listCards: (...a: unknown[]) => mockList(...a),
   createCard: (...a: unknown[]) => mockCreate(...a),
   updateCard: (...a: unknown[]) => mockUpdate(...a),
+  deleteCard: (...a: unknown[]) => mockDelete(...a),
+  listDeletedCards: (...a: unknown[]) => mockListDeleted(...a),
+  restoreCard: (...a: unknown[]) => mockRestore(...a),
 }))
 
 function card(overrides: Partial<CreditCard> = {}): CreditCard {
@@ -602,5 +608,288 @@ describe('CardsView — editar cartão (Story 4.3)', () => {
 
     await openEdit(wrapper, 'c2')
     expect(wrapper.find('[data-testid="cards-notice"]').exists()).toBe(false)
+  })
+})
+
+describe('CardsView — remover e restaurar cartão (Story 4.4)', () => {
+  const removeDialog = () => document.body.querySelector('[data-testid="remove-card-dialog"]')
+  const bodyButton = (testid: string) =>
+    document.body.querySelector<HTMLButtonElement>(`[data-testid="${testid}"]`)!
+
+  async function openRemove(wrapper: Wrapper, id = 'c2') {
+    await wrapper.get(`[data-testid="remove-card-${id}"]`).trigger('click')
+    await flushPromises()
+  }
+
+  async function confirm() {
+    bodyButton('confirm-remove-card').click()
+    await flushPromises()
+  }
+
+  async function showRemoved(wrapper: Wrapper) {
+    await wrapper.get('[data-testid="toggle-removed-cards"]').setValue(true)
+    await flushPromises()
+  }
+
+  const roxinho = () =>
+    card({
+      id: 'c1',
+      cardName: 'Nubank Roxinho',
+      cardLimit: 5000,
+      createdAt: '2026-11-01T12:00:00Z',
+    })
+  const inter = () =>
+    card({
+      id: 'c2',
+      cardName: 'Inter Gold',
+      bankName: 'Inter',
+      cardLimit: 1000,
+      dueDay: 5,
+      createdAt: '2026-11-02T12:00:00Z',
+    })
+
+  beforeEach(() => {
+    mockList.mockReset().mockResolvedValue([roxinho(), inter()])
+    mockDelete.mockReset().mockResolvedValue(undefined)
+    mockListDeleted.mockReset().mockResolvedValue([])
+    mockRestore.mockReset()
+  })
+
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('cada cartão tem "Remover" com o nome no rótulo acessível e alvo de 44px', async () => {
+    const wrapper = await mountView()
+    const button = wrapper.get('[data-testid="remove-card-c2"]')
+    expect(button.text()).toBe('Remover')
+    expect(button.attributes('aria-label')).toBe('Remover Inter Gold')
+    expect(button.classes()).toContain('min-h-[44px]')
+    expect(button.classes()).toContain('min-w-[44px]')
+  })
+
+  it('remover: confirmação, some da lista, total recalculado e "Cartão removido"; restaurar o traz de volta', async () => {
+    const wrapper = await mountView()
+    expect(plain(wrapper.get('[data-testid="cards-total"]').text())).toBe('R$ 6.000,00')
+    await openRemove(wrapper)
+    expect(removeDialog()?.textContent).toContain('Remover Inter Gold?')
+    expect(removeDialog()?.textContent).toContain(
+      'O cartão some da lista, mas o histórico é preservado. Você pode restaurá-lo depois.',
+    )
+    await confirm()
+
+    expect(mockDelete).toHaveBeenCalledWith('c2')
+    expect(removeDialog()).toBeNull()
+    expect(wrapper.find('[data-testid="card-item-c2"]').exists()).toBe(false)
+    expect(plain(wrapper.get('[data-testid="cards-total"]').text())).toBe('R$ 5.000,00')
+    expect(wrapper.get('[data-testid="cards-success"]').text()).toBe('Cartão removido')
+
+    mockListDeleted.mockResolvedValue([inter()])
+    await showRemoved(wrapper)
+    const section = wrapper.get('[data-testid="removed-cards"]')
+    expect(section.get('h2').text()).toBe('Removidos')
+    const removedItem = section.get('[data-testid="removed-card-item-c2"]')
+    expect(removedItem.find('[data-testid="edit-card-c2"]').exists()).toBe(false)
+    const restoreButton = removedItem.get('[data-testid="restore-card-c2"]')
+    expect(restoreButton.attributes('aria-label')).toBe('Restaurar Inter Gold')
+    expect(plain(wrapper.get('[data-testid="cards-total"]').text())).toBe('R$ 5.000,00')
+
+    mockRestore.mockResolvedValue(inter())
+    await restoreButton.trigger('click')
+    await flushPromises()
+
+    expect(mockRestore).toHaveBeenCalledWith('c2')
+    expect(wrapper.find('[data-testid="removed-card-item-c2"]').exists()).toBe(false)
+    expect(
+      wrapper
+        .get('[data-testid="cards-list"]')
+        .findAll('li')
+        .map((li) => li.attributes('data-testid')),
+    ).toEqual(['card-item-c1', 'card-item-c2'])
+    expect(plain(wrapper.get('[data-testid="cards-total"]').text())).toBe('R$ 6.000,00')
+    expect(wrapper.get('[data-testid="cards-success"]').text()).toBe('Cartão restaurado')
+    await flushPromises()
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('edit-card-c2')
+  })
+
+  it('o único cartão pode ser removido (sem mínimo) e restaurado a partir do estado vazio', async () => {
+    mockList.mockResolvedValue([inter()])
+    const wrapper = await mountView()
+    await openRemove(wrapper)
+    await confirm()
+
+    expect(wrapper.find('[data-testid="cards-empty"]').exists()).toBe(true)
+    expect(wrapper.get('label').text()).toContain('Mostrar removidos')
+    mockListDeleted.mockResolvedValue([inter()])
+    await showRemoved(wrapper)
+    mockRestore.mockResolvedValue(inter())
+    await wrapper.get('[data-testid="restore-card-c2"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="cards-empty"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="card-item-c2"]').exists()).toBe(true)
+  })
+
+  it('falha ao remover mostra a mensagem no diálogo e o cartão continua na lista', async () => {
+    mockDelete.mockRejectedValue({ response: { status: 500, data: {} } })
+    const wrapper = await mountView()
+    await openRemove(wrapper)
+    await confirm()
+
+    expect(removeDialog()).not.toBeNull()
+    expect(bodyButton('remove-card-error').textContent).toContain(
+      'Não foi possível remover o cartão. Tente novamente.',
+    )
+    expect(wrapper.find('[data-testid="card-item-c2"]').exists()).toBe(true)
+  })
+
+  it('404 ao remover fecha o diálogo, avisa e recarrega as listas ativa e de removidos', async () => {
+    mockDelete.mockRejectedValue({ response: { status: 404, data: {} } })
+    mockList.mockResolvedValueOnce([roxinho(), inter()]).mockResolvedValueOnce([roxinho()])
+    mockListDeleted.mockResolvedValueOnce([]).mockResolvedValueOnce([inter()])
+    const wrapper = await mountView()
+    await showRemoved(wrapper)
+    await openRemove(wrapper)
+    await confirm()
+
+    expect(removeDialog()).toBeNull()
+    expect(mockList).toHaveBeenCalledTimes(2)
+    expect(mockListDeleted).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[data-testid="card-item-c2"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="removed-card-item-c2"]').exists()).toBe(true)
+    const notice = wrapper.get('[data-testid="cards-notice"]')
+    expect(notice.text()).toBe('Este cartão já foi removido ou não existe mais')
+    expect(notice.classes()).toContain('bg-amber-50')
+  })
+
+  it('cancelar não muda nada e devolve o foco ao "Remover" do cartão', async () => {
+    const wrapper = await mountView()
+    await openRemove(wrapper)
+    bodyButton('cancel-remove-card').click()
+    await flushPromises()
+
+    expect(mockDelete).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="card-item-c2"]').exists()).toBe(true)
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('remove-card-c2')
+  })
+
+  it('enquanto remove, os botões ficam travados e o diálogo não fecha', async () => {
+    let resolveDelete: () => void = () => {}
+    mockDelete.mockReturnValue(new Promise<void>((resolve) => (resolveDelete = resolve)))
+    const wrapper = await mountView()
+    await openRemove(wrapper)
+    await confirm()
+
+    expect(bodyButton('confirm-remove-card').disabled).toBe(true)
+    expect(bodyButton('confirm-remove-card').textContent?.trim()).toBe('Removendo...')
+    expect(bodyButton('cancel-remove-card').disabled).toBe(true)
+    wrapper.findAllComponents({ name: 'Dialog' })[1]!.vm.$emit('update:open', false)
+    await flushPromises()
+    expect(removeDialog()).not.toBeNull()
+
+    resolveDelete()
+    await flushPromises()
+    expect(removeDialog()).toBeNull()
+  })
+
+  it('falha ao carregar os removidos mostra "Tentar de novo"', async () => {
+    mockListDeleted.mockRejectedValueOnce(new Error('Network Error')).mockResolvedValue([inter()])
+    mockList.mockResolvedValue([roxinho()])
+    const wrapper = await mountView()
+    await showRemoved(wrapper)
+    expect(wrapper.get('[data-testid="removed-cards-load-error"]').attributes('role')).toBe('alert')
+    await wrapper.get('[data-testid="removed-cards-retry"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="removed-card-item-c2"]').exists()).toBe(true)
+  })
+
+  it('404 ao restaurar avisa e recarrega as listas (o cartão já foi restaurado em outra aba)', async () => {
+    mockListDeleted.mockResolvedValueOnce([inter()]).mockResolvedValueOnce([])
+    mockList.mockResolvedValueOnce([roxinho()]).mockResolvedValueOnce([roxinho(), inter()])
+    mockRestore.mockRejectedValue({ response: { status: 404, data: {} } })
+    const wrapper = await mountView()
+    await showRemoved(wrapper)
+    await wrapper.get('[data-testid="restore-card-c2"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="removed-card-item-c2"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="card-item-c2"]').exists()).toBe(true)
+    expect(plain(wrapper.get('[data-testid="cards-total"]').text())).toBe('R$ 6.000,00')
+    expect(wrapper.get('[data-testid="cards-notice"]').text()).toBe(
+      'Este cartão já foi restaurado ou não existe mais',
+    )
+  })
+
+  it('o cartão restaurado volta na ordem da criação', async () => {
+    mockList.mockResolvedValue([inter()])
+    const wrapper = await mountView()
+    mockListDeleted.mockResolvedValue([roxinho()])
+    await showRemoved(wrapper)
+    mockRestore.mockResolvedValue(roxinho())
+
+    await wrapper.get('[data-testid="restore-card-c1"]').trigger('click')
+    await flushPromises()
+
+    expect(
+      wrapper
+        .get('[data-testid="cards-list"]')
+        .findAll('li')
+        .map((li) => li.attributes('data-testid')),
+    ).toEqual(['card-item-c1', 'card-item-c2'])
+  })
+
+  it('remover com a seção aberta recarrega os removidos (o cartão aparece no topo)', async () => {
+    const old = card({ id: 'c9', cardName: 'Antigo' })
+    mockListDeleted.mockResolvedValueOnce([old]).mockResolvedValueOnce([inter(), old])
+    const wrapper = await mountView()
+    await showRemoved(wrapper)
+    await openRemove(wrapper)
+    await confirm()
+
+    expect(mockListDeleted).toHaveBeenCalledTimes(2)
+    expect(
+      wrapper
+        .get('[data-testid="removed-cards-list"]')
+        .findAll('li')
+        .map((li) => li.attributes('data-testid')),
+    ).toEqual(['removed-card-item-c2', 'removed-card-item-c9'])
+  })
+
+  it('uma resposta atrasada dos removidos não sobrescreve a mais recente', async () => {
+    let resolveFirst: (c: CreditCard[]) => void = () => {}
+    mockListDeleted
+      .mockReturnValueOnce(new Promise<CreditCard[]>((resolve) => (resolveFirst = resolve)))
+      .mockResolvedValueOnce([inter()])
+    const wrapper = await mountView()
+    await showRemoved(wrapper)
+    await wrapper.get('[data-testid="toggle-removed-cards"]').setValue(false)
+    await showRemoved(wrapper)
+
+    resolveFirst([card({ id: 'c9', cardName: 'Antigo' })])
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="removed-card-item-c2"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="removed-card-item-c9"]').exists()).toBe(false)
+  })
+
+  it('falha (500) ao restaurar mostra a mensagem, o item fica nos removidos e os botões voltam', async () => {
+    mockListDeleted.mockResolvedValue([inter(), card({ id: 'c9', cardName: 'Antigo' })])
+    mockRestore.mockRejectedValue({ response: { status: 500, data: {} } })
+    mockList.mockResolvedValue([roxinho()])
+    const wrapper = await mountView()
+    await showRemoved(wrapper)
+    await wrapper.get('[data-testid="restore-card-c2"]').trigger('click')
+    await flushPromises()
+
+    const notice = wrapper.get('[data-testid="cards-notice"]')
+    expect(notice.text()).toBe('Não foi possível restaurar o cartão. Tente novamente.')
+    expect(notice.attributes('role')).toBe('alert')
+    expect(wrapper.find('[data-testid="removed-card-item-c2"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="card-item-c2"]').exists()).toBe(false)
+    const restoreButton = wrapper.get('[data-testid="restore-card-c2"]')
+    expect(restoreButton.text()).toBe('Restaurar')
+    expect(restoreButton.attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('[data-testid="restore-card-c9"]').attributes('disabled')).toBeUndefined()
   })
 })
