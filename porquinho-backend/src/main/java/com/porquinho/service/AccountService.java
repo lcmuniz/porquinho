@@ -5,9 +5,12 @@ import com.porquinho.dto.UpdateAccountRequest;
 import com.porquinho.entity.Account;
 import com.porquinho.entity.AccountBalanceHistory;
 import com.porquinho.entity.Account.AccountType;
+import com.porquinho.entity.OnboardingProgress;
+import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.AccountRepository;
+import com.porquinho.repository.OnboardingProgressRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,10 +21,12 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Bank accounts (Story 3.2: create, list and remove; Story 4.3: edit; transfers come later in Epic 4).
+ * Bank accounts (Story 3.2: create, list and remove; Story 4.3: edit; Story 4.4: audited removal, removed list
+ * and restore; transfers come later in Epic 4).
  * The user id always comes from the JWT; another user's account behaves as if it did not exist.
  * Every change of the current balance made here is recorded in account_balance_history, in the same
- * transaction: "initial" on creation, "edit" when an edit changes the balance.
+ * transaction: "initial" on creation, "edit" when an edit changes the balance. Removing or restoring never touches
+ * that history.
  */
 @Service
 public class AccountService {
@@ -29,12 +34,22 @@ public class AccountService {
     /** Created when the user skips step 2 of the onboarding without any account. */
     public static final String DEFAULT_ACCOUNT_NAME = "Minha Conta Principal";
 
+    public static final String NOT_FOUND_MESSAGE = "Conta não encontrada";
+    public static final String LAST_ACTIVE_MESSAGE = "Mantenha ao menos uma conta ativa";
+    public static final String AUDIT_DELETED = "account_deleted";
+    public static final String AUDIT_RESTORED = "account_restored";
+
     private final AccountRepository accountRepository;
     private final AccountBalanceHistoryRepository balanceHistoryRepository;
+    private final OnboardingProgressRepository onboardingProgressRepository;
+    private final AuditLogService auditLogService;
 
-    public AccountService(AccountRepository accountRepository, AccountBalanceHistoryRepository balanceHistoryRepository) {
+    public AccountService(AccountRepository accountRepository, AccountBalanceHistoryRepository balanceHistoryRepository,
+                          OnboardingProgressRepository onboardingProgressRepository, AuditLogService auditLogService) {
         this.accountRepository = accountRepository;
         this.balanceHistoryRepository = balanceHistoryRepository;
+        this.onboardingProgressRepository = onboardingProgressRepository;
+        this.auditLogService = auditLogService;
     }
 
     /** Creates an account; the current balance starts equal to the initial balance. */
@@ -59,8 +74,8 @@ public class AccountService {
      */
     @Transactional
     public Account update(UUID userId, UUID accountId, UpdateAccountRequest request) {
-        Account account = accountRepository.findByIdAndUserIdAndDeletedAtIsNull(accountId, userId)
-            .orElseThrow(() -> new ResourceNotFoundException("Conta não encontrada"));
+        Account account = accountRepository.findActiveByIdForUpdate(accountId, userId)
+            .orElseThrow(() -> new ResourceNotFoundException(NOT_FOUND_MESSAGE));
         BigDecimal balance = request.currentBalance().setScale(2, RoundingMode.UNNECESSARY);
         boolean balanceChanged = account.getCurrentBalance().compareTo(balance) != 0;
         account.setAccountName(request.accountName());
@@ -96,12 +111,54 @@ public class AccountService {
         return accountRepository.countByUserIdAndDeletedAtIsNull(userId);
     }
 
-    /** Soft delete. 404 when the account does not exist, belongs to someone else or was already removed. */
+    /** The user's removed accounts, most recently removed first (Story 4.4). */
+    @Transactional(readOnly = true)
+    public List<Account> listDeleted(UUID userId) {
+        return accountRepository.findDeletedByUserId(userId);
+    }
+
+    /**
+     * Soft delete (Story 4.4): fills deleted_at and deleted_by and writes the "account_deleted" audit. 404 when the
+     * account does not exist, belongs to someone else or was already removed. Once the onboarding is completed the
+     * user must keep at least one active account (409); during step 2 every account may still be removed, since
+     * skipping the step creates "Minha Conta Principal". Locks the onboarding progress first and then the active
+     * accounts (the same order as OnboardingService.applyAccounts), so two concurrent removals cannot both pass the
+     * check and a removal cannot interleave with completing step 2.
+     */
     @Transactional
-    public void delete(UUID userId, UUID accountId) {
-        Account account = accountRepository.findByIdAndUserIdAndDeletedAtIsNull(accountId, userId)
-            .orElseThrow(() -> new ResourceNotFoundException("Conta não encontrada"));
+    public void delete(UUID userId, UUID accountId, String ipAddress) {
+        boolean onboardingCompleted = onboardingProgressRepository.findByUserIdForUpdate(userId)
+            .map(OnboardingProgress::isCompleted).orElse(false);
+        List<Account> active = accountRepository.findActiveByUserIdForUpdate(userId);
+        Account account = active.stream()
+            .filter(a -> a.getId().equals(accountId))
+            .findFirst()
+            .orElseThrow(() -> new ResourceNotFoundException(NOT_FOUND_MESSAGE));
+        if (active.size() <= 1 && onboardingCompleted) {
+            throw new ConflictException(LAST_ACTIVE_MESSAGE);
+        }
         account.setDeletedAt(OffsetDateTime.now());
+        account.setDeletedBy(userId);
         accountRepository.save(account);
+        auditLogService.log(AUDIT_DELETED, userId, ipAddress, idMetadata(accountId));
+    }
+
+    /**
+     * Restore (Story 4.4): clears deleted_at and deleted_by and writes the "account_restored" audit. 404 when the
+     * account does not exist, belongs to someone else or is not removed.
+     */
+    @Transactional
+    public Account restore(UUID userId, UUID accountId, String ipAddress) {
+        Account account = accountRepository.findDeletedByIdForUpdate(accountId, userId)
+            .orElseThrow(() -> new ResourceNotFoundException(NOT_FOUND_MESSAGE));
+        account.setDeletedAt(null);
+        account.setDeletedBy(null);
+        Account saved = accountRepository.save(account);
+        auditLogService.log(AUDIT_RESTORED, userId, ipAddress, idMetadata(accountId));
+        return saved;
+    }
+
+    static String idMetadata(UUID id) {
+        return "{\"id\":\"" + id + "\"}";
     }
 }

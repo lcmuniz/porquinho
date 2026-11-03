@@ -12,6 +12,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -25,12 +27,15 @@ class CreditCardServiceTest {
     @Mock
     private CreditCardRepository creditCardRepository;
 
+    @Mock
+    private AuditLogService auditLogService;
+
     private CreditCardService service;
     private UUID userId;
 
     @BeforeEach
     void setUp() {
-        service = new CreditCardService(creditCardRepository);
+        service = new CreditCardService(creditCardRepository, auditLogService);
         userId = UUID.randomUUID();
     }
 
@@ -68,33 +73,76 @@ class CreditCardServiceTest {
         assertEquals(31, saved.getDueDay());
     }
 
-    @Test
-    void deleteSoftDeletesTheUsersCard() {
-        UUID cardId = UUID.randomUUID();
+    private CreditCard card() {
         CreditCard card = new CreditCard(userId, "Nubank", null, BigDecimal.TEN, 5);
-        when(creditCardRepository.findByIdAndUserIdAndDeletedAtIsNull(cardId, userId)).thenReturn(Optional.of(card));
+        card.setId(UUID.randomUUID());
+        return card;
+    }
 
-        service.delete(userId, cardId);
+    @Test
+    void deleteSoftDeletesTheUsersCardFillsDeletedByAndAudits() {
+        // No minimum: the only active card can be removed
+        CreditCard card = card();
+        when(creditCardRepository.findActiveByIdForUpdate(card.getId(), userId)).thenReturn(Optional.of(card));
+
+        service.delete(userId, card.getId(), "10.0.0.1");
 
         assertNotNull(card.getDeletedAt());
+        assertEquals(userId, card.getDeletedBy());
         verify(creditCardRepository).save(card);
         verify(creditCardRepository, never()).delete(any());
+        verify(auditLogService).log("card_deleted", userId, "10.0.0.1", "{\"id\":\"" + card.getId() + "\"}");
     }
 
     @Test
     void deletingSomeoneElsesMissingOrRemovedCardIsNotFound() {
         UUID cardId = UUID.randomUUID();
-        when(creditCardRepository.findByIdAndUserIdAndDeletedAtIsNull(cardId, userId)).thenReturn(Optional.empty());
+        when(creditCardRepository.findActiveByIdForUpdate(cardId, userId)).thenReturn(Optional.empty());
 
-        assertThrows(ResourceNotFoundException.class, () -> service.delete(userId, cardId));
+        assertThrows(ResourceNotFoundException.class, () -> service.delete(userId, cardId, "ip"));
         verify(creditCardRepository, never()).save(any());
+        verifyNoInteractions(auditLogService);
+    }
+
+    @Test
+    void listDeletedReturnsTheRemovedCards() {
+        List<CreditCard> removed = List.of(card());
+        when(creditCardRepository.findDeletedByUserId(userId)).thenReturn(removed);
+
+        assertSame(removed, service.listDeleted(userId));
+    }
+
+    @Test
+    void restoreClearsDeletedAtAndDeletedByAndAudits() {
+        CreditCard card = card();
+        card.setDeletedAt(OffsetDateTime.now());
+        card.setDeletedBy(userId);
+        when(creditCardRepository.findDeletedByIdForUpdate(card.getId(), userId)).thenReturn(Optional.of(card));
+        when(creditCardRepository.save(any(CreditCard.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        CreditCard restored = service.restore(userId, card.getId(), "ip");
+
+        assertSame(card, restored);
+        assertNull(restored.getDeletedAt());
+        assertNull(restored.getDeletedBy());
+        verify(auditLogService).log("card_restored", userId, "ip", "{\"id\":\"" + card.getId() + "\"}");
+    }
+
+    @Test
+    void restoringAnActiveSomeoneElsesOrMissingCardIsNotFound() {
+        UUID cardId = UUID.randomUUID();
+        when(creditCardRepository.findDeletedByIdForUpdate(cardId, userId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> service.restore(userId, cardId, "ip"));
+        verify(creditCardRepository, never()).save(any());
+        verifyNoInteractions(auditLogService);
     }
 
     @Test
     void updateChangesNameBankLimitAndDueDay() {
         UUID cardId = UUID.randomUUID();
         CreditCard card = new CreditCard(userId, "Nubank", "Nubank", new BigDecimal("5000.00"), 10);
-        when(creditCardRepository.findByIdAndUserIdAndDeletedAtIsNull(cardId, userId)).thenReturn(Optional.of(card));
+        when(creditCardRepository.findActiveByIdForUpdate(cardId, userId)).thenReturn(Optional.of(card));
         when(creditCardRepository.save(any(CreditCard.class))).thenAnswer(inv -> inv.getArgument(0));
 
         CreditCard updated = service.update(userId, cardId,
@@ -112,7 +160,7 @@ class CreditCardServiceTest {
     @Test
     void updatingSomeoneElsesMissingOrRemovedCardIsNotFound() {
         UUID cardId = UUID.randomUUID();
-        when(creditCardRepository.findByIdAndUserIdAndDeletedAtIsNull(cardId, userId)).thenReturn(Optional.empty());
+        when(creditCardRepository.findActiveByIdForUpdate(cardId, userId)).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class, () -> service.update(userId, cardId,
             new CreateCreditCardRequest("Nubank", null, BigDecimal.ONE, BigDecimal.ONE)));

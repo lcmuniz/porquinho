@@ -8,11 +8,17 @@ import type { Account } from '@/types/account'
 const mockList = vi.fn()
 const mockCreate = vi.fn()
 const mockUpdate = vi.fn()
+const mockDelete = vi.fn()
+const mockListDeleted = vi.fn()
+const mockRestore = vi.fn()
 
 vi.mock('@/services/accountService', () => ({
   listAccounts: (...a: unknown[]) => mockList(...a),
   createAccount: (...a: unknown[]) => mockCreate(...a),
   updateAccount: (...a: unknown[]) => mockUpdate(...a),
+  deleteAccount: (...a: unknown[]) => mockDelete(...a),
+  listDeletedAccounts: (...a: unknown[]) => mockListDeleted(...a),
+  restoreAccount: (...a: unknown[]) => mockRestore(...a),
 }))
 
 function account(overrides: Partial<Account> = {}): Account {
@@ -640,5 +646,351 @@ describe('AccountsView — editar conta (Story 4.3)', () => {
 
     await openEdit(wrapper, 'a2')
     expect(wrapper.find('[data-testid="accounts-notice"]').exists()).toBe(false)
+  })
+})
+
+describe('AccountsView — remover e restaurar conta (Story 4.4)', () => {
+  const removeDialog = () => document.body.querySelector('[data-testid="remove-account-dialog"]')
+  const bodyButton = (testid: string) =>
+    document.body.querySelector<HTMLButtonElement>(`[data-testid="${testid}"]`)!
+
+  async function openRemove(wrapper: Wrapper, id = 'a2') {
+    await wrapper.get(`[data-testid="remove-account-${id}"]`).trigger('click')
+    await flushPromises()
+  }
+
+  async function confirm() {
+    bodyButton('confirm-remove-account').click()
+    await flushPromises()
+  }
+
+  async function showRemoved(wrapper: Wrapper) {
+    await wrapper.get('[data-testid="toggle-removed-accounts"]').setValue(true)
+    await flushPromises()
+  }
+
+  const nubank = () =>
+    account({
+      id: 'a1',
+      accountName: 'Nubank',
+      currentBalance: 100,
+      createdAt: '2026-11-01T12:00:00Z',
+    })
+  const bb = () =>
+    account({
+      id: 'a2',
+      accountName: 'BB',
+      bankName: 'Banco do Brasil',
+      currentBalance: 50,
+      createdAt: '2026-11-02T12:00:00Z',
+    })
+
+  beforeEach(() => {
+    mockList.mockReset().mockResolvedValue([nubank(), bb()])
+    mockDelete.mockReset().mockResolvedValue(undefined)
+    mockListDeleted.mockReset().mockResolvedValue([])
+    mockRestore.mockReset()
+  })
+
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('cada conta tem "Remover" com o nome no rótulo acessível e alvo de 44px', async () => {
+    const wrapper = await mountView()
+    const button = wrapper.get('[data-testid="remove-account-a2"]')
+    expect(button.text()).toBe('Remover')
+    expect(button.attributes('aria-label')).toBe('Remover BB')
+    expect(button.classes()).toContain('min-h-[44px]')
+    expect(button.classes()).toContain('min-w-[44px]')
+  })
+
+  it('abre a confirmação com o nome e o texto do histórico preservado', async () => {
+    const wrapper = await mountView()
+    await openRemove(wrapper)
+
+    expect(removeDialog()?.textContent).toContain('Remover BB?')
+    expect(removeDialog()?.textContent).toContain(
+      'A conta some da lista, mas o histórico é preservado. Você pode restaurá-la depois.',
+    )
+    expect(bodyButton('cancel-remove-account').textContent?.trim()).toBe('Cancelar')
+    expect(bodyButton('confirm-remove-account').textContent?.trim()).toBe('Remover')
+    expect(mockDelete).not.toHaveBeenCalled()
+  })
+
+  it('remover "BB": some da lista, total recalculado e "Conta removida"; restaurar a traz de volta', async () => {
+    const wrapper = await mountView()
+    expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 150,00')
+    await openRemove(wrapper)
+    await confirm()
+
+    expect(mockDelete).toHaveBeenCalledWith('a2')
+    expect(removeDialog()).toBeNull()
+    expect(wrapper.find('[data-testid="account-item-a2"]').exists()).toBe(false)
+    expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 100,00')
+    const success = wrapper.get('[data-testid="accounts-success"]')
+    expect(success.attributes('role')).toBe('status')
+    expect(success.text()).toBe('Conta removida')
+    await flushPromises()
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('open-add-account')
+
+    // "Mostrar removidas" carrega a seção com "BB" e "Restaurar"
+    mockListDeleted.mockResolvedValue([bb()])
+    await showRemoved(wrapper)
+    expect(mockListDeleted).toHaveBeenCalledOnce()
+    const section = wrapper.get('[data-testid="removed-accounts"]')
+    expect(section.get('h2').text()).toBe('Removidas')
+    const removedItem = section.get('[data-testid="removed-account-item-a2"]')
+    expect(removedItem.text()).toContain('BB')
+    expect(removedItem.find('[data-testid="edit-account-a2"]').exists()).toBe(false)
+    const restoreButton = removedItem.get('[data-testid="restore-account-a2"]')
+    expect(restoreButton.text()).toBe('Restaurar')
+    expect(restoreButton.attributes('aria-label')).toBe('Restaurar BB')
+    expect(restoreButton.classes()).toContain('min-h-[44px]')
+    // Removidas não entram no total
+    expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 100,00')
+
+    mockRestore.mockResolvedValue(bb())
+    await restoreButton.trigger('click')
+    await flushPromises()
+
+    expect(mockRestore).toHaveBeenCalledWith('a2')
+    expect(wrapper.find('[data-testid="removed-account-item-a2"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="removed-accounts-empty"]').text()).toBe(
+      'Nenhuma conta removida',
+    )
+    expect(
+      wrapper
+        .get('[data-testid="accounts-list"]')
+        .findAll('li')
+        .map((li) => li.attributes('data-testid')),
+    ).toEqual(['account-item-a1', 'account-item-a2'])
+    expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 150,00')
+    expect(wrapper.get('[data-testid="accounts-success"]').text()).toBe('Conta restaurada')
+    await flushPromises()
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('edit-account-a2')
+  })
+
+  it('a conta restaurada volta na ordem da criação', async () => {
+    mockList.mockResolvedValue([bb()])
+    const wrapper = await mountView()
+    mockListDeleted.mockResolvedValue([nubank()])
+    await showRemoved(wrapper)
+    mockRestore.mockResolvedValue(nubank())
+
+    await wrapper.get('[data-testid="restore-account-a1"]').trigger('click')
+    await flushPromises()
+
+    expect(
+      wrapper
+        .get('[data-testid="accounts-list"]')
+        .findAll('li')
+        .map((li) => li.attributes('data-testid')),
+    ).toEqual(['account-item-a1', 'account-item-a2'])
+  })
+
+  it('remover com a seção aberta recarrega as removidas (a conta aparece no topo)', async () => {
+    const old = account({ id: 'a9', accountName: 'Antiga' })
+    mockListDeleted.mockResolvedValueOnce([old]).mockResolvedValueOnce([bb(), old])
+    const wrapper = await mountView()
+    await showRemoved(wrapper)
+    await openRemove(wrapper)
+    await confirm()
+
+    expect(mockListDeleted).toHaveBeenCalledTimes(2)
+
+    expect(
+      wrapper
+        .get('[data-testid="removed-accounts-list"]')
+        .findAll('li')
+        .map((li) => li.attributes('data-testid')),
+    ).toEqual(['removed-account-item-a2', 'removed-account-item-a9'])
+  })
+
+  it('409 da última conta mostra a mensagem do servidor no diálogo e a conta continua ativa', async () => {
+    mockList.mockResolvedValue([nubank()])
+    mockDelete.mockRejectedValue({
+      response: { status: 409, data: { detail: 'Mantenha ao menos uma conta ativa' } },
+    })
+    const wrapper = await mountView()
+    await openRemove(wrapper, 'a1')
+    await confirm()
+
+    expect(removeDialog()).not.toBeNull()
+    const error = bodyButton('remove-account-error')
+    expect(error.getAttribute('role')).toBe('alert')
+    expect(error.textContent?.trim()).toBe('Mantenha ao menos uma conta ativa')
+    expect(wrapper.find('[data-testid="account-item-a1"]').exists()).toBe(true)
+    expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 100,00')
+    expect(wrapper.get('[data-testid="accounts-success"]').text()).toBe('')
+
+    bodyButton('cancel-remove-account').click()
+    await flushPromises()
+    expect(removeDialog()).toBeNull()
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('remove-account-a1')
+  })
+
+  it('outra falha mostra a mensagem genérica no diálogo', async () => {
+    mockDelete.mockRejectedValue(new Error('Network Error'))
+    const wrapper = await mountView()
+    await openRemove(wrapper)
+    await confirm()
+
+    expect(bodyButton('remove-account-error').textContent).toContain(
+      'Não foi possível remover a conta. Tente novamente.',
+    )
+    expect(wrapper.find('[data-testid="account-item-a2"]').exists()).toBe(true)
+  })
+
+  it('404 ao remover fecha o diálogo, avisa e recarrega as listas ativa e de removidas', async () => {
+    mockDelete.mockRejectedValue({ response: { status: 404, data: {} } })
+    // Em outra aba, "BB" foi removida e "Itaú" foi restaurada
+    mockList
+      .mockResolvedValueOnce([nubank(), bb()])
+      .mockResolvedValueOnce([nubank(), account({ id: 'a3', accountName: 'Itaú' })])
+    mockListDeleted.mockResolvedValueOnce([]).mockResolvedValueOnce([bb()])
+    const wrapper = await mountView()
+    await showRemoved(wrapper)
+    await openRemove(wrapper)
+    await confirm()
+
+    expect(removeDialog()).toBeNull()
+    expect(mockList).toHaveBeenCalledTimes(2)
+    expect(mockListDeleted).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[data-testid="account-item-a2"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="account-item-a3"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="removed-account-item-a2"]').exists()).toBe(true)
+    const notice = wrapper.get('[data-testid="accounts-notice"]')
+    expect(notice.text()).toBe('Esta conta já foi removida ou não existe mais')
+    expect(notice.classes()).toContain('bg-amber-50')
+    expect(wrapper.get('[data-testid="accounts-success"]').text()).toBe('')
+  })
+
+  it('cancelar não muda nada e devolve o foco ao "Remover" da conta', async () => {
+    const wrapper = await mountView()
+    await openRemove(wrapper)
+    bodyButton('cancel-remove-account').click()
+    await flushPromises()
+
+    expect(mockDelete).not.toHaveBeenCalled()
+    expect(removeDialog()).toBeNull()
+    expect(wrapper.find('[data-testid="account-item-a2"]').exists()).toBe(true)
+    expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 150,00')
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('remove-account-a2')
+  })
+
+  it('enquanto remove, os botões ficam travados, mostra "Removendo..." e o diálogo não fecha', async () => {
+    let resolveDelete: () => void = () => {}
+    mockDelete.mockReturnValue(new Promise<void>((resolve) => (resolveDelete = resolve)))
+    const wrapper = await mountView()
+    await openRemove(wrapper)
+    await confirm()
+
+    expect(bodyButton('confirm-remove-account').disabled).toBe(true)
+    expect(bodyButton('confirm-remove-account').textContent?.trim()).toBe('Removendo...')
+    expect(bodyButton('cancel-remove-account').disabled).toBe(true)
+    wrapper.findAllComponents({ name: 'Dialog' })[1]!.vm.$emit('update:open', false)
+    await flushPromises()
+    expect(removeDialog()).not.toBeNull()
+
+    resolveDelete()
+    await flushPromises()
+    expect(removeDialog()).toBeNull()
+    expect(mockDelete).toHaveBeenCalledOnce()
+  })
+
+  it('desmarcar "Mostrar removidas" esconde a seção; falha ao carregar mostra "Tentar de novo"', async () => {
+    mockListDeleted.mockRejectedValueOnce(new Error('Network Error')).mockResolvedValue([bb()])
+    const wrapper = await mountView()
+    expect(wrapper.find('[data-testid="removed-accounts"]').exists()).toBe(false)
+    expect(wrapper.get('label').text()).toContain('Mostrar removidas')
+
+    await showRemoved(wrapper)
+    expect(wrapper.get('[data-testid="removed-accounts-load-error"]').attributes('role')).toBe(
+      'alert',
+    )
+    await wrapper.get('[data-testid="removed-accounts-retry"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="removed-account-item-a2"]').exists()).toBe(true)
+
+    await wrapper.get('[data-testid="toggle-removed-accounts"]').setValue(false)
+    expect(wrapper.find('[data-testid="removed-accounts"]').exists()).toBe(false)
+  })
+
+  it('enquanto restaura, os botões "Restaurar" ficam travados', async () => {
+    let resolveRestore: (a: Account) => void = () => {}
+    mockRestore.mockReturnValue(new Promise<Account>((resolve) => (resolveRestore = resolve)))
+    mockListDeleted.mockResolvedValue([bb(), account({ id: 'a9', accountName: 'Antiga' })])
+    mockList.mockResolvedValue([nubank()])
+    const wrapper = await mountView()
+    await showRemoved(wrapper)
+
+    await wrapper.get('[data-testid="restore-account-a2"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="restore-account-a2"]').text()).toBe('Restaurando...')
+    expect(wrapper.get('[data-testid="restore-account-a9"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="restore-account-a9"]').trigger('click')
+    expect(mockRestore).toHaveBeenCalledOnce()
+
+    resolveRestore(bb())
+    await flushPromises()
+    expect(wrapper.get('[data-testid="restore-account-a9"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('404 ao restaurar avisa e recarrega as listas (a conta já foi restaurada em outra aba)', async () => {
+    mockListDeleted.mockResolvedValueOnce([bb()]).mockResolvedValueOnce([])
+    mockRestore.mockRejectedValue({ response: { status: 404, data: {} } })
+    mockList.mockResolvedValueOnce([nubank()]).mockResolvedValueOnce([nubank(), bb()])
+    const wrapper = await mountView()
+    await showRemoved(wrapper)
+    await wrapper.get('[data-testid="restore-account-a2"]').trigger('click')
+    await flushPromises()
+
+    expect(mockList).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[data-testid="removed-account-item-a2"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="account-item-a2"]').exists()).toBe(true)
+    expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 150,00')
+    expect(wrapper.get('[data-testid="accounts-notice"]').text()).toBe(
+      'Esta conta já foi restaurada ou não existe mais',
+    )
+  })
+
+  it('uma resposta atrasada das removidas não sobrescreve a mais recente', async () => {
+    let resolveFirst: (a: Account[]) => void = () => {}
+    mockListDeleted
+      .mockReturnValueOnce(new Promise<Account[]>((resolve) => (resolveFirst = resolve)))
+      .mockResolvedValueOnce([bb()])
+    const wrapper = await mountView()
+    await showRemoved(wrapper)
+    await wrapper.get('[data-testid="toggle-removed-accounts"]').setValue(false)
+    await showRemoved(wrapper)
+    expect(wrapper.find('[data-testid="removed-account-item-a2"]').exists()).toBe(true)
+
+    resolveFirst([account({ id: 'a9', accountName: 'Antiga' })])
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="removed-account-item-a2"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="removed-account-item-a9"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="removed-accounts-loading"]').exists()).toBe(false)
+  })
+
+  it('falha (500) ao restaurar mostra a mensagem, o item fica nos removidos e os botões voltam', async () => {
+    mockListDeleted.mockResolvedValue([bb(), account({ id: 'a9', accountName: 'Antiga' })])
+    mockRestore.mockRejectedValue({ response: { status: 500, data: {} } })
+    mockList.mockResolvedValue([nubank()])
+    const wrapper = await mountView()
+    await showRemoved(wrapper)
+    await wrapper.get('[data-testid="restore-account-a2"]').trigger('click')
+    await flushPromises()
+
+    const notice = wrapper.get('[data-testid="accounts-notice"]')
+    expect(notice.text()).toBe('Não foi possível restaurar a conta. Tente novamente.')
+    expect(notice.attributes('role')).toBe('alert')
+    expect(wrapper.find('[data-testid="removed-account-item-a2"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="account-item-a2"]').exists()).toBe(false)
+    const restoreButton = wrapper.get('[data-testid="restore-account-a2"]')
+    expect(restoreButton.text()).toBe('Restaurar')
+    expect(restoreButton.attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('[data-testid="restore-account-a9"]').attributes('disabled')).toBeUndefined()
   })
 })

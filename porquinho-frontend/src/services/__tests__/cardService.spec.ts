@@ -12,7 +12,7 @@ vi.mock('../api', () => ({
   },
 }))
 
-import { createCard, deleteCard, listCards } from '../cardService'
+import { createCard, deleteCard, listCards, listDeletedCards, restoreCard } from '../cardService'
 
 const card = {
   id: 'c1',
@@ -44,5 +44,15 @@ describe('cardService', () => {
   it('deleteCard faz DELETE em /api/v1/credit-cards/{id}', async () => {
     await deleteCard('c1')
     expect(mockDelete).toHaveBeenCalledWith('/api/v1/credit-cards/c1')
+  })
+
+  it('listDeletedCards faz GET em /api/v1/credit-cards com status=deleted', async () => {
+    await expect(listDeletedCards()).resolves.toEqual([card])
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/credit-cards', { params: { status: 'deleted' } })
+  })
+
+  it('restoreCard faz POST em /api/v1/credit-cards/{id}/restore', async () => {
+    await expect(restoreCard('c1')).resolves.toEqual(card)
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/credit-cards/c1/restore')
   })
 })

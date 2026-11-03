@@ -94,7 +94,7 @@ development_status:
   4-1-register-multiple-bank-accounts: done
   4-2-register-multiple-credit-cards: done
   4-3-edit-account-and-card-information: done
-  4-4-deactivate-or-remove-accounts-and-cards: backlog
+  4-4-deactivate-or-remove-accounts-and-cards: done
   4-5-record-internal-transfers-between-own-accounts: backlog
   4-6-reconcile-account-balance-with-bank: backlog
   4-7-view-account-balance-history-over-time: backlog

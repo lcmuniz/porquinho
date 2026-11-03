@@ -313,6 +313,7 @@ public class DataExportService {
             accountMap.put("created_at", account.getCreatedAt() != null ? account.getCreatedAt().toString() : null);
             accountMap.put("updated_at", account.getUpdatedAt() != null ? account.getUpdatedAt().toString() : null);
             accountMap.put("deleted_at", account.getDeletedAt() != null ? account.getDeletedAt().toString() : null);
+            accountMap.put("deleted_by", account.getDeletedBy() != null ? account.getDeletedBy().toString() : null);
             accountList.add(accountMap);
         }
         data.put("accounts", accountList);
@@ -345,6 +346,7 @@ public class DataExportService {
             cardMap.put("created_at", card.getCreatedAt() != null ? card.getCreatedAt().toString() : null);
             cardMap.put("updated_at", card.getUpdatedAt() != null ? card.getUpdatedAt().toString() : null);
             cardMap.put("deleted_at", card.getDeletedAt() != null ? card.getDeletedAt().toString() : null);
+            cardMap.put("deleted_by", card.getDeletedBy() != null ? card.getDeletedBy().toString() : null);
             cardList.add(cardMap);
         }
         data.put("credit_cards", cardList);

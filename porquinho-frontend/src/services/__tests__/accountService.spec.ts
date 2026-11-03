@@ -12,7 +12,13 @@ vi.mock('../api', () => ({
   },
 }))
 
-import { createAccount, deleteAccount, listAccounts } from '../accountService'
+import {
+  createAccount,
+  deleteAccount,
+  listAccounts,
+  listDeletedAccounts,
+  restoreAccount,
+} from '../accountService'
 
 const account = {
   id: 'a1',
@@ -50,5 +56,15 @@ describe('accountService', () => {
   it('deleteAccount faz DELETE em /api/v1/accounts/{id}', async () => {
     await deleteAccount('a1')
     expect(mockDelete).toHaveBeenCalledWith('/api/v1/accounts/a1')
+  })
+
+  it('listDeletedAccounts faz GET em /api/v1/accounts com status=deleted', async () => {
+    await expect(listDeletedAccounts()).resolves.toEqual([account])
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/accounts', { params: { status: 'deleted' } })
+  })
+
+  it('restoreAccount faz POST em /api/v1/accounts/{id}/restore', async () => {
+    await expect(restoreAccount('a1')).resolves.toEqual(account)
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/accounts/a1/restore')
   })
 })

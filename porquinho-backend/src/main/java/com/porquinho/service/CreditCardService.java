@@ -13,16 +13,23 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Credit cards (Story 3.3: create, list and remove; Story 4.3: edit; closing day and invoices come later).
+ * Credit cards (Story 3.3: create, list and remove; Story 4.3: edit; Story 4.4: audited removal, removed list and
+ * restore; closing day and invoices come later). Unlike accounts, there is no minimum number of active cards.
  * The user id always comes from the JWT; another user's card behaves as if it did not exist.
  */
 @Service
 public class CreditCardService {
 
-    private final CreditCardRepository creditCardRepository;
+    public static final String NOT_FOUND_MESSAGE = "Cartão não encontrado";
+    public static final String AUDIT_DELETED = "card_deleted";
+    public static final String AUDIT_RESTORED = "card_restored";
 
-    public CreditCardService(CreditCardRepository creditCardRepository) {
+    private final CreditCardRepository creditCardRepository;
+    private final AuditLogService auditLogService;
+
+    public CreditCardService(CreditCardRepository creditCardRepository, AuditLogService auditLogService) {
         this.creditCardRepository = creditCardRepository;
+        this.auditLogService = auditLogService;
     }
 
     @Transactional
@@ -37,8 +44,8 @@ public class CreditCardService {
      */
     @Transactional
     public CreditCard update(UUID userId, UUID cardId, CreateCreditCardRequest request) {
-        CreditCard card = creditCardRepository.findByIdAndUserIdAndDeletedAtIsNull(cardId, userId)
-            .orElseThrow(() -> new ResourceNotFoundException("Cartão não encontrado"));
+        CreditCard card = creditCardRepository.findActiveByIdForUpdate(cardId, userId)
+            .orElseThrow(() -> new ResourceNotFoundException(NOT_FOUND_MESSAGE));
         card.setCardName(request.cardName());
         card.setBankName(request.bankName());
         card.setCardLimit(request.cardLimit().setScale(2, RoundingMode.UNNECESSARY));
@@ -57,12 +64,38 @@ public class CreditCardService {
         return creditCardRepository.countByUserIdAndDeletedAtIsNull(userId);
     }
 
-    /** Soft delete. 404 when the card does not exist, belongs to someone else or was already removed. */
+    /** The user's removed cards, most recently removed first (Story 4.4). */
+    @Transactional(readOnly = true)
+    public List<CreditCard> listDeleted(UUID userId) {
+        return creditCardRepository.findDeletedByUserId(userId);
+    }
+
+    /**
+     * Soft delete (Story 4.4): fills deleted_at and deleted_by and writes the "card_deleted" audit.
+     * 404 when the card does not exist, belongs to someone else or was already removed.
+     */
     @Transactional
-    public void delete(UUID userId, UUID cardId) {
-        CreditCard card = creditCardRepository.findByIdAndUserIdAndDeletedAtIsNull(cardId, userId)
-            .orElseThrow(() -> new ResourceNotFoundException("Cartão não encontrado"));
+    public void delete(UUID userId, UUID cardId, String ipAddress) {
+        CreditCard card = creditCardRepository.findActiveByIdForUpdate(cardId, userId)
+            .orElseThrow(() -> new ResourceNotFoundException(NOT_FOUND_MESSAGE));
         card.setDeletedAt(OffsetDateTime.now());
+        card.setDeletedBy(userId);
         creditCardRepository.save(card);
+        auditLogService.log(AUDIT_DELETED, userId, ipAddress, AccountService.idMetadata(cardId));
+    }
+
+    /**
+     * Restore (Story 4.4): clears deleted_at and deleted_by and writes the "card_restored" audit.
+     * 404 when the card does not exist, belongs to someone else or is not removed.
+     */
+    @Transactional
+    public CreditCard restore(UUID userId, UUID cardId, String ipAddress) {
+        CreditCard card = creditCardRepository.findDeletedByIdForUpdate(cardId, userId)
+            .orElseThrow(() -> new ResourceNotFoundException(NOT_FOUND_MESSAGE));
+        card.setDeletedAt(null);
+        card.setDeletedBy(null);
+        CreditCard saved = creditCardRepository.save(card);
+        auditLogService.log(AUDIT_RESTORED, userId, ipAddress, AccountService.idMetadata(cardId));
+        return saved;
     }
 }

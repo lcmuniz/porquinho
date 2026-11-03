@@ -148,7 +148,7 @@ class CreditCardOnboardingIntegrationTest {
     void nextWithOnlyRemovedCardsRecordsSkipped() {
         atStepThree();
         CreditCard card = add(userId, "Antigo", "100.00", 5);
-        creditCardService.delete(userId, card.getId());
+        creditCardService.delete(userId, card.getId(), "127.0.0.1");
         creditCardRepository.flush();
 
         onboardingService.completeCards(userId, false, "127.0.0.1");
@@ -194,7 +194,7 @@ class CreditCardOnboardingIntegrationTest {
         CreditCard removed = add(userId, "Antigo", "1.00", 1);
         add(newUser(), "De outra pessoa", "99.99", 15);
 
-        creditCardService.delete(userId, removed.getId());
+        creditCardService.delete(userId, removed.getId(), "127.0.0.1");
         creditCardRepository.flush();
 
         assertThat(creditCardService.listActive(userId)).extracting(CreditCard::getId)
@@ -208,11 +208,11 @@ class CreditCardOnboardingIntegrationTest {
     void removingAnotherUsersMissingOrAlreadyRemovedCardIsNotFound() {
         CreditCard foreign = add(newUser(), "De outra pessoa", "1.00", 10);
         CreditCard mine = add(userId, "Meu", "1.00", 10);
-        creditCardService.delete(userId, mine.getId());
+        creditCardService.delete(userId, mine.getId(), "127.0.0.1");
 
-        assertThatThrownBy(() -> creditCardService.delete(userId, foreign.getId())).isInstanceOf(ResourceNotFoundException.class);
-        assertThatThrownBy(() -> creditCardService.delete(userId, mine.getId())).isInstanceOf(ResourceNotFoundException.class);
-        assertThatThrownBy(() -> creditCardService.delete(userId, UUID.randomUUID())).isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> creditCardService.delete(userId, foreign.getId(), "127.0.0.1")).isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> creditCardService.delete(userId, mine.getId(), "127.0.0.1")).isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> creditCardService.delete(userId, UUID.randomUUID(), "127.0.0.1")).isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
@@ -234,12 +234,14 @@ class CreditCardOnboardingIntegrationTest {
         // Purge SQL: removed cards go too, other users keep theirs (the call order is in AccountDeletionServiceTest)
         CreditCard removed = add(userId, "Removido", "1.00", 10);
         add(userId, "Ativo", "1.00", 10);
-        creditCardService.delete(userId, removed.getId());
+        creditCardService.delete(userId, removed.getId(), "127.0.0.1");
         creditCardRepository.flush();
         UUID other = newUser();
         add(other, "De outra pessoa", "1.00", 10);
 
         assertThat(creditCardRepository.deleteByUserId(userId)).isEqualTo(2);
+        // Story 4.4: removing writes an audit; the real purge hard-deletes audit_logs before the user
+        jdbc.update("DELETE FROM audit_logs WHERE user_id = ?", userId);
         assertThat(userRepository.deleteByIdNative(userId)).isEqualTo(1);
         assertThat(creditCardService.countActive(other)).isEqualTo(1);
     }
@@ -256,7 +258,7 @@ class CreditCardOnboardingIntegrationTest {
     void exportIncludesActiveAndRemovedCards() {
         add(userId, "Nubank Roxinho", "5000.00", 10);
         CreditCard removed = add(userId, "Antigo", "0", 31);
-        creditCardService.delete(userId, removed.getId());
+        creditCardService.delete(userId, removed.getId(), "127.0.0.1");
         creditCardRepository.flush();
 
         @SuppressWarnings("unchecked")
@@ -297,7 +299,7 @@ class CreditCardOnboardingIntegrationTest {
     void editingAnotherUsersARemovedOrAMissingCardIsNotFoundAndChangesNothing() {
         CreditCard foreign = add(newUser(), "De outra pessoa", "1.00", 5);
         CreditCard removed = add(userId, "Removido", "1.00", 5);
-        creditCardService.delete(userId, removed.getId());
+        creditCardService.delete(userId, removed.getId(), "127.0.0.1");
         creditCardRepository.flush();
         CreateCreditCardRequest request =
             new CreateCreditCardRequest("Meu", null, new BigDecimal("999.00"), new BigDecimal("15"));
@@ -312,5 +314,85 @@ class CreditCardOnboardingIntegrationTest {
 
         assertThat(jdbc.queryForMap("SELECT card_name, due_day FROM credit_cards WHERE id = ?", foreign.getId()))
             .containsEntry("card_name", "De outra pessoa").containsEntry("due_day", 5);
+    }
+
+    // Story 4.4: remove and restore
+
+    private Map<String, Object> deletionRow(UUID cardId) {
+        return jdbc.queryForMap("SELECT deleted_at, deleted_by FROM credit_cards WHERE id = ?", cardId);
+    }
+
+    private List<String> audits(String eventType) {
+        return jdbc.queryForList("SELECT metadata FROM audit_logs WHERE user_id = ? AND event_type = ?",
+            String.class, userId, eventType);
+    }
+
+    @Test
+    void removingTheOnlyCardFillsDeletedByAuditsAndRestoreClearsIt() {
+        CreditCard card = add(userId, "Nubank", "5000.00", 10);
+
+        creditCardService.delete(userId, card.getId(), "127.0.0.1");
+        creditCardRepository.flush();
+
+        assertThat(creditCardService.listActive(userId)).isEmpty();
+        assertThat(deletionRow(card.getId())).containsEntry("deleted_by", userId);
+        assertThat(deletionRow(card.getId()).get("deleted_at")).isNotNull();
+        assertThat(audits("card_deleted")).singleElement().satisfies(m -> assertThat(m).contains(card.getId().toString()));
+        assertThat(creditCardService.listDeleted(userId)).extracting(CreditCard::getCardName).containsExactly("Nubank");
+
+        CreditCard restored = creditCardService.restore(userId, card.getId(), "127.0.0.1");
+        creditCardRepository.flush();
+
+        assertThat(restored.getDeletedAt()).isNull();
+        assertThat(deletionRow(card.getId())).containsEntry("deleted_at", null).containsEntry("deleted_by", null);
+        assertThat(creditCardService.listActive(userId)).extracting(CreditCard::getCardName).containsExactly("Nubank");
+        assertThat(creditCardService.listDeleted(userId)).isEmpty();
+        assertThat(audits("card_restored")).singleElement().satisfies(m -> assertThat(m).contains(card.getId().toString()));
+    }
+
+    @Test
+    void removedCardsAreScopedByUserMostRecentlyRemovedFirst() throws Exception {
+        CreditCard first = add(userId, "Primeiro", "1.00", 1);
+        CreditCard second = add(userId, "Segundo", "1.00", 2);
+        CreditCard foreign = add(newUser(), "De outra pessoa", "1.00", 3);
+        creditCardService.delete(userId, first.getId(), "127.0.0.1");
+        creditCardRepository.flush();
+        Thread.sleep(5);  // distinct deleted_at
+        creditCardService.delete(userId, second.getId(), "127.0.0.1");
+        creditCardService.delete(foreign.getUserId(), foreign.getId(), "127.0.0.1");
+        creditCardRepository.flush();
+
+        assertThat(creditCardService.listDeleted(userId)).extracting(CreditCard::getCardName)
+            .containsExactly("Segundo", "Primeiro");
+    }
+
+    @Test
+    void restoringAnActiveAnotherUsersOrAMissingCardIsNotFound() {
+        CreditCard active = add(userId, "Ativo", "1.00", 1);
+        CreditCard foreign = add(newUser(), "De outra pessoa", "1.00", 1);
+        creditCardService.delete(foreign.getUserId(), foreign.getId(), "127.0.0.1");
+        creditCardRepository.flush();
+
+        assertThatThrownBy(() -> creditCardService.restore(userId, active.getId(), "127.0.0.1"))
+            .isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> creditCardService.restore(userId, foreign.getId(), "127.0.0.1"))
+            .isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> creditCardService.restore(userId, UUID.randomUUID(), "127.0.0.1"))
+            .isInstanceOf(ResourceNotFoundException.class);
+        assertThat(audits("card_restored")).isEmpty();
+    }
+
+    @Test
+    void exportIncludesDeletedBy() {
+        add(userId, "Nubank", "1.00", 1);
+        CreditCard removed = add(userId, "Antigo", "1.00", 1);
+        creditCardService.delete(userId, removed.getId(), "127.0.0.1");
+        creditCardRepository.flush();
+
+        @SuppressWarnings("unchecked")
+        var rows = (List<Map<String, Object>>) dataExportService.collectUserData(userId).get("credit_cards");
+
+        assertThat(rows.get(0)).containsEntry("deleted_by", null);
+        assertThat(rows.get(1)).containsEntry("deleted_by", userId.toString());
     }
 }

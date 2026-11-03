@@ -138,6 +138,102 @@
                 <Pencil class="h-4 w-4" aria-hidden="true" />
                 Editar
               </Button>
+              <Button
+                variant="ghost"
+                class="min-h-[44px] min-w-[44px] shrink-0 text-red-700 hover:bg-red-50"
+                :data-testid="`remove-card-${card.id}`"
+                :aria-label="`Remover ${card.cardName}`"
+                @click="openRemove(card)"
+              >
+                <Trash2 class="h-4 w-4" aria-hidden="true" />
+                Remover
+              </Button>
+            </li>
+          </ul>
+        </section>
+      </template>
+
+      <!-- Story 4.4: cartões removidos, com "Restaurar" -->
+      <template v-if="!loading && !loadFailed">
+        <label
+          class="inline-flex min-h-[44px] cursor-pointer items-center gap-2 text-sm text-gray-700"
+        >
+          <input
+            v-model="showRemoved"
+            type="checkbox"
+            class="h-5 w-5 accent-purple-600"
+            data-testid="toggle-removed-cards"
+          />
+          Mostrar removidos
+        </label>
+
+        <section
+          v-if="showRemoved"
+          aria-labelledby="removed-cards-heading"
+          class="space-y-2"
+          data-testid="removed-cards"
+        >
+          <h2 id="removed-cards-heading" class="text-sm font-medium text-gray-900">Removidos</h2>
+          <p
+            v-if="removedLoading"
+            aria-busy="true"
+            class="text-sm text-gray-600"
+            data-testid="removed-cards-loading"
+          >
+            Carregando cartões removidos...
+          </p>
+          <div
+            v-else-if="removedLoadFailed"
+            role="alert"
+            data-testid="removed-cards-load-error"
+            class="flex flex-col gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <p class="text-sm text-red-800">Não foi possível carregar os cartões removidos.</p>
+            <Button
+              variant="outline"
+              class="min-h-[44px] shrink-0"
+              data-testid="removed-cards-retry"
+              @click="loadRemoved()"
+            >
+              Tentar de novo
+            </Button>
+          </div>
+          <p
+            v-else-if="removed.length === 0"
+            class="text-sm text-gray-600"
+            data-testid="removed-cards-empty"
+          >
+            Nenhum cartão removido
+          </p>
+          <ul v-else class="space-y-2" data-testid="removed-cards-list">
+            <li
+              v-for="card in removed"
+              :key="card.id"
+              class="flex items-center gap-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3"
+              :data-testid="`removed-card-item-${card.id}`"
+            >
+              <CreditCardIcon class="h-5 w-5 shrink-0 text-gray-400" aria-hidden="true" />
+              <div class="min-w-0 flex-1">
+                <p class="truncate font-medium text-gray-700">{{ card.cardName }}</p>
+                <p class="truncate text-xs text-gray-500">
+                  <template v-if="card.bankName">{{ card.bankName }} · </template>vence dia
+                  {{ card.dueDay }}
+                </p>
+              </div>
+              <span class="text-sm whitespace-nowrap text-gray-500" data-testid="card-limit">
+                {{ formatBRL(card.cardLimit) }}
+              </span>
+              <Button
+                variant="outline"
+                class="min-h-[44px] min-w-[44px] shrink-0"
+                :data-testid="`restore-card-${card.id}`"
+                :aria-label="`Restaurar ${card.cardName}`"
+                :disabled="restoringId !== null"
+                @click="restore(card)"
+              >
+                <RotateCcw class="h-4 w-4" aria-hidden="true" />
+                {{ restoringId === card.id ? 'Restaurando...' : 'Restaurar' }}
+              </Button>
             </li>
           </ul>
         </section>
@@ -192,13 +288,56 @@
         </Button>
       </DialogContent>
     </Dialog>
+
+    <!-- Story 4.4: confirmação da remoção -->
+    <Dialog :open="removeDialogOpen" @update:open="onRemoveDialogOpenChange">
+      <DialogContent
+        :show-close-button="false"
+        data-testid="remove-card-dialog"
+        @close-auto-focus="onRemoveCloseAutoFocus"
+      >
+        <DialogHeader>
+          <DialogTitle>Remover {{ removing?.cardName }}?</DialogTitle>
+          <DialogDescription>
+            O cartão some da lista, mas o histórico é preservado. Você pode restaurá-lo depois.
+          </DialogDescription>
+        </DialogHeader>
+        <p
+          v-if="removeError"
+          role="alert"
+          data-testid="remove-card-error"
+          class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+        >
+          {{ removeError }}
+        </p>
+        <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button
+            variant="outline"
+            class="min-h-[44px]"
+            data-testid="cancel-remove-card"
+            :disabled="removeSubmitting"
+            @click="removeDialogOpen = false"
+          >
+            Cancelar
+          </Button>
+          <Button
+            class="min-h-[44px] bg-red-600 text-white hover:bg-red-700"
+            data-testid="confirm-remove-card"
+            :disabled="removeSubmitting"
+            @click="confirmRemove"
+          >
+            {{ removeSubmitting ? 'Removendo...' : 'Remover' }}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   </main>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import { CreditCard as CreditCardIcon, Pencil, Plus } from 'lucide-vue-next'
+import { CreditCard as CreditCardIcon, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-vue-next'
 import CardForm from '@/components/cards/CardForm.vue'
 import { Button } from '@/components/ui/button'
 import {
@@ -209,13 +348,15 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { formatBRL } from '@/lib/money'
-import { listCards } from '@/services/cardService'
+import { deleteCard, listCards, listDeletedCards, restoreCard } from '@/services/cardService'
 import type { CreditCard } from '@/types/creditCard'
 
 /**
  * Story 4.2: cartões ativos, limite total e cadastro de cartão novo pelo diálogo.
  * O limite total é a base do crédito disponível, que depende das faturas (Epic 5).
  * Story 4.3: o botão "Editar" de cada cartão abre o mesmo diálogo com o formulário preenchido.
+ * Story 4.4: "Remover" com confirmação (sem mínimo de cartões); "Mostrar removidos" lista os removidos com
+ * "Restaurar".
  */
 const cards = ref<CreditCard[]>([])
 const loading = ref(true)
@@ -232,6 +373,22 @@ const list = ref<HTMLElement | null>(null)
 /** Story 4.3: item em edição (null no diálogo de adicionar). Continua definido depois de fechar, para o foco voltar ao botão dele. */
 const editing = ref<CreditCard | null>(null)
 const headerAddButton = ref<{ $el?: HTMLElement } | null>(null)
+
+interface ApiError {
+  response?: { status?: number; data?: { detail?: string } }
+}
+
+/** Story 4.4: cartão em remoção. Continua definido depois de fechar, para o foco voltar ao botão dele. */
+const removing = ref<CreditCard | null>(null)
+const removeDialogOpen = ref(false)
+const removeSubmitting = ref(false)
+const removeError = ref<string | null>(null)
+/** Story 4.4: seção de removidos (carregada ao marcar o seletor). */
+const showRemoved = ref(false)
+const removed = ref<CreditCard[]>([])
+const removedLoading = ref(false)
+const removedLoadFailed = ref(false)
+const restoringId = ref<string | null>(null)
 
 /** A mensagem de sucesso some sozinha depois de alguns segundos. */
 const SUCCESS_TIMEOUT_MS = 5000
@@ -262,6 +419,7 @@ async function load() {
   } finally {
     loading.value = false
   }
+  if (showRemoved.value && !loadFailed.value) void loadRemoved()
 }
 
 function openDialog() {
@@ -330,6 +488,131 @@ function onNotFound() {
 
 function onFailed(detail: string | undefined) {
   dialogError.value = detail ?? 'Não foi possível salvar o cartão. Tente novamente.'
+}
+
+/** Story 4.4: abre a confirmação da remoção. */
+function openRemove(card: CreditCard) {
+  removing.value = card
+  removeError.value = null
+  setSuccess(null)
+  notice.value = null
+  removeDialogOpen.value = true
+}
+
+function onRemoveDialogOpenChange(open: boolean) {
+  // Não fecha no meio do envio (Esc ou clique fora)
+  if (!open && removeSubmitting.value) return
+  removeDialogOpen.value = open
+}
+
+/** Ao fechar, o foco volta ao "Remover" do cartão (se ele continua na lista) ou ao botão do topo/título. */
+function onRemoveCloseAutoFocus(event: Event) {
+  event.preventDefault()
+  void nextTick(() => {
+    const removeButton = removing.value
+      ? list.value?.querySelector<HTMLElement>(`[data-testid="remove-card-${removing.value.id}"]`)
+      : null
+    ;(removeButton ?? headerAddButton.value?.$el ?? heading.value)?.focus()
+  })
+}
+
+async function confirmRemove() {
+  const target = removing.value
+  if (!target || removeSubmitting.value) return
+  removeSubmitting.value = true
+  removeError.value = null
+  try {
+    await deleteCard(target.id)
+    cards.value = cards.value.filter((x) => x.id !== target.id)
+    // A seção de removidos é recarregada para seguir a ordem do servidor
+    if (showRemoved.value) void loadRemoved(true)
+    removeDialogOpen.value = false
+    setSuccess('Cartão removido')
+  } catch (err) {
+    const response = (err as ApiError)?.response
+    if (response?.status === 404) {
+      cards.value = cards.value.filter((x) => x.id !== target.id)
+      removeDialogOpen.value = false
+      notice.value = 'Este cartão já foi removido ou não existe mais'
+      void refreshAfterNotFound()
+    } else {
+      removeError.value =
+        response?.data?.detail ?? 'Não foi possível remover o cartão. Tente novamente.'
+    }
+  } finally {
+    removeSubmitting.value = false
+  }
+}
+
+/** Sequência das cargas: só a resposta da carga mais recente é aplicada. */
+let removedRequest = 0
+
+/** Story 4.4: carrega a seção de removidos. `quiet` recarrega sem trocar a lista pelo "Carregando...". */
+async function loadRemoved(quiet = false) {
+  const request = ++removedRequest
+  if (!quiet) removedLoading.value = true
+  removedLoadFailed.value = false
+  try {
+    const result = await listDeletedCards()
+    if (request === removedRequest) removed.value = result
+  } catch {
+    if (request === removedRequest) removedLoadFailed.value = true
+  } finally {
+    if (request === removedRequest) removedLoading.value = false
+  }
+}
+
+/**
+ * Story 4.4: 404 ao remover ou restaurar — o item mudou em outra aba ou sessão. Recarrega as listas ativa e de
+ * removidos sem esconder a página; uma falha aqui mantém o que já está na tela.
+ */
+async function refreshAfterNotFound() {
+  if (showRemoved.value) void loadRemoved(true)
+  try {
+    cards.value = await listCards()
+  } catch {
+    // Mantém a lista atual; o aviso já foi mostrado
+  }
+}
+
+watch(showRemoved, (show) => {
+  if (show) void loadRemoved()
+})
+
+/** Volta para a lista ativa na posição da criação (a API ordena do mais antigo para o mais novo). */
+function insertByCreation(card: CreditCard) {
+  const created = Date.parse(card.createdAt)
+  const index = cards.value.findIndex((x) => Date.parse(x.createdAt) > created)
+  if (index < 0) cards.value.push(card)
+  else cards.value.splice(index, 0, card)
+}
+
+/** Story 4.4: restaura o cartão; ele sai da seção de removidos e volta à lista e ao total. */
+async function restore(card: CreditCard) {
+  if (restoringId.value) return
+  restoringId.value = card.id
+  setSuccess(null)
+  notice.value = null
+  try {
+    const restored = await restoreCard(card.id)
+    removed.value = removed.value.filter((x) => x.id !== card.id)
+    insertByCreation(restored)
+    setSuccess('Cartão restaurado')
+    // O botão "Restaurar" some: o foco vai para o "Editar" do cartão restaurado
+    void nextTick(() =>
+      list.value?.querySelector<HTMLElement>(`[data-testid="edit-card-${restored.id}"]`)?.focus(),
+    )
+  } catch (err) {
+    if ((err as ApiError)?.response?.status === 404) {
+      removed.value = removed.value.filter((x) => x.id !== card.id)
+      notice.value = 'Este cartão já foi restaurado ou não existe mais'
+      void refreshAfterNotFound()
+    } else {
+      notice.value = 'Não foi possível restaurar o cartão. Tente novamente.'
+    }
+  } finally {
+    restoringId.value = null
+  }
 }
 
 onMounted(load)

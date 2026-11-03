@@ -26,3 +26,17 @@ export async function updateCard(id: string, input: CreateCreditCardInput): Prom
 export async function deleteCard(id: string): Promise<void> {
   await api.delete(`/api/v1/credit-cards/${id}`)
 }
+
+/** Story 4.4: cartões removidos do usuário, do removido mais recentemente para o mais antigo. */
+export async function listDeletedCards(): Promise<CreditCard[]> {
+  const response = await api.get<CreditCard[]>('/api/v1/credit-cards', {
+    params: { status: 'deleted' },
+  })
+  return response.data
+}
+
+/** Story 4.4: restaura o cartão removido. 404 se ele não for do usuário ou não estiver removido. */
+export async function restoreCard(id: string): Promise<CreditCard> {
+  const response = await api.post<CreditCard>(`/api/v1/credit-cards/${id}/restore`)
+  return response.data
+}

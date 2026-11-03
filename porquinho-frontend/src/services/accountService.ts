@@ -22,7 +22,22 @@ export async function updateAccount(id: string, input: UpdateAccountInput): Prom
   return response.data
 }
 
-/** Story 3.2: remove a conta (soft delete). 404 se não for do usuário. */
+/**
+ * Story 3.2: remove a conta (soft delete). 404 se não for do usuário. Story 4.4: 409 "Mantenha ao menos uma conta
+ * ativa" ao remover a última conta ativa depois do onboarding.
+ */
 export async function deleteAccount(id: string): Promise<void> {
   await api.delete(`/api/v1/accounts/${id}`)
+}
+
+/** Story 4.4: contas removidas do usuário, da removida mais recentemente para a mais antiga. */
+export async function listDeletedAccounts(): Promise<Account[]> {
+  const response = await api.get<Account[]>('/api/v1/accounts', { params: { status: 'deleted' } })
+  return response.data
+}
+
+/** Story 4.4: restaura a conta removida. 404 se ela não for do usuário ou não estiver removida. */
+export async function restoreAccount(id: string): Promise<Account> {
+  const response = await api.post<Account>(`/api/v1/accounts/${id}/restore`)
+  return response.data
 }
