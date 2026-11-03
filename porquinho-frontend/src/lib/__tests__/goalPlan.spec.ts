@@ -62,8 +62,8 @@ describe('goalPlan', () => {
   })
 
   it('previsão de conclusão conta os meses a partir de hoje', () => {
-    expect(toISODate(projectedCompletion(d('2026-11-02'), 25000, 2083.34)!)).toBe('2027-11-02')
-    expect(toISODate(projectedCompletion(d('2026-11-02'), 25000, 1000)!)).toBe('2028-12-02')
+    expect(toISODate(projectedCompletion(d('2026-11-02'), 25000, 2083.34) as Date)).toBe('2027-11-02')
+    expect(toISODate(projectedCompletion(d('2026-11-02'), 25000, 1000) as Date)).toBe('2028-12-02')
     expect(projectedCompletion(d('2026-11-02'), 25000, 0)).toBeNull()
     // 25.000 ÷ 0,01 = 2.500.000 meses: acima de 100 anos, sem montar uma data inválida
     expect(projectedCompletion(d('2026-11-02'), 25000, 0.01)).toBe('too-far')

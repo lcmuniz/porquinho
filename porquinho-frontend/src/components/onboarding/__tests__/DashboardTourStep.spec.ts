@@ -169,7 +169,7 @@ describe('DashboardTourStep', () => {
 
     expect(wrapper.emitted('done')).toBeUndefined()
     expect(wrapper.emitted('error')?.[0]?.[0]).toContain('Não foi possível salvar seu progresso')
-    expect(wrapper.get('[data-testid="tour-weekly-checkin"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="tour-weekly-checkin"]').exists()).toBe(true)
     const button = wrapper.get('[data-testid="next-button"]')
     expect(button.attributes('disabled')).toBeUndefined()
 
