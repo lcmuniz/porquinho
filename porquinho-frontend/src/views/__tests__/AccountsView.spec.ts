@@ -3,7 +3,10 @@ import { nextTick } from 'vue'
 import { mount, flushPromises, RouterLinkStub } from '@vue/test-utils'
 import AccountsView from '../AccountsView.vue'
 import AccountForm from '@/components/accounts/AccountForm.vue'
+import TransferForm from '@/components/accounts/TransferForm.vue'
+import { toISODate, todayInSaoPaulo } from '@/lib/goalPlan'
 import type { Account } from '@/types/account'
+import type { Transfer } from '@/types/transfer'
 
 const mockList = vi.fn()
 const mockCreate = vi.fn()
@@ -19,6 +22,14 @@ vi.mock('@/services/accountService', () => ({
   deleteAccount: (...a: unknown[]) => mockDelete(...a),
   listDeletedAccounts: (...a: unknown[]) => mockListDeleted(...a),
   restoreAccount: (...a: unknown[]) => mockRestore(...a),
+}))
+
+const mockListTransfers = vi.fn()
+const mockCreateTransfer = vi.fn()
+
+vi.mock('@/services/transferService', () => ({
+  listTransfers: (...a: unknown[]) => mockListTransfers(...a),
+  createTransfer: (...a: unknown[]) => mockCreateTransfer(...a),
 }))
 
 function account(overrides: Partial<Account> = {}): Account {
@@ -64,6 +75,11 @@ async function fillAndSave(form: Form, name: string, balance: string, bank = '')
   await form.get('[data-testid="account-form"]').trigger('submit')
   await flushPromises()
 }
+
+beforeEach(() => {
+  mockListTransfers.mockReset().mockResolvedValue([])
+  mockCreateTransfer.mockReset()
+})
 
 describe('AccountsView', () => {
   beforeEach(() => {
@@ -992,5 +1008,384 @@ describe('AccountsView — remover e restaurar conta (Story 4.4)', () => {
     expect(restoreButton.text()).toBe('Restaurar')
     expect(restoreButton.attributes('disabled')).toBeUndefined()
     expect(wrapper.get('[data-testid="restore-account-a9"]').attributes('disabled')).toBeUndefined()
+  })
+})
+
+describe('AccountsView — transferências (Story 4.5)', () => {
+  const transferDialog = () => document.body.querySelector('[data-testid="transfer-dialog"]')
+  const bodyButton = (testid: string) =>
+    document.body.querySelector<HTMLButtonElement>(`[data-testid="${testid}"]`)!
+  const today = toISODate(todayInSaoPaulo())
+
+  const nubank = () => account({ id: 'a1', accountName: 'Nubank', currentBalance: 1234.56 })
+  const inter = () =>
+    account({
+      id: 'a2',
+      accountName: 'Inter',
+      bankName: 'Inter',
+      currentBalance: 600,
+      createdAt: '2026-11-02T12:00:00Z',
+    })
+
+  function transfer(overrides: Partial<Transfer> = {}): Transfer {
+    return {
+      id: 't1',
+      fromAccountId: 'a1',
+      fromAccountName: 'Nubank',
+      toAccountId: 'a2',
+      toAccountName: 'Inter',
+      amount: 200,
+      transferDate: '2026-11-03',
+      description: null,
+      createdAt: '2026-11-03T15:00:00Z',
+      ...overrides,
+    }
+  }
+
+  async function openTransfer(wrapper: Wrapper) {
+    await wrapper.get('[data-testid="open-transfer"]').trigger('click')
+    await flushPromises()
+    return wrapper.findComponent(TransferForm)
+  }
+
+  type TForm = Awaited<ReturnType<typeof openTransfer>>
+
+  async function fillAndSubmit(form: TForm, amount: string, from = 'a1', to = 'a2') {
+    await form.get('[data-testid="transfer-from-select"]').setValue(from)
+    await form.get('[data-testid="transfer-to-select"]').setValue(to)
+    await form.get('[data-testid="transfer-amount-input"]').setValue(amount)
+    await form.get('[data-testid="transfer-form"]').trigger('submit')
+    await flushPromises()
+  }
+
+  beforeEach(() => {
+    mockList.mockReset().mockResolvedValue([nubank(), inter()])
+    mockCreateTransfer.mockImplementation(async (input) =>
+      transfer({
+        fromAccountId: input.fromAccountId,
+        toAccountId: input.toAccountId,
+        amount: input.amount,
+        transferDate: input.transferDate,
+        description: input.description,
+      }),
+    )
+  })
+
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('com menos de 2 contas ativas o botão "Transferir" fica oculto', async () => {
+    mockList.mockResolvedValue([nubank()])
+    const wrapper = await mountView()
+
+    expect(wrapper.find('[data-testid="open-transfer"]').exists()).toBe(false)
+  })
+
+  it('com 2 contas o botão "Transferir" aparece com alvo de 44px', async () => {
+    const wrapper = await mountView()
+    const button = wrapper.get('[data-testid="open-transfer"]')
+
+    expect(button.text()).toBe('Transferir')
+    expect(button.classes()).toContain('min-h-[44px]')
+  })
+
+  it('sem transferências mostra o estado vazio da seção', async () => {
+    const wrapper = await mountView()
+
+    const section = wrapper.get('[data-testid="recent-transfers"]')
+    expect(section.get('h2').text()).toBe('Transferências recentes')
+    expect(section.get('[data-testid="transfers-empty"]').text()).toBe(
+      'Nenhuma transferência registrada',
+    )
+  })
+
+  it('lista as transferências com data, origem → destino, valor e descrição, na ordem da API', async () => {
+    mockListTransfers.mockResolvedValue([
+      transfer({ id: 't2', amount: 50, transferDate: '2026-11-03', description: 'Reserva' }),
+      transfer({
+        id: 't1',
+        fromAccountId: 'a2',
+        fromAccountName: 'Inter',
+        toAccountId: 'a1',
+        toAccountName: 'Nubank',
+        transferDate: '2026-11-01',
+      }),
+    ])
+    const wrapper = await mountView()
+
+    const items = wrapper.get('[data-testid="transfers-list"]').findAll('li')
+    expect(items.map((li) => li.attributes('data-testid'))).toEqual([
+      'transfer-item-t2',
+      'transfer-item-t1',
+    ])
+    expect(items[0]!.get('[data-testid="transfer-accounts"]').text()).toBe('Nubank → Inter')
+    expect(items[0]!.get('[data-testid="transfer-date"]').text()).toBe('03/11/2026')
+    expect(items[0]!.get('[data-testid="transfer-description"]').text()).toBe('Reserva')
+    expect(plain(items[0]!.get('[data-testid="transfer-amount"]').text())).toBe('R$ 50,00')
+    expect(items[1]!.get('[data-testid="transfer-accounts"]').text()).toBe('Inter → Nubank')
+    expect(items[1]!.find('[data-testid="transfer-description"]').exists()).toBe(false)
+  })
+
+  it('abre "Nova transferência" com as contas ativas (nome e saldo), data de hoje e foco na origem', async () => {
+    const wrapper = await mountView()
+    const form = await openTransfer(wrapper)
+
+    expect(transferDialog()?.textContent).toContain('Nova transferência')
+    const options = form.get('[data-testid="transfer-from-select"]').findAll('option')
+    expect(options.map((o) => plain(o.text()))).toEqual([
+      'Nubank — R$ 1.234,56',
+      'Inter — R$ 600,00',
+    ])
+    expect(
+      (form.get('[data-testid="transfer-from-select"]').element as HTMLSelectElement).value,
+    ).toBe('a1')
+    expect(
+      (form.get('[data-testid="transfer-to-select"]').element as HTMLSelectElement).value,
+    ).toBe('a2')
+    const date = form.get('[data-testid="transfer-date-input"]').element as HTMLInputElement
+    expect(date.value).toBe(today)
+    expect(date.max).toBe(today)
+    await flushPromises()
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('transfer-from-select')
+  })
+
+  it('R$ 200,00 de Nubank para Inter: saldos, total igual, mensagem e seção atualizada', async () => {
+    const wrapper = await mountView()
+    expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 1.834,56')
+    const form = await openTransfer(wrapper)
+    mockListTransfers.mockResolvedValue([transfer()])
+    // Os saldos vêm do servidor depois da transferência
+    mockList.mockResolvedValue([
+      { ...nubank(), currentBalance: 1034.56 },
+      { ...inter(), currentBalance: 800 },
+    ])
+    await fillAndSubmit(form, '200,00')
+
+    expect(mockCreateTransfer).toHaveBeenCalledWith({
+      id: expect.any(String),
+      fromAccountId: 'a1',
+      toAccountId: 'a2',
+      amount: 200,
+      transferDate: today,
+      description: null,
+    })
+    expect(transferDialog()).toBeNull()
+    expect(
+      plain(wrapper.get('[data-testid="account-item-a1"] [data-testid="account-balance"]').text()),
+    ).toBe('R$ 1.034,56')
+    expect(
+      plain(wrapper.get('[data-testid="account-item-a2"] [data-testid="account-balance"]').text()),
+    ).toBe('R$ 800,00')
+    expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 1.834,56')
+    const success = wrapper.get('[data-testid="accounts-success"]')
+    expect(success.attributes('role')).toBe('status')
+    expect(success.text()).toBe('Transferência registrada')
+    expect(mockList).toHaveBeenCalledTimes(2)
+    expect(mockListTransfers).toHaveBeenCalledTimes(2)
+    const item = wrapper.get('[data-testid="transfer-item-t1"]')
+    expect(item.get('[data-testid="transfer-accounts"]').text()).toBe('Nubank → Inter')
+    expect(plain(item.get('[data-testid="transfer-amount"]').text())).toBe('R$ 200,00')
+    await flushPromises()
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('open-transfer')
+  })
+
+  it('saldo da origem negativo fica em vermelho', async () => {
+    mockList.mockResolvedValue([account({ id: 'a1', currentBalance: 100 }), inter()])
+    const wrapper = await mountView()
+    const form = await openTransfer(wrapper)
+    mockList.mockResolvedValue([
+      account({ id: 'a1', currentBalance: -50 }),
+      { ...inter(), currentBalance: 750 },
+    ])
+    await fillAndSubmit(form, '150')
+
+    const balance = wrapper.get('[data-testid="account-item-a1"] [data-testid="account-balance"]')
+    expect(plain(balance.text())).toBe('-R$ 50,00')
+    expect(balance.classes()).toContain('text-red-600')
+  })
+
+  it('mesma conta, valor 0 ou data futura mostram o erro no campo e nenhum saldo muda', async () => {
+    const wrapper = await mountView()
+    const form = await openTransfer(wrapper)
+
+    await fillAndSubmit(form, '10', 'a1', 'a1')
+    expect(form.get('[data-testid="transfer-to-error"]').text()).toBe('Escolha contas diferentes')
+    expect(form.get('[data-testid="transfer-to-select"]').attributes('aria-invalid')).toBe('true')
+
+    await fillAndSubmit(form, '0')
+    expect(form.get('[data-testid="transfer-amount-error"]').text()).toBe(
+      'O valor precisa ser maior que zero',
+    )
+
+    await fillAndSubmit(form, '10,123')
+    expect(form.find('[data-testid="transfer-amount-error"]').exists()).toBe(true)
+
+    await form.get('[data-testid="transfer-date-input"]').setValue('2999-01-01')
+    await fillAndSubmit(form, '10')
+    expect(form.get('[data-testid="transfer-date-error"]').text()).toBe(
+      'A data não pode estar no futuro',
+    )
+
+    expect(mockCreateTransfer).not.toHaveBeenCalled()
+    expect(transferDialog()).not.toBeNull()
+    expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 1.834,56')
+    expect(
+      plain(wrapper.get('[data-testid="account-item-a1"] [data-testid="account-balance"]').text()),
+    ).toBe('R$ 1.234,56')
+  })
+
+  it('400 do servidor aparece no campo (contas iguais no destino) e o diálogo continua aberto', async () => {
+    mockCreateTransfer.mockRejectedValue({
+      response: {
+        status: 400,
+        data: {
+          detail: 'Escolha contas diferentes',
+          errors: { differentAccounts: 'Escolha contas diferentes' },
+        },
+      },
+    })
+    const wrapper = await mountView()
+    const form = await openTransfer(wrapper)
+    await fillAndSubmit(form, '10')
+
+    expect(form.get('[data-testid="transfer-to-error"]').text()).toBe('Escolha contas diferentes')
+    expect(transferDialog()).not.toBeNull()
+    expect(document.body.querySelector('[data-testid="transfer-error"]')).toBeNull()
+  })
+
+  it('404 mostra "Conta não encontrada" no diálogo, que continua aberto, e recarrega as contas', async () => {
+    mockCreateTransfer.mockRejectedValue({
+      response: { status: 404, data: { detail: 'Conta não encontrada' } },
+    })
+    mockList.mockResolvedValueOnce([nubank(), inter(), account({ id: 'a3', accountName: 'BB' })])
+    const wrapper = await mountView()
+    const form = await openTransfer(wrapper)
+    // Inter foi removida em outra aba: some das opções depois do 404
+    mockList.mockResolvedValue([
+      nubank(),
+      account({ id: 'a3', accountName: 'BB', currentBalance: 600 }),
+    ])
+    await fillAndSubmit(form, '10')
+
+    expect(mockList).toHaveBeenCalledTimes(2)
+    const options = form.get('[data-testid="transfer-to-select"]').findAll('option')
+    expect(options.map((o) => o.attributes('value'))).toEqual(['a1', 'a3'])
+    expect(
+      (form.get('[data-testid="transfer-to-select"]').element as HTMLSelectElement).value,
+    ).toBe('a3')
+
+    const error = document.body.querySelector('[data-testid="transfer-error"]')
+    expect(error?.textContent?.trim()).toBe('Conta não encontrada')
+    expect(error?.getAttribute('role')).toBe('alert')
+    expect(transferDialog()).not.toBeNull()
+    expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 1.834,56')
+    expect(wrapper.get('[data-testid="accounts-success"]').text()).toBe('')
+  })
+
+  it('nova tentativa reaproveita o id; reabrir o diálogo gera outro', async () => {
+    mockCreateTransfer.mockRejectedValueOnce(new Error('Network Error'))
+    const wrapper = await mountView()
+    let form = await openTransfer(wrapper)
+    await fillAndSubmit(form, '10')
+    await fillAndSubmit(form, '10')
+
+    const [first, retry] = mockCreateTransfer.mock.calls.map((call) => call[0].id as string)
+    expect(first).toMatch(/^[0-9a-f-]{36}$/)
+    expect(retry).toBe(first)
+
+    form = await openTransfer(wrapper)
+    await fillAndSubmit(form, '10')
+    expect(mockCreateTransfer.mock.calls[2]![0].id).not.toBe(first)
+  })
+
+  it('editar, remover ou restaurar uma conta recarrega as transferências', async () => {
+    mockUpdate.mockReset().mockResolvedValue({ ...inter(), accountName: 'Inter PJ' })
+    mockDelete.mockReset().mockResolvedValue(undefined)
+    mockRestore.mockReset().mockResolvedValue(inter())
+    mockListDeleted.mockReset().mockResolvedValue([])
+    const wrapper = await mountView()
+    expect(mockListTransfers).toHaveBeenCalledTimes(1)
+
+    await wrapper.get('[data-testid="edit-account-a2"]').trigger('click')
+    await flushPromises()
+    const accountForm = wrapper.findComponent(AccountForm)
+    await accountForm.get('[data-testid="account-name-input"]').setValue('Inter PJ')
+    await accountForm.get('[data-testid="account-form"]').trigger('submit')
+    await flushPromises()
+    expect(mockListTransfers).toHaveBeenCalledTimes(2)
+
+    await wrapper.get('[data-testid="remove-account-a2"]').trigger('click')
+    await flushPromises()
+    bodyButton('confirm-remove-account').click()
+    await flushPromises()
+    expect(mockListTransfers).toHaveBeenCalledTimes(3)
+
+    mockListDeleted.mockResolvedValue([inter()])
+    await wrapper.get('[data-testid="toggle-removed-accounts"]').setValue(true)
+    await flushPromises()
+    await wrapper.get('[data-testid="restore-account-a2"]').trigger('click')
+    await flushPromises()
+    expect(mockListTransfers).toHaveBeenCalledTimes(4)
+  })
+
+  it('falha de rede mostra a mensagem genérica e preserva os dados digitados', async () => {
+    mockCreateTransfer.mockRejectedValue(new Error('Network Error'))
+    const wrapper = await mountView()
+    const form = await openTransfer(wrapper)
+    await fillAndSubmit(form, '10,50')
+
+    expect(document.body.querySelector('[data-testid="transfer-error"]')?.textContent?.trim()).toBe(
+      'Não foi possível registrar a transferência. Tente novamente.',
+    )
+    expect(
+      (form.get('[data-testid="transfer-amount-input"]').element as HTMLInputElement).value,
+    ).toBe('10,50')
+  })
+
+  it('enquanto salva, mostra "Salvando...", Cancelar fica desabilitado e o diálogo não fecha', async () => {
+    let resolve: (t: Transfer) => void = () => {}
+    mockCreateTransfer.mockReturnValue(new Promise<Transfer>((r) => (resolve = r)))
+    const wrapper = await mountView()
+    const form = await openTransfer(wrapper)
+    await fillAndSubmit(form, '10')
+
+    expect(bodyButton('save-transfer-button').disabled).toBe(true)
+    expect(bodyButton('save-transfer-button').textContent?.trim()).toBe('Salvando...')
+    expect(bodyButton('cancel-transfer').disabled).toBe(true)
+    wrapper.findAllComponents({ name: 'Dialog' })[2]!.vm.$emit('update:open', false)
+    await flushPromises()
+    expect(transferDialog()).not.toBeNull()
+
+    // Segundo envio durante o primeiro é ignorado
+    await form.get('[data-testid="transfer-form"]').trigger('submit')
+    resolve(transfer({ amount: 10 }))
+    await flushPromises()
+    expect(transferDialog()).toBeNull()
+    expect(mockCreateTransfer).toHaveBeenCalledOnce()
+  })
+
+  it('Cancelar fecha sem transferir e devolve o foco ao "Transferir"', async () => {
+    const wrapper = await mountView()
+    await openTransfer(wrapper)
+    bodyButton('cancel-transfer').click()
+    await flushPromises()
+    await nextTick()
+
+    expect(transferDialog()).toBeNull()
+    expect(mockCreateTransfer).not.toHaveBeenCalled()
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('open-transfer')
+  })
+
+  it('falha ao carregar as transferências mostra "Tentar de novo", que recarrega', async () => {
+    mockListTransfers.mockRejectedValueOnce(new Error('down'))
+    const wrapper = await mountView()
+
+    expect(wrapper.get('[data-testid="transfers-load-error"]').attributes('role')).toBe('alert')
+    mockListTransfers.mockResolvedValue([transfer()])
+    await wrapper.get('[data-testid="transfers-retry"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="transfer-item-t1"]').exists()).toBe(true)
   })
 })

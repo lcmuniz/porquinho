@@ -115,3 +115,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-4-3-edit-account-and-card-information.md`
   summary: Story 4.7 — ordenação determinística do `account_balance_history` para eventos no mesmo instante (coluna sequencial ou relógio injetado) e controle de concorrência na edição de contas/cartões (`@Version` com 409).
   evidence: Revisão da 4.3: o desempate é por UUID; dois PUT simultâneos fazem a última gravação vencer.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-4-5-record-internal-transfers-between-own-accounts.md`
+  summary: Injetar `Clock` em `NotPastInSaoPaulo` e `NotFutureInSaoPaulo` e testar a virada do dia em São Paulo × UTC; corrigir `formatDateBR` (`lib/date.ts`), que mostra datas AAAA-MM-DD um dia antes no fuso de São Paulo.
+  evidence: Revisão da 4.5 (Verification Gap) e relato do implementador da 4.5.

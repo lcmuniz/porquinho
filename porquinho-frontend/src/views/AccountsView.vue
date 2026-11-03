@@ -96,15 +96,29 @@
               {{ formatBRL(totalCents / 100) }}
             </p>
           </div>
-          <Button
-            class="min-h-[44px] bg-purple-600 text-white hover:bg-purple-700"
-            ref="headerAddButton"
-            data-testid="open-add-account"
-            @click="openDialog"
-          >
-            <Plus class="h-4 w-4" aria-hidden="true" />
-            Adicionar conta
-          </Button>
+          <div class="flex flex-col gap-2 sm:flex-row">
+            <!-- Story 4.5: transferir entre contas próprias (precisa de 2 ou mais contas ativas) -->
+            <Button
+              v-if="accounts.length >= 2"
+              ref="transferButton"
+              variant="outline"
+              class="min-h-[44px] border-purple-600 text-purple-700"
+              data-testid="open-transfer"
+              @click="openTransfer"
+            >
+              <ArrowLeftRight class="h-4 w-4" aria-hidden="true" />
+              Transferir
+            </Button>
+            <Button
+              class="min-h-[44px] bg-purple-600 text-white hover:bg-purple-700"
+              ref="headerAddButton"
+              data-testid="open-add-account"
+              @click="openDialog"
+            >
+              <Plus class="h-4 w-4" aria-hidden="true" />
+              Adicionar conta
+            </Button>
+          </div>
         </section>
 
         <section aria-labelledby="accounts-list-heading" class="space-y-2">
@@ -157,6 +171,79 @@
           </ul>
         </section>
       </template>
+
+      <!-- Story 4.5: transferências recentes -->
+      <section
+        v-if="!loading && !loadFailed"
+        aria-labelledby="transfers-heading"
+        class="space-y-2"
+        data-testid="recent-transfers"
+      >
+        <h2 id="transfers-heading" class="text-sm font-medium text-gray-900">
+          Transferências recentes
+        </h2>
+        <p
+          v-if="transfersLoading"
+          aria-busy="true"
+          class="text-sm text-gray-600"
+          data-testid="transfers-loading"
+        >
+          Carregando transferências...
+        </p>
+        <div
+          v-else-if="transfersLoadFailed"
+          role="alert"
+          data-testid="transfers-load-error"
+          class="flex flex-col gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <p class="text-sm text-red-800">Não foi possível carregar as transferências.</p>
+          <Button
+            variant="outline"
+            class="min-h-[44px] shrink-0"
+            data-testid="transfers-retry"
+            @click="loadTransfers()"
+          >
+            Tentar de novo
+          </Button>
+        </div>
+        <p
+          v-else-if="transfers.length === 0"
+          class="text-sm text-gray-600"
+          data-testid="transfers-empty"
+        >
+          Nenhuma transferência registrada
+        </p>
+        <ul v-else class="space-y-2" data-testid="transfers-list">
+          <li
+            v-for="transfer in transfers"
+            :key="transfer.id"
+            class="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3"
+            :data-testid="`transfer-item-${transfer.id}`"
+          >
+            <ArrowLeftRight class="h-5 w-5 shrink-0 text-purple-600" aria-hidden="true" />
+            <div class="min-w-0 flex-1">
+              <p class="truncate font-medium text-gray-900" data-testid="transfer-accounts">
+                {{ transfer.fromAccountName ?? 'Conta' }} → {{ transfer.toAccountName ?? 'Conta' }}
+              </p>
+              <p class="truncate text-xs text-gray-500">
+                <span data-testid="transfer-date">{{ formatISODateBR(transfer.transferDate) }}</span
+                ><template v-if="transfer.description">
+                  ·
+                  <span data-testid="transfer-description">{{
+                    transfer.description
+                  }}</span></template
+                >
+              </p>
+            </div>
+            <span
+              class="text-sm font-semibold whitespace-nowrap text-gray-900"
+              data-testid="transfer-amount"
+            >
+              {{ formatBRL(transfer.amount) }}
+            </span>
+          </li>
+        </ul>
+      </section>
 
       <!-- Story 4.4: contas removidas, com "Restaurar" -->
       <template v-if="!loading && !loadFailed">
@@ -336,14 +423,57 @@
         </div>
       </DialogContent>
     </Dialog>
+
+    <!-- Story 4.5: nova transferência -->
+    <Dialog :open="transferDialogOpen" @update:open="onTransferDialogOpenChange">
+      <DialogContent
+        :show-close-button="false"
+        data-testid="transfer-dialog"
+        @open-auto-focus="onTransferOpenAutoFocus"
+        @close-auto-focus="onTransferCloseAutoFocus"
+      >
+        <DialogHeader>
+          <DialogTitle>Nova transferência</DialogTitle>
+          <DialogDescription>
+            Mova dinheiro entre suas contas. O saldo total não muda.
+          </DialogDescription>
+        </DialogHeader>
+        <p
+          v-if="transferError"
+          role="alert"
+          data-testid="transfer-error"
+          class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+        >
+          {{ transferError }}
+        </p>
+        <TransferForm
+          ref="transferForm"
+          v-model:submitting="transferSubmitting"
+          :accounts="accounts"
+          @attempt="transferError = null"
+          @created="onTransferCreated"
+          @failed="onTransferFailed"
+        />
+        <Button
+          variant="outline"
+          class="min-h-[44px] w-full"
+          data-testid="cancel-transfer"
+          :disabled="transferSubmitting"
+          @click="transferDialogOpen = false"
+        >
+          Cancelar
+        </Button>
+      </DialogContent>
+    </Dialog>
   </main>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import { Landmark, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-vue-next'
+import { ArrowLeftRight, Landmark, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-vue-next'
 import AccountForm from '@/components/accounts/AccountForm.vue'
+import TransferForm from '@/components/accounts/TransferForm.vue'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -360,12 +490,16 @@ import {
   listDeletedAccounts,
   restoreAccount,
 } from '@/services/accountService'
+import { listTransfers } from '@/services/transferService'
 import type { Account } from '@/types/account'
+import type { Transfer } from '@/types/transfer'
 
 /**
  * Story 4.1: contas ativas, saldo total e cadastro de conta nova pelo diálogo.
  * Story 4.3: o botão "Editar" de cada conta abre o mesmo diálogo com o formulário preenchido.
  * Story 4.4: "Remover" com confirmação; "Mostrar removidas" lista as removidas com "Restaurar".
+ * Story 4.5: "Transferir" (com 2 ou mais contas) abre o diálogo de transferência; a seção "Transferências
+ * recentes" lista as transferências registradas.
  */
 const accounts = ref<Account[]>([])
 const loading = ref(true)
@@ -398,6 +532,15 @@ const removed = ref<Account[]>([])
 const removedLoading = ref(false)
 const removedLoadFailed = ref(false)
 const restoringId = ref<string | null>(null)
+/** Story 4.5: diálogo e seção de transferências. */
+const transferDialogOpen = ref(false)
+const transferSubmitting = ref(false)
+const transferError = ref<string | null>(null)
+const transferForm = ref<InstanceType<typeof TransferForm> | null>(null)
+const transferButton = ref<{ $el?: HTMLElement } | null>(null)
+const transfers = ref<Transfer[]>([])
+const transfersLoading = ref(false)
+const transfersLoadFailed = ref(false)
 
 /** A mensagem de sucesso some sozinha depois de alguns segundos. */
 const SUCCESS_TIMEOUT_MS = 5000
@@ -429,6 +572,88 @@ async function load() {
     loading.value = false
   }
   if (showRemoved.value && !loadFailed.value) void loadRemoved()
+  if (!loadFailed.value) void loadTransfers()
+}
+
+/** AAAA-MM-DD → dd/mm/aaaa (data de calendário, sem fuso). */
+function formatISODateBR(iso: string): string {
+  const [year, month, day] = iso.split('-')
+  return year && month && day ? `${day}/${month}/${year}` : iso
+}
+
+/** Sequência das cargas de transferências: só a resposta da carga mais recente é aplicada. */
+let transfersRequest = 0
+
+/** Story 4.5: carrega a seção. `quiet` recarrega sem trocar a lista pelo "Carregando...". */
+async function loadTransfers(quiet = false) {
+  const request = ++transfersRequest
+  if (!quiet) transfersLoading.value = true
+  transfersLoadFailed.value = false
+  try {
+    const result = await listTransfers()
+    if (request === transfersRequest) transfers.value = result
+  } catch {
+    if (request === transfersRequest) transfersLoadFailed.value = true
+  } finally {
+    if (request === transfersRequest) transfersLoading.value = false
+  }
+}
+
+/** Story 4.5: abre o diálogo "Nova transferência". */
+function openTransfer() {
+  transferError.value = null
+  setSuccess(null)
+  notice.value = null
+  transferDialogOpen.value = true
+}
+
+function onTransferDialogOpenChange(open: boolean) {
+  // Não fecha no meio do envio (Esc ou clique fora)
+  if (!open && transferSubmitting.value) return
+  transferDialogOpen.value = open
+}
+
+function onTransferOpenAutoFocus(event: Event) {
+  event.preventDefault()
+  if (transferForm.value) transferForm.value.focus()
+  else void nextTick(() => transferForm.value?.focus())
+}
+
+/** Ao fechar, o foco volta ao "Transferir" (se ainda visível) ou ao botão do topo/título. */
+function onTransferCloseAutoFocus(event: Event) {
+  event.preventDefault()
+  void nextTick(() => {
+    ;(transferButton.value?.$el ?? headerAddButton.value?.$el ?? heading.value)?.focus()
+  })
+}
+
+/**
+ * Story 4.5: recarrega as contas do servidor (saldos depois de uma transferência, ou uma conta que sumiu). Uma
+ * falha mantém a lista atual e avisa, sem esconder a página.
+ */
+async function refreshAccounts() {
+  try {
+    accounts.value = await listAccounts()
+  } catch {
+    notice.value = 'Não foi possível atualizar os saldos. Recarregue a página.'
+  }
+}
+
+/** Story 4.5: fecha o diálogo e recarrega os saldos das contas e a seção (o total não muda). */
+function onTransferCreated() {
+  transferDialogOpen.value = false
+  setSuccess('Transferência registrada')
+  void refreshAccounts()
+  void loadTransfers(true)
+}
+
+/**
+ * 404 "Conta não encontrada" e outras falhas ficam no diálogo, que continua aberto. No 404 as contas são
+ * recarregadas, para a conta removida sair das opções.
+ */
+function onTransferFailed(detail: string | undefined, status?: number) {
+  transferError.value = detail ?? 'Não foi possível registrar a transferência. Tente novamente.'
+  if (status === 404) void refreshAccounts()
 }
 
 function openDialog() {
@@ -484,6 +709,8 @@ function onUpdated(updated: Account) {
   if (index >= 0) accounts.value.splice(index, 1, updated)
   dialogOpen.value = false
   setSuccess('Informações atualizadas')
+  // Story 4.5: os nomes das contas nas transferências acompanham a edição
+  void loadTransfers(true)
 }
 
 /** Story 4.3: 404 ao salvar — o item foi removido ou não é do usuário; sai da lista. */
@@ -539,6 +766,7 @@ async function confirmRemove() {
     if (showRemoved.value) void loadRemoved(true)
     removeDialogOpen.value = false
     setSuccess('Conta removida')
+    void loadTransfers(true)
   } catch (err) {
     const response = (err as ApiError)?.response
     if (response?.status === 404) {
@@ -610,6 +838,7 @@ async function restore(account: Account) {
     removed.value = removed.value.filter((x) => x.id !== account.id)
     insertByCreation(restored)
     setSuccess('Conta restaurada')
+    void loadTransfers(true)
     // O botão "Restaurar" some: o foco vai para o "Editar" da conta restaurada
     void nextTick(() =>
       list.value

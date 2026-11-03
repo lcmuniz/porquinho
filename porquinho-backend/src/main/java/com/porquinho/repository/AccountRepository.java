@@ -50,6 +50,15 @@ public interface AccountRepository extends JpaRepository<Account, UUID> {
     @Query("SELECT a FROM Account a WHERE a.userId = :userId AND a.deletedAt IS NULL ORDER BY a.id ASC")
     List<Account> findActiveByUserIdForUpdate(@Param("userId") UUID userId);
 
+    /**
+     * The user's active rows among {@code ids}, row-locked in id order (Story 4.5). PostgreSQL locks the rows in
+     * the ORDER BY order, the same order as {@link #findActiveByUserIdForUpdate}, so two crossed transfers (A→B and
+     * B→A) or a transfer and a removal wait for each other instead of deadlocking.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT a FROM Account a WHERE a.id IN :ids AND a.userId = :userId AND a.deletedAt IS NULL ORDER BY a.id ASC")
+    List<Account> findActiveByIdsForUpdate(@Param("ids") List<UUID> ids, @Param("userId") UUID userId);
+
     /** Every row of the user, removed ones included (LGPD export). */
     List<Account> findByUserIdOrderByCreatedAtAsc(UUID userId);
 
