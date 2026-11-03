@@ -85,6 +85,19 @@ describe('DashboardView', () => {
     expect(link?.text()).toBe('Contas bancárias')
   })
 
+  it('a navegação tem o link "Cartões de crédito" para /cartoes (Story 4.2)', async () => {
+    mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const link = wrapper
+      .findAllComponents(RouterLinkStub)
+      .find((l) => l.attributes('data-testid') === 'cards-link')
+    expect(link?.props('to')).toBe('/cartoes')
+    expect(link?.text()).toBe('Cartões de crédito')
+  })
+
   it('Sair limpa o usuário local, faz signOut e vai para /login', async () => {
     mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
     localStorage.setItem('user', '{"id":"x"}')

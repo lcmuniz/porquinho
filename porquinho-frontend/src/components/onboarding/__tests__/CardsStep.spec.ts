@@ -345,4 +345,26 @@ describe('CardsStep', () => {
     expect(wrapper.find('[data-testid="card-item-old"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="card-item-new-Nubank"]').exists()).toBe(true)
   })
+
+  it('enquanto o cartão é criado, Próximo, Pular e Remover ficam bloqueados e voltam depois', async () => {
+    mockList.mockResolvedValue([card()])
+    let resolveCreate: (c: CreditCard) => void = () => {}
+    mockCreate.mockReturnValue(new Promise<CreditCard>((resolve) => (resolveCreate = resolve)))
+    const wrapper = await mountStep()
+    await fill(wrapper, 'Inter', '1', '10')
+    await submit(wrapper)
+
+    for (const id of ['next-button', 'skip-button', 'remove-card-c1']) {
+      expect(wrapper.get(`[data-testid="${id}"]`).attributes('disabled')).toBeDefined()
+    }
+    await wrapper.get('[data-testid="next-button"]').trigger('click')
+    await flushPromises()
+    expect(mockCompleteCards).not.toHaveBeenCalled()
+
+    resolveCreate(card({ id: 'new' }))
+    await flushPromises()
+    for (const id of ['next-button', 'skip-button', 'remove-card-c1']) {
+      expect(wrapper.get(`[data-testid="${id}"]`).attributes('disabled')).toBeUndefined()
+    }
+  })
 })
