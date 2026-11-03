@@ -17,11 +17,15 @@
         </RouterLink>
       </div>
 
+      <!-- Sempre no DOM: leitores de tela só anunciam mudanças numa região live que já existe -->
       <p
-        v-if="successMessage"
         role="status"
         data-testid="accounts-success"
-        class="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800"
+        :class="
+          successMessage
+            ? 'rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800'
+            : 'sr-only'
+        "
       >
         {{ successMessage }}
       </p>
@@ -149,6 +153,7 @@
         <AccountForm
           ref="accountForm"
           v-model:submitting="saving"
+          @attempt="dialogError = null"
           primary
           submit-label="Salvar conta"
           submitting-label="Salvando..."
@@ -170,7 +175,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { Landmark, Plus } from 'lucide-vue-next'
 import AccountForm from '@/components/accounts/AccountForm.vue'
@@ -234,11 +239,6 @@ function openDialog() {
   setSuccess(null)
   dialogOpen.value = true
 }
-
-// Nova tentativa de salvar: o erro anterior sai do diálogo
-watch(saving, (value) => {
-  if (value) dialogError.value = null
-})
 
 function onDialogOpenChange(open: boolean) {
   // Não fecha no meio do envio (Esc ou clique fora)

@@ -169,4 +169,57 @@ describe('AccountForm', () => {
     ;(wrapper.vm as unknown as { focus: () => void }).focus()
     expect(document.activeElement?.id).toBe('account-name')
   })
+
+  it('dois envios no mesmo tick chamam a API uma vez só', async () => {
+    // Modelo controlado pelo pai: `submitting` só muda quando o pai re-renderiza
+    const wrapper = mountForm({ submitting: false, 'onUpdate:submitting': () => {} })
+    await fill(wrapper, 'Inter', '1')
+    const form = wrapper.get('[data-testid="account-form"]')
+    form.trigger('submit')
+    form.trigger('submit')
+    await flushPromises()
+
+    expect(mockCreate).toHaveBeenCalledOnce()
+  })
+
+  it('emite attempt em toda tentativa, mesmo quando a validação local falha', async () => {
+    const wrapper = mountForm()
+    await fill(wrapper, '', '1')
+    await submit(wrapper)
+
+    expect(wrapper.emitted('attempt')).toHaveLength(1)
+    expect(mockCreate).not.toHaveBeenCalled()
+  })
+
+  it('400 com campo conhecido e campo desconhecido mostra o erro no campo e emite failed com o detail', async () => {
+    mockCreate.mockRejectedValue({
+      response: {
+        status: 400,
+        data: {
+          detail: 'Dados inválidos',
+          errors: { initialBalance: 'Saldo inválido', currency: 'Campo desconhecido' },
+        },
+      },
+    })
+    const wrapper = mountForm()
+    await fill(wrapper, 'Inter', '1')
+    await submit(wrapper)
+
+    expect(wrapper.get('[data-testid="initial-balance-error"]').text()).toBe('Saldo inválido')
+    expect(wrapper.emitted('failed')?.[0]).toEqual(['Dados inválidos'])
+  })
+
+  it('400 só com campos desconhecidos emite failed com o detail', async () => {
+    mockCreate.mockRejectedValue({
+      response: {
+        status: 400,
+        data: { detail: 'Dados inválidos', errors: { currency: 'Campo desconhecido' } },
+      },
+    })
+    const wrapper = mountForm()
+    await fill(wrapper, 'Inter', '1')
+    await submit(wrapper)
+
+    expect(wrapper.emitted('failed')?.[0]).toEqual(['Dados inválidos'])
+  })
 })

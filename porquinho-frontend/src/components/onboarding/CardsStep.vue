@@ -11,130 +11,14 @@
         </p>
       </div>
 
-      <form
-        class="space-y-4 rounded-lg border border-gray-200 p-4"
-        novalidate
-        data-testid="card-form"
-        @submit.prevent="addCard"
-      >
-        <div class="space-y-1">
-          <label for="card-name" class="text-sm font-medium text-gray-900">Nome do cartão</label>
-          <Input
-            id="card-name"
-            v-model="form.cardName"
-            maxlength="100"
-            placeholder="Ex.: Nubank Roxinho"
-            autocomplete="off"
-            data-testid="card-name-input"
-            :aria-invalid="errors.cardName ? 'true' : undefined"
-            :aria-describedby="errors.cardName ? 'card-name-error' : undefined"
-          />
-          <p
-            v-if="errors.cardName"
-            id="card-name-error"
-            class="text-sm text-red-600"
-            data-testid="card-name-error"
-          >
-            {{ errors.cardName }}
-          </p>
-        </div>
-
-        <div class="space-y-1">
-          <label for="card-bank-name" class="text-sm font-medium text-gray-900">
-            Banco <span class="font-normal text-gray-500">(opcional)</span>
-          </label>
-          <Input
-            id="card-bank-name"
-            v-model="form.bankName"
-            list="card-bank-suggestions"
-            maxlength="100"
-            placeholder="Digite ou escolha um banco"
-            autocomplete="off"
-            data-testid="card-bank-name-input"
-            :aria-invalid="errors.bankName ? 'true' : undefined"
-            :aria-describedby="errors.bankName ? 'card-bank-name-error' : undefined"
-          />
-          <datalist id="card-bank-suggestions">
-            <option v-for="bank in BANKS" :key="bank" :value="bank" />
-          </datalist>
-          <p v-if="errors.bankName" id="card-bank-name-error" class="text-sm text-red-600">
-            {{ errors.bankName }}
-          </p>
-        </div>
-
-        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div class="space-y-1">
-            <label for="card-limit" class="text-sm font-medium text-gray-900">
-              Limite do cartão (R$)
-            </label>
-            <Input
-              id="card-limit"
-              v-model="form.cardLimit"
-              inputmode="decimal"
-              placeholder="0,00"
-              autocomplete="off"
-              data-testid="card-limit-input"
-              :aria-invalid="errors.cardLimit ? 'true' : undefined"
-              :aria-describedby="
-                errors.cardLimit ? 'card-limit-error card-limit-hint' : 'card-limit-hint'
-              "
-            />
-            <p
-              v-if="errors.cardLimit"
-              id="card-limit-error"
-              class="text-sm text-red-600"
-              data-testid="card-limit-error"
-            >
-              {{ errors.cardLimit }}
-            </p>
-            <p id="card-limit-hint" class="text-xs text-gray-500">Ex.: 5.000,00</p>
-          </div>
-
-          <div class="space-y-1">
-            <label for="card-due-day" class="text-sm font-medium text-gray-900">
-              Dia do vencimento
-            </label>
-            <Input
-              id="card-due-day"
-              v-model="form.dueDay"
-              type="number"
-              inputmode="numeric"
-              min="1"
-              max="31"
-              step="1"
-              placeholder="Ex.: 10"
-              autocomplete="off"
-              data-testid="card-due-day-input"
-              :aria-invalid="errors.dueDay ? 'true' : undefined"
-              :aria-describedby="
-                errors.dueDay ? 'card-due-day-error card-due-day-hint' : 'card-due-day-hint'
-              "
-            />
-            <p
-              v-if="errors.dueDay"
-              id="card-due-day-error"
-              class="text-sm text-red-600"
-              data-testid="card-due-day-error"
-            >
-              {{ errors.dueDay }}
-            </p>
-            <p id="card-due-day-hint" class="text-xs text-gray-500">
-              Dia do mês em que a fatura vence (1 a 31).
-            </p>
-          </div>
-        </div>
-
-        <Button
-          type="submit"
-          variant="outline"
-          class="min-h-[44px] w-full border-purple-600 text-purple-700"
-          data-testid="add-card-button"
-          :disabled="busy || loadingList"
-        >
-          <Plus class="h-4 w-4" aria-hidden="true" />
-          {{ adding ? 'Adicionando...' : 'Adicionar cartão' }}
-        </Button>
-      </form>
+      <!-- Bloqueado enquanto a lista carrega: a resposta tardia da lista sobrescreveria o cartão recém-adicionado -->
+      <CardForm
+        v-model:submitting="adding"
+        class="rounded-lg border border-gray-200 p-4"
+        :disabled="removing || finishing !== null || loadingList"
+        @created="onCreated"
+        @failed="onFailed"
+      />
 
       <div v-if="loadingList" class="space-y-2" aria-busy="true" data-testid="cards-skeleton">
         <div class="h-14 animate-pulse rounded-lg bg-gray-100" />
@@ -221,19 +105,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import {
-  ChevronLeft,
-  ChevronRight,
-  CreditCard as CreditCardIcon,
-  Plus,
-  Trash2,
-} from 'lucide-vue-next'
+import { computed, onMounted, ref } from 'vue'
+import { ChevronLeft, ChevronRight, CreditCard as CreditCardIcon, Trash2 } from 'lucide-vue-next'
+import CardForm from '@/components/cards/CardForm.vue'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { BANKS } from '@/lib/banks'
-import { formatBRL, parseBRL } from '@/lib/money'
-import { createCard, deleteCard, listCards } from '@/services/cardService'
+import { formatBRL } from '@/lib/money'
+import { deleteCard, listCards } from '@/services/cardService'
 import { completeCards } from '@/services/onboardingService'
 import type { CreditCard } from '@/types/creditCard'
 import type { OnboardingProgress } from '@/types/onboarding'
@@ -248,19 +125,6 @@ const emit = defineEmits<{
   error: [message: string]
 }>()
 
-const DUE_DAY_MESSAGE = 'Informe um dia entre 1 e 31'
-
-type Field = 'cardName' | 'bankName' | 'cardLimit' | 'dueDay'
-const FIELDS: Field[] = ['cardName', 'bankName', 'cardLimit', 'dueDay']
-
-const form = reactive({
-  cardName: '',
-  bankName: '',
-  cardLimit: '',
-  // <input type="number">: o v-model pode devolver número ou texto (vazio)
-  dueDay: '' as string | number,
-})
-const errors = reactive<Partial<Record<Field, string>>>({})
 const cards = ref<CreditCard[]>([])
 const loadingList = ref(true)
 const adding = ref(false)
@@ -278,75 +142,15 @@ function apiDetail(err: unknown): string | undefined {
   return (err as ApiError)?.response?.data?.detail
 }
 
-function clearErrors() {
-  for (const key of Object.keys(errors) as Field[]) delete errors[key]
+function onCreated(created: CreditCard) {
+  cards.value.push(created)
 }
 
-/** Validação local, com as mesmas regras e mensagens do backend. */
-function validate(): { cardLimit: number; dueDay: number } | null {
-  clearErrors()
-  const name = form.cardName.trim()
-  if (!name) errors.cardName = 'Informe o nome do cartão'
-  else if (name.length > 100) errors.cardName = 'Use no máximo 100 caracteres no nome do cartão'
-
-  if (form.bankName.trim().length > 100) {
-    errors.bankName = 'Use no máximo 100 caracteres no nome do banco'
-  }
-
-  let cardLimit: number | null = null
-  if (!form.cardLimit.trim()) {
-    errors.cardLimit = 'Informe o limite do cartão (use 0,00 se não souber)'
-  } else {
-    cardLimit = parseBRL(form.cardLimit)
-    if (cardLimit === null) {
-      errors.cardLimit = 'Digite o limite no formato 5.000,00 (até 2 casas depois da vírgula)'
-    } else if (cardLimit < 0) {
-      errors.cardLimit = 'O limite não pode ser negativo'
-    }
-  }
-
-  const dayText = String(form.dueDay ?? '').trim()
-  const dueDay = /^\d{1,2}$/.test(dayText) ? Number(dayText) : NaN
-  if (!(dueDay >= 1 && dueDay <= 31)) errors.dueDay = DUE_DAY_MESSAGE
-
-  if (Object.keys(errors).length > 0 || cardLimit === null) return null
-  return { cardLimit, dueDay }
-}
-
-async function addCard() {
-  // Durante o carregamento inicial a resposta da lista sobrescreveria o cartão recém-adicionado
-  if (busy.value || loadingList.value) return
-  const values = validate()
-  if (values === null) return
-
-  adding.value = true
-  try {
-    const created = await createCard({
-      cardName: form.cardName.trim(),
-      bankName: form.bankName.trim() || null,
-      cardLimit: values.cardLimit,
-      dueDay: values.dueDay,
-    })
-    cards.value.push(created)
-    form.cardName = ''
-    form.bankName = ''
-    form.cardLimit = ''
-    form.dueDay = ''
-  } catch (err) {
-    const fieldErrors = (err as ApiError)?.response?.data?.errors ?? {}
-    const known = Object.entries(fieldErrors).filter(([key]) => FIELDS.includes(key as Field))
-    if ((err as ApiError)?.response?.status === 400 && known.length > 0) {
-      Object.assign(errors, Object.fromEntries(known))
-    } else {
-      emit(
-        'error',
-        apiDetail(err) ??
-          'Não foi possível adicionar o cartão. Verifique sua conexão e tente novamente.',
-      )
-    }
-  } finally {
-    adding.value = false
-  }
+function onFailed(detail: string | undefined) {
+  emit(
+    'error',
+    detail ?? 'Não foi possível adicionar o cartão. Verifique sua conexão e tente novamente.',
+  )
 }
 
 async function removeCard(card: CreditCard) {

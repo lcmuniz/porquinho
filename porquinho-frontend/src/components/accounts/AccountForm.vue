@@ -170,6 +170,8 @@ const props = withDefaults(
 const emit = defineEmits<{
   created: [account: Account]
   failed: [detail: string | undefined]
+  /** Toda tentativa de envio, antes da validação (o pai limpa o erro anterior). */
+  attempt: []
 }>()
 
 /** Envio em andamento; o pai pode acompanhar com `v-model:submitting`. */
@@ -226,11 +228,19 @@ function reset() {
   clearErrors()
 }
 
+/**
+ * Trava local do envio: com `v-model:submitting`, o valor do modelo só muda quando o pai
+ * re-renderiza, então dois envios no mesmo tick passariam pela checagem.
+ */
+let inFlight = false
+
 async function submit() {
-  if (props.disabled || submitting.value) return
+  if (props.disabled || submitting.value || inFlight) return
+  emit('attempt')
   const balance = validate()
   if (balance === null) return
 
+  inFlight = true
   submitting.value = true
   try {
     const created = await createAccount({
@@ -243,15 +253,17 @@ async function submit() {
     emit('created', created)
   } catch (err) {
     const response = (err as ApiError)?.response
-    const known = Object.entries(response?.data?.errors ?? {}).filter(([key]) =>
-      FIELDS.includes(key as Field),
-    )
+    const entries = Object.entries(response?.data?.errors ?? {})
+    const known = entries.filter(([key]) => FIELDS.includes(key as Field))
     if (response?.status === 400 && known.length > 0) {
       Object.assign(errors, Object.fromEntries(known))
+      // Há erros de campos que o formulário não mostra: a mensagem geral não pode se perder
+      if (known.length < entries.length) emit('failed', response.data?.detail)
     } else {
       emit('failed', response?.data?.detail)
     }
   } finally {
+    inFlight = false
     submitting.value = false
   }
 }

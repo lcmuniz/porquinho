@@ -209,7 +209,7 @@ describe('AccountsView', () => {
     expect(dialog()).not.toBeNull()
     const name = form.get('[data-testid="account-name-input"]').element as HTMLInputElement
     expect(name.value).toBe('Inter')
-    expect(wrapper.find('[data-testid="accounts-success"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="accounts-success"]').text()).toBe('')
   })
 
   it('falha com detail do servidor mostra a mensagem do servidor', async () => {
@@ -305,10 +305,10 @@ describe('AccountsView', () => {
     mockList.mockResolvedValue([account()])
     const wrapper = await mountView()
     await fillAndSave(await openDialog(wrapper), 'Inter', '500,00')
-    expect(wrapper.find('[data-testid="accounts-success"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="accounts-success"]').text()).not.toBe('')
 
     await openDialog(wrapper)
-    expect(wrapper.find('[data-testid="accounts-success"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="accounts-success"]').text()).toBe('')
   })
 
   it('a mensagem de sucesso some depois de 5 s', async () => {
@@ -318,10 +318,10 @@ describe('AccountsView', () => {
     try {
       // O timer foi criado antes dos fake timers: recria salvando de novo
       await fillAndSave(await openDialog(wrapper), 'Itaú', '1,00')
-      expect(wrapper.find('[data-testid="accounts-success"]').exists()).toBe(true)
+      expect(wrapper.get('[data-testid="accounts-success"]').text()).not.toBe('')
       vi.advanceTimersByTime(5000)
       await nextTick()
-      expect(wrapper.find('[data-testid="accounts-success"]').exists()).toBe(false)
+      expect(wrapper.get('[data-testid="accounts-success"]').text()).toBe('')
     } finally {
       vi.useRealTimers()
     }
@@ -342,5 +342,51 @@ describe('AccountsView', () => {
     await flushPromises()
 
     expect(document.activeElement).toBe(wrapper.get('h1').element)
+  })
+
+  it('a região de status fica sempre no DOM, vazia até haver mensagem', async () => {
+    const wrapper = await mountView()
+    const status = wrapper.get('[data-testid="accounts-success"]')
+    expect(status.attributes('role')).toBe('status')
+    expect(status.text()).toBe('')
+  })
+
+  it('depois de uma falha, nova tentativa com campo inválido tira o aviso antigo', async () => {
+    mockCreate.mockRejectedValueOnce(new Error('Network Error'))
+    const wrapper = await mountView()
+    const form = await openDialog(wrapper)
+    await fillAndSave(form, 'Inter', '500,00')
+    expect(document.body.querySelector('[data-testid="add-account-error"]')).not.toBeNull()
+
+    await fillAndSave(form, 'Inter', 'abc')
+    expect(form.find('[data-testid="initial-balance-error"]').exists()).toBe(true)
+    expect(document.body.querySelector('[data-testid="add-account-error"]')).toBeNull()
+    expect(mockCreate).toHaveBeenCalledOnce()
+  })
+
+  it('sem envio em andamento, clicar fora (update:open(false)) fecha o diálogo', async () => {
+    const wrapper = await mountView()
+    await openDialog(wrapper)
+    wrapper.findComponent({ name: 'Dialog' }).vm.$emit('update:open', false)
+    await flushPromises()
+    expect(dialog()).toBeNull()
+  })
+
+  it('reabrir depois de Cancelar mostra o formulário vazio e sem erros', async () => {
+    const wrapper = await mountView()
+    let form = await openDialog(wrapper)
+    await fillAndSave(form, 'Inter', 'abc')
+    expect(form.find('[data-testid="initial-balance-error"]').exists()).toBe(true)
+    document.body.querySelector<HTMLButtonElement>('[data-testid="cancel-add-account"]')!.click()
+    await flushPromises()
+
+    form = await openDialog(wrapper)
+    expect((form.get('[data-testid="account-name-input"]').element as HTMLInputElement).value).toBe(
+      '',
+    )
+    expect(
+      (form.get('[data-testid="initial-balance-input"]').element as HTMLInputElement).value,
+    ).toBe('')
+    expect(form.findAll('[data-testid$="-error"]')).toHaveLength(0)
   })
 })
