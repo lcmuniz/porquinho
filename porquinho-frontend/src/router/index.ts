@@ -67,6 +67,13 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      // Story 4.1: contas bancárias (lista, saldo total e cadastro)
+      path: '/contas',
+      name: 'accounts',
+      component: () => import('../views/AccountsView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       // Story 2.2: plano mensal (Stripe Checkout). Retorno do Checkout: ?status=sucesso|cancelado
       path: '/assinatura',
       name: 'subscription',
