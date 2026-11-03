@@ -37,6 +37,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(CreditCardController.class)
@@ -230,6 +231,65 @@ class CreditCardControllerTest {
         doThrow(new ResourceNotFoundException("Cartão não encontrado")).when(creditCardService).delete(userId, id);
 
         mockMvc.perform(delete("/api/v1/credit-cards/" + id).with(authentication(authToken)))
+            .andExpect(status().isNotFound());
+    }
+
+    // Story 4.3: PUT /api/v1/credit-cards/{id}
+
+    @Test
+    void putUpdatesTheJwtUsersCardAndReturns200() throws Exception {
+        UUID id = UUID.randomUUID();
+        CreditCard updated = card("Nubank", "6000.00", 20);
+        updated.setId(id);
+        when(creditCardService.update(eq(userId), eq(id), any(CreateCreditCardRequest.class))).thenReturn(updated);
+
+        mockMvc.perform(put("/api/v1/credit-cards/" + id).with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body("\" Nubank \"", "\"Nubank\"", "6000.00", "20")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(id.toString()))
+            .andExpect(jsonPath("$.cardLimit").value(6000.0))
+            .andExpect(jsonPath("$.dueDay").value(20));
+
+        ArgumentCaptor<CreateCreditCardRequest> captor = ArgumentCaptor.forClass(CreateCreditCardRequest.class);
+        verify(creditCardService).update(eq(userId), eq(id), captor.capture());
+        assertThat(captor.getValue().cardName()).isEqualTo("Nubank");
+        assertThat(captor.getValue().dueDayValue()).isEqualTo(20);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "32", "10.5", "null"})
+    void putWithDueDayOutside1To31Is400(String dueDay) throws Exception {
+        mockMvc.perform(put("/api/v1/credit-cards/" + UUID.randomUUID()).with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body("\"Cartão\"", "null", "100.00", dueDay)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errors.dueDay").value(DUE_DAY_MESSAGE));
+
+        verifyNoInteractions(creditCardService);
+    }
+
+    @Test
+    void putWithBlankNameOrNegativeLimitIs400() throws Exception {
+        mockMvc.perform(put("/api/v1/credit-cards/" + UUID.randomUUID()).with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body("\"  \"", "null", "-1.00", "10")))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errors.cardName").value("Informe o nome do cartão"))
+            .andExpect(jsonPath("$.errors.cardLimit").value("O limite não pode ser negativo"));
+
+        verifyNoInteractions(creditCardService);
+    }
+
+    @Test
+    void putOfAnotherUsersOrRemovedCardIs404() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(creditCardService.update(eq(userId), eq(id), any(CreateCreditCardRequest.class)))
+            .thenThrow(new ResourceNotFoundException("Cartão não encontrado"));
+
+        mockMvc.perform(put("/api/v1/credit-cards/" + id).with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body("\"Cartão\"", "null", "100.00", "10")))
             .andExpect(status().isNotFound());
     }
 }

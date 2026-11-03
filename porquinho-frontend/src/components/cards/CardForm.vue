@@ -121,29 +121,33 @@
           ? 'bg-purple-600 text-white hover:bg-purple-700'
           : 'border-purple-600 text-purple-700'
       "
-      data-testid="add-card-button"
+      :data-testid="isEdit ? 'save-card-button' : 'add-card-button'"
       :disabled="disabled || submitting"
     >
-      <Plus class="h-4 w-4" aria-hidden="true" />
+      <Plus v-if="!isEdit" class="h-4 w-4" aria-hidden="true" />
       {{ submitting ? submittingLabel : submitLabel }}
     </Button>
   </form>
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { Plus } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { BANKS } from '@/lib/banks'
-import { parseBRL } from '@/lib/money'
-import { createCard } from '@/services/cardService'
+import { formatBRLInput, parseBRL } from '@/lib/money'
+import { createCard, updateCard } from '@/services/cardService'
 import type { CreditCard } from '@/types/creditCard'
 
 /**
  * Formulário de cartão de crédito (Stories 3.3 e 4.2): valida localmente, chama
  * `POST /credit-cards` e mostra os erros 400 por campo. Outras falhas vão para o pai em `failed`
  * (com o `detail` da API, se houver), e os dados digitados ficam no formulário.
+ *
+ * Story 4.3: com a prop `card`, o formulário edita esse cartão — começa preenchido com os valores
+ * atuais (limite no formato brasileiro), chama `PUT /credit-cards/{id}` e emite `updated`. Um 404
+ * (cartão removido ou de outra pessoa) vai para o pai em `not-found`.
  */
 const props = withDefaults(
   defineProps<{
@@ -153,17 +157,24 @@ const props = withDefaults(
     submittingLabel?: string
     /** Botão de envio em destaque (diálogo) em vez de contorno (passo 3). */
     primary?: boolean
+    /** Cartão a editar (Story 4.3). Sem ele, o formulário cria um cartão novo. */
+    card?: CreditCard | null
   }>(),
   {
     disabled: false,
     submitLabel: 'Adicionar cartão',
     submittingLabel: 'Adicionando...',
     primary: false,
+    card: null,
   },
 )
 
 const emit = defineEmits<{
   created: [card: CreditCard]
+  /** Story 4.3: cartão editado com sucesso, como a API devolveu. */
+  updated: [card: CreditCard]
+  /** Story 4.3: o cartão editado não existe mais (404). */
+  notFound: []
   failed: [detail: string | undefined]
   /** Toda tentativa de envio, antes da validação (o pai limpa o erro anterior). */
   attempt: []
@@ -185,6 +196,7 @@ const form = reactive({
   dueDay: '' as string | number,
 })
 const errors = reactive<Partial<Record<Field, string>>>({})
+const isEdit = computed(() => props.card != null)
 const nameInput = ref<{ $el?: HTMLInputElement } | null>(null)
 
 interface ApiError {
@@ -226,6 +238,15 @@ function validate(): { cardLimit: number; dueDay: number } | null {
   return { cardLimit, dueDay }
 }
 
+/** Preenche o formulário com os valores atuais do cartão em edição. */
+function fill(card: CreditCard) {
+  form.cardName = card.cardName
+  form.bankName = card.bankName ?? ''
+  form.cardLimit = formatBRLInput(card.cardLimit)
+  form.dueDay = card.dueDay
+  clearErrors()
+}
+
 function reset() {
   form.cardName = ''
   form.bankName = ''
@@ -248,20 +269,28 @@ async function submit() {
 
   inFlight = true
   submitting.value = true
+  const editing = props.card
+  const input = {
+    cardName: form.cardName.trim(),
+    bankName: form.bankName.trim() || null,
+    cardLimit: values.cardLimit,
+    dueDay: values.dueDay,
+  }
   try {
-    const created = await createCard({
-      cardName: form.cardName.trim(),
-      bankName: form.bankName.trim() || null,
-      cardLimit: values.cardLimit,
-      dueDay: values.dueDay,
-    })
-    reset()
-    emit('created', created)
+    if (editing) {
+      emit('updated', await updateCard(editing.id, input))
+    } else {
+      const created = await createCard(input)
+      reset()
+      emit('created', created)
+    }
   } catch (err) {
     const response = (err as ApiError)?.response
     const entries = Object.entries(response?.data?.errors ?? {})
     const known = entries.filter(([key]) => FIELDS.includes(key as Field))
-    if (response?.status === 400 && known.length > 0) {
+    if (editing && response?.status === 404) {
+      emit('notFound')
+    } else if (response?.status === 400 && known.length > 0) {
       Object.assign(errors, Object.fromEntries(known))
       // Há erros de campos que o formulário não mostra: a mensagem geral não pode se perder
       if (known.length < entries.length) emit('failed', response.data?.detail)
@@ -273,6 +302,15 @@ async function submit() {
     submitting.value = false
   }
 }
+
+watch(
+  () => props.card,
+  (card) => {
+    if (card) fill(card)
+    else reset()
+  },
+  { immediate: true },
+)
 
 /** Foca o primeiro campo (usado ao abrir o diálogo). */
 function focus() {

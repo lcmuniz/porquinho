@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.porquinho.dto.DataExportResponse;
 import com.porquinho.entity.Account;
+import com.porquinho.entity.AccountBalanceHistory;
 import com.porquinho.entity.Category;
 import com.porquinho.entity.CreditCard;
 import com.porquinho.entity.Goal;
@@ -16,6 +17,7 @@ import com.porquinho.entity.User;
 import com.porquinho.entity.UserSession;
 import com.porquinho.exception.RateLimitExceededException;
 import com.porquinho.exception.ResourceNotFoundException;
+import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.CategoryRepository;
 import com.porquinho.repository.CreditCardRepository;
@@ -67,6 +69,7 @@ public class DataExportService {
     private final CreditCardRepository creditCardRepository;
     private final CategoryRepository categoryRepository;
     private final GoalRepository goalRepository;
+    private final AccountBalanceHistoryRepository accountBalanceHistoryRepository;
     private final ObjectMapper objectMapper;
 
     @Value("${app.export.directory:./exports}")
@@ -92,7 +95,8 @@ public class DataExportService {
             AccountRepository accountRepository,
             CreditCardRepository creditCardRepository,
             CategoryRepository categoryRepository,
-            GoalRepository goalRepository) {
+            GoalRepository goalRepository,
+            AccountBalanceHistoryRepository accountBalanceHistoryRepository) {
         this.dataExportRepository = dataExportRepository;
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -107,6 +111,7 @@ public class DataExportService {
         this.creditCardRepository = creditCardRepository;
         this.categoryRepository = categoryRepository;
         this.goalRepository = goalRepository;
+        this.accountBalanceHistoryRepository = accountBalanceHistoryRepository;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
         this.objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
@@ -185,7 +190,7 @@ public class DataExportService {
         metadata.put("user_id", userId.toString());
         metadata.put("data_version", "1.0");
         metadata.put("exported_tables", List.of("users", "user_sessions", "audit_logs", "subscriptions",
-            "billing_transactions", "onboarding_progress", "accounts", "credit_cards", "categories", "goals"));
+            "billing_transactions", "onboarding_progress", "accounts", "account_balance_history", "credit_cards", "categories", "goals"));
         data.put("metadata", metadata);
 
         // User profile (sanitized)
@@ -311,6 +316,21 @@ public class DataExportService {
             accountList.add(accountMap);
         }
         data.put("accounts", accountList);
+
+        // Account balance history (Story 4.3) - every stored column, oldest first; balance as a JSON number
+        List<Map<String, Object>> historyList = new ArrayList<>();
+        for (AccountBalanceHistory snapshot : accountBalanceHistoryRepository.findByUserIdOrdered(userId)) {
+            Map<String, Object> snapshotMap = new LinkedHashMap<>();
+            snapshotMap.put("id", snapshot.getId() != null ? snapshot.getId().toString() : null);
+            snapshotMap.put("account_id", snapshot.getAccountId() != null ? snapshot.getAccountId().toString() : null);
+            snapshotMap.put("user_id", snapshot.getUserId() != null ? snapshot.getUserId().toString() : null);
+            snapshotMap.put("balance_snapshot", snapshot.getBalanceSnapshot());
+            snapshotMap.put("snapshot_date", snapshot.getSnapshotDate() != null ? snapshot.getSnapshotDate().toString() : null);
+            snapshotMap.put("created_by_event", snapshot.getCreatedByEvent());
+            snapshotMap.put("created_at", snapshot.getCreatedAt() != null ? snapshot.getCreatedAt().toString() : null);
+            historyList.add(snapshotMap);
+        }
+        data.put("account_balance_history", historyList);
 
         // Credit cards (Story 3.3) - every stored column, removed cards included (deleted_at filled)
         List<Map<String, Object>> cardList = new ArrayList<>();

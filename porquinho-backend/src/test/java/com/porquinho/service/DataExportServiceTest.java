@@ -1,6 +1,7 @@
 package com.porquinho.service;
 
 import com.porquinho.entity.Account;
+import com.porquinho.entity.AccountBalanceHistory;
 import com.porquinho.entity.Category;
 import com.porquinho.entity.CreditCard;
 import com.porquinho.entity.Goal;
@@ -15,6 +16,7 @@ import com.porquinho.entity.User.AuthProvider;
 import com.porquinho.entity.UserSession;
 import com.porquinho.exception.RateLimitExceededException;
 import com.porquinho.exception.ResourceNotFoundException;
+import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.CategoryRepository;
 import com.porquinho.repository.CreditCardRepository;
@@ -93,6 +95,9 @@ class DataExportServiceTest {
 
     @Mock
     private GoalRepository goalRepository;
+
+    @Mock
+    private AccountBalanceHistoryRepository accountBalanceHistoryRepository;
 
     @InjectMocks
     private DataExportService dataExportService;
@@ -511,6 +516,56 @@ class DataExportServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
 
         assertEquals(List.of(), dataExportService.collectUserData(userId).get("goals"));
+    }
+
+    @Test
+    void collectUserDataShouldExportTheAccountBalanceHistory() {
+        // Story 4.3: every stored column of account_balance_history, oldest first
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        OffsetDateTime created = OffsetDateTime.parse("2026-11-03T12:00:00Z");
+        UUID accountId = UUID.randomUUID();
+        AccountBalanceHistory initial = new AccountBalanceHistory(accountId, userId, new java.math.BigDecimal("100.00"),
+            AccountBalanceHistory.EVENT_INITIAL);
+        initial.setId(UUID.randomUUID());
+        initial.setSnapshotDate(created);
+        initial.setCreatedAt(created);
+        AccountBalanceHistory edit = new AccountBalanceHistory(accountId, userId, new java.math.BigDecimal("-250.00"),
+            AccountBalanceHistory.EVENT_EDIT);
+        edit.setId(UUID.randomUUID());
+        edit.setSnapshotDate(created.plusMinutes(5));
+        edit.setCreatedAt(created.plusMinutes(5));
+        when(accountBalanceHistoryRepository.findByUserIdOrdered(userId)).thenReturn(List.of(initial, edit));
+
+        Map<String, Object> data = dataExportService.collectUserData(userId);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
+        assertTrue(((List<?>) metadata.get("exported_tables")).contains("account_balance_history"));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("account_balance_history");
+        assertEquals(2, rows.size());
+        Map<String, Object> first = rows.get(0);
+        assertExportsEveryColumn(AccountBalanceHistory.class, first);
+        assertEquals(initial.getId().toString(), first.get("id"));
+        assertEquals(accountId.toString(), first.get("account_id"));
+        assertEquals(userId.toString(), first.get("user_id"));
+        assertEquals(new java.math.BigDecimal("100.00"), first.get("balance_snapshot"));
+        assertEquals(created.toString(), first.get("snapshot_date"));
+        assertEquals("initial", first.get("created_by_event"));
+        assertEquals(created.toString(), first.get("created_at"));
+
+        Map<String, Object> second = rows.get(1);
+        assertExportsEveryColumn(AccountBalanceHistory.class, second);
+        assertEquals(new java.math.BigDecimal("-250.00"), second.get("balance_snapshot"));
+        assertEquals("edit", second.get("created_by_event"));
+    }
+
+    @Test
+    void collectUserDataShouldExportEmptyBalanceHistoryWhenNone() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+
+        assertEquals(List.of(), dataExportService.collectUserData(userId).get("account_balance_history"));
     }
 
     /** LGPD portability: every mapped column of the entity appears as a key in the exported map. */

@@ -125,30 +125,34 @@
           ? 'bg-purple-600 text-white hover:bg-purple-700'
           : 'border-purple-600 text-purple-700'
       "
-      data-testid="add-account-button"
+      :data-testid="isEdit ? 'save-account-button' : 'add-account-button'"
       :disabled="disabled || submitting"
     >
-      <Plus class="h-4 w-4" aria-hidden="true" />
+      <Plus v-if="!isEdit" class="h-4 w-4" aria-hidden="true" />
       {{ submitting ? submittingLabel : submitLabel }}
     </Button>
   </form>
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { Plus } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ACCOUNT_TYPE_OPTIONS } from '@/lib/accountTypes'
 import { BANKS } from '@/lib/banks'
-import { parseBRL } from '@/lib/money'
-import { createAccount } from '@/services/accountService'
+import { formatBRLInput, parseBRL } from '@/lib/money'
+import { createAccount, updateAccount } from '@/services/accountService'
 import type { Account, AccountType } from '@/types/account'
 
 /**
  * Formulário de conta bancária (Stories 3.2 e 4.1): valida localmente, chama `POST /accounts`
  * e mostra os erros 400 por campo. Outras falhas vão para o pai em `failed` (com o `detail` da
  * API, se houver), e os dados digitados ficam no formulário.
+ *
+ * Story 4.3: com a prop `account`, o formulário edita essa conta — começa preenchido com os
+ * valores atuais (saldo no formato brasileiro), chama `PUT /accounts/{id}` com o saldo atual e
+ * emite `updated`. Um 404 (conta removida ou de outra pessoa) vai para o pai em `not-found`.
  */
 const props = withDefaults(
   defineProps<{
@@ -158,17 +162,24 @@ const props = withDefaults(
     submittingLabel?: string
     /** Botão de envio em destaque (diálogo) em vez de contorno (passo 2). */
     primary?: boolean
+    /** Conta a editar (Story 4.3). Sem ela, o formulário cria uma conta nova. */
+    account?: Account | null
   }>(),
   {
     disabled: false,
     submitLabel: 'Adicionar conta',
     submittingLabel: 'Adicionando...',
     primary: false,
+    account: null,
   },
 )
 
 const emit = defineEmits<{
   created: [account: Account]
+  /** Story 4.3: conta editada com sucesso, como a API devolveu. */
+  updated: [account: Account]
+  /** Story 4.3: a conta editada não existe mais (404). */
+  notFound: []
   failed: [detail: string | undefined]
   /** Toda tentativa de envio, antes da validação (o pai limpa o erro anterior). */
   attempt: []
@@ -187,6 +198,7 @@ const form = reactive({
   initialBalance: '',
 })
 const errors = reactive<Partial<Record<Field, string>>>({})
+const isEdit = computed(() => props.account != null)
 const nameInput = ref<{ $el?: HTMLInputElement } | null>(null)
 
 interface ApiError {
@@ -210,7 +222,9 @@ function validate(): number | null {
 
   let balance: number | null = null
   if (!form.initialBalance.trim()) {
-    errors.initialBalance = 'Informe o saldo inicial (use 0,00 se não souber)'
+    errors.initialBalance = isEdit.value
+      ? 'Informe o saldo atual (use 0,00 se não souber)'
+      : 'Informe o saldo inicial (use 0,00 se não souber)'
   } else {
     balance = parseBRL(form.initialBalance)
     if (balance === null) {
@@ -218,6 +232,21 @@ function validate(): number | null {
     }
   }
   return Object.keys(errors).length === 0 ? balance : null
+}
+
+/** Na edição, a API chama o saldo de `currentBalance`; no formulário, o campo é um só. */
+function fieldOf(key: string): Field | undefined {
+  if (isEdit.value && key === 'currentBalance') return 'initialBalance'
+  return FIELDS.includes(key as Field) ? (key as Field) : undefined
+}
+
+/** Preenche o formulário com os valores atuais da conta em edição. */
+function fill(account: Account) {
+  form.accountName = account.accountName
+  form.bankName = account.bankName ?? ''
+  form.accountType = account.accountType
+  form.initialBalance = formatBRLInput(account.currentBalance)
+  clearErrors()
 }
 
 function reset() {
@@ -242,20 +271,31 @@ async function submit() {
 
   inFlight = true
   submitting.value = true
+  const editing = props.account
+  const fields = {
+    accountName: form.accountName.trim(),
+    bankName: form.bankName.trim() || null,
+    accountType: form.accountType,
+  }
   try {
-    const created = await createAccount({
-      accountName: form.accountName.trim(),
-      bankName: form.bankName.trim() || null,
-      accountType: form.accountType,
-      initialBalance: balance,
-    })
-    reset()
-    emit('created', created)
+    if (editing) {
+      const updated = await updateAccount(editing.id, { ...fields, currentBalance: balance })
+      emit('updated', updated)
+    } else {
+      const created = await createAccount({ ...fields, initialBalance: balance })
+      reset()
+      emit('created', created)
+    }
   } catch (err) {
     const response = (err as ApiError)?.response
     const entries = Object.entries(response?.data?.errors ?? {})
-    const known = entries.filter(([key]) => FIELDS.includes(key as Field))
-    if (response?.status === 400 && known.length > 0) {
+    const known = entries.flatMap(([key, message]) => {
+      const field = fieldOf(key)
+      return field ? [[field, message] as const] : []
+    })
+    if (editing && response?.status === 404) {
+      emit('notFound')
+    } else if (response?.status === 400 && known.length > 0) {
       Object.assign(errors, Object.fromEntries(known))
       // Há erros de campos que o formulário não mostra: a mensagem geral não pode se perder
       if (known.length < entries.length) emit('failed', response.data?.detail)
@@ -267,6 +307,15 @@ async function submit() {
     submitting.value = false
   }
 }
+
+watch(
+  () => props.account,
+  (account) => {
+    if (account) fill(account)
+    else reset()
+  },
+  { immediate: true },
+)
 
 /** Foca o primeiro campo (usado ao abrir o diálogo). */
 function focus() {

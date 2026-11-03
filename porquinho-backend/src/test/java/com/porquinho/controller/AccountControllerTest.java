@@ -4,6 +4,7 @@ import com.porquinho.config.TestWebSecurityConfig;
 import com.porquinho.dto.CreateAccountRequest;
 import com.porquinho.entity.Account;
 import com.porquinho.exception.ResourceNotFoundException;
+import com.porquinho.dto.UpdateAccountRequest;
 import com.porquinho.service.AccountService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,6 +36,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(AccountController.class)
@@ -220,6 +222,100 @@ class AccountControllerTest {
         doThrow(new ResourceNotFoundException("Conta não encontrada")).when(accountService).delete(userId, id);
 
         mockMvc.perform(delete("/api/v1/accounts/" + id).with(authentication(authToken)))
+            .andExpect(status().isNotFound());
+    }
+
+    // Story 4.3: PUT /api/v1/accounts/{id}
+
+    private String updateBody(String name, String bank, String type, String balance) {
+        return "{\"accountName\":" + name + ",\"bankName\":" + bank + ",\"accountType\":" + type
+            + ",\"currentBalance\":" + balance + "}";
+    }
+
+    @Test
+    void putUpdatesTheJwtUsersAccountAndReturns200() throws Exception {
+        UUID id = UUID.randomUUID();
+        Account updated = account("Nubank PJ", "100.00");
+        updated.setId(id);
+        updated.setCurrentBalance(new BigDecimal("250.00"));
+        when(accountService.update(eq(userId), eq(id), any(UpdateAccountRequest.class))).thenReturn(updated);
+
+        mockMvc.perform(put("/api/v1/accounts/" + id).with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(updateBody("\" Nubank PJ \"", "\"  \"", "\"SAVINGS\"", "250.00")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(id.toString()))
+            .andExpect(jsonPath("$.accountName").value("Nubank PJ"))
+            .andExpect(jsonPath("$.initialBalance").value(100.0))
+            .andExpect(jsonPath("$.currentBalance").value(250.0));
+
+        ArgumentCaptor<UpdateAccountRequest> captor = ArgumentCaptor.forClass(UpdateAccountRequest.class);
+        verify(accountService).update(eq(userId), eq(id), captor.capture());
+        assertThat(captor.getValue().accountName()).isEqualTo("Nubank PJ");
+        assertThat(captor.getValue().bankName()).isNull();
+        assertThat(captor.getValue().accountType()).isEqualTo("SAVINGS");
+        assertThat(captor.getValue().currentBalance()).isEqualByComparingTo("250.00");
+    }
+
+    @Test
+    void putAcceptsANegativeBalance() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(accountService.update(eq(userId), eq(id), any(UpdateAccountRequest.class))).thenReturn(account("Itaú", "-150.00"));
+
+        mockMvc.perform(put("/api/v1/accounts/" + id).with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(updateBody("\"Itaú\"", "null", "\"CHECKING\"", "-150.00")))
+            .andExpect(status().isOk());
+    }
+
+    @Test
+    void putWithBlankNameIs400WithThePtBrMessage() throws Exception {
+        mockMvc.perform(put("/api/v1/accounts/" + UUID.randomUUID()).with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(updateBody("\"\u00a0 \u200b\"", "null", "\"CHECKING\"", "0")))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errors.accountName").value("Informe o nome da conta"));
+
+        verifyNoInteractions(accountService);
+    }
+
+    @Test
+    void putWithThreeDecimalsOrOutsideDecimal15_2Is400() throws Exception {
+        for (String balance : new String[] {"10.123", "10000000000000.00"}) {
+            mockMvc.perform(put("/api/v1/accounts/" + UUID.randomUUID()).with(authentication(authToken))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(updateBody("\"Conta\"", "null", "\"CHECKING\"", balance)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.currentBalance")
+                    .value("Informe o saldo com até 2 casas decimais e no máximo 13 dígitos antes da vírgula"));
+        }
+
+        verifyNoInteractions(accountService);
+    }
+
+    @Test
+    void putWithoutBalanceWithInvalidTypeOrLongNamesIs400() throws Exception {
+        mockMvc.perform(put("/api/v1/accounts/" + UUID.randomUUID()).with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(updateBody("\"" + "a".repeat(101) + "\"", "\"" + "b".repeat(101) + "\"", "\"CREDIT\"", "null")))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errors.accountName").value("Use no máximo 100 caracteres no nome da conta"))
+            .andExpect(jsonPath("$.errors.bankName").value("Use no máximo 100 caracteres no nome do banco"))
+            .andExpect(jsonPath("$.errors.accountType").value("Escolha o tipo da conta: corrente ou poupança"))
+            .andExpect(jsonPath("$.errors.currentBalance").value("Informe o saldo atual (use 0,00 se não souber)"));
+
+        verifyNoInteractions(accountService);
+    }
+
+    @Test
+    void putOfAnotherUsersOrRemovedAccountIs404() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(accountService.update(eq(userId), eq(id), any(UpdateAccountRequest.class)))
+            .thenThrow(new ResourceNotFoundException("Conta não encontrada"));
+
+        mockMvc.perform(put("/api/v1/accounts/" + id).with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(updateBody("\"Conta\"", "null", "\"CHECKING\"", "1.00")))
             .andExpect(status().isNotFound());
     }
 }

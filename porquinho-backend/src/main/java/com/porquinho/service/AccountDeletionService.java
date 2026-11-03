@@ -10,6 +10,7 @@ import com.porquinho.entity.UserSession;
 import com.porquinho.exception.RateLimitExceededException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountDeletionRepository;
+import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.CategoryRepository;
 import com.porquinho.repository.CreditCardRepository;
@@ -52,7 +53,7 @@ import java.util.UUID;
  * - Each AccountDeletion is processed in its own transaction (REQUIRES_NEW) so a single
  *   failure does not block the queue.
  * - Hard-deletes data_exports, user_sessions, audit_logs, billing_transactions, subscriptions,
- *   onboarding_progress, accounts, credit_cards, categories, goals, users
+ *   onboarding_progress, account_balance_history, accounts, credit_cards, categories, goals, users
  *   (in that order, native SQL to bypass @Where filters on User and UserSession; billing_transactions
  *   has FKs to subscriptions and users, so it goes before both).
  * - Calls Supabase Admin API best-effort.
@@ -85,6 +86,7 @@ public class AccountDeletionService {
     private final CreditCardRepository creditCardRepository;
     private final CategoryRepository categoryRepository;
     private final GoalRepository goalRepository;
+    private final AccountBalanceHistoryRepository accountBalanceHistoryRepository;
 
     @Value("${app.export.directory:./exports}")
     private String exportDirectory;
@@ -117,6 +119,7 @@ public class AccountDeletionService {
             CreditCardRepository creditCardRepository,
             CategoryRepository categoryRepository,
             GoalRepository goalRepository,
+            AccountBalanceHistoryRepository accountBalanceHistoryRepository,
             @Lazy AccountDeletionService self) {
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -137,6 +140,7 @@ public class AccountDeletionService {
         this.creditCardRepository = creditCardRepository;
         this.categoryRepository = categoryRepository;
         this.goalRepository = goalRepository;
+        this.accountBalanceHistoryRepository = accountBalanceHistoryRepository;
         this.self = self;
     }
 
@@ -342,6 +346,7 @@ public class AccountDeletionService {
         billingTransactionRepository.deleteByUserId(userId);  // Story 2.6: FKs to subscriptions and users
         subscriptionRepository.deleteByUserId(userId);  // Story 2.1: FK to users, must go first
         onboardingProgressRepository.deleteByUserId(userId);  // Story 3.1: FK to users
+        accountBalanceHistoryRepository.deleteByUserId(userId);  // Story 4.3: FK to users (accounts FK cascades); explicit anyway
         accountRepository.deleteByUserId(userId);  // Story 3.2: FK to users (removed accounts too)
         creditCardRepository.deleteByUserId(userId);  // Story 3.3: FK to users (removed cards too)
         categoryRepository.deleteByUserId(userId);  // Story 3.4: FK to users; one statement, so parent FK does not block
