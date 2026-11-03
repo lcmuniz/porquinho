@@ -111,3 +111,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-6-guided-first-transaction-import.md`
   summary: Epic 5 — ligar o upload (Stories 5.1–5.3) ao passo 6 do onboarding (`ImportStep.vue`): área de arrastar e soltar, barra de progresso, prévia classificada e gravação de `first_import_completed` em `POST /api/v1/onboarding/me/import` (corpo opcional).
   evidence: Decisão A da 3.6: o passo 6 foi entregue sem upload porque a importação ainda não existia.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-4-3-edit-account-and-card-information.md`
+  summary: Story 4.7 — ordenação determinística do `account_balance_history` para eventos no mesmo instante (coluna sequencial ou relógio injetado) e controle de concorrência na edição de contas/cartões (`@Version` com 409).
+  evidence: Revisão da 4.3: o desempate é por UUID; dois PUT simultâneos fazem a última gravação vencer.

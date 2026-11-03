@@ -7,10 +7,12 @@ import type { CreditCard } from '@/types/creditCard'
 
 const mockList = vi.fn()
 const mockCreate = vi.fn()
+const mockUpdate = vi.fn()
 
 vi.mock('@/services/cardService', () => ({
   listCards: (...a: unknown[]) => mockList(...a),
   createCard: (...a: unknown[]) => mockCreate(...a),
+  updateCard: (...a: unknown[]) => mockUpdate(...a),
 }))
 
 function card(overrides: Partial<CreditCard> = {}): CreditCard {
@@ -390,5 +392,215 @@ describe('CardsView', () => {
       '',
     )
     expect(form.findAll('[data-testid$="-error"]')).toHaveLength(0)
+  })
+})
+
+describe('CardsView — editar cartão (Story 4.3)', () => {
+  const editDialog = () => document.body.querySelector('[data-testid="edit-card-dialog"]')
+  const input = (form: Form, testid: string) =>
+    form.get(`[data-testid="${testid}"]`).element as HTMLInputElement
+
+  async function openEdit(wrapper: Wrapper, id = 'c1') {
+    await wrapper.get(`[data-testid="edit-card-${id}"]`).trigger('click')
+    await flushPromises()
+    return wrapper.findComponent(CardForm)
+  }
+
+  beforeEach(() => {
+    mockList
+      .mockReset()
+      .mockResolvedValue([
+        card({ id: 'c1', cardName: 'Nubank', cardLimit: 5000, dueDay: 10 }),
+        card({ id: 'c2', cardName: 'Inter', bankName: null, cardLimit: 1000, dueDay: 3 }),
+      ])
+    mockCreate.mockReset()
+    mockUpdate.mockReset().mockImplementation(async (id: string, data) => ({
+      ...card({ id }),
+      cardName: data.cardName,
+      bankName: data.bankName,
+      cardLimit: data.cardLimit,
+      dueDay: data.dueDay,
+    }))
+  })
+
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('cada cartão tem o botão "Editar" com o nome no rótulo acessível e alvo de 44px', async () => {
+    const wrapper = await mountView()
+    const button = wrapper.get('[data-testid="edit-card-c2"]')
+    expect(button.text()).toBe('Editar')
+    expect(button.attributes('aria-label')).toBe('Editar Inter')
+    expect(button.classes()).toContain('min-h-[44px]')
+    expect(button.classes()).toContain('min-w-[44px]')
+  })
+
+  it('abre o diálogo "Editar cartão" com os valores atuais (limite no formato brasileiro) e foco no nome', async () => {
+    const wrapper = await mountView()
+    const form = await openEdit(wrapper)
+
+    expect(editDialog()).not.toBeNull()
+    expect(dialog()).toBeNull()
+    expect(editDialog()?.textContent).toContain('Editar cartão')
+    expect(input(form, 'card-name-input').value).toBe('Nubank')
+    expect(input(form, 'card-bank-name-input').value).toBe('Nubank')
+    expect(input(form, 'card-limit-input').value).toBe('5.000,00')
+    expect(input(form, 'card-due-day-input').value).toBe('10')
+    expect(form.get('[data-testid="save-card-button"]').text()).toBe('Salvar alterações')
+    expect(document.activeElement?.id).toBe('card-name')
+  })
+
+  it('dia 10 → 20 e limite 6.000,00: lista, "vence dia 20", limite total, mensagem e foco', async () => {
+    const wrapper = await mountView()
+    expect(plain(wrapper.get('[data-testid="cards-total"]').text())).toBe('R$ 6.000,00')
+    const form = await openEdit(wrapper)
+    await form.get('[data-testid="card-limit-input"]').setValue('6.000,00')
+    await form.get('[data-testid="card-due-day-input"]').setValue('20')
+    await form.get('[data-testid="card-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(mockUpdate).toHaveBeenCalledWith('c1', {
+      cardName: 'Nubank',
+      bankName: 'Nubank',
+      cardLimit: 6000,
+      dueDay: 20,
+    })
+    expect(mockCreate).not.toHaveBeenCalled()
+    expect(editDialog()).toBeNull()
+    const item = wrapper.get('[data-testid="card-item-c1"]')
+    expect(plain(item.get('[data-testid="card-details"]').text())).toContain('vence dia 20')
+    expect(plain(item.get('[data-testid="card-limit"]').text())).toBe('R$ 6.000,00')
+    expect(plain(wrapper.get('[data-testid="cards-total"]').text())).toBe('R$ 7.000,00')
+    expect(wrapper.get('[data-testid="cards-success"]').text()).toBe('Informações atualizadas')
+    await flushPromises()
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('edit-card-c1')
+  })
+
+  it('dia 0 não chama a API e mostra o erro no campo', async () => {
+    const wrapper = await mountView()
+    const form = await openEdit(wrapper)
+    await form.get('[data-testid="card-due-day-input"]').setValue('0')
+    await form.get('[data-testid="card-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(mockUpdate).not.toHaveBeenCalled()
+    expect(form.get('[data-testid="card-due-day-error"]').text()).toBe(
+      'Informe um dia entre 1 e 31',
+    )
+    expect(editDialog()).not.toBeNull()
+  })
+
+  it('400 do servidor aparece no campo e o diálogo continua aberto', async () => {
+    mockUpdate.mockRejectedValue({
+      response: {
+        status: 400,
+        data: {
+          detail: 'Informe um dia entre 1 e 31',
+          errors: { dueDay: 'Informe um dia entre 1 e 31' },
+        },
+      },
+    })
+    const wrapper = await mountView()
+    const form = await openEdit(wrapper)
+    await form.get('[data-testid="card-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(editDialog()).not.toBeNull()
+    expect(form.get('[data-testid="card-due-day-error"]').text()).toBe(
+      'Informe um dia entre 1 e 31',
+    )
+  })
+
+  it('404 ao salvar fecha o diálogo, tira o cartão da lista e avisa', async () => {
+    mockUpdate.mockRejectedValue({
+      response: { status: 404, data: { detail: 'Cartão não encontrado' } },
+    })
+    const wrapper = await mountView()
+    const form = await openEdit(wrapper)
+    await form.get('[data-testid="card-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(editDialog()).toBeNull()
+    expect(wrapper.find('[data-testid="card-item-c1"]').exists()).toBe(false)
+    expect(plain(wrapper.get('[data-testid="cards-total"]').text())).toBe('R$ 1.000,00')
+    const notice = wrapper.get('[data-testid="cards-notice"]')
+    expect(notice.text()).toBe('Este cartão não existe mais')
+    expect(notice.attributes('role')).toBe('alert')
+    expect(notice.classes()).toContain('bg-amber-50')
+    expect(wrapper.get('[data-testid="cards-success"]').text()).toBe('')
+    await flushPromises()
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('open-add-card')
+  })
+
+  it('outra falha mostra a mensagem no diálogo, que continua aberto com os dados', async () => {
+    mockUpdate.mockRejectedValue(new Error('Network Error'))
+    const wrapper = await mountView()
+    const form = await openEdit(wrapper)
+    await form.get('[data-testid="card-limit-input"]').setValue('7.000,00')
+    await form.get('[data-testid="card-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(editDialog()).not.toBeNull()
+    expect(document.body.querySelector('[data-testid="add-card-error"]')?.textContent).toContain(
+      'Não foi possível salvar o cartão. Tente novamente.',
+    )
+    expect(input(form, 'card-limit-input').value).toBe('7.000,00')
+  })
+
+  it('enquanto salva, o botão mostra "Salvando..." e Cancelar fica desabilitado', async () => {
+    let resolveUpdate: (c: CreditCard) => void = () => {}
+    mockUpdate.mockReturnValue(new Promise<CreditCard>((resolve) => (resolveUpdate = resolve)))
+    const wrapper = await mountView()
+    const form = await openEdit(wrapper)
+    await form.get('[data-testid="card-form"]').trigger('submit')
+    await flushPromises()
+
+    const save = form.get('[data-testid="save-card-button"]')
+    expect(save.text()).toBe('Salvando...')
+    expect(save.attributes('disabled')).toBeDefined()
+    expect(
+      document.body.querySelector<HTMLButtonElement>('[data-testid="cancel-add-card"]')?.disabled,
+    ).toBe(true)
+
+    resolveUpdate(card({ id: 'c1', cardName: 'Nubank' }))
+    await flushPromises()
+    expect(editDialog()).toBeNull()
+  })
+
+  it('cancelar a edição volta o foco para o "Editar" do cartão', async () => {
+    const wrapper = await mountView()
+    await openEdit(wrapper, 'c2')
+    document.body.querySelector<HTMLButtonElement>('[data-testid="cancel-add-card"]')!.click()
+    await flushPromises()
+
+    expect(mockUpdate).not.toHaveBeenCalled()
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('edit-card-c2')
+  })
+
+  it('depois de editar, "Adicionar cartão" abre o diálogo de criação vazio', async () => {
+    const wrapper = await mountView()
+    await openEdit(wrapper)
+    document.body.querySelector<HTMLButtonElement>('[data-testid="cancel-add-card"]')!.click()
+    await flushPromises()
+
+    const form = await openDialog(wrapper)
+    expect(dialog()?.textContent).toContain('Adicionar cartão')
+    expect(input(form, 'card-name-input').value).toBe('')
+    expect(input(form, 'card-limit-input').value).toBe('')
+    expect(form.get('[data-testid="add-card-button"]').text()).toBe('Salvar cartão')
+  })
+
+  it('o aviso de item que não existe mais some ao abrir outro diálogo e não aparece sem 404', async () => {
+    mockUpdate.mockRejectedValue({ response: { status: 404, data: {} } })
+    const wrapper = await mountView()
+    expect(wrapper.find('[data-testid="cards-notice"]').exists()).toBe(false)
+    const form = await openEdit(wrapper)
+    await form.get('[data-testid="card-form"]').trigger('submit')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="cards-notice"]').exists()).toBe(true)
+
+    await openEdit(wrapper, 'c2')
+    expect(wrapper.find('[data-testid="cards-notice"]').exists()).toBe(false)
   })
 })

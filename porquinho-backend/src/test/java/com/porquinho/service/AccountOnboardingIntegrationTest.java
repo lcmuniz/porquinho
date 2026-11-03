@@ -4,6 +4,7 @@ import com.porquinho.dto.CreateAccountRequest;
 import com.porquinho.entity.Account;
 import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
+import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.OnboardingProgressRepository;
 import com.porquinho.repository.UserRepository;
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import com.porquinho.dto.UpdateAccountRequest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
@@ -27,7 +29,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * Story 3.2: accounts and onboarding step 2 against the real schema (PostgreSQL via Testcontainers, Flyway V16):
  * create/list/remove scoped by user, the step-2 matrix (next, skip with/without accounts, repeat, step 1),
- * the CHECK on account_type, the purge order and the export.
+ * the CHECK on account_type, the purge order and the export. Story 4.3: editing (PUT) and the balance
+ * history (V20) against the same schema.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -45,6 +48,9 @@ class AccountOnboardingIntegrationTest {
 
     @Autowired
     private OnboardingProgressRepository onboardingProgressRepository;
+
+    @Autowired
+    private AccountBalanceHistoryRepository balanceHistoryRepository;
 
     @Autowired
     private UserRepository userRepository;
@@ -208,6 +214,7 @@ class AccountOnboardingIntegrationTest {
         UUID other = newUser();
         add(other, "De outra pessoa", "1.00");
 
+        assertThat(balanceHistoryRepository.deleteByUserId(userId)).isEqualTo(2);  // Story 4.3: one "initial" each
         assertThat(accountRepository.deleteByUserId(userId)).isEqualTo(2);
         assertThat(userRepository.deleteByIdNative(userId)).isEqualTo(1);
         assertThat(accountService.countActive(other)).isEqualTo(1);
@@ -237,5 +244,149 @@ class AccountOnboardingIntegrationTest {
         assertThat((BigDecimal) rows.get(0).get("initial_balance")).isEqualByComparingTo("1234.56");
         assertThat(rows.get(1)).containsEntry("account_name", "Antiga");
         assertThat(rows.get(1).get("deleted_at")).isNotNull();
+    }
+
+    // Story 4.3: editing and the balance history
+
+    private List<Map<String, Object>> history(UUID accountId) {
+        return jdbc.queryForList(
+            "SELECT user_id, balance_snapshot, created_by_event, snapshot_date FROM account_balance_history "
+                + "WHERE account_id = ? ORDER BY snapshot_date, created_at", accountId);
+    }
+
+    @Test
+    void editingNubankTo250UpdatesTheCurrentBalanceKeepsTheInitialAndRecordsAnEdit() throws Exception {
+        // Acceptance criterion: "Nubank" with R$ 100,00 edited to "Nubank PJ" with R$ 250,00
+        Account account = add(userId, "Nubank", "100.00");
+        java.time.OffsetDateTime createdUpdatedAt = jdbc.queryForObject(
+            "SELECT updated_at FROM accounts WHERE id = ?", java.time.OffsetDateTime.class, account.getId());
+        Thread.sleep(5);
+
+        accountService.update(userId, account.getId(),
+            new UpdateAccountRequest("Nubank PJ", "Nubank", "CHECKING", new BigDecimal("250.00")));
+        accountRepository.flush();
+        balanceHistoryRepository.flush();
+
+        Map<String, Object> row = jdbc.queryForMap(
+            "SELECT account_name, initial_balance, current_balance, updated_at FROM accounts WHERE id = ?", account.getId());
+        assertThat(row).containsEntry("account_name", "Nubank PJ")
+            .containsEntry("initial_balance", new BigDecimal("100.00"))
+            .containsEntry("current_balance", new BigDecimal("250.00"));
+        assertThat(jdbc.queryForObject("SELECT updated_at > ? FROM accounts WHERE id = ?", Boolean.class,
+            createdUpdatedAt, account.getId())).isTrue();
+
+        List<Map<String, Object>> history = history(account.getId());
+        assertThat(history).hasSize(2);
+        assertThat(history.get(0)).containsEntry("created_by_event", "initial")
+            .containsEntry("balance_snapshot", new BigDecimal("100.00")).containsEntry("user_id", userId);
+        assertThat(history.get(1)).containsEntry("created_by_event", "edit")
+            .containsEntry("balance_snapshot", new BigDecimal("250.00")).containsEntry("user_id", userId);
+        assertThat(history.get(1).get("snapshot_date")).isNotNull();
+    }
+
+    @Test
+    void editingOnlyTheNameRecordsNoSnapshot() {
+        Account account = add(userId, "Nubank", "100.00");
+
+        accountService.update(userId, account.getId(),
+            new UpdateAccountRequest("Nubank PJ", null, "SAVINGS", new BigDecimal("100")));
+        accountRepository.flush();
+
+        assertThat(history(account.getId())).extracting(r -> r.get("created_by_event")).containsExactly("initial");
+        assertThat(jdbc.queryForObject("SELECT account_type FROM accounts WHERE id = ?", String.class, account.getId()))
+            .isEqualTo("SAVINGS");
+    }
+
+    @Test
+    void creatingAnAccountRecordsAnInitialSnapshotWithTheInitialBalance() {
+        Account account = add(userId, "Itaú", "-150.00");
+
+        assertThat(history(account.getId())).singleElement().satisfies(r -> {
+            assertThat(r).containsEntry("created_by_event", "initial");
+            assertThat((BigDecimal) r.get("balance_snapshot")).isEqualByComparingTo("-150.00");
+        });
+    }
+
+    @Test
+    void minhaContaPrincipalAlsoRecordsAnInitialSnapshot() {
+        atStepTwo();
+        onboardingService.completeAccounts(userId, true, "127.0.0.1");
+        accountRepository.flush();
+
+        Account account = accountService.listActive(userId).get(0);
+        assertThat(history(account.getId())).singleElement().satisfies(r -> {
+            assertThat(r).containsEntry("created_by_event", "initial");
+            assertThat((BigDecimal) r.get("balance_snapshot")).isEqualByComparingTo("0");
+        });
+    }
+
+    @Test
+    void editingAnotherUsersARemovedOrAMissingAccountIsNotFoundAndChangesNothing() {
+        Account foreign = add(newUser(), "De outra pessoa", "1.00");
+        Account removed = add(userId, "Removida", "1.00");
+        accountService.delete(userId, removed.getId());
+        accountRepository.flush();
+        UpdateAccountRequest request = new UpdateAccountRequest("Minha", null, "CHECKING", new BigDecimal("999.00"));
+
+        assertThatThrownBy(() -> accountService.update(userId, foreign.getId(), request))
+            .isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> accountService.update(userId, removed.getId(), request))
+            .isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> accountService.update(userId, UUID.randomUUID(), request))
+            .isInstanceOf(ResourceNotFoundException.class);
+        accountRepository.flush();
+
+        assertThat(jdbc.queryForObject("SELECT account_name FROM accounts WHERE id = ?", String.class, foreign.getId()))
+            .isEqualTo("De outra pessoa");
+        assertThat(history(foreign.getId())).hasSize(1);
+        assertThat(history(removed.getId())).hasSize(1);
+    }
+
+    @Test
+    void createdByEventOutsideTheCheckIsRejectedByTheDatabase() {
+        Account account = add(userId, "Nubank", "1.00");
+
+        assertThatThrownBy(() -> jdbc.update(
+            "INSERT INTO account_balance_history (account_id, user_id, balance_snapshot, snapshot_date, created_by_event) "
+                + "VALUES (?, ?, 0, NOW(), 'manual')", account.getId(), userId))
+            .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void deletingAnAccountCascadesToItsHistory() {
+        // V20: ON DELETE CASCADE, so a snapshot written during the LGPD purge never blocks deleting accounts
+        Account account = add(userId, "Nubank", "1.00");
+
+        assertThat(accountRepository.deleteByUserId(userId)).isEqualTo(1);
+        assertThat(history(account.getId())).isEmpty();
+    }
+
+    @Test
+    void v20BackfillsAnInitialSnapshotForEveryExistingAccount() throws Exception {
+        // Accounts created before V20 cannot be simulated here (Flyway already ran on the container):
+        // assert the backfill statement is in the migration, removed accounts included (no WHERE)
+        String sql;
+        try (var in = getClass().getResourceAsStream("/db/migration/V20__create_account_balance_history_table.sql")) {
+            sql = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8).replaceAll("\\s+", " ");
+        }
+        assertThat(sql).contains("INSERT INTO account_balance_history (account_id, user_id, balance_snapshot, "
+            + "snapshot_date, created_by_event) SELECT id, user_id, initial_balance, created_at, 'initial' FROM accounts;");
+    }
+
+    @Test
+    void exportIncludesTheBalanceHistory() throws Exception {
+        Account account = add(userId, "Nubank", "100.00");
+        Thread.sleep(5);  // distinct snapshot_date, so the order is deterministic
+        accountService.update(userId, account.getId(),
+            new UpdateAccountRequest("Nubank", null, "CHECKING", new BigDecimal("250.00")));
+        accountRepository.flush();
+        balanceHistoryRepository.flush();
+
+        @SuppressWarnings("unchecked")
+        var rows = (List<Map<String, Object>>) dataExportService.collectUserData(userId).get("account_balance_history");
+
+        assertThat(rows).extracting(r -> r.get("created_by_event")).containsExactly("initial", "edit");
+        assertThat(rows).allSatisfy(r -> assertThat(r).containsEntry("account_id", account.getId().toString()));
+        assertThat((BigDecimal) rows.get(1).get("balance_snapshot")).isEqualByComparingTo("250.00");
     }
 }

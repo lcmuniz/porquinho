@@ -7,10 +7,12 @@ import type { Account } from '@/types/account'
 
 const mockList = vi.fn()
 const mockCreate = vi.fn()
+const mockUpdate = vi.fn()
 
 vi.mock('@/services/accountService', () => ({
   listAccounts: (...a: unknown[]) => mockList(...a),
   createAccount: (...a: unknown[]) => mockCreate(...a),
+  updateAccount: (...a: unknown[]) => mockUpdate(...a),
 }))
 
 function account(overrides: Partial<Account> = {}): Account {
@@ -388,5 +390,255 @@ describe('AccountsView', () => {
       (form.get('[data-testid="initial-balance-input"]').element as HTMLInputElement).value,
     ).toBe('')
     expect(form.findAll('[data-testid$="-error"]')).toHaveLength(0)
+  })
+})
+
+describe('AccountsView — editar conta (Story 4.3)', () => {
+  const editDialog = () => document.body.querySelector('[data-testid="edit-account-dialog"]')
+  const input = (form: Form, testid: string) =>
+    form.get(`[data-testid="${testid}"]`).element as HTMLInputElement
+
+  async function openEdit(wrapper: Wrapper, id = 'a1') {
+    await wrapper.get(`[data-testid="edit-account-${id}"]`).trigger('click')
+    await flushPromises()
+    return wrapper.findComponent(AccountForm)
+  }
+
+  beforeEach(() => {
+    mockList.mockReset().mockResolvedValue([
+      account({ id: 'a1', accountName: 'Nubank', currentBalance: 100, initialBalance: 100 }),
+      account({
+        id: 'a2',
+        accountName: 'Itaú',
+        bankName: null,
+        accountType: 'SAVINGS',
+        currentBalance: 50,
+        initialBalance: 50,
+      }),
+    ])
+    mockCreate.mockReset()
+    mockUpdate.mockReset().mockImplementation(async (id: string, data) => ({
+      ...account({ id, initialBalance: 100 }),
+      accountName: data.accountName,
+      bankName: data.bankName,
+      accountType: data.accountType,
+      currentBalance: data.currentBalance,
+    }))
+  })
+
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('cada conta tem o botão "Editar" com o nome no rótulo acessível e alvo de 44px', async () => {
+    const wrapper = await mountView()
+    const button = wrapper.get('[data-testid="edit-account-a2"]')
+    expect(button.text()).toBe('Editar')
+    expect(button.attributes('aria-label')).toBe('Editar Itaú')
+    expect(button.classes()).toContain('min-h-[44px]')
+    expect(button.classes()).toContain('min-w-[44px]')
+  })
+
+  it('abre o diálogo "Editar conta" com os valores atuais (saldo no formato brasileiro) e foco no nome', async () => {
+    mockList.mockResolvedValue([
+      account({
+        id: 'a1',
+        accountName: 'Itaú',
+        bankName: null,
+        accountType: 'SAVINGS',
+        currentBalance: -1234.5,
+      }),
+    ])
+    const wrapper = await mountView()
+    const form = await openEdit(wrapper)
+
+    expect(editDialog()).not.toBeNull()
+    expect(dialog()).toBeNull()
+    expect(editDialog()?.textContent).toContain('Editar conta')
+    expect(input(form, 'account-name-input').value).toBe('Itaú')
+    expect(input(form, 'bank-name-input').value).toBe('')
+    expect(input(form, 'account-type-SAVINGS').checked).toBe(true)
+    expect(input(form, 'initial-balance-input').value).toBe('-1.234,50')
+    expect(form.get('[data-testid="save-account-button"]').text()).toBe('Salvar alterações')
+    expect(document.activeElement?.id).toBe('account-name')
+  })
+
+  it('Nubank 100,00 → Nubank PJ 250,00: lista, total (+150,00), mensagem e foco no "Editar"', async () => {
+    const wrapper = await mountView()
+    expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 150,00')
+    const form = await openEdit(wrapper)
+    await form.get('[data-testid="account-name-input"]').setValue('Nubank PJ')
+    await form.get('[data-testid="initial-balance-input"]').setValue('250,00')
+    await form.get('[data-testid="account-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(mockUpdate).toHaveBeenCalledWith('a1', {
+      accountName: 'Nubank PJ',
+      bankName: 'Nubank',
+      accountType: 'CHECKING',
+      currentBalance: 250,
+    })
+    expect(mockCreate).not.toHaveBeenCalled()
+    expect(editDialog()).toBeNull()
+    const item = wrapper.get('[data-testid="account-item-a1"]')
+    expect(item.text()).toContain('Nubank PJ')
+    expect(plain(item.get('[data-testid="account-balance"]').text())).toBe('R$ 250,00')
+    expect(wrapper.findAll('li').map((li) => li.attributes('data-testid'))).toEqual([
+      'account-item-a1',
+      'account-item-a2',
+    ])
+    expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 300,00')
+    expect(wrapper.get('[data-testid="accounts-success"]').text()).toBe('Informações atualizadas')
+    await flushPromises()
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('edit-account-a1')
+  })
+
+  it('400 do servidor no saldo aparece no campo e o diálogo continua aberto', async () => {
+    mockUpdate.mockRejectedValue({
+      response: {
+        status: 400,
+        data: {
+          detail: 'Informe o saldo com até 2 casas decimais',
+          errors: { currentBalance: 'Informe o saldo com até 2 casas decimais' },
+        },
+      },
+    })
+    const wrapper = await mountView()
+    const form = await openEdit(wrapper)
+    await form.get('[data-testid="account-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(editDialog()).not.toBeNull()
+    expect(form.get('[data-testid="initial-balance-error"]').text()).toBe(
+      'Informe o saldo com até 2 casas decimais',
+    )
+    expect(document.body.querySelector('[data-testid="add-account-error"]')).toBeNull()
+  })
+
+  it('valores inválidos não chamam a API (nome vazio, saldo com 3 casas)', async () => {
+    const wrapper = await mountView()
+    const form = await openEdit(wrapper)
+    await form.get('[data-testid="account-name-input"]').setValue('  ')
+    await form.get('[data-testid="initial-balance-input"]').setValue('10,123')
+    await form.get('[data-testid="account-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(mockUpdate).not.toHaveBeenCalled()
+    expect(form.get('[data-testid="account-name-error"]').text()).toBe('Informe o nome da conta')
+    expect(form.find('[data-testid="initial-balance-error"]').exists()).toBe(true)
+    expect(editDialog()).not.toBeNull()
+  })
+
+  it('saldo vazio na edição pede o saldo atual', async () => {
+    const wrapper = await mountView()
+    const form = await openEdit(wrapper)
+    await form.get('[data-testid="initial-balance-input"]').setValue('')
+    await form.get('[data-testid="account-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(form.get('[data-testid="initial-balance-error"]').text()).toBe(
+      'Informe o saldo atual (use 0,00 se não souber)',
+    )
+  })
+
+  it('404 ao salvar fecha o diálogo, tira a conta da lista e avisa', async () => {
+    mockUpdate.mockRejectedValue({
+      response: { status: 404, data: { detail: 'Conta não encontrada' } },
+    })
+    const wrapper = await mountView()
+    const form = await openEdit(wrapper)
+    await form.get('[data-testid="account-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(editDialog()).toBeNull()
+    expect(wrapper.find('[data-testid="account-item-a1"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="account-item-a2"]').exists()).toBe(true)
+    expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 50,00')
+    const notice = wrapper.get('[data-testid="accounts-notice"]')
+    expect(notice.text()).toBe('Esta conta não existe mais')
+    expect(notice.attributes('role')).toBe('alert')
+    expect(notice.classes()).toContain('bg-amber-50')
+    expect(wrapper.get('[data-testid="accounts-success"]').text()).toBe('')
+    await flushPromises()
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('open-add-account')
+  })
+
+  it('outra falha mostra a mensagem no diálogo, que continua aberto com os dados', async () => {
+    mockUpdate.mockRejectedValue(new Error('Network Error'))
+    const wrapper = await mountView()
+    const form = await openEdit(wrapper)
+    await form.get('[data-testid="account-name-input"]').setValue('Nubank PJ')
+    await form.get('[data-testid="account-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(editDialog()).not.toBeNull()
+    expect(document.body.querySelector('[data-testid="add-account-error"]')?.textContent).toContain(
+      'Não foi possível salvar a conta. Tente novamente.',
+    )
+    expect(input(form, 'account-name-input').value).toBe('Nubank PJ')
+    expect(wrapper.get('[data-testid="account-item-a1"]').text()).toContain('Nubank')
+    expect(wrapper.get('[data-testid="account-item-a1"]').text()).not.toContain('Nubank PJ')
+  })
+
+  it('enquanto salva, o botão mostra "Salvando...", Cancelar fica desabilitado e o diálogo não fecha', async () => {
+    let resolveUpdate: (a: Account) => void = () => {}
+    mockUpdate.mockReturnValue(new Promise<Account>((resolve) => (resolveUpdate = resolve)))
+    const wrapper = await mountView()
+    const form = await openEdit(wrapper)
+    await form.get('[data-testid="account-form"]').trigger('submit')
+    await flushPromises()
+
+    const save = form.get('[data-testid="save-account-button"]')
+    expect(save.text()).toBe('Salvando...')
+    expect(save.attributes('disabled')).toBeDefined()
+    expect(
+      document.body.querySelector<HTMLButtonElement>('[data-testid="cancel-add-account"]')
+        ?.disabled,
+    ).toBe(true)
+    wrapper.findComponent({ name: 'Dialog' }).vm.$emit('update:open', false)
+    await flushPromises()
+    expect(editDialog()).not.toBeNull()
+
+    resolveUpdate(account({ id: 'a1', accountName: 'Nubank', currentBalance: 100 }))
+    await flushPromises()
+    expect(editDialog()).toBeNull()
+  })
+
+  it('cancelar a edição volta o foco para o "Editar" da conta e não muda nada', async () => {
+    const wrapper = await mountView()
+    const form = await openEdit(wrapper, 'a2')
+    await form.get('[data-testid="account-name-input"]').setValue('Outro nome')
+    document.body.querySelector<HTMLButtonElement>('[data-testid="cancel-add-account"]')!.click()
+    await flushPromises()
+
+    expect(mockUpdate).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="account-item-a2"]').text()).toContain('Itaú')
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('edit-account-a2')
+  })
+
+  it('depois de editar, "Adicionar conta" abre o diálogo de criação vazio', async () => {
+    const wrapper = await mountView()
+    await openEdit(wrapper)
+    document.body.querySelector<HTMLButtonElement>('[data-testid="cancel-add-account"]')!.click()
+    await flushPromises()
+
+    const form = await openDialog(wrapper)
+    expect(dialog()?.textContent).toContain('Adicionar conta')
+    expect(input(form, 'account-name-input').value).toBe('')
+    expect(input(form, 'initial-balance-input').value).toBe('')
+    expect(form.get('[data-testid="add-account-button"]').text()).toBe('Salvar conta')
+  })
+
+  it('o aviso de item que não existe mais some ao abrir outro diálogo e não aparece sem 404', async () => {
+    mockUpdate.mockRejectedValue({ response: { status: 404, data: {} } })
+    const wrapper = await mountView()
+    expect(wrapper.find('[data-testid="accounts-notice"]').exists()).toBe(false)
+    const form = await openEdit(wrapper)
+    await form.get('[data-testid="account-form"]').trigger('submit')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="accounts-notice"]').exists()).toBe(true)
+
+    await openEdit(wrapper, 'a2')
+    expect(wrapper.find('[data-testid="accounts-notice"]').exists()).toBe(false)
   })
 })

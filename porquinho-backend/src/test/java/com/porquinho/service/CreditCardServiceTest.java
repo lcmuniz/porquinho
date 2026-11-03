@@ -89,4 +89,33 @@ class CreditCardServiceTest {
         assertThrows(ResourceNotFoundException.class, () -> service.delete(userId, cardId));
         verify(creditCardRepository, never()).save(any());
     }
+
+    @Test
+    void updateChangesNameBankLimitAndDueDay() {
+        UUID cardId = UUID.randomUUID();
+        CreditCard card = new CreditCard(userId, "Nubank", "Nubank", new BigDecimal("5000.00"), 10);
+        when(creditCardRepository.findByIdAndUserIdAndDeletedAtIsNull(cardId, userId)).thenReturn(Optional.of(card));
+        when(creditCardRepository.save(any(CreditCard.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        CreditCard updated = service.update(userId, cardId,
+            new CreateCreditCardRequest(" Nubank Ultravioleta ", "  ", new BigDecimal("6000"), new BigDecimal("20")));
+
+        assertSame(card, updated);
+        assertEquals("Nubank Ultravioleta", updated.getCardName());
+        assertNull(updated.getBankName());
+        assertEquals(new BigDecimal("6000.00"), updated.getCardLimit());
+        assertEquals(20, updated.getDueDay());
+        assertEquals(userId, updated.getUserId());
+        verify(creditCardRepository).save(card);
+    }
+
+    @Test
+    void updatingSomeoneElsesMissingOrRemovedCardIsNotFound() {
+        UUID cardId = UUID.randomUUID();
+        when(creditCardRepository.findByIdAndUserIdAndDeletedAtIsNull(cardId, userId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> service.update(userId, cardId,
+            new CreateCreditCardRequest("Nubank", null, BigDecimal.ONE, BigDecimal.ONE)));
+        verify(creditCardRepository, never()).save(any());
+    }
 }

@@ -269,4 +269,48 @@ class CreditCardOnboardingIntegrationTest {
         assertThat(rows.get(1)).containsEntry("card_name", "Antigo");
         assertThat(rows.get(1).get("deleted_at")).isNotNull();
     }
+
+    // Story 4.3: editing
+
+    @Test
+    void editingDueDay10To20AndLimitTo6000UpdatesTheRowAndUpdatedAt() throws Exception {
+        // Acceptance criterion: card due on day 10 edited to day 20 with a R$ 6.000,00 limit
+        CreditCard card = add(userId, "Nubank", "5000.00", 10);
+        java.time.OffsetDateTime createdUpdatedAt = jdbc.queryForObject(
+            "SELECT updated_at FROM credit_cards WHERE id = ?", java.time.OffsetDateTime.class, card.getId());
+        Thread.sleep(5);
+
+        creditCardService.update(userId, card.getId(),
+            new CreateCreditCardRequest("Nubank Ultravioleta", "Nubank", new BigDecimal("6000.00"), new BigDecimal("20")));
+        creditCardRepository.flush();
+
+        Map<String, Object> row = jdbc.queryForMap(
+            "SELECT card_name, bank_name, card_limit, due_day, deleted_at FROM credit_cards WHERE id = ?", card.getId());
+        assertThat(row).containsEntry("card_name", "Nubank Ultravioleta").containsEntry("bank_name", "Nubank")
+            .containsEntry("card_limit", new BigDecimal("6000.00")).containsEntry("due_day", 20)
+            .containsEntry("deleted_at", null);
+        assertThat(jdbc.queryForObject("SELECT updated_at > ? FROM credit_cards WHERE id = ?", Boolean.class,
+            createdUpdatedAt, card.getId())).isTrue();
+    }
+
+    @Test
+    void editingAnotherUsersARemovedOrAMissingCardIsNotFoundAndChangesNothing() {
+        CreditCard foreign = add(newUser(), "De outra pessoa", "1.00", 5);
+        CreditCard removed = add(userId, "Removido", "1.00", 5);
+        creditCardService.delete(userId, removed.getId());
+        creditCardRepository.flush();
+        CreateCreditCardRequest request =
+            new CreateCreditCardRequest("Meu", null, new BigDecimal("999.00"), new BigDecimal("15"));
+
+        assertThatThrownBy(() -> creditCardService.update(userId, foreign.getId(), request))
+            .isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> creditCardService.update(userId, removed.getId(), request))
+            .isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> creditCardService.update(userId, UUID.randomUUID(), request))
+            .isInstanceOf(ResourceNotFoundException.class);
+        creditCardRepository.flush();
+
+        assertThat(jdbc.queryForMap("SELECT card_name, due_day FROM credit_cards WHERE id = ?", foreign.getId()))
+            .containsEntry("card_name", "De outra pessoa").containsEntry("due_day", 5);
+    }
 }

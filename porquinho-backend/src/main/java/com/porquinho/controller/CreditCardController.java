@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -47,6 +48,14 @@ public class CreditCardController {
         UUID userId = UUID.fromString(jwt.getSubject());
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(CreditCardResponse.of(creditCardService.create(userId, request)));
+    }
+
+    /** Story 4.3: 200 with the edited card; 400 when invalid (same rules as POST); 404 if not the user's active card. */
+    @PutMapping("/{id}")
+    public ResponseEntity<CreditCardResponse> update(@AuthenticationPrincipal Jwt jwt, @PathVariable("id") UUID id,
+                                                     @Valid @RequestBody CreateCreditCardRequest request) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(CreditCardResponse.of(creditCardService.update(userId, id, request)));
     }
 
     /** Soft delete. 204; 404 if the card is not the user's (or does not exist, or was already removed). */

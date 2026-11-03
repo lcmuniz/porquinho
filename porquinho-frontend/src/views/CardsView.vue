@@ -30,6 +30,16 @@
         {{ successMessage }}
       </p>
 
+      <!-- Story 4.3: aviso (não é sucesso) quando o item editado não existe mais -->
+      <p
+        v-if="notice"
+        role="alert"
+        data-testid="cards-notice"
+        class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+      >
+        {{ notice }}
+      </p>
+
       <div v-if="loading" class="space-y-2" aria-busy="true" data-testid="cards-skeleton">
         <div class="h-20 animate-pulse rounded-lg bg-gray-100" />
         <div class="h-16 animate-pulse rounded-lg bg-gray-100" />
@@ -97,7 +107,7 @@
           <h2 id="cards-list-heading" class="text-sm font-medium text-gray-900">
             Seus cartões ({{ cards.length }})
           </h2>
-          <ul class="space-y-2" data-testid="cards-list">
+          <ul ref="list" class="space-y-2" data-testid="cards-list">
             <li
               v-for="card in cards"
               :key="card.id"
@@ -118,6 +128,16 @@
               >
                 {{ formatBRL(card.cardLimit) }}
               </span>
+              <Button
+                variant="ghost"
+                class="min-h-[44px] min-w-[44px] shrink-0 text-purple-700 hover:bg-purple-50"
+                :data-testid="`edit-card-${card.id}`"
+                :aria-label="`Editar ${card.cardName}`"
+                @click="openEdit(card)"
+              >
+                <Pencil class="h-4 w-4" aria-hidden="true" />
+                Editar
+              </Button>
             </li>
           </ul>
         </section>
@@ -127,13 +147,16 @@
     <Dialog :open="dialogOpen" @update:open="onDialogOpenChange">
       <DialogContent
         :show-close-button="false"
-        data-testid="add-card-dialog"
+        :data-testid="editing ? 'edit-card-dialog' : 'add-card-dialog'"
         @open-auto-focus="onOpenAutoFocus"
         @close-auto-focus="onCloseAutoFocus"
       >
         <DialogHeader>
-          <DialogTitle>Adicionar cartão</DialogTitle>
-          <DialogDescription>
+          <DialogTitle>{{ editing ? 'Editar cartão' : 'Adicionar cartão' }}</DialogTitle>
+          <DialogDescription v-if="editing">
+            Corrija o nome, o banco, o limite ou o dia em que a fatura vence.
+          </DialogDescription>
+          <DialogDescription v-else>
             Informe o nome, o banco, o limite e o dia em que a fatura vence.
           </DialogDescription>
         </DialogHeader>
@@ -150,9 +173,12 @@
           v-model:submitting="saving"
           @attempt="dialogError = null"
           primary
-          submit-label="Salvar cartão"
+          :card="editing"
+          :submit-label="editing ? 'Salvar alterações' : 'Salvar cartão'"
           submitting-label="Salvando..."
           @created="onCreated"
+          @updated="onUpdated"
+          @not-found="onNotFound"
           @failed="onFailed"
         />
         <Button
@@ -172,7 +198,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { CreditCard as CreditCardIcon, Plus } from 'lucide-vue-next'
+import { CreditCard as CreditCardIcon, Pencil, Plus } from 'lucide-vue-next'
 import CardForm from '@/components/cards/CardForm.vue'
 import { Button } from '@/components/ui/button'
 import {
@@ -189,6 +215,7 @@ import type { CreditCard } from '@/types/creditCard'
 /**
  * Story 4.2: cartões ativos, limite total e cadastro de cartão novo pelo diálogo.
  * O limite total é a base do crédito disponível, que depende das faturas (Epic 5).
+ * Story 4.3: o botão "Editar" de cada cartão abre o mesmo diálogo com o formulário preenchido.
  */
 const cards = ref<CreditCard[]>([])
 const loading = ref(true)
@@ -197,8 +224,13 @@ const dialogOpen = ref(false)
 const saving = ref(false)
 const dialogError = ref<string | null>(null)
 const successMessage = ref<string | null>(null)
+/** Story 4.3: aviso de item que não existe mais (404 ao editar); some na próxima ação. */
+const notice = ref<string | null>(null)
 const cardForm = ref<InstanceType<typeof CardForm> | null>(null)
 const heading = ref<HTMLElement | null>(null)
+const list = ref<HTMLElement | null>(null)
+/** Story 4.3: item em edição (null no diálogo de adicionar). Continua definido depois de fechar, para o foco voltar ao botão dele. */
+const editing = ref<CreditCard | null>(null)
 const headerAddButton = ref<{ $el?: HTMLElement } | null>(null)
 
 /** A mensagem de sucesso some sozinha depois de alguns segundos. */
@@ -220,6 +252,7 @@ const totalCents = computed(() =>
 
 async function load() {
   setSuccess(null)
+  notice.value = null
   loading.value = true
   loadFailed.value = false
   try {
@@ -232,8 +265,19 @@ async function load() {
 }
 
 function openDialog() {
+  editing.value = null
   dialogError.value = null
   setSuccess(null)
+  notice.value = null
+  dialogOpen.value = true
+}
+
+/** Story 4.3: abre o diálogo em modo edição, com o formulário preenchido. */
+function openEdit(card: CreditCard) {
+  editing.value = card
+  dialogError.value = null
+  setSuccess(null)
+  notice.value = null
   dialogOpen.value = true
 }
 
@@ -252,13 +296,36 @@ function onOpenAutoFocus(event: Event) {
 /** Ao fechar, o foco vai para um alvo que sempre existe: o botão do topo (há cartões) ou o título. */
 function onCloseAutoFocus(event: Event) {
   event.preventDefault()
-  void nextTick(() => (headerAddButton.value?.$el ?? heading.value)?.focus())
+  void nextTick(() => {
+    // Na edição, o foco volta para o botão "Editar" do item (se ele ainda estiver na lista)
+    const editButton = editing.value
+      ? list.value?.querySelector<HTMLElement>(`[data-testid="edit-card-${editing.value.id}"]`)
+      : null
+    ;(editButton ?? headerAddButton.value?.$el ?? heading.value)?.focus()
+  })
 }
 
 function onCreated(created: CreditCard) {
   cards.value.push(created)
   dialogOpen.value = false
   setSuccess('Cartão adicionado com sucesso')
+}
+
+/** Story 4.3: o item editado é substituído na lista (o total é recalculado pelo computed). */
+function onUpdated(updated: CreditCard) {
+  const index = cards.value.findIndex((x) => x.id === updated.id)
+  if (index >= 0) cards.value.splice(index, 1, updated)
+  dialogOpen.value = false
+  setSuccess('Informações atualizadas')
+}
+
+/** Story 4.3: 404 ao salvar — o item foi removido ou não é do usuário; sai da lista. */
+function onNotFound() {
+  const id = editing.value?.id
+  cards.value = cards.value.filter((x) => x.id !== id)
+  dialogOpen.value = false
+  setSuccess(null)
+  notice.value = 'Este cartão não existe mais'
 }
 
 function onFailed(detail: string | undefined) {

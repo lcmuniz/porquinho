@@ -4,9 +4,11 @@ import AccountForm from '../AccountForm.vue'
 import type { Account } from '@/types/account'
 
 const mockCreate = vi.fn()
+const mockUpdate = vi.fn()
 
 vi.mock('@/services/accountService', () => ({
   createAccount: (...a: unknown[]) => mockCreate(...a),
+  updateAccount: (...a: unknown[]) => mockUpdate(...a),
 }))
 
 function created(overrides: Partial<Account> = {}): Account {
@@ -221,5 +223,109 @@ describe('AccountForm', () => {
     await submit(wrapper)
 
     expect(wrapper.emitted('failed')?.[0]).toEqual(['Dados inválidos'])
+  })
+})
+
+describe('AccountForm — edição (Story 4.3)', () => {
+  const editing: Account = {
+    id: 'a1',
+    accountName: 'Nubank',
+    bankName: null,
+    accountType: 'SAVINGS',
+    initialBalance: 100,
+    currentBalance: 1234.5,
+    createdAt: '2026-11-01T12:00:00Z',
+  }
+
+  beforeEach(() => {
+    mockCreate.mockReset()
+    mockUpdate.mockReset().mockImplementation(async (id: string, data) => ({
+      ...editing,
+      ...data,
+      id,
+    }))
+  })
+
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('começa preenchido com os valores atuais (saldo no formato brasileiro)', () => {
+    const wrapper = mountForm({ account: editing, submitLabel: 'Salvar alterações' })
+    expect(inputValue(wrapper, 'account-name-input')).toBe('Nubank')
+    expect(inputValue(wrapper, 'bank-name-input')).toBe('')
+    expect(
+      (wrapper.get('[data-testid="account-type-SAVINGS"]').element as HTMLInputElement).checked,
+    ).toBe(true)
+    expect(inputValue(wrapper, 'initial-balance-input')).toBe('1.234,50')
+    const button = wrapper.get('[data-testid="save-account-button"]')
+    expect(button.text()).toBe('Salvar alterações')
+    expect(button.find('svg').exists()).toBe(false)
+  })
+
+  it('salvar chama PUT com o saldo atual e emite updated, sem limpar o formulário', async () => {
+    const wrapper = mountForm({ account: editing })
+    await fill(wrapper, ' Nubank PJ ', '250,00', 'Nubank')
+    await submit(wrapper)
+
+    expect(mockCreate).not.toHaveBeenCalled()
+    expect(mockUpdate).toHaveBeenCalledWith('a1', {
+      accountName: 'Nubank PJ',
+      bankName: 'Nubank',
+      accountType: 'SAVINGS',
+      currentBalance: 250,
+    })
+    const updated = wrapper.emitted('updated')?.[0]?.[0] as Account
+    expect(updated.accountName).toBe('Nubank PJ')
+    expect(updated.currentBalance).toBe(250)
+    expect(wrapper.emitted('created')).toBeUndefined()
+    expect(inputValue(wrapper, 'account-name-input')).toBe(' Nubank PJ ')
+  })
+
+  it('erro 400 em currentBalance aparece no campo do saldo', async () => {
+    mockUpdate.mockRejectedValue({
+      response: { status: 400, data: { errors: { currentBalance: 'Saldo inválido' } } },
+    })
+    const wrapper = mountForm({ account: editing })
+    await submit(wrapper)
+
+    expect(wrapper.get('[data-testid="initial-balance-error"]').text()).toBe('Saldo inválido')
+    expect(
+      wrapper.get('[data-testid="initial-balance-input"]').attributes('aria-describedby'),
+    ).toContain('initial-balance-error')
+    expect(wrapper.emitted('failed')).toBeUndefined()
+  })
+
+  it('404 emite not-found (e não failed)', async () => {
+    mockUpdate.mockRejectedValue({
+      response: { status: 404, data: { detail: 'Conta não encontrada' } },
+    })
+    const wrapper = mountForm({ account: editing })
+    await submit(wrapper)
+
+    expect(wrapper.emitted('notFound')).toHaveLength(1)
+    expect(wrapper.emitted('failed')).toBeUndefined()
+  })
+
+  it('outra falha vai para failed com o detail da API', async () => {
+    mockUpdate.mockRejectedValue({ response: { status: 500, data: { detail: 'Erro interno' } } })
+    const wrapper = mountForm({ account: editing })
+    await submit(wrapper)
+
+    expect(wrapper.emitted('failed')?.[0]).toEqual(['Erro interno'])
+  })
+
+  it('trocar a conta em edição preenche os novos valores; sem conta, volta ao formulário vazio', async () => {
+    const wrapper = mountForm({ account: editing })
+    await wrapper.setProps({
+      account: { ...editing, id: 'a2', accountName: 'Itaú', currentBalance: -150 },
+    })
+    expect(inputValue(wrapper, 'account-name-input')).toBe('Itaú')
+    expect(inputValue(wrapper, 'initial-balance-input')).toBe('-150,00')
+
+    await wrapper.setProps({ account: null })
+    expect(inputValue(wrapper, 'account-name-input')).toBe('')
+    expect(inputValue(wrapper, 'initial-balance-input')).toBe('')
+    expect(wrapper.find('[data-testid="add-account-button"]').exists()).toBe(true)
   })
 })

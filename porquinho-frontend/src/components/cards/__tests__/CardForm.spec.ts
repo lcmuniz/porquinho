@@ -4,9 +4,11 @@ import CardForm from '../CardForm.vue'
 import type { CreditCard } from '@/types/creditCard'
 
 const mockCreate = vi.fn()
+const mockUpdate = vi.fn()
 
 vi.mock('@/services/cardService', () => ({
   createCard: (...a: unknown[]) => mockCreate(...a),
+  updateCard: (...a: unknown[]) => mockUpdate(...a),
 }))
 
 function created(overrides: Partial<CreditCard> = {}): CreditCard {
@@ -255,5 +257,91 @@ describe('CardForm', () => {
       'O limite não pode ser negativo',
     )
     expect(mockCreate).not.toHaveBeenCalled()
+  })
+})
+
+describe('CardForm — edição (Story 4.3)', () => {
+  const editing: CreditCard = {
+    id: 'c1',
+    cardName: 'Nubank',
+    bankName: 'Nubank',
+    cardLimit: 5000,
+    dueDay: 10,
+    createdAt: '2026-11-01T12:00:00Z',
+  }
+
+  beforeEach(() => {
+    mockCreate.mockReset()
+    mockUpdate
+      .mockReset()
+      .mockImplementation(async (id: string, data) => ({ ...editing, ...data, id }))
+  })
+
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('começa preenchido com os valores atuais (limite no formato brasileiro)', () => {
+    const wrapper = mountForm({ card: editing, submitLabel: 'Salvar alterações' })
+    expect(inputValue(wrapper, 'card-name-input')).toBe('Nubank')
+    expect(inputValue(wrapper, 'card-bank-name-input')).toBe('Nubank')
+    expect(inputValue(wrapper, 'card-limit-input')).toBe('5.000,00')
+    expect(inputValue(wrapper, 'card-due-day-input')).toBe('10')
+    expect(wrapper.get('[data-testid="save-card-button"]').text()).toBe('Salvar alterações')
+  })
+
+  it('salvar chama PUT e emite updated', async () => {
+    const wrapper = mountForm({ card: editing })
+    await wrapper.get('[data-testid="card-limit-input"]').setValue('6.000,00')
+    await wrapper.get('[data-testid="card-due-day-input"]').setValue('20')
+    await submit(wrapper)
+
+    expect(mockCreate).not.toHaveBeenCalled()
+    expect(mockUpdate).toHaveBeenCalledWith('c1', {
+      cardName: 'Nubank',
+      bankName: 'Nubank',
+      cardLimit: 6000,
+      dueDay: 20,
+    })
+    const updated = wrapper.emitted('updated')?.[0]?.[0] as CreditCard
+    expect(updated.dueDay).toBe(20)
+    expect(wrapper.emitted('created')).toBeUndefined()
+  })
+
+  it('valores inválidos (dia 32, limite negativo) não chamam a API', async () => {
+    const wrapper = mountForm({ card: editing })
+    await wrapper.get('[data-testid="card-limit-input"]').setValue('-1,00')
+    await wrapper.get('[data-testid="card-due-day-input"]').setValue('32')
+    await submit(wrapper)
+
+    expect(mockUpdate).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="card-due-day-error"]').text()).toBe(
+      'Informe um dia entre 1 e 31',
+    )
+    expect(wrapper.find('[data-testid="card-limit-error"]').exists()).toBe(true)
+  })
+
+  it('404 emite not-found (e não failed)', async () => {
+    mockUpdate.mockRejectedValue({
+      response: { status: 404, data: { detail: 'Cartão não encontrado' } },
+    })
+    const wrapper = mountForm({ card: editing })
+    await submit(wrapper)
+
+    expect(wrapper.emitted('notFound')).toHaveLength(1)
+    expect(wrapper.emitted('failed')).toBeUndefined()
+  })
+
+  it('400 do servidor aparece no campo', async () => {
+    mockUpdate.mockRejectedValue({
+      response: { status: 400, data: { errors: { cardLimit: 'O limite não pode ser negativo' } } },
+    })
+    const wrapper = mountForm({ card: editing })
+    await submit(wrapper)
+
+    expect(wrapper.get('[data-testid="card-limit-error"]').text()).toBe(
+      'O limite não pode ser negativo',
+    )
+    expect(wrapper.emitted('failed')).toBeUndefined()
   })
 })

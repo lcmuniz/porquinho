@@ -17,3 +17,11 @@ export interface CreateAccountInput {
   accountType: AccountType
   initialBalance: number
 }
+
+/** Story 4.3: edição. O saldo inicial não muda; o saldo atual é o informado. */
+export interface UpdateAccountInput {
+  accountName: string
+  bankName: string | null
+  accountType: AccountType
+  currentBalance: number
+}
