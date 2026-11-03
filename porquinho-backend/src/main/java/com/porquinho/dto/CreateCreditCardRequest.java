@@ -1,5 +1,7 @@
 package com.porquinho.dto;
 
+import com.porquinho.service.CategoryService;
+
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
@@ -37,10 +39,6 @@ public record CreateCreditCardRequest(
 ) {
     public static final String DUE_DAY_MESSAGE = "Informe um dia entre 1 e 31";
 
-    /** Leading/trailing whitespace, Unicode spaces included (NBSP is not stripped by trim()/strip()). */
-    private static final java.util.regex.Pattern EDGE_SPACES =
-        java.util.regex.Pattern.compile("^[\\s\\p{Z}]+|[\\s\\p{Z}]+$");
-
     public CreateCreditCardRequest {
         cardName = clean(cardName);
         bankName = clean(bankName);
@@ -54,7 +52,8 @@ public record CreateCreditCardRequest(
         return dueDay.intValueExact();
     }
 
+    /** Same cleaning as category and goal names: NFC, no edge whitespace or invisible characters. */
     private static String clean(String value) {
-        return value == null ? null : EDGE_SPACES.matcher(value).replaceAll("");
+        return CategoryService.cleanName(value);
     }
 }

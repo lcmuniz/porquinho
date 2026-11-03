@@ -219,7 +219,6 @@ import { cleanCategoryName as cleanName } from '@/lib/categoryName'
 import {
   addMonths,
   formatMonthYear,
-  MAX_FORECAST_MONTHS,
   monthsUntil,
   parseISODate,
   projectedCompletion,

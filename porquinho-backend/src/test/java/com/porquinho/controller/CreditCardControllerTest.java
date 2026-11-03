@@ -174,6 +174,17 @@ class CreditCardControllerTest {
     }
 
     @Test
+    void nameMadeOfInvisibleCharactersIs400() throws Exception {
+        mockMvc.perform(post("/api/v1/credit-cards").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body("\"\u200b\ufeff\"", "null", "0", "10")))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errors.cardName").value("Informe o nome do cartão"));
+
+        verifyNoInteractions(creditCardService);
+    }
+
+    @Test
     void nameOrBankLongerThan100Is400() throws Exception {
         mockMvc.perform(post("/api/v1/credit-cards").with(authentication(authToken))
                 .contentType(MediaType.APPLICATION_JSON)

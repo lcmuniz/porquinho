@@ -128,6 +128,17 @@ class AccountControllerTest {
     }
 
     @Test
+    void nameMadeOfInvisibleCharactersIs400() throws Exception {
+        mockMvc.perform(post("/api/v1/accounts").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body("\"\u200b\ufeff\"", "null", "\"CHECKING\"", "0")))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errors.accountName").value("Informe o nome da conta"));
+
+        verifyNoInteractions(accountService);
+    }
+
+    @Test
     void nameLongerThan100Is400() throws Exception {
         mockMvc.perform(post("/api/v1/accounts").with(authentication(authToken))
                 .contentType(MediaType.APPLICATION_JSON)

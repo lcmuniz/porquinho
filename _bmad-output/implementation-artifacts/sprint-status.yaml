@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-13
-last_updated: 11-02-2026 17:00
+last_updated: 11-02-2026 21:13
 project: porquinho
 project_key: NOKEY
 tracking_system: file-system
@@ -87,7 +87,7 @@ development_status:
   3-6-guided-first-transaction-import: done
   3-7-explain-dashboard-gps-3-layer-navigation: done
   3-8-create-initial-emergency-fund-goal: done
-  epic-3-retrospective: optional
+  epic-3-retrospective: done
 
   # Epic 4: Financial Accounts & Cards Management
   epic-4: backlog
@@ -174,27 +174,27 @@ action_items:
     action: "Cancelar a assinatura no Stripe e anular fatura em aberto no requestDeletion
       (F1, antes de produção)"
     owner: "Luiz"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-11-01.md"
   - id: "epic-2-retro-item-2-checkout-duplicado-estornar-a-duplicata"
     epic: 2
     action: "Checkout duplicado: estornar a duplicata e responder 200 ao invoice.paid
       de sub duplicada (F2)"
     owner: "Luiz"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-11-01.md"
   - id: "epic-2-retro-item-3-export-lgpd-com-as-colunas-v10-v14-e-tes"
     epic: 2
     action: "Export LGPD com as colunas V10-V14 e teste do conjunto de chaves (F3)"
     owner: "Luiz"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-11-01.md"
   - id: "epic-2-retro-item-4-front-mostra-detail-do-409-do-checkout-e"
     epic: 2
     action: "Front mostra detail do 409 do checkout; e-mail final sem link quando
       willRetry=false; corrigir comentário do SubscriptionAccessFilter"
     owner: "Luiz"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-11-01.md"
   - id: "epic-2-retro-item-5-reconciliar-épico-2-e-prd-com-o-construí"
     epic: 2
@@ -228,7 +228,7 @@ action_items:
     action: "Specs: ao criar coluna de dado pessoal ou cobrança, checar purge, export
       e exclusão de conta"
     owner: "Bob (SM)"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-11-01.md"
   - id: "epic-2-retro-item-10-story-que-muda-a-abordagem-do-épico-atua"
     epic: 2
@@ -236,3 +236,36 @@ action_items:
     owner: "Bob (SM)"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-11-01.md"
+  - id: "epic-3-retro-item-11-deixar-o-frontend-ci-verde-corrigir-lint"
+    epic: 3
+    action: "Deixar o Frontend CI verde: corrigir lint (categoryIcons.spec.ts, EmergencyFundStep.vue)"
+    owner: "Claude"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-11-02.md"
+  - id: "epic-3-retro-item-12-lint-npm-run-lint-sem-fix-na-verificatio"
+    epic: 3
+    action: "Lint (npm run lint sem --fix) na Verification das specs e conferir CI
+      após push"
+    owner: "Claude"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-11-02.md"
+  - id: "epic-3-retro-item-13-limpeza-de-nome-única-nfc-p-cf-em-contas"
+    epic: 3
+    action: "Limpeza de nome única (NFC + \\p{Cf}) em contas, cartões, categorias
+      e metas"
+    owner: "Claude"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-11-02.md"
+  - id: "epic-3-retro-item-14-reconciliar-texto-do-epic-3-com-o-constr"
+    epic: 3
+    action: "Reconciliar texto do Epic 3 com o construído (3.6 sem upload, V15/V19,
+      current_step, 3.8)"
+    owner: "Luiz"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-11-02.md"
+  - id: "epic-3-retro-item-15-resync-de-progresso-no-409-do-onboarding"
+    epic: 3
+    action: "Resync de progresso no 409 do onboarding (antes de produção)"
+    owner: "Claude"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-11-02.md"
