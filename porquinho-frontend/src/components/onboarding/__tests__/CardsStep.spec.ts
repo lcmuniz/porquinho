@@ -295,8 +295,7 @@ describe('CardsStep', () => {
     skip.trigger('click')
     await flushPromises()
 
-    expect(mockCompleteCards).toHaveBeenCalledOnce()
-    expect(mockCompleteCards).toHaveBeenCalledWith(true)
+    expect(mockCompleteCards).toHaveBeenCalledExactlyOnceWith(true)
     expect(mockCreate).not.toHaveBeenCalled()
   })
 

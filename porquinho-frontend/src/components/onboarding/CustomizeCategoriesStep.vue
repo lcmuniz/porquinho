@@ -387,7 +387,7 @@ async function finish(skipped: boolean) {
   finishing.value = true
   skipping.value = skipped
   // Um nome salvo ao sair do campo (o clique em Próximo tira o foco) termina antes de avançar
-  const saved = await Promise.all([...pending])
+  const saved = await Promise.all(pending)
   if (saved.includes(false)) {
     // Uma alteração falhou (a mensagem aparece no item): o usuário fica no passo para conferir
     finishing.value = false

@@ -51,10 +51,8 @@ const BACKEND_COLORS = [
 describe('categoryIcons', () => {
   it('mapeia os 24 ícones do backend para um componente próprio e um nome em pt-BR', () => {
     expect(BACKEND_ICONS).toHaveLength(24)
-    for (const icon of BACKEND_ICONS) {
-      expect(categoryIcon(icon), icon).not.toBe(Tag)
-      expect(categoryIconLabel(icon), icon).not.toBe(icon)
-    }
+    expect(BACKEND_ICONS.filter((icon) => categoryIcon(icon) === Tag)).toEqual([])
+    expect(BACKEND_ICONS.filter((icon) => categoryIconLabel(icon) === icon)).toEqual([])
   })
 
   it('nome desconhecido cai no ícone Tag', () => {
@@ -64,7 +62,7 @@ describe('categoryIcons', () => {
   it('dá um nome em pt-BR a cada uma das 14 cores da paleta, sem repetir', () => {
     expect(BACKEND_COLORS).toHaveLength(14)
     const labels = BACKEND_COLORS.map(categoryColorLabel)
-    for (const [i, label] of labels.entries()) expect(label, BACKEND_COLORS[i]).not.toMatch(/^#/)
+    expect(labels.filter((label) => label.startsWith('#'))).toEqual([])
     expect(new Set(labels).size).toBe(14)
     expect(categoryColorLabel('#f97316')).toBe('Laranja')
   })

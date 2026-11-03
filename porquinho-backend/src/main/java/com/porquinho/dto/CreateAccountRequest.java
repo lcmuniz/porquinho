@@ -1,5 +1,7 @@
 package com.porquinho.dto;
 
+import com.porquinho.service.CategoryService;
+
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -30,10 +32,6 @@ public record CreateAccountRequest(
         message = "Informe o saldo com até 2 casas decimais e no máximo 13 dígitos antes da vírgula")
     BigDecimal initialBalance
 ) {
-    /** Leading/trailing whitespace, Unicode spaces included (NBSP is not stripped by trim()/strip()). */
-    private static final java.util.regex.Pattern EDGE_SPACES =
-        java.util.regex.Pattern.compile("^[\\s\\p{Z}]+|[\\s\\p{Z}]+$");
-
     public CreateAccountRequest {
         accountName = clean(accountName);
         bankName = clean(bankName);
@@ -42,7 +40,8 @@ public record CreateAccountRequest(
         }
     }
 
+    /** Same cleaning as category and goal names: NFC, no edge whitespace or invisible characters. */
     private static String clean(String value) {
-        return value == null ? null : EDGE_SPACES.matcher(value).replaceAll("");
+        return CategoryService.cleanName(value);
     }
 }
