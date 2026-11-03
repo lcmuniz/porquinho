@@ -72,6 +72,19 @@ describe('DashboardView', () => {
     expect(wrapper.get('h1').text()).toBe('Dashboard')
     expect(wrapper.text()).toContain('Excluir minha conta')
   })
+  it('a navegação tem o link "Contas bancárias" para /contas (Story 4.1)', async () => {
+    mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const link = wrapper
+      .findAllComponents(RouterLinkStub)
+      .find((l) => l.attributes('data-testid') === 'accounts-link')
+    expect(link?.props('to')).toBe('/contas')
+    expect(link?.text()).toBe('Contas bancárias')
+  })
+
   it('Sair limpa o usuário local, faz signOut e vai para /login', async () => {
     mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
     localStorage.setItem('user', '{"id":"x"}')

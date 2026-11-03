@@ -351,4 +351,24 @@ describe('AccountsStep', () => {
     expect(input.attributes('aria-describedby')).toBe('initial-balance-error initial-balance-hint')
     expect(wrapper.get('#initial-balance-error').text()).toContain('1.234,56')
   })
+
+  it('enquanto a conta é criada, Próximo, Pular e Remover ficam desabilitados', async () => {
+    mockList.mockResolvedValue([account()])
+    let resolveCreate: (a: Account) => void = () => {}
+    mockCreate.mockReturnValue(new Promise<Account>((resolve) => (resolveCreate = resolve)))
+    const wrapper = await mountStep()
+    await fill(wrapper, 'Inter', '1')
+    await submit(wrapper)
+
+    for (const id of ['next-button', 'skip-button', 'remove-account-a1']) {
+      expect(wrapper.get(`[data-testid="${id}"]`).attributes('disabled')).toBeDefined()
+    }
+    await wrapper.get('[data-testid="next-button"]').trigger('click')
+    await flushPromises()
+    expect(mockCompleteAccounts).not.toHaveBeenCalled()
+
+    resolveCreate(account({ id: 'new' }))
+    await flushPromises()
+    expect(wrapper.get('[data-testid="next-button"]').attributes('disabled')).toBeUndefined()
+  })
 })

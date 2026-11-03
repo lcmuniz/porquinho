@@ -90,8 +90,8 @@ development_status:
   epic-3-retrospective: done
 
   # Epic 4: Financial Accounts & Cards Management
-  epic-4: backlog
-  4-1-register-multiple-bank-accounts: backlog
+  epic-4: in-progress
+  4-1-register-multiple-bank-accounts: done
   4-2-register-multiple-credit-cards: backlog
   4-3-edit-account-and-card-information: backlog
   4-4-deactivate-or-remove-accounts-and-cards: backlog

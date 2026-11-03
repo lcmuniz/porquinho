@@ -1,0 +1,265 @@
+<template>
+  <form class="space-y-4" novalidate data-testid="account-form" @submit.prevent="submit">
+    <div class="space-y-1">
+      <label for="account-name" class="text-sm font-medium text-gray-900">Nome da conta</label>
+      <Input
+        id="account-name"
+        ref="nameInput"
+        v-model="form.accountName"
+        maxlength="100"
+        placeholder="Ex.: Nubank"
+        autocomplete="off"
+        class="min-h-[44px]"
+        data-testid="account-name-input"
+        :aria-invalid="errors.accountName ? 'true' : undefined"
+        :aria-describedby="errors.accountName ? 'account-name-error' : undefined"
+      />
+      <p
+        v-if="errors.accountName"
+        id="account-name-error"
+        class="text-sm text-red-600"
+        data-testid="account-name-error"
+      >
+        {{ errors.accountName }}
+      </p>
+    </div>
+
+    <div class="space-y-1">
+      <label for="bank-name" class="text-sm font-medium text-gray-900">
+        Banco <span class="font-normal text-gray-500">(opcional)</span>
+      </label>
+      <Input
+        id="bank-name"
+        v-model="form.bankName"
+        list="bank-suggestions"
+        maxlength="100"
+        placeholder="Digite ou escolha um banco"
+        autocomplete="off"
+        class="min-h-[44px]"
+        data-testid="bank-name-input"
+        :aria-invalid="errors.bankName ? 'true' : undefined"
+        :aria-describedby="errors.bankName ? 'bank-name-error' : undefined"
+      />
+      <datalist id="bank-suggestions">
+        <option v-for="bank in BANKS" :key="bank" :value="bank" />
+      </datalist>
+      <p v-if="errors.bankName" id="bank-name-error" class="text-sm text-red-600">
+        {{ errors.bankName }}
+      </p>
+    </div>
+
+    <fieldset class="space-y-2">
+      <legend class="text-sm font-medium text-gray-900">Tipo da conta</legend>
+      <div class="grid grid-cols-2 gap-3">
+        <label
+          v-for="option in ACCOUNT_TYPE_OPTIONS"
+          :key="option.value"
+          class="flex min-h-[44px] cursor-pointer items-center gap-2 rounded-md border px-3 text-sm"
+          :class="
+            form.accountType === option.value
+              ? 'border-purple-600 bg-purple-50 text-purple-900'
+              : 'border-gray-200 text-gray-700'
+          "
+        >
+          <input
+            v-model="form.accountType"
+            type="radio"
+            name="account-type"
+            class="accent-purple-600"
+            :value="option.value"
+            :data-testid="`account-type-${option.value}`"
+            :aria-invalid="errors.accountType ? 'true' : undefined"
+            :aria-describedby="errors.accountType ? 'account-type-error' : undefined"
+          />
+          {{ option.label }}
+        </label>
+      </div>
+      <p
+        v-if="errors.accountType"
+        id="account-type-error"
+        class="text-sm text-red-600"
+        data-testid="account-type-error"
+      >
+        {{ errors.accountType }}
+      </p>
+    </fieldset>
+
+    <div class="space-y-1">
+      <label for="initial-balance" class="text-sm font-medium text-gray-900">
+        Saldo atual da conta (R$)
+      </label>
+      <Input
+        id="initial-balance"
+        v-model="form.initialBalance"
+        inputmode="decimal"
+        placeholder="0,00"
+        autocomplete="off"
+        class="min-h-[44px]"
+        data-testid="initial-balance-input"
+        :aria-invalid="errors.initialBalance ? 'true' : undefined"
+        :aria-describedby="
+          errors.initialBalance
+            ? 'initial-balance-error initial-balance-hint'
+            : 'initial-balance-hint'
+        "
+      />
+      <p
+        v-if="errors.initialBalance"
+        id="initial-balance-error"
+        class="text-sm text-red-600"
+        data-testid="initial-balance-error"
+      >
+        {{ errors.initialBalance }}
+      </p>
+      <p id="initial-balance-hint" class="text-xs text-gray-500">
+        Ex.: 1.234,56. Se a conta estiver no cheque especial, use o sinal de menos: -150,00.
+      </p>
+    </div>
+
+    <Button
+      type="submit"
+      :variant="primary ? 'default' : 'outline'"
+      class="min-h-[44px] w-full"
+      :class="
+        primary
+          ? 'bg-purple-600 text-white hover:bg-purple-700'
+          : 'border-purple-600 text-purple-700'
+      "
+      data-testid="add-account-button"
+      :disabled="disabled || submitting"
+    >
+      <Plus class="h-4 w-4" aria-hidden="true" />
+      {{ submitting ? submittingLabel : submitLabel }}
+    </Button>
+  </form>
+</template>
+
+<script setup lang="ts">
+import { reactive, ref } from 'vue'
+import { Plus } from 'lucide-vue-next'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { ACCOUNT_TYPE_OPTIONS } from '@/lib/accountTypes'
+import { BANKS } from '@/lib/banks'
+import { parseBRL } from '@/lib/money'
+import { createAccount } from '@/services/accountService'
+import type { Account, AccountType } from '@/types/account'
+
+/**
+ * Formulário de conta bancária (Stories 3.2 e 4.1): valida localmente, chama `POST /accounts`
+ * e mostra os erros 400 por campo. Outras falhas vão para o pai em `failed` (com o `detail` da
+ * API, se houver), e os dados digitados ficam no formulário.
+ */
+const props = withDefaults(
+  defineProps<{
+    /** Bloqueia o envio (ex.: lista ainda carregando ou outra ação em andamento). */
+    disabled?: boolean
+    submitLabel?: string
+    submittingLabel?: string
+    /** Botão de envio em destaque (diálogo) em vez de contorno (passo 2). */
+    primary?: boolean
+  }>(),
+  {
+    disabled: false,
+    submitLabel: 'Adicionar conta',
+    submittingLabel: 'Adicionando...',
+    primary: false,
+  },
+)
+
+const emit = defineEmits<{
+  created: [account: Account]
+  failed: [detail: string | undefined]
+}>()
+
+/** Envio em andamento; o pai pode acompanhar com `v-model:submitting`. */
+const submitting = defineModel<boolean>('submitting', { default: false })
+
+type Field = 'accountName' | 'bankName' | 'accountType' | 'initialBalance'
+const FIELDS: Field[] = ['accountName', 'bankName', 'accountType', 'initialBalance']
+
+const form = reactive({
+  accountName: '',
+  bankName: '',
+  accountType: 'CHECKING' as AccountType,
+  initialBalance: '',
+})
+const errors = reactive<Partial<Record<Field, string>>>({})
+const nameInput = ref<{ $el?: HTMLInputElement } | null>(null)
+
+interface ApiError {
+  response?: { status?: number; data?: { detail?: string; errors?: Record<string, string> } }
+}
+
+function clearErrors() {
+  for (const key of Object.keys(errors) as Field[]) delete errors[key]
+}
+
+/** Validação local, com as mesmas regras e mensagens do backend. */
+function validate(): number | null {
+  clearErrors()
+  const name = form.accountName.trim()
+  if (!name) errors.accountName = 'Informe o nome da conta'
+  else if (name.length > 100) errors.accountName = 'Use no máximo 100 caracteres no nome da conta'
+
+  if (form.bankName.trim().length > 100) {
+    errors.bankName = 'Use no máximo 100 caracteres no nome do banco'
+  }
+
+  let balance: number | null = null
+  if (!form.initialBalance.trim()) {
+    errors.initialBalance = 'Informe o saldo inicial (use 0,00 se não souber)'
+  } else {
+    balance = parseBRL(form.initialBalance)
+    if (balance === null) {
+      errors.initialBalance = 'Digite o saldo no formato 1.234,56 (até 2 casas depois da vírgula)'
+    }
+  }
+  return Object.keys(errors).length === 0 ? balance : null
+}
+
+function reset() {
+  form.accountName = ''
+  form.bankName = ''
+  form.accountType = 'CHECKING'
+  form.initialBalance = ''
+  clearErrors()
+}
+
+async function submit() {
+  if (props.disabled || submitting.value) return
+  const balance = validate()
+  if (balance === null) return
+
+  submitting.value = true
+  try {
+    const created = await createAccount({
+      accountName: form.accountName.trim(),
+      bankName: form.bankName.trim() || null,
+      accountType: form.accountType,
+      initialBalance: balance,
+    })
+    reset()
+    emit('created', created)
+  } catch (err) {
+    const response = (err as ApiError)?.response
+    const known = Object.entries(response?.data?.errors ?? {}).filter(([key]) =>
+      FIELDS.includes(key as Field),
+    )
+    if (response?.status === 400 && known.length > 0) {
+      Object.assign(errors, Object.fromEntries(known))
+    } else {
+      emit('failed', response?.data?.detail)
+    }
+  } finally {
+    submitting.value = false
+  }
+}
+
+/** Foca o primeiro campo (usado ao abrir o diálogo). */
+function focus() {
+  nameInput.value?.$el?.focus()
+}
+
+defineExpose({ focus })
+</script>
