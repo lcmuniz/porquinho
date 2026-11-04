@@ -1019,6 +1019,13 @@ onMounted(() => {
    - Rate limiting on auth endpoints
    - Passwords via BCrypt (if local auth)
 
+8. **Record Account Balance Changes in One Place** (retro do Epic 4, X5):
+   - Any code that changes `accounts.current_balance` records the new balance through `BalanceHistoryRecorder`, in the same transaction; never save `AccountBalanceHistory` directly
+   - `snapshot_date` comes from the recorder (the injected `Clock`); when the same instant is stored elsewhere (e.g. `reconciled_at`), take it from `recorder.now()`
+   - Balance and amount limits use `BalanceHistoryRecorder.MAX_BALANCE` / `fits()` (DECIMAL(15,2)); do not redeclare the constant
+   - Event types live in three places that must agree: the V20 CHECK constraint (already accepts `transaction`), the constants in `AccountBalanceHistory` and the frontend `src/lib/balanceEvents.ts`; a type outside the CHECK needs a new migration
+   - Account rows are locked (`PESSIMISTIC_WRITE`) before the balance changes; several accounts are locked in id order in a single query
+
 ---
 
 ### Pattern Enforcement

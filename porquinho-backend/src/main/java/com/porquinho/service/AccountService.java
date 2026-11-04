@@ -123,8 +123,9 @@ public class AccountService {
      * account does not exist, belongs to someone else or was already removed. Once the onboarding is completed the
      * user must keep at least one active account (409); during step 2 every account may still be removed, since
      * skipping the step creates "Minha Conta Principal". Locks the onboarding progress first and then the active
-     * accounts (the same order as OnboardingService.applyAccounts), so two concurrent removals cannot both pass the
-     * check and a removal cannot interleave with completing step 2.
+     * accounts, so two concurrent removals cannot both pass the check. OnboardingService.applyAccounts takes the same
+     * onboarding progress lock first (it does not lock the accounts), so a removal cannot interleave with completing
+     * step 2.
      */
     @Transactional
     public void delete(UUID userId, UUID accountId, String ipAddress) {

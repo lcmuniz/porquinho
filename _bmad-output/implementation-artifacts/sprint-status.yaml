@@ -300,5 +300,5 @@ action_items:
     epic: 4
     action: "Reconciliar texto do Epic 4 com o construído (S2-S5, X4, X6)"
     owner: "Luiz"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-11-04.md"
