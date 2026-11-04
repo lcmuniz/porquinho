@@ -149,6 +149,9 @@ public class GlobalExceptionHandler {
         ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
         problemDetail.setTitle("Dados inválidos");
         problemDetail.setType(URI.create("https://api.porquinho.com/errors/validation"));
+        if (ex.getField() != null) {
+            problemDetail.setProperty("errors", Map.of(ex.getField(), ex.getMessage()));
+        }
         return problemDetail;
     }
 

@@ -96,7 +96,7 @@ development_status:
   4-3-edit-account-and-card-information: done
   4-4-deactivate-or-remove-accounts-and-cards: done
   4-5-record-internal-transfers-between-own-accounts: done
-  4-6-reconcile-account-balance-with-bank: backlog
+  4-6-reconcile-account-balance-with-bank: done
   4-7-view-account-balance-history-over-time: backlog
   epic-4-retrospective: optional
 

@@ -9,6 +9,7 @@ import com.porquinho.entity.AccountBalanceHistory;
 import com.porquinho.entity.Category;
 import com.porquinho.entity.CreditCard;
 import com.porquinho.entity.Goal;
+import com.porquinho.entity.Reconciliation;
 import com.porquinho.entity.Transfer;
 import com.porquinho.entity.AuditLog;
 import com.porquinho.entity.BillingTransaction;
@@ -27,6 +28,7 @@ import com.porquinho.repository.AuditLogRepository;
 import com.porquinho.repository.BillingTransactionRepository;
 import com.porquinho.repository.DataExportRepository;
 import com.porquinho.repository.OnboardingProgressRepository;
+import com.porquinho.repository.ReconciliationRepository;
 import com.porquinho.repository.TransferRepository;
 import com.porquinho.repository.UserRepository;
 import com.porquinho.repository.UserSessionRepository;
@@ -73,6 +75,7 @@ public class DataExportService {
     private final GoalRepository goalRepository;
     private final AccountBalanceHistoryRepository accountBalanceHistoryRepository;
     private final TransferRepository transferRepository;
+    private final ReconciliationRepository reconciliationRepository;
     private final ObjectMapper objectMapper;
 
     @Value("${app.export.directory:./exports}")
@@ -100,7 +103,8 @@ public class DataExportService {
             CategoryRepository categoryRepository,
             GoalRepository goalRepository,
             AccountBalanceHistoryRepository accountBalanceHistoryRepository,
-            TransferRepository transferRepository) {
+            TransferRepository transferRepository,
+            ReconciliationRepository reconciliationRepository) {
         this.dataExportRepository = dataExportRepository;
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -117,6 +121,7 @@ public class DataExportService {
         this.goalRepository = goalRepository;
         this.accountBalanceHistoryRepository = accountBalanceHistoryRepository;
         this.transferRepository = transferRepository;
+        this.reconciliationRepository = reconciliationRepository;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
         this.objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
@@ -195,7 +200,7 @@ public class DataExportService {
         metadata.put("user_id", userId.toString());
         metadata.put("data_version", "1.0");
         metadata.put("exported_tables", List.of("users", "user_sessions", "audit_logs", "subscriptions",
-            "billing_transactions", "onboarding_progress", "accounts", "account_balance_history", "transfers", "credit_cards", "categories", "goals"));
+            "billing_transactions", "onboarding_progress", "accounts", "account_balance_history", "transfers", "reconciliation_history", "credit_cards", "categories", "goals"));
         data.put("metadata", metadata);
 
         // User profile (sanitized)
@@ -319,6 +324,8 @@ public class DataExportService {
             accountMap.put("updated_at", account.getUpdatedAt() != null ? account.getUpdatedAt().toString() : null);
             accountMap.put("deleted_at", account.getDeletedAt() != null ? account.getDeletedAt().toString() : null);
             accountMap.put("deleted_by", account.getDeletedBy() != null ? account.getDeletedBy().toString() : null);
+            accountMap.put("last_reconciliation_date",
+                account.getLastReconciliationDate() != null ? account.getLastReconciliationDate().toString() : null);
             accountList.add(accountMap);
         }
         data.put("accounts", accountList);
@@ -356,6 +363,26 @@ public class DataExportService {
             transferList.add(transferMap);
         }
         data.put("transfers", transferList);
+
+        // Reconciliations (Story 4.6) - every stored column, oldest first; money as JSON numbers
+        List<Map<String, Object>> reconciliationList = new ArrayList<>();
+        for (Reconciliation reconciliation : reconciliationRepository.findByUserIdOrdered(userId)) {
+            Map<String, Object> reconciliationMap = new LinkedHashMap<>();
+            reconciliationMap.put("id", reconciliation.getId() != null ? reconciliation.getId().toString() : null);
+            reconciliationMap.put("account_id",
+                reconciliation.getAccountId() != null ? reconciliation.getAccountId().toString() : null);
+            reconciliationMap.put("user_id", reconciliation.getUserId() != null ? reconciliation.getUserId().toString() : null);
+            reconciliationMap.put("previous_balance", reconciliation.getPreviousBalance());
+            reconciliationMap.put("bank_balance", reconciliation.getBankBalance());
+            reconciliationMap.put("difference", reconciliation.getDifference());
+            reconciliationMap.put("reason", reconciliation.getReason());
+            reconciliationMap.put("reconciled_at",
+                reconciliation.getReconciledAt() != null ? reconciliation.getReconciledAt().toString() : null);
+            reconciliationMap.put("created_at",
+                reconciliation.getCreatedAt() != null ? reconciliation.getCreatedAt().toString() : null);
+            reconciliationList.add(reconciliationMap);
+        }
+        data.put("reconciliation_history", reconciliationList);
 
         // Credit cards (Story 3.3) - every stored column, removed cards included (deleted_at filled)
         List<Map<String, Object>> cardList = new ArrayList<>();

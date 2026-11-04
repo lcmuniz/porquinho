@@ -28,6 +28,12 @@ export function formatBRL(value: number): string {
   return BRL.format(value)
 }
 
+/** Valor com sinal explícito: 50 → "+R$ 50,00", -20 → "-R$ 20,00", 0 → "R$ 0,00". */
+export function formatSignedBRL(value: number): string {
+  if (value === 0) return BRL.format(0) // -0 também
+  return value > 0 ? `+${BRL.format(value)}` : BRL.format(value)
+}
+
 const BRL_INPUT_FORMAT = new Intl.NumberFormat('pt-BR', {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,

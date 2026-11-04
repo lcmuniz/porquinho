@@ -2,6 +2,7 @@ package com.porquinho.service;
 
 import com.porquinho.entity.Account;
 import com.porquinho.entity.AccountBalanceHistory;
+import com.porquinho.entity.Reconciliation;
 import com.porquinho.entity.Transfer;
 import com.porquinho.entity.Category;
 import com.porquinho.entity.CreditCard;
@@ -18,6 +19,7 @@ import com.porquinho.entity.UserSession;
 import com.porquinho.exception.RateLimitExceededException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountBalanceHistoryRepository;
+import com.porquinho.repository.ReconciliationRepository;
 import com.porquinho.repository.TransferRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.CategoryRepository;
@@ -103,6 +105,9 @@ class DataExportServiceTest {
 
     @Mock
     private TransferRepository transferRepository;
+
+    @Mock
+    private ReconciliationRepository reconciliationRepository;
 
     @InjectMocks
     private DataExportService dataExportService;
@@ -331,6 +336,7 @@ class DataExportServiceTest {
         removed.setCreatedAt(created.plusMinutes(1));
         removed.setUpdatedAt(created.plusMinutes(2));
         removed.setDeletedAt(created.plusMinutes(2));
+        removed.setLastReconciliationDate(created.plusMinutes(1));
         when(accountRepository.findByUserIdOrderByCreatedAtAsc(userId)).thenReturn(List.of(active, removed));
 
         Map<String, Object> data = dataExportService.collectUserData(userId);
@@ -353,9 +359,11 @@ class DataExportServiceTest {
         assertEquals(new java.math.BigDecimal("1234.56"), first.get("current_balance"));
         assertEquals(created.toString(), first.get("created_at"));
         assertNull(first.get("deleted_at"));
+        assertNull(first.get("last_reconciliation_date"));
 
         Map<String, Object> second = rows.get(1);
         assertExportsEveryColumn(Account.class, second);
+        assertEquals(created.plusMinutes(1).toString(), second.get("last_reconciliation_date"));
         assertEquals("SAVINGS", second.get("account_type"));
         assertNull(second.get("bank_name"));
         assertEquals(new java.math.BigDecimal("-150.00"), second.get("initial_balance"));
@@ -623,6 +631,54 @@ class DataExportServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
 
         assertEquals(List.of(), dataExportService.collectUserData(userId).get("transfers"));
+    }
+
+    @Test
+    void collectUserDataShouldExportTheReconciliations() {
+        // Story 4.6: every stored column of reconciliation_history, oldest first
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        OffsetDateTime at = OffsetDateTime.parse("2026-11-03T12:00:00Z");
+        UUID accountId = UUID.randomUUID();
+        Reconciliation adjusted = new Reconciliation(accountId, userId, new java.math.BigDecimal("1000.00"),
+            new java.math.BigDecimal("1050.00"), new java.math.BigDecimal("50.00"), "Tarifa esquecida", at);
+        adjusted.setId(UUID.randomUUID());
+        adjusted.setCreatedAt(at);
+        Reconciliation matched = new Reconciliation(accountId, userId, new java.math.BigDecimal("1050.00"),
+            new java.math.BigDecimal("1050.00"), new java.math.BigDecimal("0.00"), null, at.plusDays(1));
+        matched.setId(UUID.randomUUID());
+        matched.setCreatedAt(at.plusDays(1));
+        when(reconciliationRepository.findByUserIdOrdered(userId)).thenReturn(List.of(adjusted, matched));
+
+        Map<String, Object> data = dataExportService.collectUserData(userId);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
+        assertTrue(((List<?>) metadata.get("exported_tables")).contains("reconciliation_history"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("reconciliation_history");
+        assertEquals(2, rows.size());
+        Map<String, Object> first = rows.get(0);
+        assertExportsEveryColumn(Reconciliation.class, first);
+        assertEquals(adjusted.getId().toString(), first.get("id"));
+        assertEquals(accountId.toString(), first.get("account_id"));
+        assertEquals(userId.toString(), first.get("user_id"));
+        assertEquals(new java.math.BigDecimal("1000.00"), first.get("previous_balance"));
+        assertEquals(new java.math.BigDecimal("1050.00"), first.get("bank_balance"));
+        assertEquals(new java.math.BigDecimal("50.00"), first.get("difference"));
+        assertEquals("Tarifa esquecida", first.get("reason"));
+        assertEquals(at.toString(), first.get("reconciled_at"));
+        assertEquals(at.toString(), first.get("created_at"));
+        Map<String, Object> second = rows.get(1);
+        assertExportsEveryColumn(Reconciliation.class, second);
+        assertEquals(new java.math.BigDecimal("0.00"), second.get("difference"));
+        assertNull(second.get("reason"));
+    }
+
+    @Test
+    void collectUserDataShouldExportEmptyReconciliationListWhenNone() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+
+        assertEquals(List.of(), dataExportService.collectUserData(userId).get("reconciliation_history"));
     }
 
     /** LGPD portability: every mapped column of the entity appears as a key in the exported map. */
