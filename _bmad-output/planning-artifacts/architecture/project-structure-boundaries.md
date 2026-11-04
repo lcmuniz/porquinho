@@ -36,7 +36,7 @@ O projeto **porquinho** é organizado como uma arquitetura separada com dois rep
 
 **External:**
 - Supabase: Auth + PostgreSQL
-- OpenAI/Claude: IA classification
+- Anthropic (Claude Haiku 5.5): IA classification (Epic 5)
 - Stripe: Payment processing
 
 **Internal:**

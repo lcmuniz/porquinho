@@ -115,6 +115,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-6-guided-first-transaction-import.md`
   summary: Epic 5 — ligar o upload (Stories 5.1–5.3) ao passo 6 do onboarding (`ImportStep.vue`): área de arrastar e soltar, barra de progresso, prévia classificada e gravação de `first_import_completed` em `POST /api/v1/onboarding/me/import` (corpo opcional).
   evidence: Decisão A da 3.6: o passo 6 foi entregue sem upload porque a importação ainda não existia.
+  status: incluído no Epic 5 (Story 5.1, revisão de 2026-11-04).
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-4-3-edit-account-and-card-information.md`
   summary: Story 4.7 — ordenação determinística do `account_balance_history` para eventos no mesmo instante (coluna sequencial ou relógio injetado) e controle de concorrência na edição de contas/cartões (`@Version` com 409). — ordenação resolvida na 4.7 (snapshot_date, created_at, id); `@Version` nas contas resolvido na retro do Epic 4 (X1, V24, 409). Cartões continuam sem controle de concorrência (a última gravação vence).
@@ -126,4 +127,4 @@
 
 ## Story 4.6 → Epic 5
 
-- Reconciliação não cria transação de ajuste (decisão A, 2026-11-03). Quando a tabela `transactions` existir, decidir se cada evento de `reconciliation_history` com diferença ≠ 0 vira uma transação com a categoria "Ajuste de Reconciliação".
+- Reconciliação não cria transação de ajuste (decisão A, 2026-11-03). Quando a tabela `transactions` existir, decidir se cada evento de `reconciliation_history` com diferença ≠ 0 vira uma transação com a categoria "Ajuste de Reconciliação". — decidido na revisão do Epic 5 (2026-11-04, D9): continua sem transação de ajuste.

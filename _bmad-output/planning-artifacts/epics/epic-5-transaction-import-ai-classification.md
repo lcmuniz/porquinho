@@ -2,6 +2,24 @@
 
 Usuários podem fazer upload de arquivos OFX/CSV dos 5 principais bancos brasileiros (Nubank, BB, Itaú, Bradesco, Caixa) com detecção automática de formato, parsing robusto, detecção de duplicatas, identificação de Pix e parcelamento, classificação automática por IA, revisão e ajuste de classificações, aprendizado contínuo com correções, e edição/adição manual de transações.
 
+> **Revisado antes da implementação (2026-11-04, Luiz):** o texto foi alinhado ao código dos Epics 0–4 e às decisões abaixo. Ao implementar, cada story que mudar a abordagem atualiza este texto na mesma story (retro do Epic 2, P1).
+>
+> **Decisões:**
+> - **D1 — transação de conta ou de cartão:** cada transação pertence a exatamente uma conta (`account_id`) ou um cartão (`credit_card_id`).
+> - **D2 — destino escolhido antes do upload:** o usuário escolhe a conta ou o cartão antes de enviar o arquivo. O OFX só confirma ou sugere.
+> - **D3 — saldo:** só transações de conta com data **posterior à data de referência do saldo** alteram `current_balance`. A data de referência é a do último snapshot `initial`, `edit` ou `reconciliation` da conta. A mudança passa sempre pelo `BalanceHistoryRecorder` (regra 8 da arquitetura). Transações de cartão nunca alteram saldo de conta.
+> - **D4 — transferências já registradas:** um lançamento que corresponde a uma transferência da Story 4.5 (mesma conta, data ±1 dia, mesmo valor, sentido certo) não é importado.
+> - **D5 — IA:** Claude Haiku 5.5 (`claude-haiku-5-5`) via API da Anthropic. CPF e CNPJ são mascarados antes do envio.
+> - **D6 — sem arquivos reais:** os parsers são escritos e testados com amostras fictícias em `porquinho-backend/src/test/resources/import-samples/` (ver o README de lá; CSV com confiança baixa a média). O OFX é o formato principal; o CSV de cada banco é validado quando houver um arquivo real.
+> - **D7 — parcelas futuras:** a parcela importada que corresponde a uma parcela futura já criada confirma essa parcela, em vez de inserir outra.
+> - **D8 — pagamento de fatura:** o pagamento da fatura do cartão (débito na conta e crédito no cartão) é marcado como `CARD_PAYMENT`. Ele altera o saldo da conta pela D3, mas não conta como gasto nem receita, para as compras do cartão não entrarem em dobro.
+>
+> - **D9 — reconciliação:** continua sem transação de ajuste (decisão A da Story 4.6). A reconciliação já corrige o saldo e grava o histórico; uma transação de ajuste mudaria o saldo de novo.
+>
+> **Convenções do código atual:** PK `id` UUID, `user_id` indexado, `deleted_at`, dinheiro em `DECIMAL(15,2)`. Migrations na próxima versão livre (V25 em 2026-11-04; as do texto original, V15–V18, já existem com outro conteúdo). Toda tabela nova entra no export e no purge LGPD (Stories 1.6/1.7) na mesma story que a cria. Categorias já existem (`categories`, Story 3.4); contas, cartões, transferências e histórico de saldo também (Epic 4).
+>
+> **Fora deste épico:** atualizar o orçamento da categoria (Epic 6, ainda sem alocações); cache e Camadas do Dashboard GPS (Epic 7, o cache ainda não existe); métrica "precisão da IA no mês" (Epic 10).
+
 ## Story 5.1: Upload OFX Files from 5 Brazilian Banks
 
 As a logged-in user,
@@ -10,20 +28,22 @@ So that I can import my transaction history automatically.
 
 **Acceptance Criteria:**
 
-**Given** I am logged in and on the Import Transactions page
-**When** I click "Upload File" or drag an OFX file into the drop zone (UX-DR-43)
+**Given** I am logged in and on the Import page (`/importar`, linked from the dashboard)
+**When** I choose the destination account or card (D2) and click "Enviar arquivo" or drag an OFX file into the drop zone (UX-DR-43)
 **Then** File upload begins with progress indicator
-**And** File size is validated: max 10MB (NFR5)
+**And** File size is validated: max 10MB (NFR5), on the frontend and on the backend
 **And** File extension is validated: .ofx accepted
 **And** Upload completes in < 5 seconds for 10MB file (NFR5)
-**And** File is temporarily stored on server with unique identifier
-**And** A `transaction_imports` table is created via migration (V15__create_transaction_imports_table.sql) with fields: import_id (UUID, PK), user_id (FK), file_name, file_type (ofx/csv), bank_name, file_size_kb, status (uploading/processing/completed/failed), total_transactions, imported_transactions, duplicates_found, error_message, created_at
-**And** Import record is created with status='uploading'
-**And** After upload, status changes to 'processing'
-**And** Success message: "Arquivo enviado, processando..."
+**And** The file is processed from memory/temporary storage and **discarded after processing**; it is never kept (LGPD)
+**And** A `transaction_imports` table is created via migration (next free version) with fields: id (UUID, PK), user_id (FK), account_id (FK, nullable), credit_card_id (FK, nullable; exactly one of the two), file_name, file_type (OFX/CSV), bank_name, file_size_kb, status (PROCESSING/REVIEW/COMPLETED/FAILED/DISCARDED), total_transactions, imported_transactions, duplicates_found, skipped_rows, error_message, created_at, updated_at
+**And** Import record is created with status='PROCESSING' and processing runs in the background; the screen polls the import status every 2 seconds (NFR8)
+**And** Message: "Arquivo enviado, processando..."
 **And** If file size > 10MB, error: "Arquivo muito grande (máximo 10MB)"
 **And** If file format invalid, error: "Formato de arquivo não suportado"
-**And** Story 5.3 (auto-detection) is triggered after upload
+**And** The OFX account type must match the destination: a credit card OFX (`CCSTMTRS`) into a bank account, or the reverse, is rejected with a clear message
+**And** The same upload component serves onboarding step 6 (`ImportStep.vue`), which records `first_import_completed` through `POST /api/v1/onboarding/me/import` (deferred from Story 3.6)
+**And** Story 5.3 (auto-detection) runs after upload
+**And** `transaction_imports` is included in data export and purge (LGPD)
 
 ---
 
@@ -35,20 +55,16 @@ So that I can import transactions in CSV format.
 
 **Acceptance Criteria:**
 
-**Given** I am logged in and on the Import Transactions page
-**When** I click "Upload File" or drag a CSV file into the drop zone
-**Then** File upload begins with progress indicator
-**And** File size is validated: max 10MB (NFR5)
+**Given** I am logged in and on the Import page
+**When** I choose the destination and send a CSV file
+**Then** File size and processing behave as in Story 5.1 (10MB, background processing, file discarded afterwards)
 **And** File extension is validated: .csv accepted
-**And** CSV encoding is detected (UTF-8, ISO-8859-1, Windows-1252)
-**And** Upload completes in < 5 seconds for 10MB file (NFR5)
-**And** File is temporarily stored on server
-**And** Import record is created in `transaction_imports` table with file_type='csv', status='uploading'
-**And** After upload, status changes to 'processing'
-**And** CSV column headers are read to identify bank format
-**And** Success message: "Arquivo enviado, processando..."
-**And** If encoding cannot be detected, UTF-8 is assumed as fallback
-**And** Story 5.3 (auto-detection) is triggered after upload
+**And** CSV encoding is detected (UTF-8 with or without BOM, ISO-8859-1, Windows-1252); if it cannot be detected, UTF-8 is assumed
+**And** Separator is detected (comma, semicolon, tab), including quoted fields
+**And** Import record is created in `transaction_imports` with file_type='CSV'
+**And** Layouts supported at first are those of the samples (`import-samples/README.md`): Nubank account and card, BB, Itaú, Bradesco and Caixa, including title/total/balance lines that are not transactions (BB "Saldo Anterior"/"S A L D O", Bradesco header and "Total"), separate credit/debit columns (Bradesco), D/C column (Caixa), and decimal comma with thousands separator
+**And** If the layout is not recognized, the error suggests exporting in OFX (NFR57): "Não reconhecemos o formato deste CSV. Tente exportar o extrato em OFX."
+**And** Story 5.3 (auto-detection) runs after upload
 
 ---
 
@@ -62,22 +78,15 @@ So that users don't have to manually specify the source.
 
 **Given** A file has been uploaded (Story 5.1 or 5.2)
 **When** Processing begins
-**Then** File format is detected based on extension and content signature
-**And** For OFX files: XML structure is validated, bank identifier tags are read
-**And** For CSV files: Column headers are analyzed to match bank patterns
-**And** Bank detection algorithm checks patterns for 5 supported banks:
-  - Nubank: Specific column names and date formats
-  - Banco do Brasil: BB-specific transaction codes
-  - Itaú: Itaú CSV structure
-  - Bradesco: Bradesco transaction patterns
-  - Caixa: Caixa-specific identifiers
-**And** Detection accuracy is 95%+ (NFR56)
+**Then** File format is detected by content signature, not just extension (an .ofx that is plain text is rejected)
+**And** For OFX files: the SGML 1.x header and body are parsed (leaf tags with or without closing tag, cp1252); bank is read from `BANKID`/`FID`/`ORG` (Nubank 260, BB 001, Itaú 341, Bradesco 237, Caixa 104)
+**And** For CSV files: the header (or, for Itaú, the line shape) is matched against the bank layouts of Story 5.2
+**And** Detection accuracy is 95%+ on the sample set (NFR56)
 **And** Import record is updated with detected bank_name
-**And** If detection confidence is < 95%, user is prompted: "Detectamos [Bank]. Está correto?"
-**And** User can confirm or manually select correct bank
-**And** If detection fails completely, error message (NFR57): "Não foi possível identificar o banco. Por favor, selecione manualmente"
-**And** Malformed files show clear error message with suggestions (NFR57)
-**And** After successful detection, Story 5.4 (parsing) is triggered
+**And** If detection is ambiguous, user is prompted: "Detectamos [Banco]. Está correto?", and can confirm or select the bank manually
+**And** If detection fails completely, error (NFR57): "Não foi possível identificar o banco. Por favor, selecione manualmente"
+**And** Malformed files (truncated OFX, empty file) show a clear error with a suggestion (NFR57)
+**And** After successful detection, Story 5.4 (parsing) runs
 
 ---
 
@@ -91,21 +100,17 @@ So that users can import transactions even if files have minor issues.
 
 **Given** File format and bank have been detected (Story 5.3)
 **When** Parsing begins
-**Then** A `transactions` table is created via migration (V16__create_transactions_table.sql) with fields: transaction_id (UUID, PK), user_id (FK), account_id (FK), import_id (FK), transaction_date, description, amount (decimal), transaction_type (debit/credit), category_id (FK, nullable), classification_confidence (0-100), is_duplicate (boolean), is_pix (boolean), pix_details (JSONB), is_installment (boolean), installment_number, installment_total, installment_group_id (UUID), is_future_installment (boolean), original_description, created_at, updated_at, deleted_at
-**And** Parser reads transactions one by one from file
-**And** For each transaction, extracts: date, description, amount, type (debit/credit)
+**Then** A `transactions` table is created via migration (next free version) with fields: id (UUID, PK), user_id (FK), account_id (FK, nullable), credit_card_id (FK, nullable), CHECK exactly one of the two (D1), import_id (FK, nullable), external_id (FITID or bank identifier, nullable), transaction_date, description, original_description, amount DECIMAL(15,2) > 0, transaction_type (DEBIT/CREDIT), kind (REGULAR/CARD_PAYMENT, D8), category_id (FK, nullable), classification_source (AI/PATTERN/USER/NONE), classification_confidence (0-100), review_status (PENDING/CONFIRMED), affects_balance (boolean, D3), is_pix, pix_details (JSONB), is_installment, installment_number, installment_total, installment_group_id (UUID), is_future_installment, created_at, updated_at, deleted_at
+**And** For each transaction, extracts: date, description, amount (absolute value) and type (DEBIT/CREDIT from sign, D/C column or credit/debit columns); for cards, purchases are DEBIT and payments/refunds CREDIT
 **And** Parsing completes in < 30 seconds for 1 year of transactions (NFR6)
 **And** Progress is updated every 2 seconds: "X de Y transações processadas" (NFR8)
-**And** Error handling for malformed rows:
-  - Skip row with error, log error, continue parsing (graceful degradation)
-  - Missing required fields: skip row, log warning
-  - Invalid date format: attempt multiple formats, fallback to skipping
-  - Invalid amount: skip row, log error
-**And** Parsing statistics are tracked: total_rows, successful_imports, skipped_rows, error_count
-**And** Import record is updated with total_transactions count
-**And** After parsing completes, Stories 5.5-5.7 (duplicate detection, Pix, installments) are triggered in sequence
-**And** If parsing fails completely, status='failed', error_message is saved
-**And** User sees: "Arquivo processado: X transações importadas, Y duplicadas ignoradas, Z erros"
+**And** Error handling for malformed rows: skip the row and log it (no personal data in logs), keep parsing; invalid date tries the bank's known formats before skipping; missing or invalid amount skips the row
+**And** Import record is updated with total_transactions and skipped_rows
+**And** Transactions are saved with review_status='PENDING' and do not appear in lists, totals or balances until the import is finished (Story 5.10)
+**And** After parsing, Stories 5.5–5.7 (duplicates, Pix, installments) run in sequence
+**And** If parsing fails completely, status='FAILED' and error_message is saved
+**And** User sees: "Arquivo processado: X transações importadas, Y duplicadas ignoradas, Z linhas com erro"
+**And** `transactions` is included in data export and purge (LGPD), deleted before `accounts`/`credit_cards`
 
 ---
 
@@ -119,20 +124,15 @@ So that users don't have duplicate entries inflating their data.
 
 **Given** Transactions have been parsed from file (Story 5.4)
 **When** Duplicate detection runs
-**Then** For each parsed transaction, system checks existing transactions for duplicates
-**And** Duplicate detection logic compares:
-  - Same user_id
-  - Same account_id
-  - Same transaction_date (within ±1 day tolerance)
-  - Same amount (exact match)
-  - Similar description (fuzzy match 90%+ similarity)
-**And** If all criteria match, transaction is flagged as is_duplicate=true
-**And** Duplicate transactions are NOT saved to database (skipped)
-**And** Import record is updated with duplicates_found count
+**Then** A transaction with the same external_id (FITID/identifier) on the same account or card is a duplicate
+**And** Without external_id, it is a duplicate when it matches an existing transaction of the same account or card on: date ±1 day, same amount and type, similar description (90%+ similarity after normalization)
+**And** Duplicates are NOT saved
+**And** A debit/credit that matches a transfer already registered in Story 4.5 (same account, date ±1 day, same amount, matching direction) is not saved either and is counted apart: "N transferências já registradas" (D4)
+**And** Import record is updated with duplicates_found
 **And** User notification shows: "X duplicatas detectadas e ignoradas"
+**And** Importing the OFX and the CSV of the same month (samples) into the same account flags every transaction of the second file as duplicate
 **And** Duplicate detection completes within overall parsing time budget (NFR6: < 30s total)
-**And** Edge case: If user wants to force import duplicates, "Import Anyway" option is provided with warning
-**And** Audit log records duplicate detection statistics
+**And** Audit log records duplicate detection statistics (counts only)
 
 ---
 
@@ -146,17 +146,12 @@ So that users can see who sent or received money via Pix.
 
 **Given** Transactions have been parsed (Story 5.4) and duplicates filtered (Story 5.5)
 **When** Pix identification runs
-**Then** For each transaction, system checks description for Pix indicators:
-  - Keywords: "PIX", "Pix Recebido", "Pix Enviado", "Transferência Pix"
-  - Bank-specific Pix transaction codes
+**Then** For each transaction, system checks description for Pix indicators per bank (samples: Nubank "Transferência enviada/recebida pelo Pix", Itaú "PIX TRANSF"/"PIX QRS", BB "Pix - Enviado/Recebido", Bradesco "TRANSFERENCIA PIX DES:/REM:", Caixa "ENVIO PIX"/"PIX RECEBIDO")
 **And** If Pix is detected, is_pix flag is set to true
-**And** System extracts Pix details from description using regex patterns:
-  - Sender/recipient name
-  - CPF/CNPJ (if available)
-  - Pix key type (email, phone, CPF, random key)
-**And** Extracted details are stored in pix_details JSONB field: {sender_name, recipient_name, pix_key_type, key_value}
-**And** If details cannot be extracted, pix_details stores minimal info: {detected: true}
-**And** Pix transactions are visually marked in transaction list with Pix icon
+**And** System extracts, when present: counterpart name, masked document (CPF as the bank shows it, CNPJ), counterpart bank/agency/account
+**And** Extracted details are stored in pix_details JSONB: {counterpart_name, direction (SENT/RECEIVED), document, counterpart_bank}
+**And** If details cannot be extracted, pix_details stores {detected: true}
+**And** Pix transactions are visually marked in the review and transaction lists with a Pix icon
 **And** Pix identification completes within overall parsing time budget (NFR6)
 
 ---
@@ -169,22 +164,15 @@ So that users' monthly budgets reflect accurate installment payments.
 
 **Acceptance Criteria:**
 
-**Given** Transactions have been parsed and Pix identified (Stories 5.4-5.6)
+**Given** Card transactions have been parsed (Stories 5.4–5.6)
 **When** Installment detection runs
-**Then** For each transaction, system checks description for installment indicators:
-  - Keywords: "PARC", "parcela", "X/Y" pattern (e.g., "1/12", "3/10")
-  - Regex patterns: "\d+/\d+" (installment number/total)
-**And** If installment is detected:
-  - is_installment flag is set to true
-  - installment_number is extracted (e.g., 3 from "3/12")
-  - installment_total is extracted (e.g., 12 from "3/12")
-**And** System calculates future installment dates:
-  - If current transaction is installment 3/12, 9 future installments are created
-  - Each future installment: same amount, same description, date = current_date + N months
-**And** Future installments are marked with is_future_installment=true
-**And** All installments are linked via installment_group_id (UUID, same for all in group)
-**And** User sees in transaction list: "Compra parcelada: 3/12 - Restantes: 9 parcelas"
-**And** Dashboard projections include future installments in budget calculations
+**Then** Installment indicators are recognized ("Parcela 3/10", "PARC 03/10", trailing "03/10"/"07/12" in card descriptions), without mistaking dates such as "05/10" in account descriptions (detection only runs on card transactions)
+**And** If installment is detected: is_installment=true, installment_number and installment_total are extracted
+**And** Future installments are created for the remaining months (installment 3/10 → 7 future ones): same amount and description, date = transaction date + N months, is_future_installment=true, review_status follows the import
+**And** All installments of a purchase share installment_group_id
+**And** When a later import brings an installment that matches a future one already created (same card, group description, number and amount), it confirms that future installment (is_future_installment=false, external_id filled) instead of inserting another (D7)
+**And** User sees: "Compra parcelada: 3/10 — restam 7 parcelas"
+**And** Future installments are not counted as spending of the current month (projections are Epic 7)
 **And** Installment detection completes within overall parsing time budget (NFR6)
 
 ---
@@ -197,24 +185,19 @@ So that users save time and don't have to manually categorize everything.
 
 **Acceptance Criteria:**
 
-**Given** Transactions have been imported and processed (Stories 5.4-5.7)
-**When** AI classification runs
-**Then** Transactions are batched into groups of 100 for classification (NFR7)
-**And** For each transaction, AI model analyzes:
-  - Transaction description (original text)
-  - Transaction amount
-  - Transaction type (debit/credit)
-  - Merchant name (if extractable)
-  - User's historical classifications (if any exist)
-**And** AI model predicts category_id from user's categories
-**And** Classification confidence score (0-100) is calculated and stored
-**And** If confidence >= 80%, transaction is auto-classified with that category
-**And** If confidence < 80%, transaction is flagged for manual review
+**Given** Transactions have been imported and processed (Stories 5.4–5.7)
+**When** Classification runs
+**Then** User patterns (Story 5.11) are applied first: a matching pattern sets the category with classification_source='PATTERN', without calling the AI
+**And** Transfers are not imported (D4) and CARD_PAYMENT transactions (D8) are not sent to the AI
+**And** The remaining transactions are sent in batches of up to 100 (NFR7) to Claude Haiku 5.5 (`claude-haiku-5-5`) with: description with CPF/CNPJ masked, amount, type, account or card, and the user's active categories (id, name, group); the API key stays on the backend
+**And** The model returns, per transaction, a category from the user's list (or none) and a confidence 0–100; any category outside the list is discarded
+**And** If confidence >= 80, the category is applied with classification_source='AI'; below 80, the transaction is flagged for review with the suggestion kept
 **And** Batch of 100 transactions is classified in < 3 seconds (NFR7)
-**And** An `ai_classification_history` table is created (V17) to track: transaction_id, predicted_category_id, confidence, was_corrected (boolean), corrected_category_id
+**And** An `ai_classification_history` table is created via migration (next free version): id, user_id, transaction_id, predicted_category_id, confidence, was_corrected, corrected_category_id, created_at; included in export and purge (LGPD)
 **And** Progress indicator shows: "Classificando transações com IA... X de Y"
-**And** After classification, Story 5.9 (present for review) is triggered
-**And** If AI service is unavailable, fallback: transactions marked as "Não classificado" with confidence=0
+**And** If the AI service is unavailable or times out, the transactions remain "Não classificado" (confidence 0) and the import still reaches review
+**And** The privacy policy (`PrivacyView`) names the AI provider as a data processor of transaction descriptions
+**And** After classification, the import status becomes 'REVIEW' and Story 5.9 is shown
 
 ---
 
@@ -226,25 +209,15 @@ So that I can review and confirm the categorizations.
 
 **Acceptance Criteria:**
 
-**Given** Transactions have been classified by AI (Story 5.8)
-**When** Import completes and user navigates to Review page
-**Then** Transaction review screen is displayed with list of all imported transactions
-**And** For each transaction, display:
-  - Date
-  - Description
-  - Amount (with currency formatting)
-  - Suggested Category (from AI)
-  - Confidence indicator (High 80%+, Medium 50-79%, Low <50%)
-  - Edit button
-**And** Transactions are grouped by confidence: High confidence first, Low confidence last
-**And** Visual indicators:
-  - Green checkmark: High confidence (80%+)
-  - Yellow warning: Medium confidence (50-79%)
-  - Red flag: Low confidence (<50%) - needs review
-**And** User can quickly review and proceed
-**And** "Approve All High Confidence" button allows batch approval of 80%+ confidence transactions
+**Given** An import is in status 'REVIEW' (Story 5.8)
+**When** I open the review screen (`/importar/:id/revisao`, or the result of onboarding step 6)
+**Then** For each transaction, display: date, description, amount (BRL), suggested category, confidence indicator (High 80%+, Medium 50–79%, Low <50%), Pix and installment markers, edit button
+**And** Transactions are grouped by confidence: High first, Low last; CARD_PAYMENT shown apart as "Pagamento de fatura"
+**And** Visual indicators: green check (High), yellow warning (Medium), red flag (Low, needs review); never color alone (WCAG)
+**And** "Aprovar todas de alta confiança" confirms all 80%+ transactions at once
 **And** Count shows: "X transações de alta confiança, Y precisam de revisão"
-**And** Clicking "Next" or "Continue" moves to Story 5.10 (manual review/adjustment)
+**And** An unfinished import stays in REVIEW and can be resumed from `/importar`, or discarded ("Descartar importação"), which deletes its pending transactions and future installments
+**And** "Continuar" moves to Story 5.10
 
 ---
 
@@ -256,25 +229,15 @@ So that my transactions are accurately categorized.
 
 **Acceptance Criteria:**
 
-**Given** I am on the transaction review page (Story 5.9)
-**When** I click "Edit" on a transaction
-**Then** Inline editor or modal appears with:
-  - Current category (AI suggestion)
-  - Category dropdown (all my categories)
-  - Transaction details (read-only: date, description, amount)
-**And** I can select a different category from dropdown
-**And** Clicking "Save" updates transaction's category_id
-**And** Classification confidence is reset to 100% (user override)
-**And** Story 5.11 (learning) is triggered: AI records this correction
-**And** Transaction is marked as "Reviewed by user"
-**And** Visual indicator changes from AI-suggested to user-confirmed (different icon/color)
-**And** I can bulk edit multiple transactions:
-  - Select multiple transactions (checkbox)
-  - Click "Change Category" button
-  - Select new category
-  - All selected transactions are updated
-**And** After all reviews are complete, "Finish Import" button saves all changes
-**And** Dashboard cache is invalidated (ARCH-REQ-14) to reflect new transactions
+**Given** I am on the review screen (Story 5.9)
+**When** I click "Editar" on a transaction
+**Then** Inline editor or modal shows the current category, a dropdown of my categories and read-only date, description and amount
+**And** Saving a different category updates category_id, sets classification_source='USER', confidence 100, and triggers Story 5.11
+**And** The transaction is marked as reviewed by the user, with a different icon/color
+**And** Bulk edit: select several (checkbox), "Alterar categoria", choose, all selected are updated (each correction feeds Story 5.11)
+**And** "Concluir importação" confirms the import in one transaction: review_status='CONFIRMED' for all its transactions, import status='COMPLETED', and the balance effect of D3 (affects_balance and one `transaction` snapshot per changed account through `BalanceHistoryRecorder`)
+**And** Transactions left without category are confirmed as "Não classificado"
+**And** Finishing an import twice, or concurrently, changes nothing the second time
 
 ---
 
@@ -286,20 +249,14 @@ So that future classifications become more accurate for each user.
 
 **Acceptance Criteria:**
 
-**Given** A user corrects an AI classification (Story 5.10)
+**Given** A user corrects a classification (Story 5.10 or 5.12)
 **When** The correction is saved
-**Then** AI classification history is updated: was_corrected=true, corrected_category_id=[user's choice]
-**And** User's classification preferences are stored for future learning
-**And** A `user_classification_patterns` table is created (V18) with fields: pattern_id, user_id, description_pattern (text/regex), preferred_category_id, usage_count, last_used_at
-**And** System extracts key words from corrected transaction description
-**And** Pattern record is created or updated: description_pattern, preferred_category_id
-**And** usage_count is incremented each time this pattern is confirmed
-**And** In future imports, if transaction description matches stored pattern:
-  - AI uses user's preferred_category_id with boosted confidence (+20%)
-  - Classification is more likely to be correct
+**Then** `ai_classification_history` is updated: was_corrected=true, corrected_category_id
+**And** A `user_classification_patterns` table is created via migration (next free version): id, user_id, description_pattern (normalized text: without dates, numbers, document and installment markers), preferred_category_id, usage_count, last_used_at, created_at; included in export and purge (LGPD)
+**And** Pattern record is created or updated with the corrected category; usage_count is incremented each time the pattern is confirmed
+**And** In future imports, a matching pattern classifies the transaction without the AI (Story 5.8), with classification_source='PATTERN'
+**And** A pattern whose category was deleted is ignored
 **And** Learning is user-specific (isolated per user_id)
-**And** Over time, AI accuracy improves for each individual user
-**And** Analytics track: "AI accuracy: X% this month (improved from Y% last month)"
 
 ---
 
@@ -311,24 +268,17 @@ So that I can correct errors or update transaction details.
 
 **Acceptance Criteria:**
 
-**Given** I am viewing my transaction list (in Dashboard Layer 3 or dedicated Transaction page)
-**When** I click "Edit" on any transaction
-**Then** Edit form/modal is displayed with all fields editable:
-  - Date (date picker)
-  - Description (text input)
-  - Amount (currency input)
-  - Category (dropdown)
-  - Account (dropdown - which account this transaction belongs to)
+**Given** I am on the Transactions page (`/transacoes`, linked from the dashboard; Dashboard Layer 3 is Epic 7)
+**When** I click "Editar" on a confirmed transaction
+**Then** Edit form/modal is displayed with: date, description, amount, type, category, account or card
 **And** Current values are pre-filled
-**And** I can modify any field and click "Save"
-**And** Transaction record is updated in database
-**And** updated_at timestamp is set to NOW()
-**And** Audit log records "transaction_edited" event with user_id
-**And** If amount is changed, account balance is recalculated
-**And** If date is changed to different month, budget calculations are updated
-**And** Dashboard cache is invalidated (ARCH-REQ-14)
+**And** Saving updates the transaction and updated_at
+**And** Audit log records "transaction_edited" with user_id
+**And** If amount, type, date or account changes on a transaction with balance effect, the balance is adjusted by the difference through `BalanceHistoryRecorder` (D3 recomputed for the new date and account)
+**And** Changing the category feeds Story 5.11
+**And** Validation: amount > 0; future date shows a warning
 **And** Success message: "Transação atualizada"
-**And** Validation: Amount cannot be zero or negative, Date cannot be future date (warning)
+**And** Removing a transaction (soft delete) reverses its balance effect
 
 ---
 
@@ -341,26 +291,18 @@ So that I have a complete record of all my spending.
 **Acceptance Criteria:**
 
 **Given** I am on the Transactions page
-**When** I click "Add Transaction" button
+**When** I click "Adicionar transação"
 **Then** Add transaction form/modal is displayed with fields:
-  - Date (date picker, default: today)
-  - Description (text input, required)
-  - Amount (currency input, required)
-  - Type (debit/credit radio buttons)
-  - Category (dropdown, required)
-  - Account (dropdown, required)
-  - Payment Method (optional: Cash, Debit Card, Credit Card, Pix, Transfer)
-**And** I fill in details and click "Save"
-**And** New transaction is created in `transactions` table with:
-  - user_id from JWT
-  - import_id = NULL (manually added, not imported)
-  - classification_confidence = 100 (user-defined)
-  - is_duplicate = false
-**And** Account balance (current_balance) is updated: -amount for debit, +amount for credit
-**And** Category budget is updated: allocated amount is decreased by transaction amount
-**And** Transaction appears immediately in transaction list
-**And** Dashboard cache is invalidated (ARCH-REQ-14)
+  - Date (default: today)
+  - Description (required)
+  - Amount (required, > 0)
+  - Type (debit/credit)
+  - Category (required)
+  - Account or card (required)
+  - Payment method (optional: Dinheiro, Débito, Crédito, Pix, Transferência)
+**And** New transaction is created with user_id from JWT, import_id NULL, classification_source='USER', confidence 100, review_status='CONFIRMED'
+**And** The balance effect follows D3: an account transaction dated after the balance reference date changes `current_balance` through `BalanceHistoryRecorder`; card transactions do not
+**And** Transaction appears immediately in the list
 **And** Success message: "Transação adicionada"
-**And** Form validation: Description required, Amount > 0, Category required, Account required
-
----
+**And** Form validation: description required, amount > 0, category required, account or card required
+**And** Category budget update is Epic 6
