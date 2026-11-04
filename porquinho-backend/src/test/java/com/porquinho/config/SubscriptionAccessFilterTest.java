@@ -78,6 +78,18 @@ class SubscriptionAccessFilterTest {
     }
 
     @Test
+    void importUploadIsBlockedWithoutAccess() throws Exception {
+        // Story 5.1: the statement upload is a paid feature (trial expired -> 402)
+        authenticateAs(userId.toString());
+        when(subscriptionService.hasAccess(userId)).thenReturn(false);
+
+        MockHttpServletResponse response = run("/api/v1/imports");
+
+        assertThat(response.getStatus()).isEqualTo(402);
+        verify(chain, never()).doFilter(any(), any());
+    }
+
+    @Test
     void shouldPassOnProtectedRouteWithAccess() throws Exception {
         authenticateAs(userId.toString());
         when(subscriptionService.hasAccess(userId)).thenReturn(true);

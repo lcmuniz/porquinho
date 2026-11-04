@@ -39,6 +39,13 @@ spring:
   threads:
     virtual:
       enabled: true
+  servlet:
+    multipart:
+      # Story 5.1: extratos de até 10MB (o padrão do Spring é 1MB); a requisição leva o arquivo e o destino
+      max-file-size: 10MB
+      max-request-size: 11MB
+      # Mantém o arquivo em memória: nada do extrato é gravado em disco temporário (o padrão 0B grava)
+      file-size-threshold: 11MB
   mail:
     host: ${SMTP_HOST:}
     port: ${SMTP_PORT:587}

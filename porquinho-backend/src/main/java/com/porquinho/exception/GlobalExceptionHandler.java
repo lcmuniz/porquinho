@@ -11,6 +11,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.net.URI;
 import java.util.LinkedHashMap;
@@ -187,6 +188,21 @@ public class GlobalExceptionHandler {
         ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(
             HttpStatus.BAD_REQUEST,
             "Dados inválidos. Confira os campos e tente novamente."
+        );
+        problemDetail.setTitle("Dados inválidos");
+        problemDetail.setType(URI.create("https://api.porquinho.com/errors/validation"));
+        return problemDetail;
+    }
+
+    /**
+     * Handle an upload above the multipart limits (spring.servlet.multipart, 10MB per file) and return 400
+     * (Story 5.1), with the same message the import service uses for a file above 10MB.
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ProblemDetail handleMaxUploadSizeExceededException(MaxUploadSizeExceededException ex) {
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(
+            HttpStatus.BAD_REQUEST,
+            "Arquivo muito grande (máximo 10MB)"
         );
         problemDetail.setTitle("Dados inválidos");
         problemDetail.setType(URI.create("https://api.porquinho.com/errors/validation"));

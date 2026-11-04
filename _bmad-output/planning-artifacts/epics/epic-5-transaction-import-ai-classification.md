@@ -34,15 +34,18 @@ So that I can import my transaction history automatically.
 **And** File size is validated: max 10MB (NFR5), on the frontend and on the backend
 **And** File extension is validated: .ofx accepted
 **And** Upload completes in < 5 seconds for 10MB file (NFR5)
-**And** The file is processed from memory/temporary storage and **discarded after processing**; it is never kept (LGPD)
+**And** The file content is only validated during the request and is never stored nor logged (LGPD); temporary storage for background processing arrives with Story 5.3 (decision 1A of Story 5.1)
+**And** Content is validated, not only the extension: after BOM and whitespace the file starts with `OFXHEADER:` or `<?xml` and contains `<OFX>`
+**And** `file_name` keeps only the name (no path), up to 255 characters; audit `import_created` with `import_id`, `file_type` and `file_size_kb` (no file name)
 **And** A `transaction_imports` table is created via migration (next free version) with fields: id (UUID, PK), user_id (FK), account_id (FK, nullable), credit_card_id (FK, nullable; exactly one of the two), file_name, file_type (OFX/CSV), bank_name, file_size_kb, status (PROCESSING/REVIEW/COMPLETED/FAILED/DISCARDED), total_transactions, imported_transactions, duplicates_found, skipped_rows, error_message, created_at, updated_at
-**And** Import record is created with status='PROCESSING' and processing runs in the background; the screen polls the import status every 2 seconds (NFR8)
+**And** Import record is created with status='PROCESSING' and nothing runs in the background yet (decision 1A, Luiz, 2026-11-04): the list on `/importar` shows this status as "Recebido — a leitura das transações chega na próxima etapa". Background processing and status polling every 2 seconds (NFR8) arrive with Story 5.3
 **And** Message: "Arquivo enviado, processando..."
 **And** If file size > 10MB, error: "Arquivo muito grande (máximo 10MB)"
 **And** If file format invalid, error: "Formato de arquivo não suportado"
 **And** The OFX account type must match the destination: a credit card OFX (`CCSTMTRS`) into a bank account, or the reverse, is rejected with a clear message
-**And** The same upload component serves onboarding step 6 (`ImportStep.vue`), which records `first_import_completed` through `POST /api/v1/onboarding/me/import` (deferred from Story 3.6)
-**And** Story 5.3 (auto-detection) runs after upload
+**And** The upload endpoint is `POST /api/v1/imports` (multipart: `file` plus exactly one of `accountId`/`creditCardId`) and `GET /api/v1/imports` lists the 20 most recent imports with the destination name
+**And** A destination of another user, or removed, returns 404 ("Conta não encontrada" / "Cartão não encontrado") and nothing is written
+**And** Onboarding step 6 (`ImportStep.vue`) is **not** changed here (decision 2A, Luiz, 2026-11-04); it is wired to the upload in Story 5.10
 **And** `transaction_imports` is included in data export and purge (LGPD)
 
 ---
@@ -57,7 +60,7 @@ So that I can import transactions in CSV format.
 
 **Given** I am logged in and on the Import page
 **When** I choose the destination and send a CSV file
-**Then** File size and processing behave as in Story 5.1 (10MB, background processing, file discarded afterwards)
+**Then** File size and processing behave as in Stories 5.1 and 5.3 (10MB, background processing, file discarded afterwards)
 **And** File extension is validated: .csv accepted
 **And** CSV encoding is detected (UTF-8 with or without BOM, ISO-8859-1, Windows-1252); if it cannot be detected, UTF-8 is assumed
 **And** Separator is detected (comma, semicolon, tab), including quoted fields
@@ -78,7 +81,8 @@ So that users don't have to manually specify the source.
 
 **Given** A file has been uploaded (Story 5.1 or 5.2)
 **When** Processing begins
-**Then** File format is detected by content signature, not just extension (an .ofx that is plain text is rejected)
+**Then** Processing runs in the background after the upload (decision 1A of Story 5.1 moved it here): the file is kept in temporary storage only until processing ends and is then discarded (LGPD); the import screen polls the import status every 2 seconds (NFR8)
+**And** File format is detected by content signature, not just extension (an .ofx that is plain text is rejected)
 **And** For OFX files: the SGML 1.x header and body are parsed (leaf tags with or without closing tag, cp1252); bank is read from `BANKID`/`FID`/`ORG` (Nubank 260, BB 001, Itaú 341, Bradesco 237, Caixa 104)
 **And** For CSV files: the header (or, for Itaú, the line shape) is matched against the bank layouts of Story 5.2
 **And** Detection accuracy is 95%+ on the sample set (NFR56)
@@ -238,6 +242,7 @@ So that my transactions are accurately categorized.
 **And** "Concluir importação" confirms the import in one transaction: review_status='CONFIRMED' for all its transactions, import status='COMPLETED', and the balance effect of D3 (affects_balance and one `transaction` snapshot per changed account through `BalanceHistoryRecorder`)
 **And** Transactions left without category are confirmed as "Não classificado"
 **And** Finishing an import twice, or concurrently, changes nothing the second time
+**And** Onboarding step 6 (`ImportStep.vue`) uses the same upload component and endpoint as `/importar`; finishing that first import records `first_import_completed` through `POST /api/v1/onboarding/me/import` (deferred from Story 3.6; moved here by decision 2A of Story 5.1)
 
 ---
 

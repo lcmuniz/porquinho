@@ -8,16 +8,16 @@ Trazer as transações do usuário para dentro do porquinho. O usuário envia o 
 
 ## Stories
 
-- Story 5.1: Upload de OFX (e o componente de upload reutilizado no passo 6 do onboarding)
+- Story 5.1: Upload de OFX (registra a importação em `PROCESSING`; nada roda em segundo plano ainda, decisão 1A)
 - Story 5.2: Upload de CSV
-- Story 5.3: Detecção de formato e banco
+- Story 5.3: Detecção de formato e banco (e o processamento em segundo plano com armazenamento temporário do arquivo, decisão 1A da 5.1)
 - Story 5.4: Parsing com tratamento de erros (cria `transactions`)
 - Story 5.5: Duplicatas e transferências já registradas
 - Story 5.6: Pix
 - Story 5.7: Parcelas e parcelas futuras
 - Story 5.8: Classificação automática por IA
 - Story 5.9: Tela de revisão
-- Story 5.10: Ajustes e conclusão da importação
+- Story 5.10: Ajustes e conclusão da importação (e o passo 6 do onboarding ligado ao upload, decisão 2A da 5.1)
 - Story 5.11: Aprendizado com as correções
 - Story 5.12: Editar transação (`/transacoes`)
 - Story 5.13: Adicionar transação manual
@@ -56,7 +56,7 @@ Trazer as transações do usuário para dentro do porquinho. O usuário envia o 
 
 ## Cross-Story Dependencies
 
-- A 5.1 cria `transaction_imports` e o componente de upload, usado também pela 5.2 e pelo `ImportStep.vue` do onboarding (item adiado da 3.6).
+- A 5.1 cria `transaction_imports`, `POST/GET /api/v1/imports` e a página `/importar` (`ImportView.vue`), que a 5.2 estende para CSV. O `ImportStep.vue` do onboarding (item adiado da 3.6) só é ligado ao upload na 5.10 (decisão 2A).
 - A 5.3 depende de 5.1/5.2. A 5.4 cria `transactions`, que as stories seguintes usam. Na ordem do processamento, 5.5 → 5.6 → 5.7 → 5.8 rodam em sequência dentro da mesma importação.
 - A 5.8 usa os padrões da 5.11 se existirem. Antes da 5.11, ela só chama a IA.
 - A 5.10 aplica o efeito no saldo (D3) e depende do `BalanceHistoryRecorder` do Epic 4. A 5.11 é alimentada pela 5.10 e pela 5.12.

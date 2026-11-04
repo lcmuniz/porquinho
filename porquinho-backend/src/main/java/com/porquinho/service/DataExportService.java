@@ -10,6 +10,7 @@ import com.porquinho.entity.Category;
 import com.porquinho.entity.CreditCard;
 import com.porquinho.entity.Goal;
 import com.porquinho.entity.Reconciliation;
+import com.porquinho.entity.TransactionImport;
 import com.porquinho.entity.Transfer;
 import com.porquinho.entity.AuditLog;
 import com.porquinho.entity.BillingTransaction;
@@ -29,6 +30,7 @@ import com.porquinho.repository.BillingTransactionRepository;
 import com.porquinho.repository.DataExportRepository;
 import com.porquinho.repository.OnboardingProgressRepository;
 import com.porquinho.repository.ReconciliationRepository;
+import com.porquinho.repository.TransactionImportRepository;
 import com.porquinho.repository.TransferRepository;
 import com.porquinho.repository.UserRepository;
 import com.porquinho.repository.UserSessionRepository;
@@ -75,6 +77,7 @@ public class DataExportService {
     private final GoalRepository goalRepository;
     private final AccountBalanceHistoryRepository accountBalanceHistoryRepository;
     private final TransferRepository transferRepository;
+    private final TransactionImportRepository transactionImportRepository;
     private final ReconciliationRepository reconciliationRepository;
     private final ObjectMapper objectMapper;
 
@@ -104,6 +107,7 @@ public class DataExportService {
             GoalRepository goalRepository,
             AccountBalanceHistoryRepository accountBalanceHistoryRepository,
             TransferRepository transferRepository,
+            TransactionImportRepository transactionImportRepository,
             ReconciliationRepository reconciliationRepository) {
         this.dataExportRepository = dataExportRepository;
         this.userRepository = userRepository;
@@ -121,6 +125,7 @@ public class DataExportService {
         this.goalRepository = goalRepository;
         this.accountBalanceHistoryRepository = accountBalanceHistoryRepository;
         this.transferRepository = transferRepository;
+        this.transactionImportRepository = transactionImportRepository;
         this.reconciliationRepository = reconciliationRepository;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
@@ -200,7 +205,7 @@ public class DataExportService {
         metadata.put("user_id", userId.toString());
         metadata.put("data_version", "1.0");
         metadata.put("exported_tables", List.of("users", "user_sessions", "audit_logs", "subscriptions",
-            "billing_transactions", "onboarding_progress", "accounts", "account_balance_history", "transfers", "reconciliation_history", "credit_cards", "categories", "goals"));
+            "billing_transactions", "onboarding_progress", "accounts", "account_balance_history", "transfers", "reconciliation_history", "credit_cards", "transaction_imports", "categories", "goals"));
         data.put("metadata", metadata);
 
         // User profile (sanitized)
@@ -364,6 +369,34 @@ public class DataExportService {
             transferList.add(transferMap);
         }
         data.put("transfers", transferList);
+
+        // Transaction imports (Story 5.1) - every stored column, oldest first; the file itself is never stored
+        List<Map<String, Object>> importList = new ArrayList<>();
+        for (TransactionImport transactionImport : transactionImportRepository.findByUserIdOrdered(userId)) {
+            Map<String, Object> importMap = new LinkedHashMap<>();
+            importMap.put("id", transactionImport.getId() != null ? transactionImport.getId().toString() : null);
+            importMap.put("user_id", transactionImport.getUserId() != null ? transactionImport.getUserId().toString() : null);
+            importMap.put("account_id",
+                transactionImport.getAccountId() != null ? transactionImport.getAccountId().toString() : null);
+            importMap.put("credit_card_id",
+                transactionImport.getCreditCardId() != null ? transactionImport.getCreditCardId().toString() : null);
+            importMap.put("file_name", transactionImport.getFileName());
+            importMap.put("file_type", transactionImport.getFileType() != null ? transactionImport.getFileType().name() : null);
+            importMap.put("bank_name", transactionImport.getBankName());
+            importMap.put("file_size_kb", transactionImport.getFileSizeKb());
+            importMap.put("status", transactionImport.getStatus() != null ? transactionImport.getStatus().name() : null);
+            importMap.put("total_transactions", transactionImport.getTotalTransactions());
+            importMap.put("imported_transactions", transactionImport.getImportedTransactions());
+            importMap.put("duplicates_found", transactionImport.getDuplicatesFound());
+            importMap.put("skipped_rows", transactionImport.getSkippedRows());
+            importMap.put("error_message", transactionImport.getErrorMessage());
+            importMap.put("created_at",
+                transactionImport.getCreatedAt() != null ? transactionImport.getCreatedAt().toString() : null);
+            importMap.put("updated_at",
+                transactionImport.getUpdatedAt() != null ? transactionImport.getUpdatedAt().toString() : null);
+            importList.add(importMap);
+        }
+        data.put("transaction_imports", importList);
 
         // Reconciliations (Story 4.6) - every stored column, oldest first; money as JSON numbers
         List<Map<String, Object>> reconciliationList = new ArrayList<>();
