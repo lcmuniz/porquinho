@@ -13,17 +13,24 @@ import com.porquinho.repository.UserRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.config.ScheduledTaskHolder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -63,6 +70,12 @@ class TransactionImportIntegrationTest {
     private TransactionTemplate transactionTemplate;
     @Autowired
     private JdbcTemplate jdbc;
+    @Autowired
+    private TransactionImportProcessor transactionImportProcessor;
+    @Autowired
+    private ConfigurableApplicationContext context;
+    @Autowired
+    private ScheduledTaskHolder scheduledTaskHolder;
 
     private final List<UUID> users = new ArrayList<>();
     private UUID userId;
@@ -105,6 +118,18 @@ class TransactionImportIntegrationTest {
         return new MockMultipartFile("file", name, "application/octet-stream", bytes);
     }
 
+    /** Polls the import row until {@code done} holds (the processing is asynchronous), at most 10 s. */
+    private Map<String, Object> awaitRow(UUID importId, java.util.function.Predicate<Map<String, Object>> done)
+        throws InterruptedException {
+        long deadline = System.currentTimeMillis() + 10_000;
+        Map<String, Object> row = jdbc.queryForMap("SELECT * FROM transaction_imports WHERE id = ?", importId);
+        while (!done.test(row) && System.currentTimeMillis() < deadline) {
+            Thread.sleep(50);
+            row = jdbc.queryForMap("SELECT * FROM transaction_imports WHERE id = ?", importId);
+        }
+        return row;
+    }
+
     private long imports(UUID owner) {
         return jdbc.queryForObject("SELECT COUNT(*) FROM transaction_imports WHERE user_id = ?", Long.class, owner);
     }
@@ -122,7 +147,6 @@ class TransactionImportIntegrationTest {
         assertThat(row.get("credit_card_id")).isNull();
         assertThat(row.get("file_name")).isEqualTo("nubank-conta.ofx");
         assertThat(row.get("file_type")).isEqualTo("OFX");
-        assertThat(row.get("bank_name")).isNull();
         assertThat(row.get("status")).isEqualTo("PROCESSING");
         assertThat(row.get("file_size_kb")).isEqualTo(4);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_logs WHERE user_id = ? AND event_type = 'import_created'",
@@ -240,5 +264,104 @@ class TransactionImportIntegrationTest {
         assertThat(rows.get(0).get("id")).isEqualTo(created.id().toString());
         assertThat(rows.get(0).get("account_id")).isEqualTo(nubank.toString());
         assertThat(rows.get(0).get("status")).isEqualTo("PROCESSING");
+    }
+
+    @Test
+    void uploadedOfxGetsItsBankInTheBackgroundAndStaysProcessing() throws Exception {
+        UUID nubank = account(userId, "Nubank");
+        UUID itau = card(userId, "Itaú Visa");
+
+        TransactionImportResponse toAccount = transactionImportService.create(userId, nubank, null,
+            sample("nubank-conta.ofx"), "127.0.0.1");
+        TransactionImportResponse toCard = transactionImportService.create(userId, null, itau,
+            sample("itau-cartao.ofx"), "127.0.0.1");
+
+        Map<String, Object> accountRow = awaitRow(toAccount.id(), r -> r.get("bank_name") != null);
+        assertThat(accountRow.get("bank_name")).isEqualTo("NUBANK");
+        assertThat(accountRow.get("status")).isEqualTo("PROCESSING");
+        assertThat(accountRow.get("error_message")).isNull();
+        assertThat(awaitRow(toCard.id(), r -> r.get("bank_name") != null).get("bank_name")).isEqualTo("ITAU");
+        assertThat(transactionImportService.get(userId, toAccount.id()).bankName()).isEqualTo("NUBANK");
+        assertThat(transactionImportService.get(userId, toAccount.id()).targetName()).isEqualTo("Nubank");
+    }
+
+    @Test
+    void truncatedOfxFailsWithTheIncompleteMessage() throws Exception {
+        UUID nubank = account(userId, "Nubank");
+
+        TransactionImportResponse created = transactionImportService.create(userId, nubank, null,
+            sample("erro-ofx-truncado.ofx"), "127.0.0.1");
+
+        Map<String, Object> row = awaitRow(created.id(), r -> "FAILED".equals(r.get("status")));
+        assertThat(row.get("status")).isEqualTo("FAILED");
+        assertThat(row.get("error_message")).isEqualTo(TransactionImportProcessor.TRUNCATED_MESSAGE);
+        assertThat(row.get("bank_name")).isNull();
+    }
+
+    @Test
+    void getOfAnotherUsersImportIs404() throws IOException {
+        UUID nubank = account(userId, "Nubank");
+        TransactionImportResponse created = transactionImportService.create(userId, nubank, null,
+            sample("nubank-conta.ofx"), "127.0.0.1");
+        UUID other = newUser();
+
+        assertThatThrownBy(() -> transactionImportService.get(other, created.id()))
+            .isInstanceOf(ResourceNotFoundException.class).hasMessage("Importação não encontrada");
+    }
+
+    @Test
+    void atStartupProcessingImportsWithoutBankFailAndDetectedOnesStay() throws IOException {
+        UUID nubank = account(userId, "Nubank");
+        UUID old = insertProcessing(nubank, "1 day", null);
+        UUID detected = insertProcessing(nubank, "1 day", "NUBANK");
+
+        // the real trigger: the listener runs on ApplicationReadyEvent
+        context.publishEvent(new ApplicationReadyEvent(new SpringApplication(), new String[0], context, Duration.ZERO));
+
+        Map<String, Object> oldRow = row(old);
+        assertThat(oldRow.get("status")).isEqualTo("FAILED");
+        assertThat(oldRow.get("error_message")).isEqualTo("O processamento foi interrompido. Envie o arquivo de novo.");
+        // bank detected: this stage finished, it waits for the parsing (decision 1A)
+        assertThat(row(detected).get("status")).isEqualTo("PROCESSING");
+    }
+
+    @Test
+    void everyFiveMinutesOnlyImportsWithoutBankOlderThan15MinutesFail() throws IOException {
+        UUID nubank = account(userId, "Nubank");
+        context.publishEvent(new ApplicationReadyEvent(new SpringApplication(), new String[0], context, Duration.ZERO));
+        // inserted after the startup sweep, so only the periodic one can fail them
+        UUID stale = insertProcessing(nubank, "20 minutes", null);
+        UUID recent = insertProcessing(nubank, "1 minute", null);
+        UUID detected = insertProcessing(nubank, "20 minutes", "ITAU");
+
+        transactionImportProcessor.failStaleImports();
+
+        assertThat(row(stale).get("status")).isEqualTo("FAILED");
+        assertThat(row(stale).get("error_message")).isEqualTo("O processamento foi interrompido. Envie o arquivo de novo.");
+        assertThat(row(recent).get("status")).isEqualTo("PROCESSING");
+        assertThat(row(detected).get("status")).isEqualTo("PROCESSING");
+    }
+
+    @Test
+    void sweepIsScheduledAndProcessingRunsThroughTheAsyncProxy() throws NoSuchMethodException {
+        assertThat(scheduledTaskHolder.getScheduledTasks())
+            .anyMatch(task -> task.getTask().toString().endsWith("TransactionImportProcessor.failStaleImports"));
+        // @Async only works through the proxy of a separate bean: a plain bean would run in the request thread
+        assertThat(AopUtils.isAopProxy(transactionImportProcessor)).isTrue();
+        assertThat(TransactionImportProcessor.class.getMethod("process", UUID.class, byte[].class)
+            .isAnnotationPresent(Async.class)).isTrue();
+    }
+
+    private UUID insertProcessing(UUID accountId, String age, String bank) {
+        UUID id = UUID.randomUUID();
+        jdbc.update("INSERT INTO transaction_imports (id, user_id, account_id, file_name, file_type, file_size_kb, "
+            + "bank_name, status, created_at, updated_at) "
+            + "VALUES (?, ?, ?, 'x.ofx', 'OFX', 1, ?, 'PROCESSING', now() - ?::interval, now())",
+            id, userId, accountId, bank, age);
+        return id;
+    }
+
+    private Map<String, Object> row(UUID id) {
+        return jdbc.queryForMap("SELECT * FROM transaction_imports WHERE id = ?", id);
     }
 }

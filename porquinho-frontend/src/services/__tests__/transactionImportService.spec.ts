@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { listImports, uploadImport } from '../transactionImportService'
+import { getImport, listImports, uploadImport } from '../transactionImportService'
 
 const mockGet = vi.fn()
 const mockPost = vi.fn()
@@ -21,6 +21,12 @@ describe('transactionImportService', () => {
     mockGet.mockResolvedValue({ data: [] })
     expect(await listImports()).toEqual([])
     expect(mockGet).toHaveBeenCalledWith('/api/v1/imports')
+  })
+
+  it('consulta uma importação em /api/v1/imports/{id} (Story 5.3)', async () => {
+    mockGet.mockResolvedValue({ data: { id: 'i1', bankName: 'NUBANK' } })
+    expect(await getImport('i1')).toEqual({ id: 'i1', bankName: 'NUBANK' })
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/imports/i1')
   })
 
   it('envia multipart com file e accountId e repassa o progresso', async () => {

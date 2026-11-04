@@ -144,7 +144,14 @@
               <p class="text-xs text-gray-600">
                 {{ item.creditCardId ? 'Cartão' : 'Conta' }}: {{ item.targetName ?? '—' }}
               </p>
-              <p class="text-xs text-gray-700" data-testid="import-status">{{ statusLabel(item.status) }}</p>
+              <p class="text-xs text-gray-700" data-testid="import-status">{{ statusLabel(item) }}</p>
+              <p
+                v-if="item.status === 'FAILED' && item.errorMessage"
+                class="text-xs text-red-600"
+                data-testid="import-error"
+              >
+                {{ item.errorMessage }}
+              </p>
             </li>
           </ul>
         </section>
@@ -154,16 +161,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { listAccounts } from '@/services/accountService'
 import { listCards } from '@/services/cardService'
-import { listImports, uploadImport } from '@/services/transactionImportService'
+import { getImport, listImports, uploadImport } from '@/services/transactionImportService'
 import type { Account } from '@/types/account'
 import type { CreditCard } from '@/types/creditCard'
-import type { ImportTarget, TransactionImport, TransactionImportStatus } from '@/types/transactionImport'
+import type { BankCode, ImportTarget, TransactionImport, TransactionImportStatus } from '@/types/transactionImport'
 
 const SELECT_CLASS =
   'flex min-h-[44px] w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:outline-none'
@@ -181,13 +188,27 @@ const MESSAGES = {
   loadFailed: 'Não foi possível carregar suas contas e cartões. Tente novamente.',
 }
 
-/** Decisão 1A da Story 5.1: a leitura das transações chega na Story 5.3. */
+/** NFR8: progresso consultado a cada 2 s. */
+const POLL_INTERVAL_MS = 2000
+
+const NEXT_STEP = 'a leitura das transações chega na próxima etapa'
+
 const STATUS_LABELS: Record<TransactionImportStatus, string> = {
-  PROCESSING: 'Recebido — a leitura das transações chega na próxima etapa',
+  PROCESSING: 'Recebido — identificando o banco...',
   REVIEW: 'Aguardando revisão',
   COMPLETED: 'Concluída',
   FAILED: 'Falhou',
   DISCARDED: 'Descartada',
+}
+
+/** Story 5.3: OTHER é um OFX de banco fora dos cinco suportados (decisão 2A). */
+const BANK_LABELS: Record<BankCode, string> = {
+  NUBANK: 'Nubank',
+  BANCO_DO_BRASIL: 'Banco do Brasil',
+  ITAU: 'Itaú',
+  BRADESCO: 'Bradesco',
+  CAIXA: 'Caixa',
+  OTHER: 'Banco não identificado',
 }
 
 const accounts = ref<Account[]>([])
@@ -215,6 +236,7 @@ async function load() {
     accounts.value = accountList
     cards.value = cardList
     imports.value = importList
+    schedulePoll()
   } catch {
     loadError.value = MESSAGES.loadFailed
   } finally {
@@ -289,6 +311,7 @@ async function submit() {
       progress.value = percent
     })
     imports.value = [created, ...imports.value.filter((i) => i.id !== created.id)]
+    schedulePoll()
     successMessage.value = MESSAGES.uploaded
     selectedFile.value = null
     if (fileInput.value) fileInput.value.value = ''
@@ -299,9 +322,56 @@ async function submit() {
   }
 }
 
-function statusLabel(status: TransactionImportStatus): string {
-  return STATUS_LABELS[status] ?? status
+/** Decisão 1A da Story 5.3: depois da detecção a importação segue PROCESSING, com o banco gravado. */
+function statusLabel(item: TransactionImport): string {
+  if (item.status === 'PROCESSING' && item.bankName) {
+    const bank = BANK_LABELS[item.bankName] ?? item.bankName
+    return item.bankName === 'OTHER' ? `${bank} — ${NEXT_STEP}` : `Banco detectado: ${bank} — ${NEXT_STEP}`
+  }
+  return STATUS_LABELS[item.status] ?? item.status
 }
+
+/** Ainda na etapa de detecção: PROCESSING sem banco. A consulta para quando o banco aparece ou o status muda. */
+function isPending(item: TransactionImport): boolean {
+  return item.status === 'PROCESSING' && !item.bankName
+}
+
+let pollTimer: ReturnType<typeof setTimeout> | null = null
+let unmounted = false
+
+/** Agenda a próxima consulta (2 s) se houver importação na etapa; nunca duas consultas ao mesmo tempo. */
+function schedulePoll() {
+  if (unmounted || pollTimer !== null || !imports.value.some(isPending)) return
+  pollTimer = setTimeout(poll, POLL_INTERVAL_MS)
+}
+
+async function poll() {
+  const pending = imports.value.filter(isPending)
+  const results = await Promise.all(
+    pending.map((item) =>
+      getImport(item.id).then(
+        (fresh) => ({ id: item.id, fresh, gone: false }),
+        (e) => ({ id: item.id, fresh: null, gone: (e as ApiError)?.response?.status === 404 }),
+      ),
+    ),
+  )
+  if (unmounted) return
+  for (const { id, fresh, gone } of results) {
+    if (gone) {
+      imports.value = imports.value.filter((i) => i.id !== id)
+    } else if (fresh) {
+      imports.value = imports.value.map((i) => (i.id === id ? fresh : i))
+    }
+  }
+  pollTimer = null
+  schedulePoll()
+}
+
+onUnmounted(() => {
+  unmounted = true
+  if (pollTimer !== null) clearTimeout(pollTimer)
+  pollTimer = null
+})
 
 function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.ceil(bytes / 1024))} KB`

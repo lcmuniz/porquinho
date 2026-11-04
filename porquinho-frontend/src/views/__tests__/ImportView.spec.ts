@@ -9,6 +9,7 @@ const mockListAccounts = vi.fn()
 const mockListCards = vi.fn()
 const mockListImports = vi.fn()
 const mockUpload = vi.fn()
+const mockGetImport = vi.fn()
 
 vi.mock('@/services/accountService', () => ({
   listAccounts: (...a: unknown[]) => mockListAccounts(...a),
@@ -19,6 +20,7 @@ vi.mock('@/services/cardService', () => ({
 vi.mock('@/services/transactionImportService', () => ({
   listImports: (...a: unknown[]) => mockListImports(...a),
   uploadImport: (...a: unknown[]) => mockUpload(...a),
+  getImport: (...a: unknown[]) => mockGetImport(...a),
 }))
 
 function account(overrides: Partial<Account> = {}): Account {
@@ -104,9 +106,11 @@ describe('ImportView', () => {
     mockListCards.mockReset().mockResolvedValue([card()])
     mockListImports.mockReset().mockResolvedValue([])
     mockUpload.mockReset()
+    mockGetImport.mockReset().mockImplementation(async (id: string) => imported({ id }))
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     document.body.innerHTML = ''
   })
 
@@ -147,9 +151,7 @@ describe('ImportView', () => {
     const item = wrapper.get('[data-testid="import-i1"]')
     expect(item.text()).toContain('nubank-conta.ofx')
     expect(item.text()).toContain('Conta: Nubank')
-    expect(item.get('[data-testid="import-status"]').text()).toBe(
-      'Recebido — a leitura das transações chega na próxima etapa',
-    )
+    expect(item.get('[data-testid="import-status"]').text()).toBe('Recebido — identificando o banco...')
   })
 
   it('envia para o cartão com o destino de cartão', async () => {
@@ -265,7 +267,7 @@ describe('ImportView', () => {
     const wrapper = await mountView()
 
     expect(wrapper.findAll('[data-testid="import-status"]').map((s) => s.text())).toEqual([
-      'Recebido — a leitura das transações chega na próxima etapa',
+      'Recebido — identificando o banco...',
       'Concluída',
     ])
   })
@@ -283,5 +285,110 @@ describe('ImportView', () => {
     await wrapper.get('button').trigger('click')
     await flushPromises()
     expect(wrapper.find('[data-testid="import-form"]').exists()).toBe(true)
+  })
+
+  describe('consulta de status (Story 5.3)', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+
+    async function tick() {
+      await vi.advanceTimersByTimeAsync(2000)
+      await flushPromises()
+    }
+
+    it('após o envio consulta a cada 2 s, mostra o banco detectado e para de consultar', async () => {
+      mockUpload.mockResolvedValue(imported())
+      mockGetImport
+        .mockResolvedValueOnce(imported())
+        .mockResolvedValueOnce(imported({ bankName: 'NUBANK' }))
+      const wrapper = await mountView()
+      await wrapper.get('[data-testid="import-target-select"]').setValue('account:a1')
+      await chooseFile(wrapper, ofxFile())
+      await submit(wrapper)
+
+      expect(mockGetImport).not.toHaveBeenCalled()
+      await tick()
+      expect(mockGetImport).toHaveBeenCalledTimes(1)
+      expect(mockGetImport).toHaveBeenCalledWith('i1')
+      await tick()
+      expect(mockGetImport).toHaveBeenCalledTimes(2)
+      expect(wrapper.get('[data-testid="import-i1"] [data-testid="import-status"]').text()).toBe(
+        'Banco detectado: Nubank — a leitura das transações chega na próxima etapa',
+      )
+
+      await tick()
+      await tick()
+      expect(mockGetImport).toHaveBeenCalledTimes(2)
+    })
+
+    it('para de consultar quando a importação falha e mostra a mensagem', async () => {
+      mockListImports.mockResolvedValue([imported()])
+      mockGetImport.mockResolvedValue(
+        imported({
+          status: 'FAILED',
+          errorMessage: 'O arquivo está incompleto. Exporte o extrato de novo no site ou app do banco e envie outra vez.',
+        }),
+      )
+      const wrapper = await mountView()
+
+      await tick()
+      expect(wrapper.get('[data-testid="import-status"]').text()).toBe('Falhou')
+      expect(wrapper.get('[data-testid="import-error"]').text()).toBe(
+        'O arquivo está incompleto. Exporte o extrato de novo no site ou app do banco e envie outra vez.',
+      )
+      await tick()
+      expect(mockGetImport).toHaveBeenCalledTimes(1)
+    })
+
+    it('para de consultar ao sair da página', async () => {
+      mockListImports.mockResolvedValue([imported()])
+      const wrapper = await mountView()
+
+      await tick()
+      expect(mockGetImport).toHaveBeenCalledTimes(1)
+      wrapper.unmount()
+      await tick()
+      await tick()
+      expect(mockGetImport).toHaveBeenCalledTimes(1)
+    })
+
+    it('não consulta quando nenhuma importação está na etapa de detecção', async () => {
+      mockListImports.mockResolvedValue([
+        imported({ bankName: 'ITAU', creditCardId: 'c1', accountId: null }),
+        imported({ id: 'i4', status: 'FAILED', errorMessage: 'O processamento foi interrompido. Envie o arquivo de novo.' }),
+      ])
+      const wrapper = await mountView()
+
+      await tick()
+      expect(mockGetImport).not.toHaveBeenCalled()
+      expect(wrapper.findAll('[data-testid="import-status"]').map((s) => s.text())).toEqual([
+        'Banco detectado: Itaú — a leitura das transações chega na próxima etapa',
+        'Falhou',
+      ])
+      expect(wrapper.get('[data-testid="import-error"]').text()).toBe(
+        'O processamento foi interrompido. Envie o arquivo de novo.',
+      )
+    })
+
+    it('banco fora dos cinco aparece como "Banco não identificado"', async () => {
+      mockListImports.mockResolvedValue([imported({ bankName: 'OTHER' })])
+      const wrapper = await mountView()
+
+      expect(wrapper.get('[data-testid="import-status"]').text()).toBe(
+        'Banco não identificado — a leitura das transações chega na próxima etapa',
+      )
+    })
+
+    it('remove da lista a importação que deixou de existir (404)', async () => {
+      mockListImports.mockResolvedValue([imported()])
+      mockGetImport.mockRejectedValue({ response: { status: 404 } })
+      const wrapper = await mountView()
+
+      await tick()
+      expect(wrapper.find('[data-testid="import-i1"]').exists()).toBe(false)
+      await tick()
+      expect(mockGetImport).toHaveBeenCalledTimes(1)
+    })
   })
 })

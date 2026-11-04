@@ -9,6 +9,8 @@ import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.CreditCardRepository;
 import com.porquinho.repository.TransactionImportRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -17,6 +19,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -27,11 +30,13 @@ import java.util.stream.Collectors;
  * Upload of a bank statement to one of the user's accounts or cards (Story 5.1). Validates the target (exactly one,
  * active, owned by the JWT user; otherwise 404 as if it did not exist) and the file (extension .ofx, at most 10MB,
  * content that looks like OFX, statement type matching the target), then records the import as PROCESSING and logs
- * "import_created". The file content is only read here, never stored nor logged (decision 1A: nothing runs in the
- * background yet; parsing and temporary storage come with Story 5.3).
+ * "import_created". The file content is never stored nor logged: after the commit it is handed, in memory only, to
+ * {@link TransactionImportProcessor} (Story 5.3).
  */
 @Service
 public class TransactionImportService {
+
+    private static final Logger log = LoggerFactory.getLogger(TransactionImportService.class);
 
     public static final String AUDIT_CREATED = "import_created";
 
@@ -39,6 +44,7 @@ public class TransactionImportService {
     public static final int RECENT_LIMIT = 20;
     static final int MAX_FILE_NAME_LENGTH = 255;
 
+    public static final String NOT_FOUND_MESSAGE = "Importação não encontrada";
     public static final String TARGET_REQUIRED_MESSAGE = "Escolha uma conta ou um cartão de destino";
     public static final String FILE_TOO_LARGE_MESSAGE = "Arquivo muito grande (máximo 10MB)";
     public static final String UNSUPPORTED_FORMAT_MESSAGE = "Formato de arquivo não suportado";
@@ -54,15 +60,18 @@ public class TransactionImportService {
     private final AccountRepository accountRepository;
     private final CreditCardRepository creditCardRepository;
     private final AuditLogService auditLogService;
+    private final TransactionImportProcessor transactionImportProcessor;
     private final TransactionTemplate transactionTemplate;
 
     public TransactionImportService(TransactionImportRepository transactionImportRepository,
                                     AccountRepository accountRepository, CreditCardRepository creditCardRepository,
-                                    AuditLogService auditLogService, PlatformTransactionManager transactionManager) {
+                                    AuditLogService auditLogService, TransactionImportProcessor transactionImportProcessor,
+                                    PlatformTransactionManager transactionManager) {
         this.transactionImportRepository = transactionImportRepository;
         this.accountRepository = accountRepository;
         this.creditCardRepository = creditCardRepository;
         this.auditLogService = auditLogService;
+        this.transactionImportProcessor = transactionImportProcessor;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
@@ -70,7 +79,8 @@ public class TransactionImportService {
      * Records the upload. 400 when the target is missing or doubled, the file is empty, too large, not .ofx, not OFX
      * content, or of the other statement type; 404 "Conta não encontrada" / "Cartão não encontrado" when the target is
      * not one of the user's active rows. Nothing is written on error. The file is validated before the transaction
-     * starts, so reading up to 10MB never holds a pooled connection.
+     * starts, so reading up to 10MB never holds a pooled connection. After the commit, the content (only in memory) goes
+     * to the background processing (Story 5.3).
      */
     public TransactionImportResponse create(UUID userId, UUID accountId, UUID creditCardId, MultipartFile file,
                                             String ipAddress) {
@@ -87,7 +97,8 @@ public class TransactionImportService {
         if (!fileName.toLowerCase(Locale.ROOT).endsWith(".ofx")) {
             throw new BadRequestException(UNSUPPORTED_FORMAT_MESSAGE);
         }
-        StatementKind kind = statementKind(read(file));
+        byte[] content = read(file);
+        StatementKind kind = statementKind(content);
         if (accountId != null && kind == StatementKind.CARD) {
             throw new BadRequestException(CARD_FILE_TO_ACCOUNT_MESSAGE);
         }
@@ -95,8 +106,19 @@ public class TransactionImportService {
             throw new BadRequestException(ACCOUNT_FILE_TO_CARD_MESSAGE);
         }
         int fileSizeKb = sizeKb(file.getSize());
-        return transactionTemplate.execute(status ->
+        TransactionImportResponse created = transactionTemplate.execute(status ->
             record(userId, accountId, creditCardId, fileName, fileSizeKb, ipAddress));
+        // execute returned: the row is committed, so the background processing always finds it (Story 5.3)
+        try {
+            transactionImportProcessor.process(created.id(), content);
+        } catch (RuntimeException e) {
+            // e.g. executor rejected the task: the upload itself succeeded, the import just fails now
+            log.error("Import {} could not start processing: {}", created.id(), e.getClass().getName());
+            transactionImportRepository.markFailed(created.id(), TransactionImportProcessor.UNEXPECTED_ERROR_MESSAGE,
+                OffsetDateTime.now());
+            return get(userId, created.id());
+        }
+        return created;
     }
 
     private TransactionImportResponse record(UUID userId, UUID accountId, UUID creditCardId, String fileName,
@@ -134,6 +156,18 @@ public class TransactionImportService {
             .map(i -> TransactionImportResponse.of(i,
                 i.getAccountId() != null ? accounts.get(i.getAccountId()) : cards.get(i.getCreditCardId())))
             .toList();
+    }
+
+    /** One of the user's imports, for the status polling of /importar (Story 5.3); 404 when not the user's. */
+    @Transactional(readOnly = true)
+    public TransactionImportResponse get(UUID userId, UUID importId) {
+        TransactionImport transactionImport = transactionImportRepository.findByIdAndUserId(importId, userId)
+            .orElseThrow(() -> new ResourceNotFoundException(NOT_FOUND_MESSAGE));
+        String targetName = transactionImport.getAccountId() != null
+            ? accountRepository.findById(transactionImport.getAccountId()).map(Account::getAccountName).orElse(null)
+            : creditCardRepository.findById(transactionImport.getCreditCardId()).map(CreditCard::getCardName)
+                .orElse(null);
+        return TransactionImportResponse.of(transactionImport, targetName);
     }
 
     private static byte[] read(MultipartFile file) {

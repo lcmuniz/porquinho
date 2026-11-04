@@ -15,9 +15,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.task.TaskRejectedException;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.web.multipart.MultipartFile;
@@ -34,6 +36,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -56,6 +60,8 @@ class TransactionImportServiceTest {
     private AuditLogService auditLogService;
     @Mock
     private PlatformTransactionManager transactionManager;
+    @Mock
+    private TransactionImportProcessor transactionImportProcessor;
 
     private TransactionImportService service;
     private UUID userId;
@@ -65,7 +71,7 @@ class TransactionImportServiceTest {
     @BeforeEach
     void setUp() {
         service = new TransactionImportService(transactionImportRepository, accountRepository, creditCardRepository,
-            auditLogService, transactionManager);
+            auditLogService, transactionImportProcessor, transactionManager);
         userId = UUID.randomUUID();
         accountId = UUID.randomUUID();
         cardId = UUID.randomUUID();
@@ -109,6 +115,7 @@ class TransactionImportServiceTest {
             .hasMessage(message);
         verify(transactionImportRepository, never()).save(any());
         verifyNoInteractions(auditLogService);
+        verifyNoInteractions(transactionImportProcessor);
     }
 
     @ParameterizedTest
@@ -134,6 +141,10 @@ class TransactionImportServiceTest {
         assertThat(response.status()).isEqualTo("PROCESSING");
         assertThat(response.targetName()).isEqualTo("Nubank");
         assertThat(response.fileName()).isEqualTo(name);
+        // Story 5.3: after the commit, the same bytes go to the background processing
+        InOrder order = inOrder(transactionManager, transactionImportProcessor);
+        order.verify(transactionManager).commit(any());
+        order.verify(transactionImportProcessor).process(response.id(), upload.getBytes());
     }
 
     @Test
@@ -260,6 +271,7 @@ class TransactionImportServiceTest {
             .isInstanceOf(ResourceNotFoundException.class)
             .hasMessage("Cartão não encontrado");
         verify(transactionImportRepository, never()).save(any());
+        verifyNoInteractions(transactionImportProcessor);
     }
 
     @Test
@@ -325,5 +337,53 @@ class TransactionImportServiceTest {
         saveAssignsId();
         service.create(userId, accountId, null, sample("caixa-conta.ofx"), "192.168.0.9");
         verify(auditLogService).log(eq("import_created"), eq(userId), eq("192.168.0.9"), anyString());
+    }
+
+    @Test
+    void whenTheProcessingCannotStartTheImportFailsButTheUploadSucceeds() throws IOException {
+        accountExists();
+        saveAssignsId();
+        doThrow(new TaskRejectedException("full")).when(transactionImportProcessor).process(any(), any());
+        when(transactionImportRepository.findByIdAndUserId(any(), eq(userId))).thenAnswer(inv -> {
+            TransactionImport failed = new TransactionImport(userId, accountId, null, "nubank-conta.ofx",
+                TransactionImport.FileType.OFX, 4);
+            failed.setId(inv.getArgument(0));
+            failed.setStatus(TransactionImport.Status.FAILED);
+            failed.setErrorMessage(TransactionImportProcessor.UNEXPECTED_ERROR_MESSAGE);
+            return Optional.of(failed);
+        });
+
+        TransactionImportResponse response = service.create(userId, accountId, null, sample("nubank-conta.ofx"), "127.0.0.1");
+
+        verify(transactionImportRepository).markFailed(eq(response.id()),
+            eq(TransactionImportProcessor.UNEXPECTED_ERROR_MESSAGE), any());
+        assertThat(response.status()).isEqualTo("FAILED");
+    }
+
+    @Test
+    void getReturnsTheUsersImportWithTheTargetName() {
+        TransactionImport toAccount = new TransactionImport(userId, accountId, null, "a.ofx", TransactionImport.FileType.OFX, 1);
+        toAccount.setId(UUID.randomUUID());
+        toAccount.setBankName("NUBANK");
+        when(transactionImportRepository.findByIdAndUserId(toAccount.getId(), userId)).thenReturn(Optional.of(toAccount));
+        Account account = new Account();
+        account.setId(accountId);
+        account.setAccountName("Nubank");
+        when(accountRepository.findById(accountId)).thenReturn(Optional.of(account));
+
+        TransactionImportResponse response = service.get(userId, toAccount.getId());
+
+        assertThat(response.bankName()).isEqualTo("NUBANK");
+        assertThat(response.targetName()).isEqualTo("Nubank");
+    }
+
+    @Test
+    void getOfAnotherUsersImportIs404() {
+        UUID id = UUID.randomUUID();
+        when(transactionImportRepository.findByIdAndUserId(id, userId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.get(userId, id))
+            .isInstanceOf(ResourceNotFoundException.class)
+            .hasMessage("Importação não encontrada");
     }
 }
