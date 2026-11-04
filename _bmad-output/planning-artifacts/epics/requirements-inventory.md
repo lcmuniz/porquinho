@@ -13,12 +13,12 @@
 
 **Subscription & Billing:**
 - **FR8:** Novos usuários recebem automaticamente trial gratuito de 30 dias
-- **FR9:** Usuários podem assinar plano mensal após trial
+- **FR9:** Usuários podem assinar o plano mensal (R$ 19,90, cartão via Stripe Checkout) durante ou após o trial; assinar durante o trial mantém os dias grátis e a 1ª cobrança ocorre no fim deles
 - **FR10:** Sistema envia lembretes 7 dias e 1 dia antes do fim do trial
 - **FR11:** Usuários podem cancelar assinatura a qualquer momento (self-service)
-- **FR12:** Usuários podem reativar assinatura cancelada
-- **FR13:** Sistema processa pagamentos recorrentes automaticamente
-- **FR14:** Sistema notifica usuários sobre falhas de pagamento e tenta cobrar novamente
+- **FR12:** Usuários podem reativar assinatura cancelada (desfaz o cancelamento, sem nova cobrança, enquanto ainda há acesso) ou expirada/suspensa (nova assinatura pelo Checkout)
+- **FR13:** Pagamentos recorrentes são cobrados automaticamente (Stripe Billing); o sistema registra cada pagamento e envia recibo
+- **FR14:** Sistema notifica usuários sobre falhas de pagamento e tenta cobrar novamente (2 novas tentativas, 3 e 10 dias após a falha); o usuário mantém o acesso e pode pagar a fatura pelo link; após a última falha a assinatura é suspensa
 
 **Onboarding & Setup:**
 - **FR15:** Sistema guia novos usuários através de onboarding explicando conceito de orçamento por envelope
@@ -381,108 +381,108 @@
 - UX-DR-1 a UX-DR-27: Foundation de design system, cores, tipografia, acessibilidade
 
 **Epic 1: User Authentication & Account Management**
-- FR87: Cadastro com Google OAuth
-- FR88: Cadastro com email e senha
-- FR89: Login com qualquer método configurado
-- FR90: Recuperação de senha por email
-- FR91: Visualizar sessões ativas e logout remoto
-- FR92: Exportar dados (LGPD compliance)
-- FR93: Solicitar exclusão permanente de conta e dados
+- FR1: Cadastro com Google OAuth
+- FR2: Cadastro com email e senha
+- FR3: Login com qualquer método configurado
+- FR4: Recuperação de senha por email
+- FR5: Visualizar sessões ativas e logout remoto
+- FR6: Exportar dados (LGPD compliance)
+- FR7: Solicitar exclusão permanente de conta e dados
 
 **Epic 2: Subscription & Billing System**
-- FR94: Trial gratuito automático de 30 dias
-- FR95: Assinatura de plano mensal
-- FR96: Lembretes antes do fim do trial
-- FR97: Cancelamento self-service de assinatura
-- FR98: Reativação de assinatura cancelada
-- FR99: Processamento automático de pagamentos recorrentes
-- FR100: Notificações de falhas de pagamento e retry
+- FR8: Trial gratuito automático de 30 dias
+- FR9: Assinatura de plano mensal
+- FR10: Lembretes antes do fim do trial
+- FR11: Cancelamento self-service de assinatura
+- FR12: Reativação de assinatura cancelada
+- FR13: Cobrança recorrente automática (Stripe Billing), com registro e recibo
+- FR14: Notificações de falhas de pagamento, novas tentativas e suspensão
 
 **Epic 3: Guided Onboarding Experience**
-- FR101: Onboarding com explicação de orçamento por envelope
-- FR102: Adicionar múltiplas contas bancárias durante setup
-- FR103: Adicionar múltiplos cartões durante setup
-- FR104: Sugestão de categorias iniciais
-- FR105: Personalização de categorias sugeridas
-- FR106: Primeira importação guiada de arquivo bancário
-- FR107: Explicação das 3 camadas do Dashboard GPS
-- FR108: Criação de meta inicial (Reserva de Emergência)
+- FR15: Onboarding com explicação de orçamento por envelope
+- FR16: Adicionar múltiplas contas bancárias durante setup
+- FR17: Adicionar múltiplos cartões durante setup
+- FR18: Sugestão de categorias iniciais
+- FR19: Personalização de categorias sugeridas
+- FR20: Primeira importação guiada de arquivo bancário
+- FR21: Explicação das 3 camadas do Dashboard GPS
+- FR22: Criação de meta inicial (Reserva de Emergência)
 
 **Epic 4: Financial Accounts & Cards Management**
-- FR109: Cadastrar múltiplas contas bancárias
-- FR110: Cadastrar múltiplos cartões de crédito
-- FR111: Editar informações de contas e cartões
-- FR112: Desativar ou remover contas e cartões
-- FR113: Registrar transferências entre contas próprias
-- FR114: Reconciliar saldo registrado com saldo real
-- FR115: Manter histórico de saldos ao longo do tempo
+- FR23: Cadastrar múltiplas contas bancárias
+- FR24: Cadastrar múltiplos cartões de crédito
+- FR25: Editar informações de contas e cartões
+- FR26: Desativar ou remover contas e cartões
+- FR27: Registrar transferências entre contas próprias
+- FR28: Reconciliar saldo registrado com saldo real
+- FR29: Manter histórico de saldos ao longo do tempo
 
 **Epic 5: Transaction Import & AI Classification**
-- FR116: Upload de arquivos OFX dos 5 principais bancos brasileiros
-- FR117: Upload de arquivos CSV dos 5 principais bancos brasileiros
-- FR118: Detecção automática de formato e banco
-- FR119: Parsing de transações com tratamento de erros
-- FR120: Detecção e sinalização de duplicatas
-- FR121: Identificação de transações Pix
-- FR122: Detecção de compras parceladas
-- FR123: Classificação automática de transações usando IA
-- FR124: Apresentação de transações classificadas para revisão
-- FR125: Revisão e ajuste de classificações pela IA
-- FR126: Aprendizado com correções do usuário
-- FR127: Edição manual de qualquer transação
-- FR128: Adição manual de transações (dinheiro)
+- FR30: Upload de arquivos OFX dos 5 principais bancos brasileiros
+- FR31: Upload de arquivos CSV dos 5 principais bancos brasileiros
+- FR32: Detecção automática de formato e banco
+- FR33: Parsing de transações com tratamento de erros
+- FR34: Detecção e sinalização de duplicatas
+- FR35: Identificação de transações Pix
+- FR36: Detecção de compras parceladas
+- FR37: Classificação automática de transações usando IA
+- FR38: Apresentação de transações classificadas para revisão
+- FR39: Revisão e ajuste de classificações pela IA
+- FR40: Aprendizado com correções do usuário
+- FR41: Edição manual de qualquer transação
+- FR42: Adição manual de transações (dinheiro)
 
 **Epic 6: Budget & Category System (Envelope Method)**
-- FR129: Criação de categorias personalizadas
-- FR130: Organização de categorias em hierarquia
-- FR131: Definição de alocação mensal por categoria
-- FR132: Visualização de saldo disponível em tempo real
-- FR133: Realocação de dinheiro entre categorias
-- FR134: Dedução automática ao classificar transações
-- FR135: Sinalização visual de categorias com saldo baixo/negativo
-- FR136: Visualização de histórico de alocações
-- FR137: Comparação entre planejado e real por categoria
+- FR43: Criação de categorias personalizadas
+- FR44: Organização de categorias em hierarquia
+- FR45: Definição de alocação mensal por categoria
+- FR46: Visualização de saldo disponível em tempo real
+- FR47: Realocação de dinheiro entre categorias
+- FR48: Dedução automática ao classificar transações
+- FR49: Sinalização visual de categorias com saldo baixo/negativo
+- FR50: Visualização de histórico de alocações
+- FR51: Comparação entre planejado e real por categoria
 
 **Epic 7: Dashboard GPS - Complete Financial Overview**
-- FR138: Apresentação de 5 métricas essenciais (Camada 1)
-- FR139: Saldo total disponível em todas as contas
-- FR140: Status visual de categorias (verde/amarelo/vermelho)
-- FR141: Progresso da meta principal (Reserva de Emergência)
-- FR142: Gastos do mês vs planejado
-- FR143: Projeção de fim de mês baseado em ritmo atual
-- FR144: Resposta às 3 perguntas GPS
-- FR145: Acesso a Camada 2 para visão tática
-- FR146: Gráficos de gastos por categoria
-- FR147: Comparação planejado vs real por categoria
-- FR148: Tendências temporais (3/6/12 meses)
-- FR149: Drill-down em categorias específicas
-- FR150: Acesso a Camada 3 para detalhes completos
-- FR151: Lista de todas as transações com filtros
-- FR152: Filtros por período, categoria, conta, texto
-- FR153: Ordenação por data, valor, categoria
-- FR154: Edição individual de transações na Camada 3
-- FR155: Exportação de dados em CSV
+- FR52: Apresentação de 5 métricas essenciais (Camada 1)
+- FR53: Saldo total disponível em todas as contas
+- FR54: Status visual de categorias (verde/amarelo/vermelho)
+- FR55: Progresso da meta principal (Reserva de Emergência)
+- FR56: Gastos do mês vs planejado
+- FR57: Projeção de fim de mês baseado em ritmo atual
+- FR58: Resposta às 3 perguntas GPS
+- FR59: Acesso a Camada 2 para visão tática
+- FR60: Gráficos de gastos por categoria
+- FR61: Comparação planejado vs real por categoria
+- FR62: Tendências temporais (3/6/12 meses)
+- FR63: Drill-down em categorias específicas
+- FR64: Acesso a Camada 3 para detalhes completos
+- FR65: Lista de todas as transações com filtros
+- FR66: Filtros por período, categoria, conta, texto
+- FR67: Ordenação por data, valor, categoria
+- FR68: Edição individual de transações na Camada 3
+- FR69: Exportação de dados em CSV
 - UX-DR-28 a UX-DR-38: Componentes customizados do Dashboard GPS
 
 **Epic 8: Financial Goals Management**
-- FR156: Criação de múltiplas metas financeiras
-- FR157: Definição de nome, valor alvo e prazo por meta
-- FR158: Alocação de recursos mensais específicos por meta
-- FR159: Visualização de progresso com barra e curva temporal
-- FR160: Projeção de data de cumprimento
-- FR161: Ajuste de alocação entre metas
-- FR162: Sugestão de metas pré-configuradas
-- FR163: Marcação de metas como concluídas
-- FR164: Histórico de progresso de metas
+- FR70: Criação de múltiplas metas financeiras
+- FR71: Definição de nome, valor alvo e prazo por meta
+- FR72: Alocação de recursos mensais específicos por meta
+- FR73: Visualização de progresso com barra e curva temporal
+- FR74: Projeção de data de cumprimento
+- FR75: Ajuste de alocação entre metas
+- FR76: Sugestão de metas pré-configuradas
+- FR77: Marcação de metas como concluídas
+- FR78: Histórico de progresso de metas
 
 **Epic 9: Reports & Data Export**
-- FR165: Exportação de relatório de transações em CSV
-- FR166: Exportação de relatório de categorias e orçamento em CSV
-- FR167: Exportação completa de dados da conta (LGPD)
+- FR79: Exportação de relatório de transações em CSV
+- FR80: Exportação de relatório de categorias e orçamento em CSV
+- FR81: Exportação completa de dados da conta (LGPD)
 
 **Epic 10: Admin Operations & System Monitoring**
-- FR168: Visualização de métricas de health do sistema
-- FR169: Visualização de taxa de erro de importação por banco
-- FR170: Visualização de precisão da IA por banco
-- FR171: Visualização de número de usuários ativos
-- FR172: Alertas automáticos para métricas críticas
+- FR82: Visualização de métricas de health do sistema
+- FR83: Visualização de taxa de erro de importação por banco
+- FR84: Visualização de precisão da IA por banco
+- FR85: Visualização de número de usuários ativos
+- FR86: Alertas automáticos para métricas críticas

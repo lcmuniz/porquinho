@@ -1,44 +1,47 @@
 # Project Context Analysis
 
-## Core Functionality (89 Functional Requirements)
+## Core Functionality (86 Functional Requirements, numeração do PRD atual)
 
-**Gestão de Conta & Autenticação (FR1-10):**
+**Gestão de Conta & Autenticação (FR1-7):**
 - OAuth Google integration
-- 2FA opcional
 - LGPD compliance (direitos de acesso, exclusão, portabilidade)
 
-**Assinatura SaaS (FR11-17):**
+**Assinatura SaaS (FR8-14):**
 - Trial gratuito 30 dias
-- Billing recorrente mensal
-- Cancelamento self-service
+- Plano único R$ 19,90/mês, só cartão (Stripe Checkout)
+- Cobrança recorrente e novas tentativas pelo Stripe Billing; o backend reage a webhooks
+- Cancelamento e reativação self-service
 
-**Onboarding Guiado (FR18-25):**
+**Onboarding Guiado (FR15-22):**
 - Setup inicial: contas bancárias, cartões, categorias
 - Primeira importação de transações
 
-**Importação & Classificação IA (FR33-45):**
+**Contas & Cartões (FR23-29):**
+- Múltiplas contas e cartões, transferências, reconciliação, histórico de saldo
+
+**Importação & Classificação IA (FR30-42):**
 - Parsing OFX/CSV (5 principais bancos brasileiros)
 - Classificação automática com 85%+ precisão
 - Review e ajustes manuais
 
-**Orçamento por Envelope (FR46-54):**
+**Orçamento por Envelope (FR43-51):**
 - Sistema de categorias e alocação
 - Adaptado ao Brasil (parcelamento de cartão)
 
-**Dashboard GPS - 3 Camadas (FR55-72):**
+**Dashboard GPS - 3 Camadas (FR52-69):**
 - Layer 1: "Onde estou?" (5 métricas principais, semáforo de saúde)
 - Layer 2: "Para onde vou?" (metas, tendências)
 - Layer 3: "Preciso ajustar?" (análise detalhada, recomendações)
 - Progressive disclosure via scroll vertical
 
-**Metas Financeiras (FR73-81):**
+**Metas Financeiras (FR70-78):**
 - Criação, tracking, visualização de progresso
 
-**Reports & Export (FR82-84):**
+**Reports & Export (FR79-81):**
 - Relatórios customizáveis
 - Export dados (LGPD compliance)
 
-**Admin/Observability (FR85-89):**
+**Admin/Observability (FR82-86):**
 - Health checks, monitoring, métricas operacionais
 
 ## Critical Non-Functional Requirements
@@ -154,9 +157,9 @@
    - Peculiaridades brasileiras (Pix, parcelamento)
 
 5. **Subscription & Billing**
-   - Stripe integration
-   - Trial management
-   - Webhook handling
+   - Stripe Checkout hospedado (sem dados de cartão no porquinho) e Stripe Billing para cobrança, novas tentativas e cancelamento final
+   - Trial management e bloqueio 402 por `SubscriptionAccessFilter`
+   - Webhooks com assinatura verificada e processamento idempotente; erro → Stripe reentrega (NFR59)
 
 6. **Observability**
    - Health checks (NFR85-89)

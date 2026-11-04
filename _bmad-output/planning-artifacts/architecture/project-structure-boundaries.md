@@ -10,17 +10,20 @@ O projeto **porquinho** é organizado como uma arquitetura separada com dois rep
 
 ## Mapeamento Resumido FR → Estrutura
 
-| FR Category | Backend | Frontend | Database |
-|-------------|---------|----------|----------|
-| FR1-10 (Auth) | `auth/`, `security/` | `components/auth/`, `stores/auth.ts` | `users` table |
-| FR11-17 (Subscription) | `subscription/` | `components/subscription/` | `subscriptions` table |
-| FR18-25 (Onboarding) | `onboarding/` | `components/onboarding/` | `onboarding_progress` table |
-| FR26-45 (Transactions) | `transaction/`, `external/` | `components/transactions/` | `transactions` table |
-| FR46-54 (Budget) | `budget/` | `components/budget/` | `budget_categories`, `budget_allocations` tables |
-| FR55-72 (Dashboard GPS) | `dashboard/` | `components/dashboard/` | Aggregation queries + Redis cache |
-| FR73-81 (Goals) | `goal/` | `components/goals/` | `goals` table |
-| FR82-84 (Reports) | `report/` | `views/ReportsView.vue` | Query-based |
-| FR85-89 (Admin) | `AdminController.java`, Actuator | N/A | System metrics |
+> **Como construído (retro do Epic 2, item 5; atualizado em 2026-11-04):** o backend não usa pacotes por feature (`auth/`, `subscription/`...). Ele usa pacotes por camada em `com.porquinho`: `config`, `controller`, `dto`, `entity`, `exception`, `repository`, `service` e `validation`. O frontend separa `views/` (uma por tela), `components/<feature>/`, `services/` (cliente HTTP por recurso) e `stores/`. Os números de FR seguem `prd/functional-requirements.md` (FR1–FR86). Linhas marcadas como *planejado* ainda não foram construídas.
+
+| FR (PRD) | Backend (`com.porquinho`) | Frontend | Database |
+|----------|---------------------------|----------|----------|
+| FR1-7 (Conta, autenticação, LGPD) | `AuthController`, `AuthService`, `SessionService`, `DataExportController`/`DataExportService`, `AccountDeletionController`/`AccountDeletionService` | `views/LoginView.vue`, `RegisterView.vue`, `SessionsView.vue`, `DataExportView.vue`, `AccountDeletionView.vue`, `stores/auth.ts` | `users`, `user_sessions`, `audit_logs`, `data_exports`, `account_deletions` |
+| FR8-14 (Assinatura e cobrança) | `SubscriptionController`, `StripeWebhookController`, `SubscriptionService`, `StripeBillingService`, `TrialReminderService`, filtro `SubscriptionAccessFilter` (402) | `views/SubscriptionView.vue`, `components/subscription/TrialBadge.vue`, `services/subscriptionService.ts` | `subscriptions`, `billing_transactions` |
+| FR15-22 (Onboarding) | `OnboardingController`, `OnboardingService`, `CategoryController`, `GoalController` | `views/OnboardingView.vue`, `components/onboarding/` | `onboarding_progress`, `categories`, `goals` |
+| FR23-29 (Contas e cartões) | `AccountController`, `CreditCardController`, `TransferController`, `ReconciliationController`, `BalanceHistoryController`, `BalanceHistoryRecorder` | `views/AccountsView.vue`, `CardsView.vue`, `AccountHistoryView.vue`, `components/accounts/`, `components/cards/` | `accounts`, `credit_cards`, `transfers`, `account_balance_history`, `reconciliation_history` |
+| FR30-42 (Importação e classificação IA) — *planejado* | controllers/services de importação e classificação | `views/` + `components/transactions/` | `transactions` |
+| FR43-51 (Orçamento por envelope) — *planejado* | idem | `components/budget/` | `categories` (existe) + alocações |
+| FR52-69 (Dashboard GPS) — *planejado* | idem + cache Redis | `views/DashboardView.vue` (existe), `components/dashboard/` | Aggregation queries |
+| FR70-78 (Metas) — *parcial* (meta inicial no onboarding) | `GoalController`, `GoalService` | `services/goalService.ts` | `goals` |
+| FR79-81 (Relatórios e export) — *planejado* (export LGPD já existe, FR6) | idem | `views/ReportsView.vue` | Query-based |
+| FR82-86 (Admin, pós-MVP) — *planejado* | `AdminController`, Actuator | N/A | System metrics |
 
 ## Architectural Boundaries
 

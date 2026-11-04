@@ -13,12 +13,12 @@
 ## Subscription & Billing
 
 - **FR8:** Novos usuários recebem automaticamente trial gratuito de 30 dias
-- **FR9:** Usuários podem assinar plano mensal após trial
+- **FR9:** Usuários podem assinar o plano mensal (R$ 19,90, cartão via Stripe Checkout) durante ou após o trial; assinar durante o trial mantém os dias grátis e a 1ª cobrança ocorre no fim deles
 - **FR10:** Sistema envia lembretes 7 dias e 1 dia antes do fim do trial
 - **FR11:** Usuários podem cancelar assinatura a qualquer momento (self-service)
-- **FR12:** Usuários podem reativar assinatura cancelada
-- **FR13:** Sistema processa pagamentos recorrentes automaticamente
-- **FR14:** Sistema notifica usuários sobre falhas de pagamento e tenta cobrar novamente
+- **FR12:** Usuários podem reativar assinatura cancelada (desfaz o cancelamento, sem nova cobrança, enquanto ainda há acesso) ou expirada/suspensa (nova assinatura pelo Checkout)
+- **FR13:** Pagamentos recorrentes são cobrados automaticamente (Stripe Billing); o sistema registra cada pagamento e envia recibo
+- **FR14:** Sistema notifica usuários sobre falhas de pagamento e tenta cobrar novamente (2 novas tentativas, 3 e 10 dias após a falha); o usuário mantém o acesso e pode pagar a fatura pelo link; após a última falha a assinatura é suspensa
 
 ## Onboarding & Setup
 

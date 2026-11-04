@@ -201,7 +201,7 @@ action_items:
     action: "Reconciliar épico 2 e PRD com o construído (Stripe Billing, R$ 19,90,
       5 status, NFR59, só cartão)"
     owner: "Luiz / John (PM)"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-11-01.md"
   - id: "epic-2-retro-item-6-checklist-de-deploy-com-configuração-do"
     epic: 2

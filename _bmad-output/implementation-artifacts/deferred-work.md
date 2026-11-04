@@ -90,6 +90,10 @@
   summary: Teste de integração com transação Spring real para os fluxos com `afterCommit` (exclusão de conta, cancel, reactivate, activate): chamar o Stripe só depois do commit externo e nunca em rollback.
   evidence: Os testes simulam a sincronização à mão (`runAfterCommit`) ou usam mocks; uma mudança de propagação (`REQUIRES_NEW`) passaria despercebida. Achado do Verification Gap (medium, unverified em produção).
 
+- source_spec: `_bmad-output/planning-artifacts/prd/saas-web-app-specific-requirements.md` (Experiência de conversão)
+  summary: Implementar a retenção de dados de quem não converte: o PRD diz que os dados ficam guardados por mais 30 dias depois que o trial (ou a assinatura) acaba sem pagamento. Falta definir o que acontece no fim desse prazo (purge como na Story 1.7? aviso por e-mail antes?) e criar o job.
+  evidence: Reconciliação do Epic 2 (2026-11-04, decisão do Luiz: fica como trabalho a fazer). Hoje nada é apagado quando o trial vence: os dados ficam sem prazo, o usuário só toma 402 e ainda pode exportar ou excluir a conta. Considerar junto com a retenção de `billing_transactions` (item acima).
+
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-1-display-welcome-envelope-budget-concept-tutorial.md`
   summary: Teste concorrente (duas threads, PostgreSQL real) provando que o lock de `findByUserIdForUpdate` em `OnboardingService.applyTutorial` grava um único audit `onboarding_tutorial_completed`.
   evidence: Revisão da 3.1 (Verification Gap); hoje a idempotência só é testada em sequência e não há precedente de teste concorrente no repositório.

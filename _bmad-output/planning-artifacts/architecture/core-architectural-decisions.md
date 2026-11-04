@@ -106,11 +106,15 @@ spring:
 **Migration File Convention:**
 ```
 src/main/resources/db/migration/
-├── V1__create_users_table.sql
-├── V2__create_transactions_table.sql
-├── V3__create_categories_table.sql
-└── V4__add_budget_tables.sql
+├── V1__init.sql
+├── V2__create_users_table.sql
+├── ...
+├── V9__create_subscriptions_table.sql
+├── V13__create_billing_transactions_table.sql
+└── V24__add_version_to_accounts.sql   (maior versão em 2026-11-04)
 ```
+
+Uma migration por mudança de schema, `V{n}__{descricao_snake_case}.sql`. Migration já aplicada (inclusive no Supabase de dev, onde o devtools aplica no primeiro teste) nunca é editada: a mudança vai na próxima versão livre.
 
 ---
 

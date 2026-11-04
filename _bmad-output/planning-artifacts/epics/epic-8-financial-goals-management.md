@@ -139,7 +139,7 @@ So that I can quickly set up goals without manual entry.
 
 **Given** I am on the Create Goal page
 **When** I click "Use Template" or "Suggested Goals"
-**Then** Goal template selector is displayed with options (FR79):
+**Then** Goal template selector is displayed with options (FR76):
   - **Reserva de Emergência:** Target: R$ 25.000, Duration: 12 months, Description: "6 meses de despesas"
   - **Férias:** Target: R$ 8.000, Duration: 6 months, Description: "Viagem de férias"
   - **Compra Grande:** Target: R$ 15.000, Duration: 12 months, Description: "Eletrodoméstico, móvel, eletrônico"
