@@ -58,7 +58,7 @@ class TransferServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new TransferService(transferRepository, accountRepository, balanceHistoryRepository, auditLogService,
+        service = new TransferService(transferRepository, accountRepository, new BalanceHistoryRecorder(balanceHistoryRepository, java.time.Clock.systemUTC()), auditLogService,
             transactionManager);
         userId = UUID.randomUUID();
         nubank = account("Nubank", "1234.56");

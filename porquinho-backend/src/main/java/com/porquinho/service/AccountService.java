@@ -9,7 +9,6 @@ import com.porquinho.entity.OnboardingProgress;
 import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.exception.StaleDataMessages;
-import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.OnboardingProgressRepository;
 import org.springframework.stereotype.Service;
@@ -27,7 +26,7 @@ import java.util.UUID;
  * and restore; transfers come later in Epic 4).
  * The user id always comes from the JWT; another user's account behaves as if it did not exist.
  * Every change of the current balance made here is recorded in account_balance_history, in the same
- * transaction: "initial" on creation, "edit" when an edit changes the balance. Removing or restoring never touches
+ * transaction and through BalanceHistoryRecorder: "initial" on creation, "edit" when an edit changes the balance. Removing or restoring never touches
  * that history.
  */
 @Service
@@ -42,14 +41,14 @@ public class AccountService {
     public static final String AUDIT_RESTORED = "account_restored";
 
     private final AccountRepository accountRepository;
-    private final AccountBalanceHistoryRepository balanceHistoryRepository;
+    private final BalanceHistoryRecorder balanceHistoryRecorder;
     private final OnboardingProgressRepository onboardingProgressRepository;
     private final AuditLogService auditLogService;
 
-    public AccountService(AccountRepository accountRepository, AccountBalanceHistoryRepository balanceHistoryRepository,
+    public AccountService(AccountRepository accountRepository, BalanceHistoryRecorder balanceHistoryRecorder,
                           OnboardingProgressRepository onboardingProgressRepository, AuditLogService auditLogService) {
         this.accountRepository = accountRepository;
-        this.balanceHistoryRepository = balanceHistoryRepository;
+        this.balanceHistoryRecorder = balanceHistoryRecorder;
         this.onboardingProgressRepository = onboardingProgressRepository;
         this.auditLogService = auditLogService;
     }
@@ -65,7 +64,7 @@ public class AccountService {
     public Account create(UUID userId, String accountName, String bankName, AccountType type, BigDecimal initialBalance) {
         BigDecimal balance = initialBalance.setScale(2, RoundingMode.UNNECESSARY);
         Account account = accountRepository.save(new Account(userId, accountName, bankName, type, balance));
-        recordBalance(account, AccountBalanceHistory.EVENT_INITIAL);
+        balanceHistoryRecorder.record(account, AccountBalanceHistory.EVENT_INITIAL);
         return account;
     }
 
@@ -91,14 +90,9 @@ public class AccountService {
         account.setCurrentBalance(balance);
         Account saved = accountRepository.save(account);
         if (balanceChanged) {
-            recordBalance(saved, AccountBalanceHistory.EVENT_EDIT);
+            balanceHistoryRecorder.record(saved, AccountBalanceHistory.EVENT_EDIT);
         }
         return saved;
-    }
-
-    private void recordBalance(Account account, String event) {
-        balanceHistoryRepository.save(
-            new AccountBalanceHistory(account.getId(), account.getUserId(), account.getCurrentBalance(), event));
     }
 
     /** "Minha Conta Principal": checking, balance 0 (onboarding step 2 skipped with no account). */

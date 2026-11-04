@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-13
-last_updated: 11-04-2026 12:40
+last_updated: 11-04-2026 16:30
 project: porquinho
 project_key: NOKEY
 tracking_system: file-system
@@ -67,7 +67,7 @@ development_status:
   epic-1-retrospective: optional
 
   # Epic 2: Subscription & Billing System
-  epic-2: in-progress
+  epic-2: done
   2-1-automatically-activate-30-day-free-trial: done
   2-2-subscribe-to-monthly-plan-after-trial: done
   2-3-send-trial-expiration-reminders: done
@@ -288,7 +288,7 @@ action_items:
     action: "Gravador único de account_balance_history (MAX_BALANCE, fonte de data)
       antes do Epic 5 (X5)"
     owner: "Claude"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-11-04.md"
   - id: "epic-4-retro-item-19-dividir-accountsview-vue-em-composables"
     epic: 4

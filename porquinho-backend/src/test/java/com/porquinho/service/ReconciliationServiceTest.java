@@ -52,7 +52,7 @@ class ReconciliationServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ReconciliationService(reconciliationRepository, accountRepository, balanceHistoryRepository,
+        service = new ReconciliationService(reconciliationRepository, accountRepository, new BalanceHistoryRecorder(balanceHistoryRepository, java.time.Clock.systemUTC()),
             auditLogService);
         userId = UUID.randomUUID();
         nubank = new Account(userId, "Nubank", null, Account.AccountType.CHECKING, new BigDecimal("1000.00"));
