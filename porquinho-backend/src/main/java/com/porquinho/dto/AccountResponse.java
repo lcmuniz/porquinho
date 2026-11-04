@@ -8,7 +8,8 @@ import java.util.UUID;
 
 /**
  * Bank account as returned by /api/v1/accounts (Story 3.2). Money is a JSON number. Story 4.6:
- * lastReconciliationDate is null until the first reconciliation.
+ * lastReconciliationDate is null until the first reconciliation. Retro do Epic 4: version is sent back on the edit
+ * (409 when another screen changed the account in between).
  */
 public record AccountResponse(
     UUID id,
@@ -18,7 +19,8 @@ public record AccountResponse(
     BigDecimal initialBalance,
     BigDecimal currentBalance,
     OffsetDateTime createdAt,
-    OffsetDateTime lastReconciliationDate
+    OffsetDateTime lastReconciliationDate,
+    Long version
 ) {
     public static AccountResponse of(Account account) {
         return new AccountResponse(
@@ -29,7 +31,8 @@ public record AccountResponse(
             account.getInitialBalance(),
             account.getCurrentBalance(),
             account.getCreatedAt(),
-            account.getLastReconciliationDate()
+            account.getLastReconciliationDate(),
+            account.getVersion()
         );
     }
 }

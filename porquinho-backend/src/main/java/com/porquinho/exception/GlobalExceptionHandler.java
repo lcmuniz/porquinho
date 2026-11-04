@@ -1,8 +1,12 @@
 package com.porquinho.exception;
 
+import com.porquinho.entity.Account;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -19,6 +23,8 @@ import java.util.Map;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
     /**
      * Handle ConflictException and return 409 Conflict status.
      *
@@ -30,6 +36,23 @@ public class GlobalExceptionHandler {
         ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(
             HttpStatus.CONFLICT,
             ex.getMessage()
+        );
+        problemDetail.setTitle("Conflict");
+        problemDetail.setType(URI.create("https://api.porquinho.com/errors/conflict"));
+        return problemDetail;
+    }
+
+    /**
+     * Handle a version collision detected at flush and return 409 (retro do Epic 4): the stale-edit message for an
+     * account, a generic one for any other entity.
+     */
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ProblemDetail handleObjectOptimisticLockingFailureException(ObjectOptimisticLockingFailureException ex) {
+        log.warn("Optimistic lock collision on {} {}", ex.getPersistentClassName(), ex.getIdentifier());
+        boolean account = Account.class.getName().equals(ex.getPersistentClassName());
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(
+            HttpStatus.CONFLICT,
+            account ? StaleDataMessages.ACCOUNT : StaleDataMessages.GENERIC
         );
         problemDetail.setTitle("Conflict");
         problemDetail.setType(URI.create("https://api.porquinho.com/errors/conflict"));

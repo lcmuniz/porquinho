@@ -11,6 +11,8 @@ export interface Account {
   createdAt: string
   /** Story 4.6: última reconciliação com o banco (ISO com fuso); null se nunca reconciliada. */
   lastReconciliationDate: string | null
+  /** Retro do Epic 4: versão da conta; a edição a devolve e recebe 409 se outra tela mudou a conta. */
+  version: number
 }
 
 export interface CreateAccountInput {
@@ -26,6 +28,8 @@ export interface UpdateAccountInput {
   bankName: string | null
   accountType: AccountType
   currentBalance: number
+  /** Versão lida ao abrir o formulário. */
+  version: number
 }
 
 /** Story 4.6: reconciliação do saldo com o banco. A diferença é calculada no servidor. */

@@ -235,8 +235,9 @@ class AccountServiceTest {
     private Account existing(UUID accountId, String balance) {
         Account account = new Account(userId, "Nubank", "Nubank", Account.AccountType.CHECKING, new BigDecimal(balance));
         account.setId(accountId);
+        account.setVersion(3L);
         when(accountRepository.findActiveByIdForUpdate(accountId, userId)).thenReturn(Optional.of(account));
-        when(accountRepository.save(any(Account.class))).thenAnswer(inv -> inv.getArgument(0));
+        lenient().when(accountRepository.save(any(Account.class))).thenAnswer(inv -> inv.getArgument(0));
         return account;
     }
 
@@ -275,7 +276,7 @@ class AccountServiceTest {
         Account account = existing(accountId, "100.00");
 
         Account updated = service.update(userId, accountId,
-            new UpdateAccountRequest(" Nubank PJ ", "  ", "SAVINGS", new BigDecimal("250")));
+            new UpdateAccountRequest(" Nubank PJ ", "  ", "SAVINGS", new BigDecimal("250"), 3L));
 
         assertSame(account, updated);
         assertEquals("Nubank PJ", updated.getAccountName());
@@ -291,7 +292,7 @@ class AccountServiceTest {
         UUID accountId = UUID.randomUUID();
         existing(accountId, "100.00");
 
-        service.update(userId, accountId, new UpdateAccountRequest("Nubank", "Nubank", "CHECKING", new BigDecimal("250.00")));
+        service.update(userId, accountId, new UpdateAccountRequest("Nubank", "Nubank", "CHECKING", new BigDecimal("250.00"), 3L));
 
         AccountBalanceHistory snapshot = savedSnapshot();
         assertEquals(accountId, snapshot.getAccountId());
@@ -306,7 +307,7 @@ class AccountServiceTest {
         existing(accountId, "100.00");
 
         // 100 and 100.00 are the same balance
-        service.update(userId, accountId, new UpdateAccountRequest("Nubank PJ", null, "CHECKING", new BigDecimal("100")));
+        service.update(userId, accountId, new UpdateAccountRequest("Nubank PJ", null, "CHECKING", new BigDecimal("100"), 3L));
 
         verify(balanceHistoryRepository, never()).save(any());
     }
@@ -317,7 +318,24 @@ class AccountServiceTest {
         when(accountRepository.findActiveByIdForUpdate(accountId, userId)).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class, () -> service.update(userId, accountId,
-            new UpdateAccountRequest("Nubank", null, "CHECKING", BigDecimal.ONE)));
+            new UpdateAccountRequest("Nubank", null, "CHECKING", BigDecimal.ONE, 3L)));
+        verify(accountRepository, never()).save(any());
+        verify(balanceHistoryRepository, never()).save(any());
+    }
+
+    @Test
+    void updateWithAStaleVersionIsAConflictAndWritesNothing() {
+        // A transfer or reconciliation in another tab moved the account from version 3 to 4
+        UUID accountId = UUID.randomUUID();
+        Account account = existing(accountId, "1000.00");
+        account.setVersion(4L);
+
+        ConflictException ex = assertThrows(ConflictException.class, () -> service.update(userId, accountId,
+            new UpdateAccountRequest("Nubank PJ", null, "CHECKING", new BigDecimal("1000.00"), 3L)));
+
+        assertEquals("Esta conta foi alterada em outra tela. Abra a edição de novo.", ex.getMessage());
+        assertEquals("Nubank", account.getAccountName());
+        assertEquals(new BigDecimal("1000.00"), account.getCurrentBalance());
         verify(accountRepository, never()).save(any());
         verify(balanceHistoryRepository, never()).save(any());
     }

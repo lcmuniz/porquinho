@@ -21,6 +21,7 @@ function created(overrides: Partial<Account> = {}): Account {
     currentBalance: 500,
     createdAt: '2026-11-03T12:00:00Z',
     lastReconciliationDate: null,
+    version: 0,
     ...overrides,
   }
 }
@@ -237,6 +238,7 @@ describe('AccountForm — edição (Story 4.3)', () => {
     currentBalance: 1234.5,
     createdAt: '2026-11-01T12:00:00Z',
     lastReconciliationDate: null,
+    version: 3,
   }
 
   beforeEach(() => {
@@ -265,7 +267,7 @@ describe('AccountForm — edição (Story 4.3)', () => {
     expect(button.find('svg').exists()).toBe(false)
   })
 
-  it('salvar chama PUT com o saldo atual e emite updated, sem limpar o formulário', async () => {
+  it('salvar chama PUT com o saldo atual e a versão e emite updated, sem limpar o formulário', async () => {
     const wrapper = mountForm({ account: editing })
     await fill(wrapper, ' Nubank PJ ', '250,00', 'Nubank')
     await submit(wrapper)
@@ -276,6 +278,7 @@ describe('AccountForm — edição (Story 4.3)', () => {
       bankName: 'Nubank',
       accountType: 'SAVINGS',
       currentBalance: 250,
+      version: 3,
     })
     const updated = wrapper.emitted('updated')?.[0]?.[0] as Account
     expect(updated.accountName).toBe('Nubank PJ')
@@ -307,6 +310,23 @@ describe('AccountForm — edição (Story 4.3)', () => {
 
     expect(wrapper.emitted('notFound')).toHaveLength(1)
     expect(wrapper.emitted('failed')).toBeUndefined()
+  })
+
+  it('409 emite conflict com o detail da API (e não failed)', async () => {
+    mockUpdate.mockRejectedValue({
+      response: {
+        status: 409,
+        data: { detail: 'Esta conta foi alterada em outra tela. Abra a edição de novo.' },
+      },
+    })
+    const wrapper = mountForm({ account: editing })
+    await submit(wrapper)
+
+    expect(wrapper.emitted('conflict')?.[0]).toEqual([
+      'Esta conta foi alterada em outra tela. Abra a edição de novo.',
+    ])
+    expect(wrapper.emitted('failed')).toBeUndefined()
+    expect(wrapper.emitted('notFound')).toBeUndefined()
   })
 
   it('outra falha vai para failed com o detail da API', async () => {

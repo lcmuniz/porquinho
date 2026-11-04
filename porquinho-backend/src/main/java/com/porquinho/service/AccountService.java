@@ -8,6 +8,7 @@ import com.porquinho.entity.Account.AccountType;
 import com.porquinho.entity.OnboardingProgress;
 import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
+import com.porquinho.exception.StaleDataMessages;
 import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.OnboardingProgressRepository;
@@ -18,6 +19,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -70,12 +72,17 @@ public class AccountService {
     /**
      * Edits name, bank, type and current balance (Story 4.3); the initial balance never changes. 404 when the
      * account does not exist, belongs to someone else or was removed. A changed balance (compared by value,
-     * so 100 and 100.00 are the same) writes one "edit" snapshot; an unchanged balance writes none.
+     * so 100 and 100.00 are the same) writes one "edit" snapshot; an unchanged balance writes none. 409 when the
+     * version sent is not the current one (a transfer, reconciliation or edit happened after the form opened):
+     * checked after the row lock, so nothing is written.
      */
     @Transactional
     public Account update(UUID userId, UUID accountId, UpdateAccountRequest request) {
         Account account = accountRepository.findActiveByIdForUpdate(accountId, userId)
             .orElseThrow(() -> new ResourceNotFoundException(NOT_FOUND_MESSAGE));
+        if (!Objects.equals(account.getVersion(), request.version())) {
+            throw new ConflictException(StaleDataMessages.ACCOUNT);
+        }
         BigDecimal balance = request.currentBalance().setScale(2, RoundingMode.UNNECESSARY);
         boolean balanceChanged = account.getCurrentBalance().compareTo(balance) != 0;
         account.setAccountName(request.accountName());

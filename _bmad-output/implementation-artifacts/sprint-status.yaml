@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-13
-last_updated: 11-02-2026 21:51
+last_updated: 11-04-2026 12:40
 project: porquinho
 project_key: NOKEY
 tracking_system: file-system
@@ -98,7 +98,7 @@ development_status:
   4-5-record-internal-transfers-between-own-accounts: done
   4-6-reconcile-account-balance-with-bank: done
   4-7-view-account-balance-history-over-time: done
-  epic-4-retrospective: optional
+  epic-4-retrospective: done
 
   # Epic 5: Transaction Import & AI Classification
   epic-5: backlog
@@ -247,7 +247,7 @@ action_items:
     action: "Lint (npm run lint sem --fix) na Verification das specs e conferir CI
       após push"
     owner: "Claude"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-11-02.md"
   - id: "epic-3-retro-item-13-limpeza-de-nome-única-nfc-p-cf-em-contas"
     epic: 3
@@ -269,3 +269,36 @@ action_items:
     owner: "Claude"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-11-02.md"
+  - id: "epic-4-retro-item-16-concorrência-na-edição-de-conta-version"
+    epic: 4
+    action: "Concorrência na edição de conta: @Version ou expectedBalance com 409;
+      editar só o nome não regrava o saldo (X1)"
+    owner: "Claude"
+    status: done
+    ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-11-04.md"
+  - id: "epic-4-retro-item-17-accountsview-guarda-de-sequência-em-load"
+    epic: 4
+    action: "AccountsView: guarda de sequência em load/refreshAccounts/refreshAfterNotFound
+      e 404 único (X2, X3)"
+    owner: "Claude"
+    status: done
+    ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-11-04.md"
+  - id: "epic-4-retro-item-18-gravador-único-de-account_balance_histor"
+    epic: 4
+    action: "Gravador único de account_balance_history (MAX_BALANCE, fonte de data)
+      antes do Epic 5 (X5)"
+    owner: "Claude"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-11-04.md"
+  - id: "epic-4-retro-item-19-dividir-accountsview-vue-em-composables"
+    epic: 4
+    action: "Dividir AccountsView.vue em composables por fluxo (G1, G2)"
+    owner: "Claude"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-11-04.md"
+  - id: "epic-4-retro-item-20-reconciliar-texto-do-epic-4-com-o-constr"
+    epic: 4
+    action: "Reconciliar texto do Epic 4 com o construído (S2-S5, X4, X6)"
+    owner: "Luiz"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-11-04.md"

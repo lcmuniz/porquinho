@@ -153,6 +153,8 @@ import type { Account, AccountType } from '@/types/account'
  * Story 4.3: com a prop `account`, o formulário edita essa conta — começa preenchido com os
  * valores atuais (saldo no formato brasileiro), chama `PUT /accounts/{id}` com o saldo atual e
  * emite `updated`. Um 404 (conta removida ou de outra pessoa) vai para o pai em `not-found`.
+ * Retro do Epic 4: o PUT envia a `version` da conta; um 409 (a conta mudou em outra tela) vai
+ * para o pai em `conflict`, com o `detail` da API.
  */
 const props = withDefaults(
   defineProps<{
@@ -180,6 +182,8 @@ const emit = defineEmits<{
   updated: [account: Account]
   /** Story 4.3: a conta editada não existe mais (404). */
   notFound: []
+  /** Retro do Epic 4: a conta mudou em outra tela depois de o formulário abrir (409). */
+  conflict: [detail: string | undefined]
   failed: [detail: string | undefined]
   /** Toda tentativa de envio, antes da validação (o pai limpa o erro anterior). */
   attempt: []
@@ -279,7 +283,11 @@ async function submit() {
   }
   try {
     if (editing) {
-      const updated = await updateAccount(editing.id, { ...fields, currentBalance: balance })
+      const updated = await updateAccount(editing.id, {
+        ...fields,
+        currentBalance: balance,
+        version: editing.version,
+      })
       emit('updated', updated)
     } else {
       const created = await createAccount({ ...fields, initialBalance: balance })
@@ -295,6 +303,8 @@ async function submit() {
     })
     if (editing && response?.status === 404) {
       emit('notFound')
+    } else if (editing && response?.status === 409) {
+      emit('conflict', response.data?.detail)
     } else if (response?.status === 400 && known.length > 0) {
       Object.assign(errors, Object.fromEntries(known))
       // Há erros de campos que o formulário não mostra: a mensagem geral não pode se perder

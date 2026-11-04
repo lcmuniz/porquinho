@@ -5,6 +5,7 @@ import com.porquinho.dto.CreateAccountRequest;
 import com.porquinho.entity.Account;
 import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
+import com.porquinho.exception.StaleDataMessages;
 import com.porquinho.dto.UpdateAccountRequest;
 import com.porquinho.service.AccountService;
 import org.junit.jupiter.api.BeforeEach;
@@ -71,6 +72,7 @@ class AccountControllerTest {
         Account a = new Account(userId, name, "Nubank", Account.AccountType.CHECKING, new BigDecimal(balance));
         a.setId(UUID.randomUUID());
         a.setCreatedAt(OffsetDateTime.parse("2026-11-02T12:00:00Z"));
+        a.setVersion(0L);
         return a;
     }
 
@@ -90,7 +92,8 @@ class AccountControllerTest {
             .andExpect(jsonPath("$.accountName").value("Nubank"))
             .andExpect(jsonPath("$.accountType").value("CHECKING"))
             .andExpect(jsonPath("$.initialBalance").value(1234.56))
-            .andExpect(jsonPath("$.currentBalance").value(1234.56));
+            .andExpect(jsonPath("$.currentBalance").value(1234.56))
+            .andExpect(jsonPath("$.version").value(0));
 
         ArgumentCaptor<CreateAccountRequest> captor = ArgumentCaptor.forClass(CreateAccountRequest.class);
         verify(accountService).create(eq(userId), captor.capture());
@@ -205,7 +208,8 @@ class AccountControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.length()").value(2))
             .andExpect(jsonPath("$[0].accountName").value("Nubank"))
-            .andExpect(jsonPath("$[1].currentBalance").value(-5.5));
+            .andExpect(jsonPath("$[1].currentBalance").value(-5.5))
+            .andExpect(jsonPath("$[0].version").value(0));
     }
 
     @Test
@@ -298,8 +302,12 @@ class AccountControllerTest {
     // Story 4.3: PUT /api/v1/accounts/{id}
 
     private String updateBody(String name, String bank, String type, String balance) {
+        return updateBody(name, bank, type, balance, "3");
+    }
+
+    private String updateBody(String name, String bank, String type, String balance, String version) {
         return "{\"accountName\":" + name + ",\"bankName\":" + bank + ",\"accountType\":" + type
-            + ",\"currentBalance\":" + balance + "}";
+            + ",\"currentBalance\":" + balance + ",\"version\":" + version + "}";
     }
 
     @Test
@@ -308,6 +316,7 @@ class AccountControllerTest {
         Account updated = account("Nubank PJ", "100.00");
         updated.setId(id);
         updated.setCurrentBalance(new BigDecimal("250.00"));
+        updated.setVersion(4L);
         when(accountService.update(eq(userId), eq(id), any(UpdateAccountRequest.class))).thenReturn(updated);
 
         mockMvc.perform(put("/api/v1/accounts/" + id).with(authentication(authToken))
@@ -317,7 +326,8 @@ class AccountControllerTest {
             .andExpect(jsonPath("$.id").value(id.toString()))
             .andExpect(jsonPath("$.accountName").value("Nubank PJ"))
             .andExpect(jsonPath("$.initialBalance").value(100.0))
-            .andExpect(jsonPath("$.currentBalance").value(250.0));
+            .andExpect(jsonPath("$.currentBalance").value(250.0))
+            .andExpect(jsonPath("$.version").value(4));
 
         ArgumentCaptor<UpdateAccountRequest> captor = ArgumentCaptor.forClass(UpdateAccountRequest.class);
         verify(accountService).update(eq(userId), eq(id), captor.capture());
@@ -325,6 +335,7 @@ class AccountControllerTest {
         assertThat(captor.getValue().bankName()).isNull();
         assertThat(captor.getValue().accountType()).isEqualTo("SAVINGS");
         assertThat(captor.getValue().currentBalance()).isEqualByComparingTo("250.00");
+        assertThat(captor.getValue().version()).isEqualTo(3L);
     }
 
     @Test
@@ -387,5 +398,67 @@ class AccountControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(updateBody("\"Conta\"", "null", "\"CHECKING\"", "1.00")))
             .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void putWithoutVersionIs400() throws Exception {
+        mockMvc.perform(put("/api/v1/accounts/" + UUID.randomUUID()).with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(updateBody("\"Conta\"", "null", "\"CHECKING\"", "1.00", "null")))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errors.version").value("Versão obrigatória"));
+
+        verifyNoInteractions(accountService);
+    }
+
+    @Test
+    void putWithANegativeVersionIs400() throws Exception {
+        mockMvc.perform(put("/api/v1/accounts/" + UUID.randomUUID()).with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(updateBody("\"Conta\"", "null", "\"CHECKING\"", "1.00", "-1")))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errors.version").value("Versão inválida"));
+
+        verifyNoInteractions(accountService);
+    }
+
+    @Test
+    void putWithAStaleVersionIs409() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(accountService.update(eq(userId), eq(id), any(UpdateAccountRequest.class)))
+            .thenThrow(new ConflictException(StaleDataMessages.ACCOUNT));
+
+        mockMvc.perform(put("/api/v1/accounts/" + id).with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(updateBody("\"Conta\"", "null", "\"CHECKING\"", "1.00")))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.detail").value("Esta conta foi alterada em outra tela. Abra a edição de novo."));
+    }
+
+    @Test
+    void aVersionCollisionAtFlushIsTheSame409() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(accountService.update(eq(userId), eq(id), any(UpdateAccountRequest.class)))
+            .thenThrow(new org.springframework.orm.ObjectOptimisticLockingFailureException(Account.class, id));
+
+        mockMvc.perform(put("/api/v1/accounts/" + id).with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(updateBody("\"Conta\"", "null", "\"CHECKING\"", "1.00")))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.detail").value("Esta conta foi alterada em outra tela. Abra a edição de novo."));
+    }
+
+    @Test
+    void aVersionCollisionOnAnotherEntityIsAGeneric409() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(accountService.update(eq(userId), eq(id), any(UpdateAccountRequest.class)))
+            .thenThrow(new org.springframework.orm.ObjectOptimisticLockingFailureException(
+                com.porquinho.entity.CreditCard.class, id));
+
+        mockMvc.perform(put("/api/v1/accounts/" + id).with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(updateBody("\"Conta\"", "null", "\"CHECKING\"", "1.00")))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.detail").value("Os dados foram alterados em outra tela. Recarregue e tente de novo."));
     }
 }

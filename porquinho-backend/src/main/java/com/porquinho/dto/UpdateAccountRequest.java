@@ -6,13 +6,15 @@ import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
 
 /**
  * PUT /api/v1/accounts/{id} (Story 4.3). Same rules and cleaning as {@link CreateAccountRequest}, with the
- * current balance in place of the initial one (the initial balance never changes).
+ * current balance in place of the initial one (the initial balance never changes). Retro do Epic 4: version is the
+ * one read when the form opened; a different current version is a 409 (AccountService.update).
  */
 public record UpdateAccountRequest(
     @NotBlank(message = "Informe o nome da conta")
@@ -29,7 +31,11 @@ public record UpdateAccountRequest(
     @NotNull(message = "Informe o saldo atual (use 0,00 se não souber)")
     @Digits(integer = 13, fraction = 2,
         message = "Informe o saldo com até 2 casas decimais e no máximo 13 dígitos antes da vírgula")
-    BigDecimal currentBalance
+    BigDecimal currentBalance,
+
+    @NotNull(message = "Versão obrigatória")
+    @PositiveOrZero(message = "Versão inválida")
+    Long version
 ) {
     public UpdateAccountRequest {
         accountName = CategoryService.cleanName(accountName);

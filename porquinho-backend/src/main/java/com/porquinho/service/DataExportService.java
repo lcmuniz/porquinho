@@ -326,6 +326,7 @@ public class DataExportService {
             accountMap.put("deleted_by", account.getDeletedBy() != null ? account.getDeletedBy().toString() : null);
             accountMap.put("last_reconciliation_date",
                 account.getLastReconciliationDate() != null ? account.getLastReconciliationDate().toString() : null);
+            accountMap.put("version", account.getVersion());
             accountList.add(accountMap);
         }
         data.put("accounts", accountList);

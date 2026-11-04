@@ -267,7 +267,7 @@ class AccountOnboardingIntegrationTest {
         Thread.sleep(5);
 
         accountService.update(userId, account.getId(),
-            new UpdateAccountRequest("Nubank PJ", "Nubank", "CHECKING", new BigDecimal("250.00")));
+            new UpdateAccountRequest("Nubank PJ", "Nubank", "CHECKING", new BigDecimal("250.00"), account.getVersion()));
         accountRepository.flush();
         balanceHistoryRepository.flush();
 
@@ -293,7 +293,7 @@ class AccountOnboardingIntegrationTest {
         Account account = add(userId, "Nubank", "100.00");
 
         accountService.update(userId, account.getId(),
-            new UpdateAccountRequest("Nubank PJ", null, "SAVINGS", new BigDecimal("100")));
+            new UpdateAccountRequest("Nubank PJ", null, "SAVINGS", new BigDecimal("100"), account.getVersion()));
         accountRepository.flush();
 
         assertThat(history(account.getId())).extracting(r -> r.get("created_by_event")).containsExactly("initial");
@@ -330,7 +330,7 @@ class AccountOnboardingIntegrationTest {
         Account removed = add(userId, "Removida", "1.00");
         accountService.delete(userId, removed.getId(), "127.0.0.1");
         accountRepository.flush();
-        UpdateAccountRequest request = new UpdateAccountRequest("Minha", null, "CHECKING", new BigDecimal("999.00"));
+        UpdateAccountRequest request = new UpdateAccountRequest("Minha", null, "CHECKING", new BigDecimal("999.00"), 0L);
 
         assertThatThrownBy(() -> accountService.update(userId, foreign.getId(), request))
             .isInstanceOf(ResourceNotFoundException.class);
@@ -382,7 +382,7 @@ class AccountOnboardingIntegrationTest {
         Account account = add(userId, "Nubank", "100.00");
         Thread.sleep(5);  // distinct snapshot_date, so the order is deterministic
         accountService.update(userId, account.getId(),
-            new UpdateAccountRequest("Nubank", null, "CHECKING", new BigDecimal("250.00")));
+            new UpdateAccountRequest("Nubank", null, "CHECKING", new BigDecimal("250.00"), account.getVersion()));
         accountRepository.flush();
         balanceHistoryRepository.flush();
 
@@ -417,7 +417,8 @@ class AccountOnboardingIntegrationTest {
         add(userId, "Nubank", "100.00");
         Account bb = add(userId, "BB", "50.00");
         Thread.sleep(5);  // distinct snapshot_date, so the history order is deterministic
-        accountService.update(userId, bb.getId(), new UpdateAccountRequest("BB", null, "CHECKING", new BigDecimal("75.00")));
+        accountService.update(userId, bb.getId(), new UpdateAccountRequest("BB", null, "CHECKING", new BigDecimal("75.00"),
+            bb.getVersion()));
         accountRepository.flush();
 
         accountService.delete(userId, bb.getId(), "127.0.0.1");

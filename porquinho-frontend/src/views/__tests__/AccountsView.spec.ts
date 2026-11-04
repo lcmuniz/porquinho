@@ -45,6 +45,7 @@ function account(overrides: Partial<Account> = {}): Account {
     currentBalance: 1000,
     createdAt: '2026-11-01T12:00:00Z',
     lastReconciliationDate: null,
+    version: 0,
     ...overrides,
   }
 }
@@ -516,6 +517,7 @@ describe('AccountsView — editar conta (Story 4.3)', () => {
       bankName: 'Nubank',
       accountType: 'CHECKING',
       currentBalance: 250,
+      version: 0,
     })
     expect(mockCreate).not.toHaveBeenCalled()
     expect(editDialog()).toBeNull()
@@ -586,10 +588,15 @@ describe('AccountsView — editar conta (Story 4.3)', () => {
     })
     const wrapper = await mountView()
     const form = await openEdit(wrapper)
+    // A recarga do 404 já vem sem a conta removida em outra aba
+    mockList.mockResolvedValue([
+      account({ id: 'a2', accountName: 'Itaú', currentBalance: 50, initialBalance: 50 }),
+    ])
     await form.get('[data-testid="account-form"]').trigger('submit')
     await flushPromises()
 
     expect(editDialog()).toBeNull()
+    expect(mockList).toHaveBeenCalledTimes(2)
     expect(wrapper.find('[data-testid="account-item-a1"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="account-item-a2"]').exists()).toBe(true)
     expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 50,00')
@@ -679,6 +686,255 @@ describe('AccountsView — editar conta (Story 4.3)', () => {
 
     await openEdit(wrapper, 'a2')
     expect(wrapper.find('[data-testid="accounts-notice"]').exists()).toBe(false)
+  })
+
+  // Retro do Epic 4: edição concorrente (409), guarda de sequência e 404 único
+
+  const STALE = 'Esta conta foi alterada em outra tela. Abra a edição de novo.'
+
+  it('409 ao salvar fecha o diálogo, recarrega as contas, avisa e devolve o foco ao "Editar"', async () => {
+    mockUpdate.mockRejectedValue({ response: { status: 409, data: { detail: STALE } } })
+    const wrapper = await mountView()
+    const form = await openEdit(wrapper)
+    // Outra aba transferiu R$ 200,00 do Nubank: a recarga traz o saldo do servidor
+    mockList.mockResolvedValue([
+      account({ id: 'a1', accountName: 'Nubank', currentBalance: -100, version: 1 }),
+      account({ id: 'a2', accountName: 'Itaú', currentBalance: 250, version: 1 }),
+    ])
+    await form.get('[data-testid="account-name-input"]').setValue('Nubank PJ')
+    await form.get('[data-testid="account-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(mockUpdate).toHaveBeenCalledWith('a1', expect.objectContaining({ version: 0 }))
+    expect(editDialog()).toBeNull()
+    expect(mockList).toHaveBeenCalledTimes(2)
+    const item = wrapper.get('[data-testid="account-item-a1"]')
+    expect(item.text()).toContain('Nubank')
+    expect(item.text()).not.toContain('Nubank PJ')
+    expect(plain(item.get('[data-testid="account-balance"]').text())).toBe('-R$ 100,00')
+    const notice = wrapper.get('[data-testid="accounts-notice"]')
+    expect(notice.text()).toBe(STALE)
+    expect(notice.attributes('role')).toBe('alert')
+    expect(notice.classes()).toContain('bg-amber-50')
+    expect(wrapper.get('[data-testid="accounts-success"]').text()).toBe('')
+    expect(document.body.querySelector('[data-testid="add-account-error"]')).toBeNull()
+    await flushPromises()
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('edit-account-a1')
+
+    // Reabrir a edição usa a versão nova
+    mockUpdate.mockReset().mockImplementation(async (id: string, data) => ({
+      ...account({ id, version: 2 }),
+      ...data,
+    }))
+    const reopened = await openEdit(wrapper)
+    await reopened.get('[data-testid="account-form"]').trigger('submit')
+    await flushPromises()
+    expect(mockUpdate).toHaveBeenCalledWith('a1', expect.objectContaining({ version: 1 }))
+  })
+
+  it('409 de uma conta que sumiu da lista recarregada leva o foco a um alvo estável', async () => {
+    mockUpdate.mockRejectedValue({ response: { status: 409, data: { detail: STALE } } })
+    const wrapper = await mountView()
+    const form = await openEdit(wrapper)
+    mockList.mockResolvedValue([account({ id: 'a2', accountName: 'Itaú', currentBalance: 50 })])
+    await form.get('[data-testid="account-form"]').trigger('submit')
+    await flushPromises()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="account-item-a1"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="accounts-notice"]').text()).toBe(STALE)
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('open-add-account')
+  })
+
+  /** 409 no Itaú: dispara uma recarga que só responde quando o teste quiser. */
+  async function pendingReload(wrapper: Wrapper) {
+    mockUpdate.mockRejectedValueOnce({ response: { status: 409, data: { detail: STALE } } })
+    let resolveSlow: (accounts: Account[]) => void = () => {}
+    mockList.mockReturnValueOnce(new Promise<Account[]>((resolve) => (resolveSlow = resolve)))
+    const itau = await openEdit(wrapper, 'a2')
+    await itau.get('[data-testid="account-form"]').trigger('submit')
+    await flushPromises()
+    expect(mockList).toHaveBeenCalledTimes(2)
+    return (accounts: Account[]) => resolveSlow(accounts)
+  }
+
+  const staleList = () => [
+    account({ id: 'a1', accountName: 'Nubank', currentBalance: 100 }),
+    account({ id: 'a2', accountName: 'Itaú', currentBalance: 50 }),
+  ]
+
+  it('uma recarga lenta que responde depois de uma edição é descartada e refeita', async () => {
+    const wrapper = await mountView()
+    const resolveSlow = await pendingReload(wrapper)
+
+    // Enquanto isso, a edição do Nubank é salva e aplicada na lista (splice)
+    const nubank = await openEdit(wrapper, 'a1')
+    await nubank.get('[data-testid="account-name-input"]').setValue('Nubank PJ')
+    await nubank.get('[data-testid="initial-balance-input"]').setValue('250,00')
+    await nubank.get('[data-testid="account-form"]').trigger('submit')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="account-item-a1"]').text()).toContain('Nubank PJ')
+
+    // A resposta atrasada leu o servidor antes da edição: é descartada e a carga é refeita
+    mockList.mockResolvedValue([
+      account({ id: 'a1', accountName: 'Nubank PJ', currentBalance: 250, version: 1 }),
+      account({ id: 'a2', accountName: 'Itaú', currentBalance: 80, version: 1 }),
+    ])
+    resolveSlow(staleList())
+    await flushPromises()
+    expect(mockList).toHaveBeenCalledTimes(3)
+    const item = wrapper.get('[data-testid="account-item-a1"]')
+    expect(item.text()).toContain('Nubank PJ')
+    expect(plain(item.get('[data-testid="account-balance"]').text())).toBe('R$ 250,00')
+    // Os dados novos do servidor chegam (o Itaú mudou em outra aba)
+    expect(
+      plain(wrapper.get('[data-testid="account-item-a2"] [data-testid="account-balance"]').text()),
+    ).toBe('R$ 80,00')
+    expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 330,00')
+  })
+
+  it('uma conta criada durante uma recarga lenta continua na lista e os dados novos chegam', async () => {
+    const wrapper = await mountView()
+    const resolveSlow = await pendingReload(wrapper)
+    mockCreate.mockResolvedValue(account({ id: 'a3', accountName: 'Inter', currentBalance: 10 }))
+    const form = await openDialog(wrapper)
+    await fillAndSave(form, 'Inter', '10,00')
+    expect(wrapper.find('[data-testid="account-item-a3"]').exists()).toBe(true)
+
+    mockList.mockResolvedValue([
+      ...staleList().map((a) => (a.id === 'a2' ? { ...a, currentBalance: 80 } : a)),
+      account({ id: 'a3', accountName: 'Inter', currentBalance: 10 }),
+    ])
+    resolveSlow(staleList())
+    await flushPromises()
+
+    expect(mockList).toHaveBeenCalledTimes(3)
+    expect(wrapper.find('[data-testid="account-item-a3"]').exists()).toBe(true)
+    expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 190,00')
+  })
+
+  it('uma conta removida durante uma recarga lenta não volta e os dados novos chegam', async () => {
+    mockDelete.mockReset().mockResolvedValue(undefined)
+    const wrapper = await mountView()
+    const resolveSlow = await pendingReload(wrapper)
+    await wrapper.get('[data-testid="remove-account-a2"]').trigger('click')
+    await flushPromises()
+    document.body
+      .querySelector<HTMLButtonElement>('[data-testid="confirm-remove-account"]')!
+      .click()
+    await flushPromises()
+    expect(wrapper.find('[data-testid="account-item-a2"]').exists()).toBe(false)
+
+    mockList.mockResolvedValue([account({ id: 'a1', accountName: 'Nubank', currentBalance: 120 })])
+    resolveSlow(staleList())
+    await flushPromises()
+
+    expect(mockList).toHaveBeenCalledTimes(3)
+    expect(wrapper.find('[data-testid="account-item-a2"]').exists()).toBe(false)
+    expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 120,00')
+  })
+
+  it('a carga inicial invalidada por uma mudança local é refeita e a página mostra as contas', async () => {
+    let resolveFirst: (accounts: Account[]) => void = () => {}
+    mockList.mockReturnValueOnce(new Promise<Account[]>((resolve) => (resolveFirst = resolve)))
+    const wrapper = await mountView()
+    expect(wrapper.find('[data-testid="accounts-skeleton"]').exists()).toBe(true)
+    // Nenhum botão de ação aparece durante a carga: a mudança local é feita direto no estado
+    const vm = wrapper.vm as unknown as {
+      $: { setupState: { discardPendingAccountLoads: () => void } }
+    }
+    vm.$.setupState.discardPendingAccountLoads()
+    resolveFirst([])
+    await flushPromises()
+
+    expect(mockList).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[data-testid="accounts-skeleton"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="accounts-empty"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="account-item-a1"]').exists()).toBe(true)
+  })
+
+  it('409 com a recarga falhando mantém o aviso do conflito', async () => {
+    mockUpdate.mockRejectedValue({ response: { status: 409, data: { detail: STALE } } })
+    const wrapper = await mountView()
+    const form = await openEdit(wrapper)
+    mockList.mockRejectedValue(new Error('network'))
+    await form.get('[data-testid="account-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(editDialog()).toBeNull()
+    expect(wrapper.get('[data-testid="accounts-notice"]').text()).toBe(
+      `${STALE} Não foi possível atualizar os saldos. Recarregue a página.`,
+    )
+    expect(wrapper.find('[data-testid="account-item-a1"]').exists()).toBe(true)
+  })
+
+  it('uma carga de removidas em andamento no 404 é descartada', async () => {
+    mockUpdate.mockRejectedValue({ response: { status: 404, data: {} } })
+    let resolveStale: (accounts: Account[]) => void = () => {}
+    mockListDeleted
+      .mockReset()
+      .mockReturnValueOnce(new Promise<Account[]>((resolve) => (resolveStale = resolve)))
+      .mockResolvedValue([account({ id: 'a1', accountName: 'Nubank', currentBalance: 100 })])
+    const wrapper = await mountView()
+    await wrapper.get('[data-testid="toggle-removed-accounts"]').setValue(true)
+    await flushPromises()
+
+    mockList.mockResolvedValue([account({ id: 'a2', accountName: 'Itaú', currentBalance: 50 })])
+    const form = await openEdit(wrapper)
+    await form.get('[data-testid="account-form"]').trigger('submit')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="removed-account-item-a1"]').exists()).toBe(true)
+
+    // A carga antiga (anterior ao 404) responde depois: não apaga a conta removida da seção
+    resolveStale([])
+    await flushPromises()
+    expect(wrapper.find('[data-testid="removed-account-item-a1"]').exists()).toBe(true)
+  })
+
+  it('só a carga de contas mais recente é aplicada', async () => {
+    mockUpdate.mockRejectedValue({ response: { status: 409, data: { detail: STALE } } })
+    const wrapper = await mountView()
+    let resolveFirst: (accounts: Account[]) => void = () => {}
+    mockList
+      .mockReturnValueOnce(new Promise<Account[]>((resolve) => (resolveFirst = resolve)))
+      .mockResolvedValueOnce([account({ id: 'a1', accountName: 'Nubank', currentBalance: 700 })])
+    const first = await openEdit(wrapper, 'a1')
+    await first.get('[data-testid="account-form"]').trigger('submit')
+    await flushPromises()
+    const second = await openEdit(wrapper, 'a1')
+    await second.get('[data-testid="account-form"]').trigger('submit')
+    await flushPromises()
+    expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 700,00')
+
+    resolveFirst([account({ id: 'a1', accountName: 'Nubank', currentBalance: 1 })])
+    await flushPromises()
+    expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 700,00')
+  })
+
+  it('404 na edição com "Removidas" aberta recarrega as duas listas', async () => {
+    mockUpdate.mockRejectedValue({
+      response: { status: 404, data: { detail: 'Conta não encontrada' } },
+    })
+    mockListDeleted.mockReset().mockResolvedValue([])
+    const wrapper = await mountView()
+    await wrapper.get('[data-testid="toggle-removed-accounts"]').setValue(true)
+    await flushPromises()
+    expect(wrapper.find('[data-testid="removed-accounts-empty"]').exists()).toBe(true)
+
+    // Outra aba removeu o Nubank
+    mockList.mockResolvedValue([
+      account({ id: 'a2', accountName: 'Itaú', currentBalance: 50, initialBalance: 50 }),
+    ])
+    mockListDeleted.mockResolvedValue([
+      account({ id: 'a1', accountName: 'Nubank', currentBalance: 100 }),
+    ])
+    const form = await openEdit(wrapper)
+    await form.get('[data-testid="account-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="account-item-a1"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="removed-account-item-a1"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="accounts-notice"]').text()).toBe('Esta conta não existe mais')
   })
 })
 
@@ -1300,6 +1556,24 @@ describe('AccountsView — transferências (Story 4.5)', () => {
     expect(wrapper.get('[data-testid="accounts-success"]').text()).toBe('')
   })
 
+  it('404 com "Removidas" aberta recarrega as removidas e o diálogo continua aberto', async () => {
+    mockCreateTransfer.mockRejectedValue({
+      response: { status: 404, data: { detail: 'Conta não encontrada' } },
+    })
+    mockListDeleted.mockReset().mockResolvedValueOnce([]).mockResolvedValueOnce([inter()])
+    const wrapper = await mountView()
+    await wrapper.get('[data-testid="toggle-removed-accounts"]').setValue(true)
+    await flushPromises()
+    const form = await openTransfer(wrapper)
+    mockList.mockResolvedValue([nubank(), account({ id: 'a3', accountName: 'BB' })])
+    await fillAndSubmit(form, '10')
+
+    expect(mockListDeleted).toHaveBeenCalledTimes(2)
+    expect(transferDialog()).not.toBeNull()
+    expect(wrapper.find('[data-testid="account-item-a2"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="removed-account-item-a2"]').exists()).toBe(true)
+  })
+
   it('nova tentativa reaproveita o id; reabrir o diálogo gera outro', async () => {
     mockCreateTransfer.mockRejectedValueOnce(new Error('Network Error'))
     const wrapper = await mountView()
@@ -1612,6 +1886,25 @@ describe('AccountsView — reconciliar com o banco (Story 4.6)', () => {
     expect(mockList).toHaveBeenCalledTimes(2)
     expect(wrapper.find('[data-testid="account-item-a1"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="account-item-a2"]').exists()).toBe(true)
+  })
+
+  it('404 com "Removidas" aberta recarrega as duas listas', async () => {
+    mockReconcile.mockRejectedValueOnce({
+      response: { status: 404, data: { detail: 'Conta não encontrada' } },
+    })
+    mockListDeleted.mockReset().mockResolvedValueOnce([]).mockResolvedValueOnce([nubank()])
+    const wrapper = await mountView()
+    await wrapper.get('[data-testid="toggle-removed-accounts"]').setValue(true)
+    await flushPromises()
+    const form = await openReconcile(wrapper)
+    await fill(form, '1.050,00')
+    mockList.mockResolvedValue([inter()])
+    await submit(form)
+
+    expect(reconcileDialog()).toBeNull()
+    expect(mockListDeleted).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[data-testid="account-item-a1"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="removed-account-item-a1"]').exists()).toBe(true)
   })
 
   it('recarga falha depois de reconciliar: a linha mostra a conta devolvida pelo POST, total e aviso', async () => {
