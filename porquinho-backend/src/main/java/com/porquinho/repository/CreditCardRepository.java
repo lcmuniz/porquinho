@@ -45,6 +45,9 @@ public interface CreditCardRepository extends JpaRepository<CreditCard, UUID> {
     /** Every row of the user, removed ones included (LGPD export). */
     List<CreditCard> findByUserIdOrderByCreatedAtAsc(UUID userId);
 
+    /** The user's active card, without a lock (Story 5.1: import target check). */
+    Optional<CreditCard> findByIdAndUserIdAndDeletedAtIsNull(UUID id, UUID userId);
+
     /**
      * Hard-delete the user's cards (LGPD account purge, Story 3.3).
      * Must run BEFORE deleting the user row (FK credit_cards.user_id -> users.id).

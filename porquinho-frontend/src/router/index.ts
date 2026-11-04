@@ -88,6 +88,13 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      // Story 5.1: envio de extrato OFX para uma conta ou um cartão
+      path: '/importar',
+      name: 'import',
+      component: () => import('../views/ImportView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       // Story 2.2: plano mensal (Stripe Checkout). Retorno do Checkout: ?status=sucesso|cancelado
       path: '/assinatura',
       name: 'subscription',

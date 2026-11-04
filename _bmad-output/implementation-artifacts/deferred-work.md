@@ -128,3 +128,7 @@
 ## Story 4.6 → Epic 5
 
 - Reconciliação não cria transação de ajuste (decisão A, 2026-11-03). Quando a tabela `transactions` existir, decidir se cada evento de `reconciliation_history` com diferença ≠ 0 vira uma transação com a categoria "Ajuste de Reconciliação". — decidido na revisão do Epic 5 (2026-11-04, D9): continua sem transação de ajuste.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-1-upload-ofx-files-from-5-brazilian-banks.md`
+  summary: Importações criadas pela Story 5.1 ficam em `PROCESSING` sem arquivo guardado (decisão 1A); a Story 5.3 precisa dar destino a essas linhas (marcar `FAILED` com mensagem pedindo novo envio, ou permitir descartar).
+  evidence: Sem o arquivo, a 5.3 não tem o que processar nas linhas antigas, e a lista em `/importar` mostraria "Recebido — a leitura das transações chega na próxima etapa" para sempre. O check manual do nginx (`client_max_body_size 11m`, envio de 2MB pelo proxy) também continua sem teste automatizado.

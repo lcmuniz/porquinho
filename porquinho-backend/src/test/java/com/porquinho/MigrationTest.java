@@ -197,4 +197,55 @@ class MigrationTest {
             "AND contype = 'c' AND pg_get_constraintdef(oid) LIKE '%status%'", Integer.class);
         assertThat(statusChecks).isEqualTo(1);
     }
+
+    @Test
+    void v25ShouldCreateTransactionImportsTable() {
+        java.util.Map<String, String> expected = new java.util.LinkedHashMap<>();
+        expected.put("id", "uuid");
+        expected.put("user_id", "uuid");
+        expected.put("account_id", "uuid");
+        expected.put("credit_card_id", "uuid");
+        expected.put("file_name", "character varying");
+        expected.put("file_type", "character varying");
+        expected.put("bank_name", "character varying");
+        expected.put("file_size_kb", "integer");
+        expected.put("status", "character varying");
+        expected.put("total_transactions", "integer");
+        expected.put("imported_transactions", "integer");
+        expected.put("duplicates_found", "integer");
+        expected.put("skipped_rows", "integer");
+        expected.put("error_message", "character varying");
+        expected.put("created_at", "timestamp with time zone");
+        expected.put("updated_at", "timestamp with time zone");
+
+        expected.forEach((column, type) -> {
+            String actual = jdbcTemplate.queryForObject(
+                "SELECT data_type FROM information_schema.columns " +
+                "WHERE table_name = 'transaction_imports' AND column_name = ?",
+                String.class,
+                column
+            );
+            assertThat(actual)
+                .withFailMessage("Column '%s' should be %s in transaction_imports, got %s", column, type, actual)
+                .isEqualTo(type);
+        });
+
+        Integer foreignKeys = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM information_schema.table_constraints " +
+            "WHERE table_name = 'transaction_imports' AND constraint_type = 'FOREIGN KEY'", Integer.class);
+        assertThat(foreignKeys).isEqualTo(3);
+
+        for (String check : new String[] {"transaction_imports_status_check", "transaction_imports_file_type_check",
+            "transaction_imports_one_target_check"}) {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM pg_constraint WHERE conrelid = 'transaction_imports'::regclass AND conname = ?",
+                Integer.class, check);
+            assertThat(count).withFailMessage("Constraint '%s' should exist", check).isEqualTo(1);
+        }
+
+        Integer index = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM pg_indexes WHERE tablename = 'transaction_imports' " +
+            "AND indexname = 'idx_transaction_imports_user_created'", Integer.class);
+        assertThat(index).isEqualTo(1);
+    }
 }
