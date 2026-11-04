@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -53,5 +54,11 @@ public class TransactionImportController {
         TransactionImportResponse created = transactionImportService.create(userId, accountId, creditCardId, file,
             httpRequest.getRemoteAddr());
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+
+    /** One of the user's imports, polled every 2 s by /importar while it is processing (Story 5.3). 404 if not the user's. */
+    @GetMapping("/{id}")
+    public ResponseEntity<TransactionImportResponse> get(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
+        return ResponseEntity.ok(transactionImportService.get(UUID.fromString(jwt.getSubject()), id));
     }
 }

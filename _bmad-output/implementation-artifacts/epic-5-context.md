@@ -10,7 +10,7 @@ Trazer as transações do usuário para dentro do porquinho. O usuário envia o 
 
 - Story 5.1: Upload de OFX (registra a importação em `PROCESSING`; nada roda em segundo plano ainda, decisão 1A)
 - Story 5.2: Upload de CSV
-- Story 5.3: Detecção de formato e banco (e o processamento em segundo plano com armazenamento temporário do arquivo, decisão 1A da 5.1)
+- Story 5.3: Detecção do banco do OFX e o processamento em segundo plano (conteúdo só em memória; feita antes da 5.2, CSV e escolha manual do banco ficam na 5.2)
 - Story 5.4: Parsing com tratamento de erros (cria `transactions`)
 - Story 5.5: Duplicatas e transferências já registradas
 - Story 5.6: Pix

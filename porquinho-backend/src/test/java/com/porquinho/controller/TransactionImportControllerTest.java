@@ -149,4 +149,29 @@ class TransactionImportControllerTest {
             .andExpect(jsonPath("$[0].fileName").value("nubank-conta.ofx"))
             .andExpect(jsonPath("$[0].targetName").value("Nubank"));
     }
+
+    @Test
+    void getByIdReturnsTheImportOfTheJwtUser() throws Exception {
+        TransactionImportResponse r = response();
+        TransactionImportResponse detected = new TransactionImportResponse(r.id(), r.accountId(), null, "Nubank",
+            "nubank-conta.ofx", "OFX", "NUBANK", 4, "PROCESSING", 0, 0, 0, 0, null, r.createdAt());
+        when(transactionImportService.get(userId, r.id())).thenReturn(detected);
+
+        mockMvc.perform(get("/api/v1/imports/" + r.id()).with(authentication(authToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(r.id().toString()))
+            .andExpect(jsonPath("$.bankName").value("NUBANK"))
+            .andExpect(jsonPath("$.status").value("PROCESSING"));
+    }
+
+    @Test
+    void getByIdOfAnotherUsersImportIs404() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(transactionImportService.get(userId, id))
+            .thenThrow(new ResourceNotFoundException(TransactionImportService.NOT_FOUND_MESSAGE));
+
+        mockMvc.perform(get("/api/v1/imports/" + id).with(authentication(authToken)))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.detail").value("Importação não encontrada"));
+    }
 }

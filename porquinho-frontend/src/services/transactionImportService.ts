@@ -8,6 +8,15 @@ export async function listImports(): Promise<TransactionImport[]> {
 }
 
 /**
+ * Story 5.3: uma importação do usuário logado, consultada a cada 2 s enquanto o banco não é detectado.
+ * 404 "Importação não encontrada" se não for do usuário.
+ */
+export async function getImport(id: string): Promise<TransactionImport> {
+  const response = await api.get<TransactionImport>(`/api/v1/imports/${id}`)
+  return response.data
+}
+
+/**
  * Story 5.1: envia o extrato OFX para a conta ou o cartão escolhido. `onProgress` recebe de 0 a 100.
  * 400 traz `detail` em pt-BR (formato, tamanho, extrato de cartão para conta e vice-versa); 404 "Conta não
  * encontrada" / "Cartão não encontrado" se o destino não for do usuário ou tiver sido removido.

@@ -67,7 +67,8 @@ So that I can import transactions in CSV format.
 **And** Import record is created in `transaction_imports` with file_type='CSV'
 **And** Layouts supported at first are those of the samples (`import-samples/README.md`): Nubank account and card, BB, Itaú, Bradesco and Caixa, including title/total/balance lines that are not transactions (BB "Saldo Anterior"/"S A L D O", Bradesco header and "Total"), separate credit/debit columns (Bradesco), D/C column (Caixa), and decimal comma with thousands separator
 **And** If the layout is not recognized, the error suggests exporting in OFX (NFR57): "Não reconhecemos o formato deste CSV. Tente exportar o extrato em OFX."
-**And** Story 5.3 (auto-detection) runs after upload
+**And** CSV detection (header or, for Itaú, line shape matched against the layouts above) runs in the background processing of Story 5.3, which is built first and covers OFX only (Luiz, 2026-11-04)
+**And** If detection is ambiguous, user is prompted: "Detectamos [Banco]. Está correto?", and can confirm or select the bank manually (moved from Story 5.3, decision 2A); if it fails completely (NFR57): "Não foi possível identificar o banco. Por favor, selecione manualmente"
 
 ---
 
@@ -77,20 +78,20 @@ As a system,
 I want to automatically detect the file format (OFX/CSV) and originating bank,
 So that users don't have to manually specify the source.
 
+**Implementation order (Luiz, 2026-11-04):** Story 5.3 is built before Story 5.2 and covers OFX only. CSV detection (header or line shape against the bank layouts) and the manual choice of bank ("Detectamos [Banco]. Está correto?") move to Story 5.2.
+
 **Acceptance Criteria:**
 
-**Given** A file has been uploaded (Story 5.1 or 5.2)
-**When** Processing begins
-**Then** Processing runs in the background after the upload (decision 1A of Story 5.1 moved it here): the file is kept in temporary storage only until processing ends and is then discarded (LGPD); the import screen polls the import status every 2 seconds (NFR8)
-**And** File format is detected by content signature, not just extension (an .ofx that is plain text is rejected)
-**And** For OFX files: the SGML 1.x header and body are parsed (leaf tags with or without closing tag, cp1252); bank is read from `BANKID`/`FID`/`ORG` (Nubank 260, BB 001, Itaú 341, Bradesco 237, Caixa 104)
-**And** For CSV files: the header (or, for Itaú, the line shape) is matched against the bank layouts of Story 5.2
-**And** Detection accuracy is 95%+ on the sample set (NFR56)
-**And** Import record is updated with detected bank_name
-**And** If detection is ambiguous, user is prompted: "Detectamos [Banco]. Está correto?", and can confirm or select the bank manually
-**And** If detection fails completely, error (NFR57): "Não foi possível identificar o banco. Por favor, selecione manualmente"
-**And** Malformed files (truncated OFX, empty file) show a clear error with a suggestion (NFR57)
-**And** After successful detection, Story 5.4 (parsing) runs
+**Given** An OFX file has been uploaded (Story 5.1)
+**When** The import row is committed
+**Then** Processing runs in the background, outside the request thread: the file content is kept only in memory during processing and is never written to disk, database or log (LGPD); logs carry only the import id and the reason
+**And** The bank is read from `BANKID` (leading zeros ignored; when present it decides alone), else `FID`, else `ORG` by keyword, and recorded in `bank_name` as `NUBANK` (260), `BANCO_DO_BRASIL` (001), `ITAU` (341), `BRADESCO` (237) or `CAIXA` (104); accuracy is 100% on the OFX samples (NFR56 asks 95%+)
+**And** An OFX from a bank outside these five is recorded as `OTHER` and shown as "Banco não identificado" (decision 2A, Luiz, 2026-11-04)
+**And** After detection the import stays `PROCESSING` with `bank_name` set (decision 1A, Luiz, 2026-11-04): the list on `/importar` shows "Banco detectado: <banco> — a leitura das transações chega na próxima etapa"; Story 5.4 extends the same processing with the parsing
+**And** A truncated OFX (no `</OFX>`) becomes `FAILED` with "O arquivo está incompleto. Exporte o extrato de novo no site ou app do banco e envie outra vez." (NFR57); any unexpected error becomes `FAILED` with "Não foi possível processar o arquivo. Tente de novo."
+**And** Imports left `PROCESSING` with no bank yet and no processing running become `FAILED` with "O processamento foi interrompido. Envie o arquivo de novo.": at backend startup all those created before it came up, and every 5 minutes those older than 15 minutes
+**And** An empty file or one whose content is not OFX is already rejected at upload (Story 5.1)
+**And** `GET /api/v1/imports/{id}` returns one of the user's imports (404 "Importação não encontrada" otherwise); `/importar` polls it every 2 seconds (NFR8) only while an import has no bank yet and is `PROCESSING`, and stops when leaving the page
 
 ---
 
