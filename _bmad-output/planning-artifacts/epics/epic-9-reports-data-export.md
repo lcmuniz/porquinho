@@ -64,7 +64,7 @@ So that I can comply with LGPD portability rights or migrate to another platform
 **Acceptance Criteria:**
 
 **Given** I am on Account Settings > Data Export
-**When** I click "Export All Data" (same as Epic 1, Story 1.9 but specifically for FR84)
+**When** I click "Export All Data" (same as Epic 1, Story 1.9 but specifically for FR81)
 **Then** Confirmation dialog is displayed: "This will export ALL your data. Continue?"
 **And** After confirmation, background job is triggered
 **And** Complete data export includes:
@@ -89,6 +89,6 @@ So that I can comply with LGPD portability rights or migrate to another platform
 **And** File is password-protected (user's account password or custom password)
 **And** Audit log records "complete_data_export" event
 **And** Export file is automatically deleted after 24 hours or first download
-**And** Complies with LGPD portability requirements (FR84, NFR23)
+**And** Complies with LGPD portability requirements (FR81, NFR23)
 
 ---

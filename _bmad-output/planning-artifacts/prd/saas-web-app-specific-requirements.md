@@ -171,8 +171,9 @@ O **porquinho** é um **SaaS B2C (Software as a Service Business-to-Consumer)** 
 - Receita previsível via assinaturas recorrentes
 
 **Planos de assinatura (MVP):**
-- **Plano único:** R$ [a definir - referência: YNAB ~$99/ano = ~R$ 500/ano = ~R$ 42/mês]
+- **Plano único:** R$ 19,90/mês (decidido na Story 2.2; a referência inicial era YNAB, ~R$ 42/mês)
 - **Billing:** Mensal
+- **Meio de pagamento:** só cartão de crédito, pelo Stripe Checkout hospedado. Pix e boleto ficam fora do MVP. O porquinho não guarda dados de cartão.
 - **Opção anual com desconto:** Post-MVP (ex: 10-20% desconto)
 
 **Funcionalidades do trial:**
@@ -188,13 +189,16 @@ O **porquinho** é um **SaaS B2C (Software as a Service Business-to-Consumer)** 
 - Nenhuma perda de dados se não converter (dados mantidos por 30 dias adicionais)
 - Call-to-action discreto durante trial (não agressivo)
 
-**Requisitos técnicos:**
-- Sistema de billing integrado (Stripe recomendado para mercado brasileiro)
-- Gerenciamento de status de assinatura (trial, active, canceled, expired)
-- Webhook para eventos de pagamento
-- Faturamento automático recorrente
-- Self-service para cancelamento e reativação
-- Tratamento de falha de pagamento (retry, notificação)
+**Requisitos técnicos (como construído no Epic 2):**
+- **Stripe Billing** faz a cobrança recorrente, as novas tentativas e o cancelamento após a última falha. O porquinho não tem job próprio de cobrança: ele reage aos webhooks `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed` e `customer.subscription.deleted`, e só muda o estado da assinatura por webhook com assinatura verificada.
+- **Tipo de plano:** `TRIAL` ou `MONTHLY`. **Status:** `ACTIVE`, `CANCELLED`, `EXPIRED`, `PAYMENT_FAILED` e `SUSPENDED`.
+- **Acesso:** trial até o fim dos 30 dias; mensal `ACTIVE`; `CANCELLED` até o fim do período pago; `PAYMENT_FAILED` mantém o acesso (com aviso) até a suspensão. `EXPIRED` e `SUSPENDED` não têm acesso: a API responde 402 e o frontend leva para `/assinatura`. Rotas de autenticação, assinatura e direitos LGPD (exportar, excluir) continuam liberadas.
+- **Assinar durante o trial** não encurta o trial: a 1ª cobrança acontece no fim dos 30 dias. Com o trial vencido, cobra na hora.
+- **Cancelamento self-service** no fim do período (`cancel_at_period_end`). Em `PAYMENT_FAILED` o cancelamento é imediato e a fatura em aberto é anulada.
+- **Reativação em dois caminhos:** cancelada que ainda tem acesso desfaz o cancelamento, sem nova cobrança; expirada ou suspensa volta pelo Checkout, com cobrança na hora.
+- **Falha de pagamento:** e-mail com link para pagar a fatura no Stripe (sem o motivo da recusa), banner "Pagamento falhou" com "Atualizar pagamento". Novas tentativas 3 e 10 dias depois da falha; depois da última, o Stripe cancela, a assinatura vira `SUSPENDED` e a fatura em aberto é anulada. O agendamento e o cancelamento final são configuração do Stripe Dashboard, verificada no deploy.
+- **Pagamentos registrados** em `billing_transactions` (só os pagos), com recibo por e-mail.
+- **Exclusão de conta** cancela a assinatura no Stripe na hora do pedido, sem esperar o purge de 30 dias. Checkout duplicado é cancelado e estornado automaticamente.
 
 **Métricas de monetização (do Product Brief):**
 - Taxa de conversão trial→paid: target 15%

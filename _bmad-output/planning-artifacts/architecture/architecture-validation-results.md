@@ -31,22 +31,22 @@ A estrutura do projeto suporta todas as decisões arquiteturais:
 ## Requirements Coverage Validation ✅
 
 **Epic/Feature Coverage:**
-Todos os 89 Functional Requirements mapeados para componentes arquiteturais:
+Functional Requirements mapeados para componentes arquiteturais. Numeração atualizada para o PRD atual (FR1–FR86) na reconciliação do Epic 2 (2026-11-04); a validação original contava 89 FRs de uma versão anterior do PRD. A estrutura real de pacotes está em `project-structure-boundaries.md`.
 
 | FR Category | Backend Modules | Frontend Modules | Database | Status |
 |-------------|----------------|------------------|----------|--------|
-| FR1-10 (Auth) | auth/, security/ | components/auth/, stores/auth.ts | users | ✅ |
-| FR11-17 (Subscription) | subscription/ | components/subscription/ | subscriptions | ✅ |
-| FR18-25 (Onboarding) | onboarding/ | components/onboarding/ | onboarding_progress | ✅ |
-| FR26-32 (Import) | transaction/ImportService | components/transactions/ImportTransactions | transactions | ✅ |
-| FR33-45 (Classification) | transaction/ClassificationService, external/OpenAiService | components/transactions/ClassificationReview | transactions | ✅ |
-| FR46-54 (Budget) | budget/ | components/budget/ | budget_categories, budget_allocations | ✅ |
-| FR55-72 (Dashboard GPS) | dashboard/ (Layer1/2/3 Services) + Redis | components/dashboard/ (3 layers) | Aggregation queries | ✅ |
-| FR73-81 (Goals) | goal/ | components/goals/ | goals | ✅ |
-| FR82-84 (Reports) | report/ | views/ReportsView | Query-based | ✅ |
-| FR85-89 (Admin) | AdminController + Actuator | N/A | System metrics | ✅ |
+| FR1-7 (Auth, LGPD) | controller/service: Auth, Session, DataExport, AccountDeletion | views de auth/sessões/LGPD, stores/auth.ts | users, user_sessions, data_exports, account_deletions | ✅ construído (Epic 1) |
+| FR8-14 (Subscription) | SubscriptionController, StripeWebhookController, SubscriptionService, StripeBillingService, TrialReminderService | SubscriptionView, components/subscription/ | subscriptions, billing_transactions | ✅ construído (Epic 2) |
+| FR15-22 (Onboarding) | OnboardingController/Service | OnboardingView, components/onboarding/ | onboarding_progress | ✅ construído (Epic 3) |
+| FR23-29 (Accounts & Cards) | Account, CreditCard, Transfer, Reconciliation, BalanceHistory | AccountsView, CardsView, AccountHistoryView | accounts, credit_cards, transfers, account_balance_history, reconciliation_history | ✅ construído (Epic 4) |
+| FR30-42 (Import & Classification) | ImportService, ClassificationService, OpenAiService | components/transactions/ | transactions | planejado |
+| FR43-51 (Budget) | budget services | components/budget/ | categories, budget_allocations | planejado |
+| FR52-69 (Dashboard GPS) | Layer1/2/3 services + Redis | components/dashboard/ (3 layers) | Aggregation queries | planejado |
+| FR70-78 (Goals) | GoalService | components/goals/ | goals | parcial |
+| FR79-81 (Reports) | report services | views/ReportsView | Query-based | planejado |
+| FR82-86 (Admin) | AdminController + Actuator | N/A | System metrics | pós-MVP |
 
-**Functional Requirements Coverage:** 89/89 (100%)
+**Functional Requirements Coverage:** 86/86 mapeados
 
 **Non-Functional Requirements Coverage:** 78/78 (100%)
 
@@ -79,7 +79,7 @@ Todas as decisões críticas estão documentadas com versões verificadas:
 Estrutura de projeto completa e específica:
 - ✅ Backend: 200+ arquivos mapeados (controllers, services, repositories, entities, DTOs, config)
 - ✅ Frontend: 150+ arquivos mapeados (components, views, stores, composables, services, types)
-- ✅ Database: 8 migrations Flyway planejadas (V1-V8)
+- ✅ Database: migrations Flyway incrementais (planejadas V1-V8; construídas V1-V24 até o Epic 4)
 - ✅ Tests: Unit (co-located) + E2E (separados)
 - ✅ Config: Development + Production profiles
 - ✅ Docker: Dockerfiles + docker-compose.yml + nginx.conf
@@ -332,14 +332,11 @@ npx shadcn-vue@latest init
 
 # Step 5: Create Flyway Migrations (Backend)
 # Create files in src/main/resources/db/migration/
-#   V1__create_users_table.sql
-#   V2__create_subscriptions_table.sql
-#   V3__create_transactions_table.sql
-#   V4__create_budget_tables.sql
-#   V5__create_goals_table.sql
-#   V6__create_audit_log_table.sql
-#   V7__create_indexes.sql
-#   V8__add_onboarding_progress.sql
+#   Lista real (2026-11-04): V1__init a V24, uma migration por mudança de schema
+#   (ex.: V9 subscriptions, V10–V14 cobrança Stripe, V15 onboarding_progress,
+#   V16–V24 contas, cartões, categorias, metas e histórico).
+#   Migration aplicada nunca é editada; a próxima versão livre é a seguinte à maior existente.
+#   Fonte da verdade: porquinho-backend/src/main/resources/db/migration/
 
 # Step 6: Setup Redis (Local Development)
 docker run -d -p 6379:6379 --name porquinho-redis redis:7-alpine

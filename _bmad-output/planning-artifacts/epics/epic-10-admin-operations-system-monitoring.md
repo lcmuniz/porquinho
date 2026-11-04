@@ -12,7 +12,7 @@ So that I can monitor overall system performance.
 
 **Given** I am logged in with admin role (new field in users table: is_admin boolean)
 **When** I navigate to Admin Dashboard (/admin)
-**Then** Admin-only dashboard is displayed with system health metrics (FR85):
+**Then** Admin-only dashboard is displayed with system health metrics (FR82):
   - **Uptime:** Current uptime percentage, target: 99.5% (NFR33)
   - **Response Times:** Average API response times by endpoint
   - **Error Rates:** Total errors in last 24h/7d/30d
@@ -40,7 +40,7 @@ So that I can identify problematic bank formats and prioritize parser improvemen
 
 **Given** I am on the Admin Dashboard
 **When** I navigate to "Import Metrics" tab
-**Then** Import error rate dashboard is displayed showing per-bank statistics (FR86):
+**Then** Import error rate dashboard is displayed showing per-bank statistics (FR83):
   - Table with columns: Bank Name, Total Imports, Successful, Failed, Error Rate (%)
   - Bar chart: Error rate by bank (X-axis: Banks, Y-axis: Error %)
 **And** Data is calculated from `transaction_imports` table:
@@ -67,7 +67,7 @@ So that I can identify banks where AI performs poorly and improve training data.
 
 **Given** I am on the Admin Dashboard
 **When** I navigate to "AI Metrics" tab
-**Then** AI accuracy dashboard is displayed showing per-bank statistics (FR87):
+**Then** AI accuracy dashboard is displayed showing per-bank statistics (FR84):
   - Table: Bank Name, Total Classifications, User Corrections, Accuracy (%)
   - Line chart: Accuracy trend over time by bank
 **And** Data is calculated from `ai_classification_history` table:
@@ -97,7 +97,7 @@ So that I can understand product adoption and usage patterns.
 
 **Given** I am on the Admin Dashboard
 **When** I navigate to "User Metrics" tab
-**Then** Active users dashboard is displayed (FR88):
+**Then** Active users dashboard is displayed (FR85):
   - **Total Users:** Count of all registered users (deleted_at IS NULL)
   - **Active Users (24h):** Users who logged in in last 24 hours
   - **Active Users (7d):** Users who logged in in last 7 days
@@ -128,7 +128,7 @@ So that I can take proactive action before issues impact users.
 
 **Given** System monitoring is running
 **When** A critical metric threshold is violated
-**Then** Automated alert is sent to administrators (FR89)
+**Then** Automated alert is sent to administrators (FR86)
 **And** Alert conditions monitored:
   - **Error Rate > 10%:** System-wide error rate exceeds threshold
   - **Uptime < 99%:** Below target uptime (NFR33: 99.5%)

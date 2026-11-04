@@ -102,7 +102,7 @@
 
 **Payment Processing:**
 - **NFR58:** Integração com Stripe processa pagamentos com 99.9% de confiabilidade
-- **NFR59:** Webhooks de pagamento são processados com retry automático em caso de falha
+- **NFR59:** Webhooks de pagamento são processados com retry automático em caso de falha: o Stripe reentrega o evento quando o backend responde erro, e o processamento é idempotente (reentrega não duplica estado, audit nem e-mail). Este NFR trata da entrega do webhook; as novas tentativas de cobrança estão no FR14.
 
 **Authentication Providers:**
 - **NFR60:** OAuth integrations (Google) seguem padrões oficiais e best practices

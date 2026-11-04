@@ -75,13 +75,13 @@ So that I can understand "Onde estou? Para onde vou? Preciso ajustar?" in 30 sec
 **Given** I am on Dashboard GPS Layer 1 (top of page)
 **When** Layer 1 loads
 **Then** Layer 1 renders in < 2 seconds (NFR1 - CRITICAL requirement)
-**And** 5 essential metrics are displayed (FR55):
-  1. **Total Available Balance** (FR56): Sum of all account balances
-  2. **Category Status Visual** (FR57): Grid or list showing categories with color-coded status (🟢🟡🔴)
-  3. **Main Goal Progress** (FR58): Emergency Fund goal with progress bar and percentage
-  4. **Month Spending vs Planned** (FR59): Current month spending vs total budget allocated
-  5. **End-of-Month Projection** (FR60): Projected balance at month end based on current spending rate
-**And** Answers the 3 GPS questions visually (FR61):
+**And** 5 essential metrics are displayed (FR52):
+  1. **Total Available Balance** (FR53): Sum of all account balances
+  2. **Category Status Visual** (FR54): Grid or list showing categories with color-coded status (🟢🟡🔴)
+  3. **Main Goal Progress** (FR55): Emergency Fund goal with progress bar and percentage
+  4. **Month Spending vs Planned** (FR56): Current month spending vs total budget allocated
+  5. **End-of-Month Projection** (FR57): Projected balance at month end based on current spending rate
+**And** Answers the 3 GPS questions visually (FR58):
   - **"Onde estou?"** → Total balance + Category status
   - **"Para onde vou?"** → Goal progress + Projection
   - **"Preciso ajustar?"** → Overspent categories highlighted
@@ -139,17 +139,17 @@ So that I can drill down into specific areas of concern.
 
 **Given** I scroll down from Layer 1 to Layer 2 (middle section)
 **When** Layer 2 becomes visible
-**Then** Layer 2 tactical view is displayed (FR62)
-**And** Charts of spending by category are shown (FR63):
+**Then** Layer 2 tactical view is displayed (FR59)
+**And** Charts of spending by category are shown (FR60):
   - Pie chart or donut chart: Current month spending breakdown by category
   - Bar chart: Top 5 spending categories
-**And** Planned vs Actual comparison per category (FR64):
+**And** Planned vs Actual comparison per category (FR61):
   - Table or stacked bar chart showing allocated vs spent for each category
   - Visual indicators: Green (under budget), Red (over budget)
-**And** Temporal trends displayed (FR65):
+**And** Temporal trends displayed (FR62):
   - Line chart: Last 3/6/12 months spending by top categories
   - Time range selector: 3 months, 6 months, 12 months
-**And** Drill-down capability (FR66):
+**And** Drill-down capability (FR63):
   - Clicking on a category opens detail modal or expands section
   - Shows all transactions for that category in selected period
 **And** Layer 2 renders from Redis cache (key: `dashboard:layer2:{userId}`, TTL: 5 min per ARCH-REQ-12)
@@ -170,7 +170,7 @@ So that I can find specific transactions and make detailed edits.
 
 **Given** I scroll down from Layer 2 to Layer 3 (bottom section)
 **When** Layer 3 becomes visible
-**Then** Complete transaction list is displayed (FR67, FR68)
+**Then** Complete transaction list is displayed (FR64, FR65)
 **And** Transaction table shows columns:
   - Date
   - Description
@@ -179,18 +179,18 @@ So that I can find specific transactions and make detailed edits.
   - Account
   - Status (icons for Pix, Installment, etc.)
   - Actions (Edit button)
-**And** Filters are available (FR69):
+**And** Filters are available (FR66):
   - Period filter: Date range picker or presets (This month, Last month, Last 3 months, Custom)
   - Category filter: Multi-select dropdown
   - Account filter: Multi-select dropdown
   - Text search: Search in transaction descriptions
-**And** Sorting options (FR70):
+**And** Sorting options (FR67):
   - Sort by: Date (default: newest first), Amount (high to low), Category (A-Z)
   - Clickable column headers for sorting
-**And** Individual edit capability (FR71):
+**And** Individual edit capability (FR68):
   - Clicking "Edit" on a transaction opens inline editor or modal
   - Uses Epic 5, Story 5.12 edit logic
-**And** Export to CSV (FR72):
+**And** Export to CSV (FR69):
   - "Export to CSV" button above table
   - Exports filtered/sorted results
   - CSV includes all transaction fields
