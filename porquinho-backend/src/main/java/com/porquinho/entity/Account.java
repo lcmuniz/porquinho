@@ -56,6 +56,10 @@ public class Account {
     @Column(name = "deleted_by")
     private UUID deletedBy;
 
+    /** Last reconciliation with the bank (Story 4.6, V23); null if never reconciled. */
+    @Column(name = "last_reconciliation_date")
+    private OffsetDateTime lastReconciliationDate;
+
     public Account() {
     }
 
@@ -115,4 +119,9 @@ public class Account {
 
     public UUID getDeletedBy() { return deletedBy; }
     public void setDeletedBy(UUID deletedBy) { this.deletedBy = deletedBy; }
+
+    public OffsetDateTime getLastReconciliationDate() { return lastReconciliationDate; }
+    public void setLastReconciliationDate(OffsetDateTime lastReconciliationDate) {
+        this.lastReconciliationDate = lastReconciliationDate;
+    }
 }

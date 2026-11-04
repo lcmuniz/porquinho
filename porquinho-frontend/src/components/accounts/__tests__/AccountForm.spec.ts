@@ -20,6 +20,7 @@ function created(overrides: Partial<Account> = {}): Account {
     initialBalance: 500,
     currentBalance: 500,
     createdAt: '2026-11-03T12:00:00Z',
+    lastReconciliationDate: null,
     ...overrides,
   }
 }
@@ -235,6 +236,7 @@ describe('AccountForm — edição (Story 4.3)', () => {
     initialBalance: 100,
     currentBalance: 1234.5,
     createdAt: '2026-11-01T12:00:00Z',
+    lastReconciliationDate: null,
   }
 
   beforeEach(() => {

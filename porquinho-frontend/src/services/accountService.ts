@@ -1,5 +1,12 @@
 import { api } from './api'
-import type { Account, CreateAccountInput, UpdateAccountInput } from '@/types/account'
+import type {
+  Account,
+  CreateAccountInput,
+  CreateReconciliationInput,
+  Reconciliation,
+  ReconciliationResult,
+  UpdateAccountInput,
+} from '@/types/account'
 
 /** Story 3.2: contas ativas do usuário logado, da mais antiga para a mais nova. */
 export async function listAccounts(): Promise<Account[]> {
@@ -39,5 +46,26 @@ export async function listDeletedAccounts(): Promise<Account[]> {
 /** Story 4.4: restaura a conta removida. 404 se ela não for do usuário ou não estiver removida. */
 export async function restoreAccount(id: string): Promise<Account> {
   const response = await api.post<Account>(`/api/v1/accounts/${id}/restore`)
+  return response.data
+}
+
+/**
+ * Story 4.6: reconcilia o saldo com o banco. O servidor calcula a diferença a partir do saldo que ele tem, ajusta o
+ * saldo atual e grava a data. 400 traz `errors` por campo; 404 se a conta não for do usuário ou tiver sido removida.
+ */
+export async function reconcileAccount(
+  id: string,
+  input: CreateReconciliationInput,
+): Promise<ReconciliationResult> {
+  const response = await api.post<ReconciliationResult>(
+    `/api/v1/accounts/${id}/reconciliations`,
+    input,
+  )
+  return response.data
+}
+
+/** Story 4.6: as 20 reconciliações mais recentes da conta. */
+export async function listReconciliations(id: string): Promise<Reconciliation[]> {
+  const response = await api.get<Reconciliation[]>(`/api/v1/accounts/${id}/reconciliations`)
   return response.data
 }

@@ -139,6 +139,13 @@
                   {{ ACCOUNT_TYPE_LABEL[account.accountType]
                   }}<template v-if="account.bankName"> · {{ account.bankName }}</template>
                 </p>
+                <p
+                  v-if="account.lastReconciliationDate"
+                  class="truncate text-xs text-gray-500"
+                  data-testid="account-reconciled-at"
+                >
+                  Reconciliada em {{ formatDateBR(account.lastReconciliationDate) }}
+                </p>
               </div>
               <span
                 class="text-sm font-semibold whitespace-nowrap"
@@ -147,6 +154,17 @@
               >
                 {{ formatBRL(account.currentBalance) }}
               </span>
+              <!-- Story 4.6: conferir o saldo com o banco -->
+              <Button
+                variant="ghost"
+                class="min-h-[44px] min-w-[44px] shrink-0 text-purple-700 hover:bg-purple-50"
+                :data-testid="`reconcile-account-${account.id}`"
+                :aria-label="`Reconciliar ${account.accountName}`"
+                @click="openReconcile(account)"
+              >
+                <Scale class="h-4 w-4" aria-hidden="true" />
+                Reconciliar
+              </Button>
               <Button
                 variant="ghost"
                 class="min-h-[44px] min-w-[44px] shrink-0 text-purple-700 hover:bg-purple-50"
@@ -465,14 +483,50 @@
         </Button>
       </DialogContent>
     </Dialog>
+
+    <!-- Story 4.6: reconciliar com o banco -->
+    <Dialog :open="reconcileDialogOpen" @update:open="onReconcileDialogOpenChange">
+      <DialogContent
+        :show-close-button="false"
+        data-testid="reconcile-dialog"
+        @open-auto-focus="onReconcileOpenAutoFocus"
+        @close-auto-focus="onReconcileCloseAutoFocus"
+      >
+        <DialogHeader>
+          <DialogTitle>Reconciliar {{ reconciling?.accountName }}</DialogTitle>
+          <DialogDescription>
+            Informe o saldo que o banco mostra hoje para conferir com o do porquinho.
+          </DialogDescription>
+        </DialogHeader>
+        <p
+          v-if="reconcileError"
+          role="alert"
+          data-testid="reconcile-error"
+          class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+        >
+          {{ reconcileError }}
+        </p>
+        <ReconcileForm
+          v-if="reconciling"
+          ref="reconcileForm"
+          v-model:submitting="reconcileSubmitting"
+          :account="reconciling"
+          @attempt="reconcileError = null"
+          @reconciled="onReconciled"
+          @failed="onReconcileFailed"
+          @dismiss="reconcileDialogOpen = false"
+        />
+      </DialogContent>
+    </Dialog>
   </main>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import { ArrowLeftRight, Landmark, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-vue-next'
+import { ArrowLeftRight, Landmark, Pencil, Plus, RotateCcw, Scale, Trash2 } from 'lucide-vue-next'
 import AccountForm from '@/components/accounts/AccountForm.vue'
+import ReconcileForm from '@/components/accounts/ReconcileForm.vue'
 import TransferForm from '@/components/accounts/TransferForm.vue'
 import { Button } from '@/components/ui/button'
 import {
@@ -491,7 +545,7 @@ import {
   restoreAccount,
 } from '@/services/accountService'
 import { listTransfers } from '@/services/transferService'
-import type { Account } from '@/types/account'
+import type { Account, ReconciliationResult } from '@/types/account'
 import type { Transfer } from '@/types/transfer'
 
 /**
@@ -500,6 +554,7 @@ import type { Transfer } from '@/types/transfer'
  * Story 4.4: "Remover" com confirmação; "Mostrar removidas" lista as removidas com "Restaurar".
  * Story 4.5: "Transferir" (com 2 ou mais contas) abre o diálogo de transferência; a seção "Transferências
  * recentes" lista as transferências registradas.
+ * Story 4.6: "Reconciliar" de cada conta abre o diálogo de reconciliação com o banco; a conta mostra a data da última.
  */
 const accounts = ref<Account[]>([])
 const loading = ref(true)
@@ -541,6 +596,12 @@ const transferButton = ref<{ $el?: HTMLElement } | null>(null)
 const transfers = ref<Transfer[]>([])
 const transfersLoading = ref(false)
 const transfersLoadFailed = ref(false)
+/** Story 4.6: conta em reconciliação. Continua definida depois de fechar, para o foco voltar ao botão dela. */
+const reconciling = ref<Account | null>(null)
+const reconcileDialogOpen = ref(false)
+const reconcileSubmitting = ref(false)
+const reconcileError = ref<string | null>(null)
+const reconcileForm = ref<InstanceType<typeof ReconcileForm> | null>(null)
 
 /** A mensagem de sucesso some sozinha depois de alguns segundos. */
 const SUCCESS_TIMEOUT_MS = 5000
@@ -579,6 +640,19 @@ async function load() {
 function formatISODateBR(iso: string): string {
   const [year, month, day] = iso.split('-')
   return year && month && day ? `${day}/${month}/${year}` : iso
+}
+
+const DATE_BR = new Intl.DateTimeFormat('pt-BR', {
+  timeZone: 'America/Sao_Paulo',
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+})
+
+/** Instante ISO → dd/mm/aaaa no fuso de São Paulo. */
+function formatDateBR(iso: string): string {
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? iso : DATE_BR.format(date)
 }
 
 /** Sequência das cargas de transferências: só a resposta da carga mais recente é aplicada. */
@@ -654,6 +728,68 @@ function onTransferCreated() {
 function onTransferFailed(detail: string | undefined, status?: number) {
   transferError.value = detail ?? 'Não foi possível registrar a transferência. Tente novamente.'
   if (status === 404) void refreshAccounts()
+}
+
+/** Story 4.6: abre o diálogo "Reconciliar <nome>". */
+function openReconcile(account: Account) {
+  reconciling.value = account
+  reconcileError.value = null
+  setSuccess(null)
+  notice.value = null
+  reconcileDialogOpen.value = true
+}
+
+function onReconcileDialogOpenChange(open: boolean) {
+  // Não fecha no meio do envio (Esc ou clique fora)
+  if (!open && reconcileSubmitting.value) return
+  reconcileDialogOpen.value = open
+}
+
+function onReconcileOpenAutoFocus(event: Event) {
+  event.preventDefault()
+  if (reconcileForm.value) reconcileForm.value.focus()
+  else void nextTick(() => reconcileForm.value?.focus())
+}
+
+/** Ao fechar, o foco volta ao "Reconciliar" da conta (se ela continua na lista) ou ao botão do topo/título. */
+function onReconcileCloseAutoFocus(event: Event) {
+  event.preventDefault()
+  void nextTick(() => {
+    const reconcileButton = reconciling.value
+      ? list.value?.querySelector<HTMLElement>(
+          `[data-testid="reconcile-account-${reconciling.value.id}"]`,
+        )
+      : null
+    ;(reconcileButton ?? headerAddButton.value?.$el ?? heading.value)?.focus()
+  })
+}
+
+/**
+ * Story 4.6: aplica a conta devolvida pelo servidor (saldo e data novos), fecha o diálogo e recarrega as contas do
+ * servidor; o total é recalculado pelo computed.
+ */
+function onReconciled(result: ReconciliationResult) {
+  const index = accounts.value.findIndex((x) => x.id === result.account.id)
+  if (index >= 0) accounts.value.splice(index, 1, result.account)
+  reconcileDialogOpen.value = false
+  setSuccess('Saldo reconciliado')
+  void refreshAccounts()
+}
+
+/**
+ * 404: a conta foi removida ou não é do usuário; o diálogo fecha, aparece o aviso e as contas são recarregadas.
+ * Outras falhas ficam no diálogo, que continua aberto.
+ */
+function onReconcileFailed(detail: string | undefined, status?: number) {
+  if (status === 404) {
+    const id = reconciling.value?.id
+    accounts.value = accounts.value.filter((x) => x.id !== id)
+    reconcileDialogOpen.value = false
+    notice.value = 'Esta conta não existe mais'
+    void refreshAccounts()
+    return
+  }
+  reconcileError.value = detail ?? 'Não foi possível reconciliar a conta. Tente novamente.'
 }
 
 function openDialog() {

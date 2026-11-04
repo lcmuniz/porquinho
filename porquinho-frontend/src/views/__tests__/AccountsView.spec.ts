@@ -3,9 +3,10 @@ import { nextTick } from 'vue'
 import { mount, flushPromises, RouterLinkStub } from '@vue/test-utils'
 import AccountsView from '../AccountsView.vue'
 import AccountForm from '@/components/accounts/AccountForm.vue'
+import ReconcileForm from '@/components/accounts/ReconcileForm.vue'
 import TransferForm from '@/components/accounts/TransferForm.vue'
 import { toISODate, todayInSaoPaulo } from '@/lib/goalPlan'
-import type { Account } from '@/types/account'
+import type { Account, ReconciliationResult } from '@/types/account'
 import type { Transfer } from '@/types/transfer'
 
 const mockList = vi.fn()
@@ -14,6 +15,7 @@ const mockUpdate = vi.fn()
 const mockDelete = vi.fn()
 const mockListDeleted = vi.fn()
 const mockRestore = vi.fn()
+const mockReconcile = vi.fn()
 
 vi.mock('@/services/accountService', () => ({
   listAccounts: (...a: unknown[]) => mockList(...a),
@@ -22,6 +24,7 @@ vi.mock('@/services/accountService', () => ({
   deleteAccount: (...a: unknown[]) => mockDelete(...a),
   listDeletedAccounts: (...a: unknown[]) => mockListDeleted(...a),
   restoreAccount: (...a: unknown[]) => mockRestore(...a),
+  reconcileAccount: (...a: unknown[]) => mockReconcile(...a),
 }))
 
 const mockListTransfers = vi.fn()
@@ -41,6 +44,7 @@ function account(overrides: Partial<Account> = {}): Account {
     initialBalance: 1000,
     currentBalance: 1000,
     createdAt: '2026-11-01T12:00:00Z',
+    lastReconciliationDate: null,
     ...overrides,
   }
 }
@@ -1387,5 +1391,318 @@ describe('AccountsView — transferências (Story 4.5)', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-testid="transfer-item-t1"]').exists()).toBe(true)
+  })
+})
+
+describe('AccountsView — reconciliar com o banco (Story 4.6)', () => {
+  const reconcileDialog = () => document.body.querySelector('[data-testid="reconcile-dialog"]')
+  const bodyButton = (testid: string) =>
+    document.body.querySelector<HTMLButtonElement>(`[data-testid="${testid}"]`)!
+  const RECONCILED_AT = '2026-11-03T15:00:00Z'
+
+  const nubank = () => account({ id: 'a1', accountName: 'Nubank', currentBalance: 1000 })
+  const inter = () =>
+    account({
+      id: 'a2',
+      accountName: 'Inter',
+      bankName: 'Inter',
+      currentBalance: 500,
+      createdAt: '2026-11-02T12:00:00Z',
+    })
+
+  function result(bankBalance: number, previous = 1000): ReconciliationResult {
+    return {
+      account: { ...nubank(), currentBalance: bankBalance, lastReconciliationDate: RECONCILED_AT },
+      reconciliation: {
+        id: 'r1',
+        accountId: 'a1',
+        previousBalance: previous,
+        bankBalance,
+        difference: bankBalance - previous,
+        reason: null,
+        reconciledAt: RECONCILED_AT,
+      },
+    }
+  }
+
+  async function openReconcile(wrapper: Wrapper, id = 'a1') {
+    await wrapper.get(`[data-testid="reconcile-account-${id}"]`).trigger('click')
+    await flushPromises()
+    return wrapper.findComponent(ReconcileForm)
+  }
+
+  type RForm = Awaited<ReturnType<typeof openReconcile>>
+
+  async function fill(form: RForm, bank: string) {
+    await form.get('[data-testid="reconcile-bank-balance-input"]').setValue(bank)
+  }
+
+  async function submit(form: RForm) {
+    await form.get('[data-testid="reconcile-form"]').trigger('submit')
+    await flushPromises()
+  }
+
+  beforeEach(() => {
+    mockList.mockReset().mockResolvedValue([nubank(), inter()])
+    mockReconcile.mockReset().mockImplementation(async (_id, input) => result(input.bankBalance))
+  })
+
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('cada conta tem "Reconciliar" com o nome no rótulo acessível e alvo de 44px', async () => {
+    const wrapper = await mountView()
+    const button = wrapper.get('[data-testid="reconcile-account-a1"]')
+
+    expect(button.text()).toBe('Reconciliar')
+    expect(button.attributes('aria-label')).toBe('Reconciliar Nubank')
+    expect(button.classes()).toContain('min-h-[44px]')
+    expect(wrapper.get('[data-testid="reconcile-account-a2"]').attributes('aria-label')).toBe(
+      'Reconciliar Inter',
+    )
+  })
+
+  it('mostra "Reconciliada em dd/mm/aaaa" (fuso de São Paulo) só quando houver data', async () => {
+    mockList.mockResolvedValue([
+      account({ id: 'a1', lastReconciliationDate: '2026-11-04T01:00:00Z' }),
+      inter(),
+    ])
+    const wrapper = await mountView()
+
+    expect(
+      wrapper.get('[data-testid="account-item-a1"] [data-testid="account-reconciled-at"]').text(),
+    ).toBe('Reconciliada em 03/11/2026')
+    expect(
+      wrapper
+        .find('[data-testid="account-item-a2"] [data-testid="account-reconciled-at"]')
+        .exists(),
+    ).toBe(false)
+  })
+
+  it('abre "Reconciliar Nubank" com o saldo no porquinho e foco no saldo do banco', async () => {
+    const wrapper = await mountView()
+    await openReconcile(wrapper)
+
+    expect(reconcileDialog()?.textContent).toContain('Reconciliar Nubank')
+    expect(
+      plain(
+        document.body.querySelector('[data-testid="reconcile-current-balance"]')!.textContent!,
+      ).trim(),
+    ).toBe('Saldo no porquinho: R$ 1.000,00')
+    await flushPromises()
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('reconcile-bank-balance-input')
+  })
+
+  it('Nubank 1.000,00 → banco 1.050,00, "Ajustar saldo": saldo, data, total e "Saldo reconciliado"', async () => {
+    const wrapper = await mountView()
+    const form = await openReconcile(wrapper)
+    await fill(form, '1.050,00')
+    expect(plain(form.get('[data-testid="reconcile-difference-value"]').text())).toBe('+R$ 50,00')
+    expect(form.get('[data-testid="reconcile-question"]').text()).toBe('Deseja ajustar o saldo?')
+    // Depois da reconciliação a lista vem do servidor
+    mockList.mockResolvedValue([
+      { ...nubank(), currentBalance: 1050, lastReconciliationDate: RECONCILED_AT },
+      inter(),
+    ])
+    await submit(form)
+
+    expect(mockReconcile).toHaveBeenCalledWith('a1', { bankBalance: 1050, reason: null })
+    expect(reconcileDialog()).toBeNull()
+    expect(
+      plain(wrapper.get('[data-testid="account-item-a1"] [data-testid="account-balance"]').text()),
+    ).toBe('R$ 1.050,00')
+    expect(
+      wrapper.get('[data-testid="account-item-a1"] [data-testid="account-reconciled-at"]').text(),
+    ).toBe('Reconciliada em 03/11/2026')
+    expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 1.550,00')
+    const success = wrapper.get('[data-testid="accounts-success"]')
+    expect(success.attributes('role')).toBe('status')
+    expect(success.text()).toBe('Saldo reconciliado')
+    expect(mockList).toHaveBeenCalledTimes(2)
+    await flushPromises()
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('reconcile-account-a1')
+  })
+
+  it('banco mostra menos: diferença −20,00 em vermelho; ajuste leva a 980,00', async () => {
+    const wrapper = await mountView()
+    const form = await openReconcile(wrapper)
+    await fill(form, '980')
+    const difference = form.get('[data-testid="reconcile-difference-value"]')
+    expect(plain(difference.text())).toBe('-R$ 20,00')
+    expect(difference.classes()).toContain('text-red-600')
+    mockList.mockResolvedValue([{ ...nubank(), currentBalance: 980 }, inter()])
+    await submit(form)
+
+    expect(
+      plain(wrapper.get('[data-testid="account-item-a1"] [data-testid="account-balance"]').text()),
+    ).toBe('R$ 980,00')
+  })
+
+  it('saldos iguais: "Confirmar reconciliação" registra e mostra a data', async () => {
+    const wrapper = await mountView()
+    const form = await openReconcile(wrapper)
+    await fill(form, '1.000,00')
+    expect(form.find('[data-testid="reconcile-question"]').exists()).toBe(false)
+    expect(form.get('[data-testid="reconcile-confirm-button"]').text()).toBe(
+      'Confirmar reconciliação',
+    )
+    mockList.mockResolvedValue([{ ...nubank(), lastReconciliationDate: RECONCILED_AT }, inter()])
+    await submit(form)
+
+    expect(mockReconcile).toHaveBeenCalledWith('a1', { bankBalance: 1000, reason: null })
+    expect(reconcileDialog()).toBeNull()
+    expect(wrapper.get('[data-testid="accounts-success"]').text()).toBe('Saldo reconciliado')
+    expect(wrapper.find('[data-testid="account-reconciled-at"]').exists()).toBe(true)
+  })
+
+  it('"Investigar depois" fecha sem mudar nada', async () => {
+    const wrapper = await mountView()
+    const form = await openReconcile(wrapper)
+    await fill(form, '1.050,00')
+    bodyButton('reconcile-later-button').click()
+    await flushPromises()
+
+    expect(reconcileDialog()).toBeNull()
+    expect(mockReconcile).not.toHaveBeenCalled()
+    expect(
+      plain(wrapper.get('[data-testid="account-item-a1"] [data-testid="account-balance"]').text()),
+    ).toBe('R$ 1.000,00')
+    expect(wrapper.get('[data-testid="accounts-success"]').text()).toBe('')
+    expect(mockList).toHaveBeenCalledTimes(1)
+  })
+
+  it('saldo do banco vazio mostra o erro no campo e o diálogo continua aberto', async () => {
+    const wrapper = await mountView()
+    const form = await openReconcile(wrapper)
+    await submit(form)
+
+    expect(form.get('[data-testid="reconcile-bank-balance-error"]').text()).toBe(
+      'Informe o saldo no banco',
+    )
+    expect(reconcileDialog()).not.toBeNull()
+    expect(mockReconcile).not.toHaveBeenCalled()
+  })
+
+  it('404: fecha o diálogo, avisa e recarrega as contas', async () => {
+    mockReconcile.mockRejectedValueOnce({
+      response: { status: 404, data: { detail: 'Conta não encontrada' } },
+    })
+    const wrapper = await mountView()
+    const form = await openReconcile(wrapper)
+    await fill(form, '1.050,00')
+    mockList.mockResolvedValue([inter()])
+    await submit(form)
+
+    expect(reconcileDialog()).toBeNull()
+    expect(wrapper.get('[data-testid="accounts-notice"]').text()).toBe('Esta conta não existe mais')
+    expect(mockList).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[data-testid="account-item-a1"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="account-item-a2"]').exists()).toBe(true)
+  })
+
+  it('recarga falha depois de reconciliar: a linha mostra a conta devolvida pelo POST, total e aviso', async () => {
+    const wrapper = await mountView()
+    const form = await openReconcile(wrapper)
+    await fill(form, '1.050,00')
+    mockList.mockRejectedValue(new Error('network'))
+    await submit(form)
+
+    expect(reconcileDialog()).toBeNull()
+    expect(
+      plain(wrapper.get('[data-testid="account-item-a1"] [data-testid="account-balance"]').text()),
+    ).toBe('R$ 1.050,00')
+    expect(
+      wrapper.get('[data-testid="account-item-a1"] [data-testid="account-reconciled-at"]').text(),
+    ).toBe('Reconciliada em 03/11/2026')
+    expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 1.550,00')
+    expect(wrapper.get('[data-testid="accounts-success"]').text()).toBe('Saldo reconciliado')
+    expect(wrapper.get('[data-testid="accounts-notice"]').text()).toBe(
+      'Não foi possível atualizar os saldos. Recarregue a página.',
+    )
+  })
+
+  it('404 com recarga falhando: a conta sai da lista mesmo assim', async () => {
+    mockReconcile.mockRejectedValueOnce({
+      response: { status: 404, data: { detail: 'Conta não encontrada' } },
+    })
+    const wrapper = await mountView()
+    const form = await openReconcile(wrapper)
+    await fill(form, '1.050,00')
+    mockList.mockRejectedValue(new Error('network'))
+    await submit(form)
+
+    expect(reconcileDialog()).toBeNull()
+    expect(wrapper.find('[data-testid="account-item-a1"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="account-item-a2"]').exists()).toBe(true)
+    expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 500,00')
+    expect(wrapper.find('[data-testid="accounts-notice"]').exists()).toBe(true)
+  })
+
+  it('outra falha mostra a mensagem no diálogo, que continua aberto com os dados', async () => {
+    mockReconcile.mockRejectedValueOnce(new Error('network'))
+    const wrapper = await mountView()
+    const form = await openReconcile(wrapper)
+    await fill(form, '1.050,00')
+    await submit(form)
+
+    expect(
+      document.body.querySelector('[data-testid="reconcile-error"]')?.textContent?.trim(),
+    ).toBe('Não foi possível reconciliar a conta. Tente novamente.')
+    expect(reconcileDialog()).not.toBeNull()
+    expect(
+      (form.get('[data-testid="reconcile-bank-balance-input"]').element as HTMLInputElement).value,
+    ).toBe('1.050,00')
+  })
+
+  it('saldo mudou em outra aba: a tela mostra o que o servidor devolveu', async () => {
+    // Tela com 1.000,00; o servidor tinha 900,00 e calcula a diferença a partir dele
+    mockReconcile.mockResolvedValueOnce(result(1050, 900))
+    const wrapper = await mountView()
+    const form = await openReconcile(wrapper)
+    await fill(form, '1.050,00')
+    mockList.mockResolvedValue([{ ...nubank(), currentBalance: 1050 }, inter()])
+    await submit(form)
+
+    expect(mockList).toHaveBeenCalledTimes(2)
+    expect(
+      plain(wrapper.get('[data-testid="account-item-a1"] [data-testid="account-balance"]').text()),
+    ).toBe('R$ 1.050,00')
+  })
+
+  it('enquanto envia, mostra "Salvando...", os botões travam e o diálogo não fecha', async () => {
+    let resolve: (r: ReconciliationResult) => void = () => {}
+    mockReconcile.mockReturnValue(new Promise<ReconciliationResult>((r) => (resolve = r)))
+    const wrapper = await mountView()
+    const form = await openReconcile(wrapper)
+    await fill(form, '1.050,00')
+    await submit(form)
+
+    expect(bodyButton('reconcile-adjust-button').disabled).toBe(true)
+    expect(bodyButton('reconcile-adjust-button').textContent?.trim()).toBe('Salvando...')
+    expect(bodyButton('reconcile-later-button').disabled).toBe(true)
+    // Diferença ≠ 0: só "Ajustar saldo" e "Investigar depois"
+    expect(document.body.querySelector('[data-testid="cancel-reconcile"]')).toBeNull()
+    wrapper.findAllComponents({ name: 'Dialog' })[3]!.vm.$emit('update:open', false)
+    await flushPromises()
+    expect(reconcileDialog()).not.toBeNull()
+
+    await form.get('[data-testid="reconcile-form"]').trigger('submit')
+    resolve(result(1050))
+    await flushPromises()
+    expect(reconcileDialog()).toBeNull()
+    expect(mockReconcile).toHaveBeenCalledOnce()
+  })
+
+  it('Cancelar fecha sem reconciliar e devolve o foco ao "Reconciliar" da conta', async () => {
+    const wrapper = await mountView()
+    await openReconcile(wrapper, 'a2')
+    bodyButton('cancel-reconcile').click()
+    await flushPromises()
+    await nextTick()
+
+    expect(reconcileDialog()).toBeNull()
+    expect(mockReconcile).not.toHaveBeenCalled()
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('reconcile-account-a2')
   })
 })

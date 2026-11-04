@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatBRL, formatBRLInput, parseBRL } from '../money'
+import { formatBRL, formatBRLInput, formatSignedBRL, parseBRL } from '../money'
 
 /** Intl usa espaço não separável depois de "R$"; normaliza para comparar. */
 const plain = (s: string) => s.replace(/\s/g, ' ')
@@ -61,5 +61,17 @@ describe('formatBRLInput', () => {
     expect(formatBRLInput(2083.34)).toBe('2.083,34')
     expect(formatBRLInput(0.5)).toBe('0,50')
     expect(parseBRL(formatBRLInput(1234567.89))).toBe(1234567.89)
+  })
+})
+
+describe('formatSignedBRL', () => {
+  it('mostra o sinal de mais nos positivos e o de menos nos negativos', () => {
+    expect(plain(formatSignedBRL(50))).toBe('+R$ 50,00')
+    expect(plain(formatSignedBRL(-20))).toBe('-R$ 20,00')
+  })
+
+  it('zero (inclusive -0) fica sem sinal', () => {
+    expect(plain(formatSignedBRL(0))).toBe('R$ 0,00')
+    expect(plain(formatSignedBRL(-0))).toBe('R$ 0,00')
   })
 })

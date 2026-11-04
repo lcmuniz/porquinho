@@ -25,6 +25,9 @@ public interface AccountRepository extends JpaRepository<Account, UUID> {
 
     long countByUserIdAndDeletedAtIsNull(UUID userId);
 
+    /** The user's active row, without lock (Story 4.6: reconciliation list). */
+    Optional<Account> findByIdAndUserIdAndDeletedAtIsNull(UUID id, UUID userId);
+
     /** The user's removed rows, most recently removed first (Story 4.4). */
     @Query("SELECT a FROM Account a WHERE a.userId = :userId AND a.deletedAt IS NOT NULL ORDER BY a.deletedAt DESC, a.id ASC")
     List<Account> findDeletedByUserId(@Param("userId") UUID userId);

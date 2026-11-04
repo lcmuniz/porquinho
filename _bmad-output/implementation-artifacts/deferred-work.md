@@ -119,3 +119,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-4-5-record-internal-transfers-between-own-accounts.md`
   summary: Injetar `Clock` em `NotPastInSaoPaulo` e `NotFutureInSaoPaulo` e testar a virada do dia em São Paulo × UTC; corrigir `formatDateBR` (`lib/date.ts`), que mostra datas AAAA-MM-DD um dia antes no fuso de São Paulo.
   evidence: Revisão da 4.5 (Verification Gap) e relato do implementador da 4.5.
+
+## Story 4.6 → Epic 5
+
+- Reconciliação não cria transação de ajuste (decisão A, 2026-11-03). Quando a tabela `transactions` existir, decidir se cada evento de `reconciliation_history` com diferença ≠ 0 vira uma transação com a categoria "Ajuste de Reconciliação".

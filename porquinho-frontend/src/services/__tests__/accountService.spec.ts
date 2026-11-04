@@ -17,6 +17,8 @@ import {
   deleteAccount,
   listAccounts,
   listDeletedAccounts,
+  listReconciliations,
+  reconcileAccount,
   restoreAccount,
 } from '../accountService'
 
@@ -66,5 +68,23 @@ describe('accountService', () => {
   it('restoreAccount faz POST em /api/v1/accounts/{id}/restore', async () => {
     await expect(restoreAccount('a1')).resolves.toEqual(account)
     expect(mockPost).toHaveBeenCalledWith('/api/v1/accounts/a1/restore')
+  })
+
+  it('reconcileAccount faz POST em /api/v1/accounts/{id}/reconciliations com os dados', async () => {
+    const result = { account, reconciliation: { id: 'r1', difference: 50 } }
+    mockPost.mockResolvedValueOnce({ data: result })
+    await expect(reconcileAccount('a1', { bankBalance: 1050, reason: null })).resolves.toEqual(
+      result,
+    )
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/accounts/a1/reconciliations', {
+      bankBalance: 1050,
+      reason: null,
+    })
+  })
+
+  it('listReconciliations faz GET em /api/v1/accounts/{id}/reconciliations', async () => {
+    mockGet.mockResolvedValueOnce({ data: [] })
+    await expect(listReconciliations('a1')).resolves.toEqual([])
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/accounts/a1/reconciliations')
   })
 })
