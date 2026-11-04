@@ -283,6 +283,19 @@ describe('AccountsView', () => {
     expect(link.props('to')).toBe('/dashboard')
   })
 
+  it('cada conta tem o botão "Histórico", que leva à página de histórico', async () => {
+    mockList.mockResolvedValue([account(), account({ id: 'a2', accountName: 'Inter' })])
+    const wrapper = await mountView()
+    const link = wrapper.get('[data-testid="history-account-a2"]')
+    expect(link.text()).toBe('Histórico')
+    expect(link.attributes('aria-label')).toBe('Histórico de Inter')
+    expect(link.classes()).toContain('min-h-[44px]')
+    const stub = wrapper
+      .findAllComponents(RouterLinkStub)
+      .find((l) => l.attributes('data-testid') === 'history-account-a2')!
+    expect(stub.props('to')).toBe('/contas/a2/historico')
+  })
+
   it('enquanto salva, Cancelar fica desabilitado e Esc ou update:open(false) não fecham', async () => {
     let resolveCreate: (a: Account) => void = () => {}
     mockCreate.mockReturnValue(new Promise<Account>((resolve) => (resolveCreate = resolve)))

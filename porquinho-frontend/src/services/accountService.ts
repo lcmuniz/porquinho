@@ -1,6 +1,8 @@
 import { api } from './api'
 import type {
   Account,
+  BalanceHistory,
+  BalanceRange,
   CreateAccountInput,
   CreateReconciliationInput,
   Reconciliation,
@@ -67,5 +69,16 @@ export async function reconcileAccount(
 /** Story 4.6: as 20 reconciliações mais recentes da conta. */
 export async function listReconciliations(id: string): Promise<Reconciliation[]> {
   const response = await api.get<Reconciliation[]>(`/api/v1/accounts/${id}/reconciliations`)
+  return response.data
+}
+
+/**
+ * Story 4.7: pontos do saldo da conta no período, do mais antigo para o mais recente; o primeiro é o último saldo
+ * antes do período. 400 "Período inválido"; 404 se a conta não for do usuário (removida continua consultável).
+ */
+export async function getBalanceHistory(id: string, range: BalanceRange): Promise<BalanceHistory> {
+  const response = await api.get<BalanceHistory>(`/api/v1/accounts/${id}/balance-history`, {
+    params: { range },
+  })
   return response.data
 }
