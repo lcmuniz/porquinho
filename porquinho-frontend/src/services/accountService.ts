@@ -24,7 +24,8 @@ export async function createAccount(input: CreateAccountInput): Promise<Account>
 
 /**
  * Story 4.3: edita nome, banco, tipo e saldo atual (o inicial não muda). 400 traz `errors` por campo;
- * 404 se a conta não for do usuário ou já tiver sido removida.
+ * 404 se a conta não for do usuário ou já tiver sido removida; 409 se a `version` enviada não for mais a atual
+ * (a conta mudou em outra tela depois de o formulário abrir).
  */
 export async function updateAccount(id: string, input: UpdateAccountInput): Promise<Account> {
   const response = await api.put<Account>(`/api/v1/accounts/${id}`, input)

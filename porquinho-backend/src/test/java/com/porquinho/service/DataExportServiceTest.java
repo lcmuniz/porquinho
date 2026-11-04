@@ -337,6 +337,7 @@ class DataExportServiceTest {
         removed.setUpdatedAt(created.plusMinutes(2));
         removed.setDeletedAt(created.plusMinutes(2));
         removed.setLastReconciliationDate(created.plusMinutes(1));
+        removed.setVersion(3L);
         when(accountRepository.findByUserIdOrderByCreatedAtAsc(userId)).thenReturn(List.of(active, removed));
 
         Map<String, Object> data = dataExportService.collectUserData(userId);
@@ -364,6 +365,7 @@ class DataExportServiceTest {
         Map<String, Object> second = rows.get(1);
         assertExportsEveryColumn(Account.class, second);
         assertEquals(created.plusMinutes(1).toString(), second.get("last_reconciliation_date"));
+        assertEquals(3L, second.get("version"));
         assertEquals("SAVINGS", second.get("account_type"));
         assertNull(second.get("bank_name"));
         assertEquals(new java.math.BigDecimal("-150.00"), second.get("initial_balance"));

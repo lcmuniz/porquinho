@@ -28,6 +28,7 @@ function account(overrides: Partial<Account> = {}): Account {
     currentBalance: 1234.56,
     createdAt: '2026-11-02T12:00:00Z',
     lastReconciliationDate: null,
+    version: 0,
     ...overrides,
   }
 }

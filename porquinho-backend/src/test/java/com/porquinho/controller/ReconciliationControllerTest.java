@@ -83,7 +83,7 @@ class ReconciliationControllerTest {
 
     private ReconciliationResponse.Created created(String bank, String difference) {
         AccountResponse account = new AccountResponse(accountId, "Nubank", null, "CHECKING", new BigDecimal("1000.00"),
-            new BigDecimal(bank), AT.minusDays(30), AT);
+            new BigDecimal(bank), AT.minusDays(30), AT, 1L);
         return new ReconciliationResponse.Created(account, event("1000.00", bank, difference, null));
     }
 

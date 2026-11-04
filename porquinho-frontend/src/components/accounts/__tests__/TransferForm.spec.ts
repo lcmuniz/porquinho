@@ -22,6 +22,7 @@ function account(id: string, name: string, balance: number): Account {
     currentBalance: balance,
     createdAt: '2026-11-01T12:00:00Z',
     lastReconciliationDate: null,
+    version: 0,
   }
 }
 

@@ -18,6 +18,7 @@ const NUBANK: Account = {
   currentBalance: 1000,
   createdAt: '2026-11-01T12:00:00Z',
   lastReconciliationDate: null,
+  version: 0,
 }
 
 const result: ReconciliationResult = {

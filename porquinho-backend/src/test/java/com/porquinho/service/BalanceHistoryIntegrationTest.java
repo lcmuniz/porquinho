@@ -83,6 +83,10 @@ class BalanceHistoryIntegrationTest {
         return accountService.create(owner, new CreateAccountRequest(name, null, "CHECKING", new BigDecimal(balance))).getId();
     }
 
+    private long version(UUID accountId) {
+        return jdbc.queryForObject("SELECT version FROM accounts WHERE id = ?", Long.class, accountId);
+    }
+
     private void moveHistoryBack(UUID accountId, long days) {
         jdbc.update("UPDATE account_balance_history SET snapshot_date = snapshot_date - make_interval(days => ?) "
             + "WHERE account_id = ?", (int) days, accountId);
@@ -93,7 +97,8 @@ class BalanceHistoryIntegrationTest {
         // Critério de aceite: Nubank 1.000,00 → edição 1.200,00 → transferência de 200,00 → reconciliação 1.050,00
         UUID nubank = add(userId, "Nubank", "1000.00");
         UUID inter = add(userId, "Inter", "0.00");
-        accountService.update(userId, nubank, new UpdateAccountRequest("Nubank", null, "CHECKING", new BigDecimal("1200.00")));
+        accountService.update(userId, nubank, new UpdateAccountRequest("Nubank", null, "CHECKING", new BigDecimal("1200.00"),
+            version(nubank)));
         transferService.create(userId, new CreateTransferRequest(UUID.randomUUID(), nubank, inter, new BigDecimal("200.00"),
             LocalDate.now(ZoneId.of("America/Sao_Paulo")), null), "127.0.0.1");
         reconciliationService.reconcile(userId, nubank, new CreateReconciliationRequest(new BigDecimal("1050.00"), null),
@@ -112,7 +117,8 @@ class BalanceHistoryIntegrationTest {
     @Test
     void thirtyDaysWithoutRecentEventsShowsTheLastKnownBalanceOnly() {
         UUID nubank = add(userId, "Nubank", "1000.00");
-        accountService.update(userId, nubank, new UpdateAccountRequest("Nubank", null, "CHECKING", new BigDecimal("-50.00")));
+        accountService.update(userId, nubank, new UpdateAccountRequest("Nubank", null, "CHECKING", new BigDecimal("-50.00"),
+            version(nubank)));
         moveHistoryBack(nubank, 60);
 
         BalanceHistoryResponse response = balanceHistoryService.history(userId, nubank, "30d");
@@ -132,9 +138,11 @@ class BalanceHistoryIntegrationTest {
     void periodPointsComeAfterThePointBeforeThePeriod() {
         UUID nubank = add(userId, "Nubank", "1000.00");
         moveHistoryBack(nubank, 400);
-        accountService.update(userId, nubank, new UpdateAccountRequest("Nubank", null, "CHECKING", new BigDecimal("1100.00")));
+        accountService.update(userId, nubank, new UpdateAccountRequest("Nubank", null, "CHECKING", new BigDecimal("1100.00"),
+            version(nubank)));
         moveHistoryBack(nubank, 100);
-        accountService.update(userId, nubank, new UpdateAccountRequest("Nubank", null, "CHECKING", new BigDecimal("1300.00")));
+        accountService.update(userId, nubank, new UpdateAccountRequest("Nubank", null, "CHECKING", new BigDecimal("1300.00"),
+            version(nubank)));
 
         // initial há 500 dias, 1100 há 100 dias, 1300 hoje
         assertThat(balanceHistoryService.history(userId, nubank, "30d").points())

@@ -30,7 +30,7 @@
         {{ successMessage }}
       </p>
 
-      <!-- Story 4.3: aviso (não é sucesso) quando o item editado não existe mais -->
+      <!-- Story 4.3: aviso (não é sucesso) quando o item editado não existe mais ou mudou em outra tela -->
       <p
         v-if="notice"
         role="alert"
@@ -395,6 +395,7 @@
           @created="onCreated"
           @updated="onUpdated"
           @not-found="onNotFound"
+          @conflict="onConflict"
           @failed="onFailed"
         />
         <Button
@@ -574,6 +575,8 @@ import type { Transfer } from '@/types/transfer'
  * Story 4.5: "Transferir" (com 2 ou mais contas) abre o diálogo de transferência; a seção "Transferências
  * recentes" lista as transferências registradas.
  * Story 4.6: "Reconciliar" de cada conta abre o diálogo de reconciliação com o banco; a conta mostra a data da última.
+ * Retro do Epic 4: as cargas de contas têm guarda de sequência, o 404 de qualquer ação passa por `onAccountNotFound`
+ * e o 409 da edição (a conta mudou em outra tela) fecha o diálogo, avisa e recarrega as contas.
  */
 const accounts = ref<Account[]>([])
 const loading = ref(true)
@@ -582,7 +585,7 @@ const dialogOpen = ref(false)
 const saving = ref(false)
 const dialogError = ref<string | null>(null)
 const successMessage = ref<string | null>(null)
-/** Story 4.3: aviso de item que não existe mais (404 ao editar); some na próxima ação. */
+/** Story 4.3: aviso de item que não existe mais (404) ou que mudou em outra tela (409); some na próxima ação. */
 const notice = ref<string | null>(null)
 const accountForm = ref<InstanceType<typeof AccountForm> | null>(null)
 const heading = ref<HTMLElement | null>(null)
@@ -639,18 +642,56 @@ const totalCents = computed(() =>
   accounts.value.reduce((sum, account) => sum + Math.round(account.currentBalance * 100), 0),
 )
 
+/**
+ * Sequência das cargas de contas (`load`, `refreshAccounts`, `refreshAfterNotFound`): só a resposta da carga mais
+ * recente é aplicada. Uma mudança local da lista (`splice`, `filter`, `push`) feita depois de a carga começar
+ * invalida a resposta, que leu o servidor antes dela: a carga é descartada e refeita, para não perder a mudança
+ * local nem os dados novos.
+ */
+let accountsRequest = 0
+let accountsChange = 0
+
+/** Mudança local da lista: a carga de contas em andamento descarta a resposta e busca de novo. */
+function discardPendingAccountLoads() {
+  accountsChange++
+}
+
+/** Lê as contas ativas. A resposta de uma carga substituída por outra não é aplicada, e a falha dela é ignorada. */
+async function fetchAccounts() {
+  const request = ++accountsRequest
+  for (;;) {
+    const change = accountsChange
+    try {
+      const result = await listAccounts()
+      if (request !== accountsRequest) return
+      // Leu o servidor antes de uma mudança local: busca de novo
+      if (change !== accountsChange) continue
+      accounts.value = result
+      return
+    } catch (err) {
+      if (request === accountsRequest) throw err
+      return
+    }
+  }
+}
+
+/** Sequência das cargas da página inteira (montagem e "Tentar de novo"). */
+let loadRequest = 0
+
 async function load() {
+  const request = ++loadRequest
   setSuccess(null)
   notice.value = null
   loading.value = true
   loadFailed.value = false
   try {
-    accounts.value = await listAccounts()
+    await fetchAccounts()
   } catch {
-    loadFailed.value = true
+    if (request === loadRequest) loadFailed.value = true
   } finally {
-    loading.value = false
+    if (request === loadRequest) loading.value = false
   }
+  if (request !== loadRequest) return
   if (showRemoved.value && !loadFailed.value) void loadRemoved()
   if (!loadFailed.value) void loadTransfers()
 }
@@ -726,7 +767,7 @@ function onTransferCloseAutoFocus(event: Event) {
  */
 async function refreshAccounts() {
   try {
-    accounts.value = await listAccounts()
+    await fetchAccounts()
   } catch {
     notice.value = 'Não foi possível atualizar os saldos. Recarregue a página.'
   }
@@ -741,12 +782,12 @@ function onTransferCreated() {
 }
 
 /**
- * 404 "Conta não encontrada" e outras falhas ficam no diálogo, que continua aberto. No 404 as contas são
- * recarregadas, para a conta removida sair das opções.
+ * 404 "Conta não encontrada" e outras falhas ficam no diálogo, que continua aberto. No 404 as listas são
+ * recarregadas pelo caminho comum, para a conta removida sair das opções.
  */
 function onTransferFailed(detail: string | undefined, status?: number) {
   transferError.value = detail ?? 'Não foi possível registrar a transferência. Tente novamente.'
-  if (status === 404) void refreshAccounts()
+  if (status === 404) onAccountNotFound()
 }
 
 /** Story 4.6: abre o diálogo "Reconciliar <nome>". */
@@ -789,23 +830,23 @@ function onReconcileCloseAutoFocus(event: Event) {
  */
 function onReconciled(result: ReconciliationResult) {
   const index = accounts.value.findIndex((x) => x.id === result.account.id)
-  if (index >= 0) accounts.value.splice(index, 1, result.account)
+  if (index >= 0) {
+    discardPendingAccountLoads()
+    accounts.value.splice(index, 1, result.account)
+  }
   reconcileDialogOpen.value = false
   setSuccess('Saldo reconciliado')
   void refreshAccounts()
 }
 
 /**
- * 404: a conta foi removida ou não é do usuário; o diálogo fecha, aparece o aviso e as contas são recarregadas.
+ * 404: a conta foi removida ou não é do usuário; o diálogo fecha e o resto segue o caminho comum do 404.
  * Outras falhas ficam no diálogo, que continua aberto.
  */
 function onReconcileFailed(detail: string | undefined, status?: number) {
   if (status === 404) {
-    const id = reconciling.value?.id
-    accounts.value = accounts.value.filter((x) => x.id !== id)
     reconcileDialogOpen.value = false
-    notice.value = 'Esta conta não existe mais'
-    void refreshAccounts()
+    onAccountNotFound(reconciling.value?.id, 'Esta conta não existe mais')
     return
   }
   reconcileError.value = detail ?? 'Não foi possível reconciliar a conta. Tente novamente.'
@@ -853,6 +894,7 @@ function onCloseAutoFocus(event: Event) {
 }
 
 function onCreated(created: Account) {
+  discardPendingAccountLoads()
   accounts.value.push(created)
   dialogOpen.value = false
   setSuccess('Conta adicionada com sucesso')
@@ -861,7 +903,10 @@ function onCreated(created: Account) {
 /** Story 4.3: o item editado é substituído na lista (o total é recalculado pelo computed). */
 function onUpdated(updated: Account) {
   const index = accounts.value.findIndex((x) => x.id === updated.id)
-  if (index >= 0) accounts.value.splice(index, 1, updated)
+  if (index >= 0) {
+    discardPendingAccountLoads()
+    accounts.value.splice(index, 1, updated)
+  }
   dialogOpen.value = false
   setSuccess('Informações atualizadas')
   // Story 4.5: os nomes das contas nas transferências acompanham a edição
@@ -870,11 +915,35 @@ function onUpdated(updated: Account) {
 
 /** Story 4.3: 404 ao salvar — o item foi removido ou não é do usuário; sai da lista. */
 function onNotFound() {
+  dialogOpen.value = false
+  onAccountNotFound(editing.value?.id, 'Esta conta não existe mais')
+}
+
+/**
+ * Retro do Epic 4: 409 ao salvar — a conta mudou em outra tela (transferência, reconciliação ou outra edição) depois
+ * de o formulário abrir. Nada foi gravado; o diálogo fecha, o aviso mostra a mensagem do servidor e as contas são
+ * recarregadas (uma falha na recarga é somada ao aviso). O foco volta ao "Editar" da conta (`onCloseAutoFocus`); se ela
+ * sumiu na recarga, vai para o botão do topo ou o título.
+ */
+async function onConflict(detail: string | undefined) {
   const id = editing.value?.id
-  accounts.value = accounts.value.filter((x) => x.id !== id)
   dialogOpen.value = false
   setSuccess(null)
-  notice.value = 'Esta conta não existe mais'
+  const message = detail ?? 'Esta conta foi alterada em outra tela. Abra a edição de novo.'
+  notice.value = message
+  try {
+    await fetchAccounts()
+  } catch {
+    // O aviso do conflito continua visível, junto com o da recarga
+    notice.value = `${message} Não foi possível atualizar os saldos. Recarregue a página.`
+    return
+  }
+  if (accounts.value.some((x) => x.id === id)) return
+  await nextTick()
+  const active = document.activeElement
+  if (!active || active === document.body) {
+    ;(headerAddButton.value?.$el ?? heading.value)?.focus()
+  }
 }
 
 function onFailed(detail: string | undefined) {
@@ -916,6 +985,7 @@ async function confirmRemove() {
   removeError.value = null
   try {
     await deleteAccount(target.id)
+    discardPendingAccountLoads()
     accounts.value = accounts.value.filter((x) => x.id !== target.id)
     // A seção de removidas é recarregada para seguir a ordem do servidor
     if (showRemoved.value) void loadRemoved(true)
@@ -925,10 +995,8 @@ async function confirmRemove() {
   } catch (err) {
     const response = (err as ApiError)?.response
     if (response?.status === 404) {
-      accounts.value = accounts.value.filter((x) => x.id !== target.id)
       removeDialogOpen.value = false
-      notice.value = 'Esta conta já foi removida ou não existe mais'
-      void refreshAfterNotFound()
+      onAccountNotFound(target.id, 'Esta conta já foi removida ou não existe mais')
     } else {
       // 409 "Mantenha ao menos uma conta ativa" e outras falhas ficam no diálogo
       removeError.value =
@@ -958,16 +1026,36 @@ async function loadRemoved(quiet = false) {
 }
 
 /**
- * Story 4.4: 404 ao remover ou restaurar — o item mudou em outra aba ou sessão. Recarrega as listas ativa e de
- * removidas sem esconder a página; uma falha aqui mantém o que já está na tela.
+ * Story 4.4: recarrega as listas ativa e de removidas (se a seção estiver aberta) sem esconder a página; uma falha
+ * aqui mantém o que já está na tela.
  */
 async function refreshAfterNotFound() {
   if (showRemoved.value) void loadRemoved(true)
   try {
-    accounts.value = await listAccounts()
+    await fetchAccounts()
   } catch {
     // Mantém a lista atual; o aviso já foi mostrado
   }
+}
+
+/**
+ * Retro do Epic 4: caminho único do 404 de editar, remover, restaurar, transferir e reconciliar — a conta mudou em
+ * outra aba ou sessão. Tira a conta das duas listas (quando se sabe qual é), mostra o aviso (quando há; a
+ * transferência mostra o erro no próprio diálogo) e recarrega as listas. Quem chama fecha o próprio diálogo.
+ */
+function onAccountNotFound(id?: string, message?: string) {
+  if (id) {
+    discardPendingAccountLoads()
+    accounts.value = accounts.value.filter((x) => x.id !== id)
+    // Uma carga de removidas em andamento leu o servidor antes do 404: é descartada (refreshAfterNotFound recarrega)
+    removedRequest++
+    removed.value = removed.value.filter((x) => x.id !== id)
+  }
+  if (message) {
+    setSuccess(null)
+    notice.value = message
+  }
+  void refreshAfterNotFound()
 }
 
 watch(showRemoved, (show) => {
@@ -991,6 +1079,7 @@ async function restore(account: Account) {
   try {
     const restored = await restoreAccount(account.id)
     removed.value = removed.value.filter((x) => x.id !== account.id)
+    discardPendingAccountLoads()
     insertByCreation(restored)
     setSuccess('Conta restaurada')
     void loadTransfers(true)
@@ -1002,9 +1091,7 @@ async function restore(account: Account) {
     )
   } catch (err) {
     if ((err as ApiError)?.response?.status === 404) {
-      removed.value = removed.value.filter((x) => x.id !== account.id)
-      notice.value = 'Esta conta já foi restaurada ou não existe mais'
-      void refreshAfterNotFound()
+      onAccountNotFound(account.id, 'Esta conta já foi restaurada ou não existe mais')
     } else {
       notice.value = 'Não foi possível restaurar a conta. Tente novamente.'
     }
