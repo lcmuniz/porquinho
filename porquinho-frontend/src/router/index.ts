@@ -74,6 +74,13 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      // Story 4.7: histórico de saldo da conta (gráfico e tabela)
+      path: '/contas/:id/historico',
+      name: 'account-history',
+      component: () => import('../views/AccountHistoryView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       // Story 4.2: cartões de crédito (lista, limite total e cadastro)
       path: '/cartoes',
       name: 'cards',

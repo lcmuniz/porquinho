@@ -15,6 +15,7 @@ vi.mock('../api', () => ({
 import {
   createAccount,
   deleteAccount,
+  getBalanceHistory,
   listAccounts,
   listDeletedAccounts,
   listReconciliations,
@@ -86,5 +87,18 @@ describe('accountService', () => {
     mockGet.mockResolvedValueOnce({ data: [] })
     await expect(listReconciliations('a1')).resolves.toEqual([])
     expect(mockGet).toHaveBeenCalledWith('/api/v1/accounts/a1/reconciliations')
+  })
+
+  it('getBalanceHistory faz GET em /api/v1/accounts/{id}/balance-history com o período', async () => {
+    const history = {
+      account: { id: 'a1', accountName: 'Nubank', currentBalance: 1050 },
+      periodStart: '2026-10-05T15:00:00Z',
+      points: [{ date: '2026-11-03T15:00:00Z', balance: 1050, event: 'reconciliation' }],
+    }
+    mockGet.mockResolvedValue({ data: history })
+    await expect(getBalanceHistory('a1', '30d')).resolves.toEqual(history)
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/accounts/a1/balance-history', {
+      params: { range: '30d' },
+    })
   })
 })

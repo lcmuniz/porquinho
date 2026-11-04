@@ -154,6 +154,16 @@
               >
                 {{ formatBRL(account.currentBalance) }}
               </span>
+              <!-- Story 4.7: gráfico do saldo ao longo do tempo -->
+              <RouterLink
+                :to="`/contas/${account.id}/historico`"
+                class="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium text-purple-700 hover:bg-purple-50"
+                :data-testid="`history-account-${account.id}`"
+                :aria-label="`Histórico de ${account.accountName}`"
+              >
+                <History class="h-4 w-4" aria-hidden="true" />
+                Histórico
+              </RouterLink>
               <!-- Story 4.6: conferir o saldo com o banco -->
               <Button
                 variant="ghost"
@@ -524,7 +534,16 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import { ArrowLeftRight, Landmark, Pencil, Plus, RotateCcw, Scale, Trash2 } from 'lucide-vue-next'
+import {
+  ArrowLeftRight,
+  History,
+  Landmark,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Scale,
+  Trash2,
+} from 'lucide-vue-next'
 import AccountForm from '@/components/accounts/AccountForm.vue'
 import ReconcileForm from '@/components/accounts/ReconcileForm.vue'
 import TransferForm from '@/components/accounts/TransferForm.vue'
