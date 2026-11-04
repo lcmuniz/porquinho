@@ -28,7 +28,7 @@
 **External Services:**
 - Payment: Stripe
 - Authentication: Google OAuth (via Supabase Auth)
-- IA/ML: Hosted API (OpenAI ou Claude)
+- IA/ML: Hosted API — **Claude Haiku 5.5** (`claude-haiku-5-5`, API da Anthropic), decidido na revisão do Epic 5 (2026-11-04); CPF/CNPJ mascarados antes do envio
 - Analytics/Monitoring: A definir
 
 **Experience Level:**

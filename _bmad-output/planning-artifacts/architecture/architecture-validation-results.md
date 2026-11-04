@@ -39,7 +39,7 @@ Functional Requirements mapeados para componentes arquiteturais. Numeração atu
 | FR8-14 (Subscription) | SubscriptionController, StripeWebhookController, SubscriptionService, StripeBillingService, TrialReminderService | SubscriptionView, components/subscription/ | subscriptions, billing_transactions | ✅ construído (Epic 2) |
 | FR15-22 (Onboarding) | OnboardingController/Service | OnboardingView, components/onboarding/ | onboarding_progress | ✅ construído (Epic 3) |
 | FR23-29 (Accounts & Cards) | Account, CreditCard, Transfer, Reconciliation, BalanceHistory | AccountsView, CardsView, AccountHistoryView | accounts, credit_cards, transfers, account_balance_history, reconciliation_history | ✅ construído (Epic 4) |
-| FR30-42 (Import & Classification) | ImportService, ClassificationService, OpenAiService | components/transactions/ | transactions | planejado |
+| FR30-42 (Import & Classification) | ImportService, ClassificationService, cliente da API Anthropic (Claude Haiku 5.5) | components/transactions/ | transactions | planejado |
 | FR43-51 (Budget) | budget services | components/budget/ | categories, budget_allocations | planejado |
 | FR52-69 (Dashboard GPS) | Layer1/2/3 services + Redis | components/dashboard/ (3 layers) | Aggregation queries | planejado |
 | FR70-78 (Goals) | GoalService | components/goals/ | goals | parcial |
