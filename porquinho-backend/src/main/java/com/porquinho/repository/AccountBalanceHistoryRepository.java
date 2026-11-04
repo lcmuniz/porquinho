@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Repository for AccountBalanceHistory (Story 4.3). Written by AccountService; read by the LGPD export
+ * Repository for AccountBalanceHistory (Story 4.3). Written only by BalanceHistoryRecorder; read by the LGPD export
  * and by the balance chart (Story 4.7, index account_id + snapshot_date).
  */
 @Repository

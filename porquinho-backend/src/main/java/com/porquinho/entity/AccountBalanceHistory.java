@@ -11,7 +11,7 @@ import java.util.UUID;
  * One snapshot of an account's current balance (Story 4.3, V20). Append-only: written on creation
  * ("initial"), when an edit changes the balance ("edit"), on both sides of a transfer ("transfer", Story 4.5) and
  * when a reconciliation changes the balance ("reconciliation", Story 4.6); transactions come later. Read by the
- * balance chart of Story 4.7.
+ * balance chart of Story 4.7. Written only by BalanceHistoryRecorder.
  */
 @Entity
 @Table(name = "account_balance_history")
@@ -60,13 +60,10 @@ public class AccountBalanceHistory {
         this.createdByEvent = createdByEvent;
     }
 
+    /** snapshot_date is not defaulted here: BalanceHistoryRecorder is its only source (retro Epic 4, X5). */
     @PrePersist
     protected void onCreate() {
-        OffsetDateTime now = OffsetDateTime.now();
-        if (snapshotDate == null) {
-            snapshotDate = now;
-        }
-        createdAt = now;
+        createdAt = OffsetDateTime.now();
     }
 
     public UUID getId() { return id; }

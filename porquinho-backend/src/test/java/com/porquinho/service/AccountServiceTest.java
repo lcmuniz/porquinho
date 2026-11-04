@@ -48,7 +48,7 @@ class AccountServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new AccountService(accountRepository, balanceHistoryRepository,
+        service = new AccountService(accountRepository, new BalanceHistoryRecorder(balanceHistoryRepository, java.time.Clock.systemUTC()),
             onboardingProgressRepository, auditLogService);
         userId = UUID.randomUUID();
     }

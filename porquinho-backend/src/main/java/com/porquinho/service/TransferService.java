@@ -3,11 +3,9 @@ package com.porquinho.service;
 import com.porquinho.dto.CreateTransferRequest;
 import com.porquinho.dto.TransferResponse;
 import com.porquinho.entity.Account;
-import com.porquinho.entity.AccountBalanceHistory;
 import com.porquinho.entity.Transfer;
 import com.porquinho.exception.BadRequestException;
 import com.porquinho.exception.ResourceNotFoundException;
-import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.TransferRepository;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -51,26 +49,23 @@ public class TransferService {
     /** The "Transferências recentes" list shows at most this many. */
     public static final int RECENT_LIMIT = 20;
 
-    /** Largest absolute value that fits DECIMAL(15,2). */
-    private static final BigDecimal MAX_BALANCE = new BigDecimal("9999999999999.99");
-
     /** The transfer and whether this call created it (false: an earlier request with the same id did). */
     public record Result(TransferResponse transfer, boolean created) {
     }
 
     private final TransferRepository transferRepository;
     private final AccountRepository accountRepository;
-    private final AccountBalanceHistoryRepository balanceHistoryRepository;
+    private final BalanceHistoryRecorder balanceHistoryRecorder;
     private final AuditLogService auditLogService;
     private final TransactionTemplate transactionTemplate;
     private final TransactionTemplate readOnlyTemplate;
 
     public TransferService(TransferRepository transferRepository, AccountRepository accountRepository,
-                           AccountBalanceHistoryRepository balanceHistoryRepository, AuditLogService auditLogService,
+                           BalanceHistoryRecorder balanceHistoryRecorder, AuditLogService auditLogService,
                            PlatformTransactionManager transactionManager) {
         this.transferRepository = transferRepository;
         this.accountRepository = accountRepository;
-        this.balanceHistoryRepository = balanceHistoryRepository;
+        this.balanceHistoryRecorder = balanceHistoryRecorder;
         this.auditLogService = auditLogService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.readOnlyTemplate = new TransactionTemplate(transactionManager);
@@ -115,7 +110,7 @@ public class TransferService {
 
         BigDecimal fromBalance = from.getCurrentBalance().subtract(amount);
         BigDecimal toBalance = to.getCurrentBalance().add(amount);
-        if (fromBalance.abs().compareTo(MAX_BALANCE) > 0 || toBalance.abs().compareTo(MAX_BALANCE) > 0) {
+        if (!BalanceHistoryRecorder.fits(fromBalance) || !BalanceHistoryRecorder.fits(toBalance)) {
             throw new BadRequestException(BALANCE_OUT_OF_RANGE_MESSAGE);
         }
 
@@ -126,8 +121,8 @@ public class TransferService {
         to.setCurrentBalance(toBalance);
         accountRepository.save(from);
         accountRepository.save(to);
-        recordBalance(from, transfer.getId());
-        recordBalance(to, transfer.getId());
+        balanceHistoryRecorder.recordTransfer(from, transfer.getId());
+        balanceHistoryRecorder.recordTransfer(to, transfer.getId());
         auditLogService.log(AUDIT_CREATED, userId, ipAddress, auditMetadata(transfer));
         return new Result(TransferResponse.of(transfer, locked), true);
     }
@@ -157,7 +152,7 @@ public class TransferService {
         }
         BigDecimal amount = request.amount();
         if (amount == null || amount.signum() <= 0 || amount.stripTrailingZeros().scale() > 2
-            || amount.compareTo(MAX_BALANCE) > 0) {
+            || !BalanceHistoryRecorder.fits(amount)) {
             throw new BadRequestException(INVALID_AMOUNT_MESSAGE);
         }
         return amount.setScale(2, RoundingMode.UNNECESSARY);
@@ -172,13 +167,6 @@ public class TransferService {
         }
         Map<UUID, Account> accounts = byId(accountRepository.findByUserIdOrderByCreatedAtAsc(userId));
         return transfers.stream().map(t -> TransferResponse.of(t, accounts)).toList();
-    }
-
-    private void recordBalance(Account account, UUID transferId) {
-        AccountBalanceHistory snapshot = new AccountBalanceHistory(account.getId(), account.getUserId(),
-            account.getCurrentBalance(), AccountBalanceHistory.EVENT_TRANSFER);
-        snapshot.setTransferId(transferId);
-        balanceHistoryRepository.save(snapshot);
     }
 
     private static Map<UUID, Account> byId(List<Account> accounts) {

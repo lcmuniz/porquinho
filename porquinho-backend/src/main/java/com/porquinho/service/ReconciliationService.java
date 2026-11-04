@@ -7,7 +7,6 @@ import com.porquinho.entity.AccountBalanceHistory;
 import com.porquinho.entity.Reconciliation;
 import com.porquinho.exception.BadRequestException;
 import com.porquinho.exception.ResourceNotFoundException;
-import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.ReconciliationRepository;
 import org.springframework.data.domain.PageRequest;
@@ -42,20 +41,17 @@ public class ReconciliationService {
     /** The account's reconciliation list shows at most this many. */
     public static final int RECENT_LIMIT = 20;
 
-    /** Largest absolute value that fits DECIMAL(15,2). */
-    private static final BigDecimal MAX_BALANCE = new BigDecimal("9999999999999.99");
-
     private final ReconciliationRepository reconciliationRepository;
     private final AccountRepository accountRepository;
-    private final AccountBalanceHistoryRepository balanceHistoryRepository;
+    private final BalanceHistoryRecorder balanceHistoryRecorder;
     private final AuditLogService auditLogService;
 
     public ReconciliationService(ReconciliationRepository reconciliationRepository, AccountRepository accountRepository,
-                                 AccountBalanceHistoryRepository balanceHistoryRepository,
+                                 BalanceHistoryRecorder balanceHistoryRecorder,
                                  AuditLogService auditLogService) {
         this.reconciliationRepository = reconciliationRepository;
         this.accountRepository = accountRepository;
-        this.balanceHistoryRepository = balanceHistoryRepository;
+        this.balanceHistoryRecorder = balanceHistoryRecorder;
         this.auditLogService = auditLogService;
     }
 
@@ -73,11 +69,11 @@ public class ReconciliationService {
 
         BigDecimal previous = account.getCurrentBalance();
         BigDecimal difference = bankBalance.subtract(previous);
-        if (difference.abs().compareTo(MAX_BALANCE) > 0) {
+        if (!BalanceHistoryRecorder.fits(difference)) {
             throw new BadRequestException(DIFFERENCE_OUT_OF_RANGE_MESSAGE, "bankBalance");
         }
 
-        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime now = balanceHistoryRecorder.now();
         account.setCurrentBalance(bankBalance);
         account.setLastReconciliationDate(now);
         Account saved = accountRepository.save(account);
@@ -85,10 +81,7 @@ public class ReconciliationService {
         Reconciliation reconciliation = reconciliationRepository.saveAndFlush(new Reconciliation(accountId, userId, previous,
             bankBalance, difference, request.reason(), now));
         if (difference.signum() != 0) {
-            AccountBalanceHistory snapshot = new AccountBalanceHistory(accountId, userId, bankBalance,
-                AccountBalanceHistory.EVENT_RECONCILIATION);
-            snapshot.setSnapshotDate(now);
-            balanceHistoryRepository.save(snapshot);
+            balanceHistoryRecorder.record(saved, AccountBalanceHistory.EVENT_RECONCILIATION, now);
         }
         auditLogService.log(AUDIT_RECONCILED, userId, ipAddress, auditMetadata(accountId, difference));
         return ReconciliationResponse.Created.of(saved, reconciliation);
@@ -110,7 +103,7 @@ public class ReconciliationService {
             throw new BadRequestException(REQUIRED_BALANCE_MESSAGE, "bankBalance");
         }
         BigDecimal balance = request.bankBalance();
-        if (balance.stripTrailingZeros().scale() > 2 || balance.abs().compareTo(MAX_BALANCE) > 0) {
+        if (balance.stripTrailingZeros().scale() > 2 || !BalanceHistoryRecorder.fits(balance)) {
             throw new BadRequestException(INVALID_BALANCE_MESSAGE, "bankBalance");
         }
         return balance.setScale(2, RoundingMode.UNNECESSARY);
