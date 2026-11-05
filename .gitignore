@@ -20,3 +20,6 @@ porquinho-backend/exports/
 
 # BMAD: cache de workflows renderizados (gerado a cada execução)
 _bmad/render/
+
+# Extratos bancários reais (dados pessoais) — nunca versionar
+docs/*.csv
