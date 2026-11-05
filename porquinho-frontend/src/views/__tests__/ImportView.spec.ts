@@ -64,6 +64,7 @@ function imported(overrides: Partial<TransactionImport> = {}): TransactionImport
     totalTransactions: 0,
     importedTransactions: 0,
     duplicatesFound: 0,
+    transfersFound: 0,
     skippedRows: 0,
     errorMessage: null,
     createdAt: '2026-11-04T15:00:00Z',
@@ -314,6 +315,44 @@ describe('ImportView', () => {
       'Pronta para revisão: 10 transações — a tela de revisão chega numa próxima etapa',
       'Pronta para revisão: 2 transações (4 linhas com erro) — a tela de revisão chega numa próxima etapa',
       'Pronta para revisão: 1 transação (1 linha com erro) — a tela de revisão chega numa próxima etapa',
+    ])
+  })
+
+  it('mostra duplicatas e transferências já registradas no rótulo (Story 5.5, decisões 1A e 2A)', async () => {
+    mockListImports.mockResolvedValue([
+      imported({ status: 'REVIEW', totalTransactions: 12, importedTransactions: 7, skippedRows: 1, duplicatesFound: 3, transfersFound: 1 }),
+      imported({ id: 'i2', status: 'REVIEW', totalTransactions: 3, importedTransactions: 2, duplicatesFound: 1 }),
+      imported({ id: 'i3', status: 'REVIEW', totalTransactions: 3, importedTransactions: 1, transfersFound: 2 }),
+      imported({ id: 'i4', status: 'COMPLETED', totalTransactions: 10, duplicatesFound: 10 }),
+      imported({ id: 'i5', status: 'COMPLETED', totalTransactions: 10, duplicatesFound: 9, transfersFound: 1 }),
+      imported({ id: 'i6', status: 'COMPLETED', totalTransactions: 2, importedTransactions: 2 }),
+    ])
+    const wrapper = await mountView()
+
+    expect(wrapper.findAll('[data-testid="import-status"]').map((s) => s.text())).toEqual([
+      'Pronta para revisão: 7 transações (1 linha com erro) · 3 duplicatas detectadas e ignoradas · 1 transferência já registrada — a tela de revisão chega numa próxima etapa',
+      'Pronta para revisão: 2 transações · 1 duplicata detectada e ignorada — a tela de revisão chega numa próxima etapa',
+      'Pronta para revisão: 1 transação · 2 transferências já registradas — a tela de revisão chega numa próxima etapa',
+      'Nenhuma transação nova — 10 duplicatas detectadas e ignoradas',
+      'Nenhuma transação nova — 9 duplicatas detectadas e ignoradas · 1 transferência já registrada',
+      'Concluída',
+    ])
+  })
+
+  it('rótulo COMPLETED com só transferências ou com linhas com erro (Story 5.5, decisão 1A)', async () => {
+    mockListImports.mockResolvedValue([
+      imported({ status: 'COMPLETED', totalTransactions: 2, transfersFound: 2 }),
+      imported({ id: 'i2', status: 'COMPLETED', totalTransactions: 1, transfersFound: 1 }),
+      imported({ id: 'i3', status: 'COMPLETED', totalTransactions: 6, duplicatesFound: 4, skippedRows: 2 }),
+      imported({ id: 'i4', status: 'COMPLETED', totalTransactions: 2, duplicatesFound: 1, skippedRows: 1 }),
+    ])
+    const wrapper = await mountView()
+
+    expect(wrapper.findAll('[data-testid="import-status"]').map((s) => s.text())).toEqual([
+      'Nenhuma transação nova — 2 transferências já registradas',
+      'Nenhuma transação nova — 1 transferência já registrada',
+      'Nenhuma transação nova (2 linhas com erro) — 4 duplicatas detectadas e ignoradas',
+      'Nenhuma transação nova (1 linha com erro) — 1 duplicata detectada e ignorada',
     ])
   })
 

@@ -136,3 +136,15 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-4-parse-transactions-with-robust-error-handling.md`
   summary: A varredura de órfãs marca FAILED toda importação PROCESSING criada há mais de 15 min, sem heartbeat; quando a 5.8 (IA em lotes) alongar o processamento, importações grandes ainda rodando serão derrubadas.
   evidence: `failProcessingCreatedBefore` usa `createdAt`; hoje a leitura de 1 ano leva < 2 s, então só vira problema com a IA (5.8). Trocar por `updated_at` atualizado a cada lote.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-detect-and-flag-duplicate-transactions.md`
+  summary: O teste de importações simultâneas (Story 5.5) não força a sobreposição das duas transações; uma regressão no advisory lock passaria verde.
+  evidence: `twoImportsOfTheSameFileAtOnceSaveItOnlyOnce` não sincroniza as threads; fechar exige um repositório espião que segure a 1ª importação entre a consulta e o saveAll.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-detect-and-flag-duplicate-transactions.md`
+  summary: O passo 1 da detecção de duplicatas (mesmo external_id) não confere valor nem tipo; um banco que reutilize FITID descartaria lançamento real (medium, não verificado).
+  evidence: Resolver com um extrato real que tenha FITID repetido para lançamentos distintos na mesma janela de datas.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-detect-and-flag-duplicate-transactions.md`
+  summary: Ao implementar o descarte de importação (Story 5.9), apagar ou excluir logicamente as transações dela; senão continuam como candidatas de duplicata (medium, não verificado).
+  evidence: `findActiveBy*Between` filtra só `deleted_at IS NULL`, sem olhar o status da importação de origem.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-detect-and-flag-duplicate-transactions.md`
+  summary: Na Story 5.13 (transação manual), tomar o mesmo advisory lock por destino da importação, para a detecção de duplicatas ver a gravação concorrente.
+  evidence: `lockTarget` só é chamado pela importação.

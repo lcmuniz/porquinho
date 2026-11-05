@@ -393,6 +393,7 @@ public class DataExportService {
             importMap.put("total_transactions", transactionImport.getTotalTransactions());
             importMap.put("imported_transactions", transactionImport.getImportedTransactions());
             importMap.put("duplicates_found", transactionImport.getDuplicatesFound());
+            importMap.put("transfers_found", transactionImport.getTransfersFound());
             importMap.put("skipped_rows", transactionImport.getSkippedRows());
             importMap.put("error_message", transactionImport.getErrorMessage());
             importMap.put("created_at",

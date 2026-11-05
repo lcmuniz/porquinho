@@ -60,6 +60,10 @@ public class TransactionImport {
     @Column(name = "duplicates_found", nullable = false)
     private int duplicatesFound;
 
+    /** Entries that match a transfer already registered (Story 5.5, decision D4): not saved. */
+    @Column(name = "transfers_found", nullable = false)
+    private int transfersFound;
+
     @Column(name = "skipped_rows", nullable = false)
     private int skippedRows;
 
@@ -132,6 +136,9 @@ public class TransactionImport {
 
     public int getDuplicatesFound() { return duplicatesFound; }
     public void setDuplicatesFound(int duplicatesFound) { this.duplicatesFound = duplicatesFound; }
+
+    public int getTransfersFound() { return transfersFound; }
+    public void setTransfersFound(int transfersFound) { this.transfersFound = transfersFound; }
 
     public int getSkippedRows() { return skippedRows; }
     public void setSkippedRows(int skippedRows) { this.skippedRows = skippedRows; }

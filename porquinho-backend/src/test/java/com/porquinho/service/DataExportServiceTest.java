@@ -724,7 +724,7 @@ class DataExportServiceTest {
         Map<String, Object> first = rows.get(0);
         assertExportsEveryColumn(TransactionImport.class, first);
         assertEquals(Set.of("id", "user_id", "account_id", "credit_card_id", "file_name", "file_type", "bank_name",
-            "file_size_kb", "status", "total_transactions", "imported_transactions", "duplicates_found",
+            "file_size_kb", "status", "total_transactions", "imported_transactions", "duplicates_found", "transfers_found",
             "skipped_rows", "error_message", "created_at", "updated_at"), first.keySet());
         assertEquals(toAccount.getId().toString(), first.get("id"));
         assertEquals(userId.toString(), first.get("user_id"));

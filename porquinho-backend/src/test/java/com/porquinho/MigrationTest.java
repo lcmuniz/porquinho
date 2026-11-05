@@ -213,6 +213,7 @@ class MigrationTest {
         expected.put("total_transactions", "integer");
         expected.put("imported_transactions", "integer");
         expected.put("duplicates_found", "integer");
+        expected.put("transfers_found", "integer");  // V27 (Story 5.5)
         expected.put("skipped_rows", "integer");
         expected.put("error_message", "character varying");
         expected.put("created_at", "timestamp with time zone");
@@ -236,7 +237,7 @@ class MigrationTest {
         assertThat(foreignKeys).isEqualTo(3);
 
         for (String check : new String[] {"transaction_imports_status_check", "transaction_imports_file_type_check",
-            "transaction_imports_one_target_check"}) {
+            "transaction_imports_one_target_check", "transaction_imports_transfers_found_check"}) {
             Integer count = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM pg_constraint WHERE conrelid = 'transaction_imports'::regclass AND conname = ?",
                 Integer.class, check);

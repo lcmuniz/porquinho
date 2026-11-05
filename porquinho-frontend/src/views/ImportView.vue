@@ -330,8 +330,28 @@ function plural(count: number, singular: string, pluralForm: string): string {
 }
 
 /**
+ * Story 5.5 (decisão 2A): sufixos de duplicatas e transferências já registradas, só quando a contagem passa de 0.
+ */
+function ignoredParts(item: TransactionImport): string[] {
+  const parts: string[] = []
+  if (item.duplicatesFound > 0) {
+    parts.push(plural(item.duplicatesFound, 'duplicata detectada e ignorada', 'duplicatas detectadas e ignoradas'))
+  }
+  if (item.transfersFound > 0) {
+    parts.push(plural(item.transfersFound, 'transferência já registrada', 'transferências já registradas'))
+  }
+  return parts
+}
+
+/** Linhas puladas na leitura, no formato "(N linhas com erro)" (Story 5.4, decisão 2A); vazio quando não há. */
+function skippedSuffix(item: TransactionImport): string {
+  return item.skippedRows > 0 ? ` (${plural(item.skippedRows, 'linha com erro', 'linhas com erro')})` : ''
+}
+
+/**
  * Story 5.3: banco detectado durante o PROCESSING. Story 5.4 (decisões 1A e 2A): lidas as transações, a importação vai
- * para REVIEW com as contagens (transações gravadas e linhas puladas).
+ * para REVIEW com as contagens (transações gravadas e linhas puladas). Story 5.5: duplicatas e transferências já
+ * registradas no mesmo rótulo (decisão 2A); sem nada novo, a importação já chega COMPLETED (decisão 1A).
  */
 function statusLabel(item: TransactionImport): string {
   if (item.status === 'PROCESSING' && item.bankName) {
@@ -340,9 +360,11 @@ function statusLabel(item: TransactionImport): string {
   }
   if (item.status === 'REVIEW') {
     const read = plural(item.importedTransactions, 'transação', 'transações')
-    const errors =
-      item.skippedRows > 0 ? ` (${plural(item.skippedRows, 'linha com erro', 'linhas com erro')})` : ''
-    return `Pronta para revisão: ${read}${errors} — ${REVIEW_NEXT_STEP}`
+    const ignored = ignoredParts(item).map((part) => ` · ${part}`).join('')
+    return `Pronta para revisão: ${read}${skippedSuffix(item)}${ignored} — ${REVIEW_NEXT_STEP}`
+  }
+  if (item.status === 'COMPLETED' && item.importedTransactions === 0 && item.duplicatesFound + item.transfersFound > 0) {
+    return `Nenhuma transação nova${skippedSuffix(item)} — ${ignoredParts(item).join(' · ')}`
   }
   return STATUS_LABELS[item.status] ?? item.status
 }

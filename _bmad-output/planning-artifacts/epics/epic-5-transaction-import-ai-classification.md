@@ -130,8 +130,9 @@ So that users don't have duplicate entries inflating their data.
 
 **Given** Transactions have been parsed from file (Story 5.4)
 **When** Duplicate detection runs
-**Then** A transaction with the same external_id (FITID/identifier) on the same account or card is a duplicate
-**And** Without external_id, it is a duplicate when it matches an existing transaction of the same account or card on: date ±1 day, same amount and type, similar description (90%+ similarity after normalization)
+**Then** A transaction with exactly the same external_id (FITID/identifier, not null) on the same account or card is a duplicate
+**And** When either external_id is missing, or both exist but differ and the existing transaction came from an import of the other format (OFX × CSV: banks use different ids in each format; within the same format a different id is a different transaction, decision 4A), it is a duplicate when it matches an existing transaction of the same account or card on: date ±1 day, same amount and type, similar description (Levenshtein similarity 90%+ after normalization, or the shorter text with 10+ characters is a prefix of the longer one — the BB OFX truncates the MEMO) (rule P1)
+**And** Each existing transaction or transfer absorbs at most one entry per import; entries of the same file are not compared with each other
 **And** Duplicates are NOT saved
 **And** A debit/credit that matches a transfer already registered in Story 4.5 (same account, date ±1 day, same amount, matching direction) is not saved either and is counted apart: "N transferências já registradas" (D4)
 **And** Import record is updated with duplicates_found
