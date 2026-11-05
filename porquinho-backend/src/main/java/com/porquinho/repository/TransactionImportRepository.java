@@ -15,7 +15,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Repository for TransactionImport (Stories 5.1 and 5.3). Every user-facing lookup is scoped by user_id; the
+ * Repository for TransactionImport (Stories 5.1, 5.3 and 5.4). Every user-facing lookup is scoped by user_id; the
  * processing updates go by import id.
  */
 @Repository
@@ -59,15 +59,27 @@ public interface TransactionImportRepository extends JpaRepository<TransactionIm
     int markFailed(@Param("id") UUID id, @Param("message") String message, @Param("now") OffsetDateTime now);
 
     /**
-     * Marks as FAILED every PROCESSING import with no bank yet created before {@code createdBefore}, whatever the user:
-     * imports with no processing running (backend restarted, upload interrupted). An import with its bank detected has
-     * finished this stage and waits for the parsing (decision 1A), so it is left alone. Story 5.3.
+     * Ends the parsing (Story 5.4, decision 1A): records the counters ({@code imported} = transactions saved) and moves a PROCESSING import to REVIEW. Returns 0
+     * when the import is gone or already left PROCESSING (e.g. failed as orphan); the caller then rolls back.
+     */
+    @Transactional
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE TransactionImport i SET i.status = com.porquinho.entity.TransactionImport.Status.REVIEW, "
+        + "i.totalTransactions = :total, i.importedTransactions = :imported, i.skippedRows = :skipped, i.updatedAt = :now "
+        + "WHERE i.id = :id AND i.status = com.porquinho.entity.TransactionImport.Status.PROCESSING")
+    int markReadyForReview(@Param("id") UUID id, @Param("total") int total, @Param("imported") int imported,
+                           @Param("skipped") int skipped, @Param("now") OffsetDateTime now);
+
+    /**
+     * Marks as FAILED every PROCESSING import created before {@code createdBefore}, whatever the user and whether its
+     * bank was detected: PROCESSING means processing is running (Story 5.4, decision 1A), so an old one has none
+     * running anymore (backend restarted, upload interrupted, processing stuck). Stories 5.3 and 5.4.
      */
     @Transactional
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE TransactionImport i SET i.status = com.porquinho.entity.TransactionImport.Status.FAILED, "
         + "i.errorMessage = :message, i.updatedAt = :now "
-        + "WHERE i.status = com.porquinho.entity.TransactionImport.Status.PROCESSING AND i.bankName IS NULL "
+        + "WHERE i.status = com.porquinho.entity.TransactionImport.Status.PROCESSING "
         + "AND i.createdAt < :createdBefore")
     int failProcessingCreatedBefore(@Param("createdBefore") OffsetDateTime createdBefore,
                                     @Param("message") String message, @Param("now") OffsetDateTime now);

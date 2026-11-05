@@ -203,6 +203,21 @@ w("erro-csv-linhas-invalidas.csv",
   "06/10/2026,,a1b2c3d4-0000-0000-0000-000000000004,Valor ausente\n"
   ",-23.70,a1b2c3d4-0000-0000-0000-000000000005,Data ausente\n"
   "09/10/2026,-23.70,a1b2c3d4-0000-0000-0000-000000000006,Compra no débito - UBER *TRIP\n")
+# OFX SGML (Itaú, folhas sem fechamento) com linhas ruins entre boas: 2 válidas, 4 puladas (Story 5.4)
+ruins = [
+ ("20261002000000[-3:BRT]", "-150.00", "PIX TRANSF CARLOS 02/10"),
+ ("20261032000000[-3:BRT]", "-54.90", "DATA INVALIDA"),
+ ("20261004000000[-3:BRT]", None, "SEM VALOR"),
+ ("20261005000000[-3:BRT]", "abc", "VALOR INVALIDO"),
+ ("20261006000000[-3:BRT]", "0.00", "VALOR ZERO"),
+ ("20261009000000[-3:BRT]", "-23,70", "PADARIA SÃO JOSÉ"),
+]
+base = ofx_bank("Itau Unibanco S.A.", "341", "0341", "1234", "56789-0", [], False, 0)
+blocos = "".join(
+    "<STMTTRN>\n<TRNTYPE>OTHER\n" + f"<DTPOSTED>{dp}\n" + (f"<TRNAMT>{v}\n" if v is not None else "")
+    + f"<FITID>20261006{i:06d}\n<MEMO>{m}\n</STMTTRN>\n"
+    for i, (dp, v, m) in enumerate(ruins, 1))
+w("erro-ofx-linhas-invalidas.ofx", base.replace("</BANKTRANLIST>", blocos + "</BANKTRANLIST>"), "cp1252")
 w("erro-csv-banco-desconhecido.csv", "when;what;how much\n2026-10-01;Coffee;-3.50\n2026-10-02;Book;-20.00\n")
 w("erro-arquivo-vazio.csv", "")
 w("erro-nao-e-extrato.ofx", "Este arquivo tem extensão .ofx mas é texto comum.\n")

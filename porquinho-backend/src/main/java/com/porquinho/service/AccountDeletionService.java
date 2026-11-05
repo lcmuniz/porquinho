@@ -22,6 +22,7 @@ import com.porquinho.repository.OnboardingProgressRepository;
 import com.porquinho.repository.SubscriptionRepository;
 import com.porquinho.repository.ReconciliationRepository;
 import com.porquinho.repository.TransactionImportRepository;
+import com.porquinho.repository.TransactionRepository;
 import com.porquinho.repository.TransferRepository;
 import com.porquinho.repository.UserRepository;
 import com.porquinho.repository.UserSessionRepository;
@@ -56,7 +57,8 @@ import java.util.UUID;
  * - Each AccountDeletion is processed in its own transaction (REQUIRES_NEW) so a single
  *   failure does not block the queue.
  * - Hard-deletes data_exports, user_sessions, audit_logs, billing_transactions, subscriptions,
- *   onboarding_progress, account_balance_history, accounts, credit_cards, categories, goals, users
+ *   onboarding_progress, transactions, transaction_imports, transfers, reconciliation_history,
+ *   account_balance_history, accounts, credit_cards, categories, goals, users
  *   (in that order, native SQL to bypass @Where filters on User and UserSession; billing_transactions
  *   has FKs to subscriptions and users, so it goes before both).
  * - Calls Supabase Admin API best-effort.
@@ -93,6 +95,7 @@ public class AccountDeletionService {
     private final TransferRepository transferRepository;
     private final ReconciliationRepository reconciliationRepository;
     private final TransactionImportRepository transactionImportRepository;
+    private final TransactionRepository transactionRepository;
 
     @Value("${app.export.directory:./exports}")
     private String exportDirectory;
@@ -129,6 +132,7 @@ public class AccountDeletionService {
             TransferRepository transferRepository,
             ReconciliationRepository reconciliationRepository,
             TransactionImportRepository transactionImportRepository,
+            TransactionRepository transactionRepository,
             @Lazy AccountDeletionService self) {
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -153,6 +157,7 @@ public class AccountDeletionService {
         this.transferRepository = transferRepository;
         this.reconciliationRepository = reconciliationRepository;
         this.transactionImportRepository = transactionImportRepository;
+        this.transactionRepository = transactionRepository;
         this.self = self;
     }
 
@@ -308,9 +313,10 @@ public class AccountDeletionService {
      * way it survives a rollback here and provides a durable LGPD audit trail even when
      * the purge itself fails.
      *
-     * NOTE for future epics (3-10): when new tables with user_id are added (accounts,
-     * transactions, budgets, goals, etc.), extend this method to delete from those
-     * tables BEFORE the users delete (matching the dependency chain below).
+     * NOTE for future epics (3-10): when new tables with user_id are added (budgets, etc.),
+     * extend this method to delete from those tables BEFORE the users delete (matching the
+     * dependency chain below). transactions (Story 5.4) goes before transaction_imports,
+     * accounts, credit_cards and categories (FKs to all of them).
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void purgeUser(AccountDeletion deletion) {
@@ -358,6 +364,7 @@ public class AccountDeletionService {
         billingTransactionRepository.deleteByUserId(userId);  // Story 2.6: FKs to subscriptions and users
         subscriptionRepository.deleteByUserId(userId);  // Story 2.1: FK to users, must go first
         onboardingProgressRepository.deleteByUserId(userId);  // Story 3.1: FK to users
+        transactionRepository.deleteByUserId(userId);  // Story 5.4: FKs to imports, accounts, cards, categories and users
         transactionImportRepository.deleteByUserId(userId);  // Story 5.1: FKs to accounts, credit_cards and users
         transferRepository.deleteByUserId(userId);  // Story 4.5: FKs to accounts and users (removed transfers too)
         reconciliationRepository.deleteByUserId(userId);  // Story 4.6: FK to users (accounts FK cascades); explicit anyway

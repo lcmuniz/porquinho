@@ -10,6 +10,7 @@ import com.porquinho.entity.Category;
 import com.porquinho.entity.CreditCard;
 import com.porquinho.entity.Goal;
 import com.porquinho.entity.Reconciliation;
+import com.porquinho.entity.Transaction;
 import com.porquinho.entity.TransactionImport;
 import com.porquinho.entity.Transfer;
 import com.porquinho.entity.AuditLog;
@@ -31,6 +32,7 @@ import com.porquinho.repository.DataExportRepository;
 import com.porquinho.repository.OnboardingProgressRepository;
 import com.porquinho.repository.ReconciliationRepository;
 import com.porquinho.repository.TransactionImportRepository;
+import com.porquinho.repository.TransactionRepository;
 import com.porquinho.repository.TransferRepository;
 import com.porquinho.repository.UserRepository;
 import com.porquinho.repository.UserSessionRepository;
@@ -79,6 +81,7 @@ public class DataExportService {
     private final TransferRepository transferRepository;
     private final TransactionImportRepository transactionImportRepository;
     private final ReconciliationRepository reconciliationRepository;
+    private final TransactionRepository transactionRepository;
     private final ObjectMapper objectMapper;
 
     @Value("${app.export.directory:./exports}")
@@ -108,7 +111,8 @@ public class DataExportService {
             AccountBalanceHistoryRepository accountBalanceHistoryRepository,
             TransferRepository transferRepository,
             TransactionImportRepository transactionImportRepository,
-            ReconciliationRepository reconciliationRepository) {
+            ReconciliationRepository reconciliationRepository,
+            TransactionRepository transactionRepository) {
         this.dataExportRepository = dataExportRepository;
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -127,6 +131,7 @@ public class DataExportService {
         this.transferRepository = transferRepository;
         this.transactionImportRepository = transactionImportRepository;
         this.reconciliationRepository = reconciliationRepository;
+        this.transactionRepository = transactionRepository;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
         this.objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
@@ -205,7 +210,7 @@ public class DataExportService {
         metadata.put("user_id", userId.toString());
         metadata.put("data_version", "1.0");
         metadata.put("exported_tables", List.of("users", "user_sessions", "audit_logs", "subscriptions",
-            "billing_transactions", "onboarding_progress", "accounts", "account_balance_history", "transfers", "reconciliation_history", "credit_cards", "transaction_imports", "categories", "goals"));
+            "billing_transactions", "onboarding_progress", "accounts", "account_balance_history", "transfers", "reconciliation_history", "credit_cards", "transaction_imports", "transactions", "categories", "goals"));
         data.put("metadata", metadata);
 
         // User profile (sanitized)
@@ -397,6 +402,46 @@ public class DataExportService {
             importList.add(importMap);
         }
         data.put("transaction_imports", importList);
+
+        // Transactions (Story 5.4) - every stored column, oldest first, removed ones included; amount as a JSON number
+        List<Map<String, Object>> transactionList = new ArrayList<>();
+        for (Transaction transaction : transactionRepository.findByUserIdOrdered(userId)) {
+            Map<String, Object> transactionMap = new LinkedHashMap<>();
+            transactionMap.put("id", transaction.getId() != null ? transaction.getId().toString() : null);
+            transactionMap.put("user_id", transaction.getUserId() != null ? transaction.getUserId().toString() : null);
+            transactionMap.put("account_id", transaction.getAccountId() != null ? transaction.getAccountId().toString() : null);
+            transactionMap.put("credit_card_id",
+                transaction.getCreditCardId() != null ? transaction.getCreditCardId().toString() : null);
+            transactionMap.put("import_id", transaction.getImportId() != null ? transaction.getImportId().toString() : null);
+            transactionMap.put("external_id", transaction.getExternalId());
+            transactionMap.put("transaction_date",
+                transaction.getTransactionDate() != null ? transaction.getTransactionDate().toString() : null);
+            transactionMap.put("description", transaction.getDescription());
+            transactionMap.put("original_description", transaction.getOriginalDescription());
+            transactionMap.put("amount", transaction.getAmount());
+            transactionMap.put("transaction_type",
+                transaction.getTransactionType() != null ? transaction.getTransactionType().name() : null);
+            transactionMap.put("kind", transaction.getKind() != null ? transaction.getKind().name() : null);
+            transactionMap.put("category_id", transaction.getCategoryId() != null ? transaction.getCategoryId().toString() : null);
+            transactionMap.put("classification_source",
+                transaction.getClassificationSource() != null ? transaction.getClassificationSource().name() : null);
+            transactionMap.put("classification_confidence", transaction.getClassificationConfidence());
+            transactionMap.put("review_status", transaction.getReviewStatus() != null ? transaction.getReviewStatus().name() : null);
+            transactionMap.put("affects_balance", transaction.isAffectsBalance());
+            transactionMap.put("is_pix", transaction.isPix());
+            transactionMap.put("pix_details", transaction.getPixDetails());
+            transactionMap.put("is_installment", transaction.isInstallment());
+            transactionMap.put("installment_number", transaction.getInstallmentNumber());
+            transactionMap.put("installment_total", transaction.getInstallmentTotal());
+            transactionMap.put("installment_group_id",
+                transaction.getInstallmentGroupId() != null ? transaction.getInstallmentGroupId().toString() : null);
+            transactionMap.put("is_future_installment", transaction.isFutureInstallment());
+            transactionMap.put("created_at", transaction.getCreatedAt() != null ? transaction.getCreatedAt().toString() : null);
+            transactionMap.put("updated_at", transaction.getUpdatedAt() != null ? transaction.getUpdatedAt().toString() : null);
+            transactionMap.put("deleted_at", transaction.getDeletedAt() != null ? transaction.getDeletedAt().toString() : null);
+            transactionList.add(transactionMap);
+        }
+        data.put("transactions", transactionList);
 
         // Reconciliations (Story 4.6) - every stored column, oldest first; money as JSON numbers
         List<Map<String, Object>> reconciliationList = new ArrayList<>();

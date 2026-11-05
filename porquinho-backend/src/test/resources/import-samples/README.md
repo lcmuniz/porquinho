@@ -29,6 +29,7 @@ Gerados por `porquinho-backend/scripts/gerar-amostras-extrato.py` (`python3 -I s
 - **Erros** (NFR57):
   - `erro-ofx-truncado.ofx`: OFX cortado no meio;
   - `erro-nao-e-extrato.ofx`: extensão .ofx com texto comum;
+  - `erro-ofx-linhas-invalidas.ofx`: OFX de conta Itaú (SGML, cp1252) com data inválida, `TRNAMT` ausente, `TRNAMT` "abc" e "0.00" entre lançamentos bons (2 válidos, um com vírgula decimal e acento; 4 pulados) (Story 5.4);
   - `erro-csv-banco-desconhecido.csv`: CSV válido de layout desconhecido;
   - `erro-csv-linhas-invalidas.csv`: layout Nubank com data inválida, valor inválido, valor ausente e data ausente entre linhas boas (2 linhas válidas, 4 puladas);
   - `erro-arquivo-vazio.csv`.

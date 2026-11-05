@@ -1,6 +1,7 @@
 /**
- * Status de uma importação de extrato (Story 5.1). Na Story 5.3 a importação segue em PROCESSING depois de detectar o
- * banco (decisão 1A) e vira FAILED com `errorMessage` quando o arquivo está incompleto ou o processamento cai.
+ * Status de uma importação de extrato (Story 5.1). PROCESSING enquanto o processamento roda (o banco aparece no meio,
+ * Story 5.3); REVIEW quando as transações foram lidas e gravadas (Story 5.4, decisão 1A); FAILED com `errorMessage`
+ * quando o arquivo está incompleto, não tem transações ou o processamento cai.
  */
 export type TransactionImportStatus = 'PROCESSING' | 'REVIEW' | 'COMPLETED' | 'FAILED' | 'DISCARDED'
 
@@ -17,9 +18,12 @@ export interface TransactionImport {
   bankName: BankCode | null
   fileSizeKb: number
   status: TransactionImportStatus
+  /** Lançamentos do arquivo, inclusive as linhas puladas (Story 5.4). */
   totalTransactions: number
+  /** Transações gravadas da importação (Story 5.4). */
   importedTransactions: number
   duplicatesFound: number
+  /** Lançamentos que não puderam ser lidos (Story 5.4). */
   skippedRows: number
   errorMessage: string | null
   createdAt: string

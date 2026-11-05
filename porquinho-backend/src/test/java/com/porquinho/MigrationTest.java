@@ -248,4 +248,80 @@ class MigrationTest {
             "AND indexname = 'idx_transaction_imports_user_created'", Integer.class);
         assertThat(index).isEqualTo(1);
     }
+
+    @Test
+    void v26ShouldCreateTransactionsTable() {
+        java.util.Map<String, String> expected = new java.util.LinkedHashMap<>();
+        expected.put("id", "uuid");
+        expected.put("user_id", "uuid");
+        expected.put("account_id", "uuid");
+        expected.put("credit_card_id", "uuid");
+        expected.put("import_id", "uuid");
+        expected.put("external_id", "character varying");
+        expected.put("transaction_date", "date");
+        expected.put("description", "character varying");
+        expected.put("original_description", "character varying");
+        expected.put("amount", "numeric");
+        expected.put("transaction_type", "character varying");
+        expected.put("kind", "character varying");
+        expected.put("category_id", "uuid");
+        expected.put("classification_source", "character varying");
+        expected.put("classification_confidence", "integer");
+        expected.put("review_status", "character varying");
+        expected.put("affects_balance", "boolean");
+        expected.put("is_pix", "boolean");
+        expected.put("pix_details", "jsonb");
+        expected.put("is_installment", "boolean");
+        expected.put("installment_number", "integer");
+        expected.put("installment_total", "integer");
+        expected.put("installment_group_id", "uuid");
+        expected.put("is_future_installment", "boolean");
+        expected.put("created_at", "timestamp with time zone");
+        expected.put("updated_at", "timestamp with time zone");
+        expected.put("deleted_at", "timestamp with time zone");
+
+        expected.forEach((column, type) -> {
+            String actual = jdbcTemplate.queryForObject(
+                "SELECT data_type FROM information_schema.columns " +
+                "WHERE table_name = 'transactions' AND column_name = ?",
+                String.class,
+                column
+            );
+            assertThat(actual)
+                .withFailMessage("Column '%s' should be %s in transactions, got %s", column, type, actual)
+                .isEqualTo(type);
+        });
+
+        Integer amountScale = jdbcTemplate.queryForObject(
+            "SELECT numeric_scale FROM information_schema.columns WHERE table_name = 'transactions' " +
+            "AND column_name = 'amount'", Integer.class);
+        assertThat(amountScale).isEqualTo(2);
+
+        Integer foreignKeys = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM information_schema.table_constraints " +
+            "WHERE table_name = 'transactions' AND constraint_type = 'FOREIGN KEY'", Integer.class);
+        assertThat(foreignKeys).isEqualTo(5);
+
+        Integer cascades = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM pg_constraint WHERE conrelid = 'transactions'::regclass AND contype = 'f' " +
+            "AND confdeltype <> 'a'", Integer.class);
+        assertThat(cascades).withFailMessage("FKs of transactions must have no ON DELETE action").isZero();
+
+        for (String check : new String[] {"transactions_one_target_check", "transactions_amount_check",
+            "transactions_type_check", "transactions_kind_check", "transactions_classification_source_check",
+            "transactions_classification_confidence_check", "transactions_review_status_check"}) {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM pg_constraint WHERE conrelid = 'transactions'::regclass AND conname = ?",
+                Integer.class, check);
+            assertThat(count).withFailMessage("Constraint '%s' should exist", check).isEqualTo(1);
+        }
+
+        for (String index : new String[] {"idx_transactions_user_id", "idx_transactions_import_id",
+            "idx_transactions_account_date", "idx_transactions_credit_card_date"}) {
+            Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM pg_indexes WHERE tablename = 'transactions' AND indexname = ?",
+                Integer.class, index);
+            assertThat(count).withFailMessage("Index '%s' should exist", index).isEqualTo(1);
+        }
+    }
 }
