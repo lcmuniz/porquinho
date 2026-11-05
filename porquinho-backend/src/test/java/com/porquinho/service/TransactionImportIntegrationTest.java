@@ -3,6 +3,7 @@ package com.porquinho.service;
 import com.porquinho.dto.CreateAccountRequest;
 import com.porquinho.dto.CreateCreditCardRequest;
 import com.porquinho.dto.TransactionImportResponse;
+import com.porquinho.entity.TransactionImport;
 import com.porquinho.exception.BadRequestException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountBalanceHistoryRepository;
@@ -359,6 +360,81 @@ class TransactionImportIntegrationTest {
     }
 
     @Test
+    void uploadedCsvGetsItsBankAndTheSameTransactionsAsTheOfx() throws Exception {
+        UUID nubank = account(userId, "Nubank");
+
+        TransactionImportResponse fromCsv = transactionImportService.create(userId, nubank, null,
+            sample("nubank-conta.csv"), "127.0.0.1");
+        TransactionImportResponse fromOfx = transactionImportService.create(userId, nubank, null,
+            sample("nubank-conta.ofx"), "127.0.0.1");
+
+        Map<String, Object> row = awaitDone(fromCsv.id());
+        assertThat(awaitDone(fromOfx.id()).get("status")).isEqualTo("REVIEW");
+        assertThat(row.get("file_type")).isEqualTo("CSV");
+        assertThat(row.get("bank_name")).isEqualTo("NUBANK");
+        assertThat(row.get("status")).isEqualTo("REVIEW");
+        assertThat(row.get("total_transactions")).isEqualTo(10);
+        assertThat(row.get("imported_transactions")).isEqualTo(10);
+        assertThat(row.get("skipped_rows")).isEqualTo(0);
+        java.util.function.Function<Map<String, Object>, List<Object>> key = t -> List.of(t.get("transaction_date"),
+            ((BigDecimal) t.get("amount")).toPlainString(), t.get("transaction_type"), t.get("kind"));
+        assertThat(transactionsOf(fromCsv.id())).hasSize(10).map(key)
+            .containsExactlyElementsOf(transactionsOf(fromOfx.id()).stream().map(key).toList());
+        assertThat(transactionsOf(fromCsv.id())).allSatisfy(t -> {
+            assertThat(t.get("account_id")).isEqualTo(nubank);
+            assertThat(t.get("review_status")).isEqualTo("PENDING");
+        });
+    }
+
+    @Test
+    void nubankCardCsvGoesToTheCardWithPaymentAndRefundAsCredit() throws Exception {
+        UUID nubank = card(userId, "Nubank");
+
+        TransactionImportResponse created = transactionImportService.create(userId, null, nubank,
+            sample("nubank-cartao.csv"), "127.0.0.1");
+
+        Map<String, Object> row = awaitDone(created.id());
+        assertThat(row.get("status")).isEqualTo("REVIEW");
+        assertThat(row.get("bank_name")).isEqualTo("NUBANK");
+        assertThat(transactionsOf(created.id())).hasSize(9)
+            .filteredOn(t -> "CREDIT".equals(t.get("transaction_type")))
+            .extracting(t -> t.get("description"), t -> t.get("kind"))
+            .containsExactlyInAnyOrder(org.assertj.core.groups.Tuple.tuple("Pagamento recebido", "CARD_PAYMENT"),
+                org.assertj.core.groups.Tuple.tuple("Estorno - Amazon Marketplace", "REGULAR"));
+    }
+
+    @Test
+    void csvBadRowsAreSkippedAndCounted() throws Exception {
+        UUID nubank = account(userId, "Nubank");
+
+        TransactionImportResponse created = transactionImportService.create(userId, nubank, null,
+            sample("erro-csv-linhas-invalidas.csv"), "127.0.0.1");
+
+        Map<String, Object> row = awaitDone(created.id());
+        assertThat(row.get("status")).isEqualTo("REVIEW");
+        assertThat(row.get("imported_transactions")).isEqualTo(2);
+        assertThat(row.get("skipped_rows")).isEqualTo(4);
+    }
+
+    @Test
+    void unknownOrMismatchedCsvWritesNothing() throws IOException {
+        UUID nubank = account(userId, "Nubank");
+        UUID card = card(userId, "Nubank cartão");
+        MockMultipartFile unknown = sample("erro-csv-banco-desconhecido.csv");
+        MockMultipartFile cardCsv = sample("nubank-cartao.csv");
+        MockMultipartFile accountCsv = sample("nubank-conta.csv");
+
+        assertThatThrownBy(() -> transactionImportService.create(userId, nubank, null, unknown, "127.0.0.1"))
+            .isInstanceOf(BadRequestException.class)
+            .hasMessage("Não reconhecemos o formato deste CSV. Tente exportar o extrato em OFX.");
+        assertThatThrownBy(() -> transactionImportService.create(userId, nubank, null, cardCsv, "127.0.0.1"))
+            .isInstanceOf(BadRequestException.class).hasMessage(TransactionImportService.CARD_FILE_TO_ACCOUNT_MESSAGE);
+        assertThatThrownBy(() -> transactionImportService.create(userId, null, card, accountCsv, "127.0.0.1"))
+            .isInstanceOf(BadRequestException.class).hasMessage(TransactionImportService.ACCOUNT_FILE_TO_CARD_MESSAGE);
+        assertThat(imports(userId)).isZero();
+    }
+
+    @Test
     void cardStatementTransactionsGoToTheCard() throws Exception {
         UUID itau = card(userId, "Itaú Visa");
 
@@ -428,7 +504,7 @@ class TransactionImportIntegrationTest {
         TransactionImportProcessor processor = new TransactionImportProcessor(transactionImportRepository, failing,
             transactionManager, Clock.systemDefaultZone());
 
-        processor.process(importId, sample("nubank-conta.ofx").getBytes());  // not the proxy: runs right here
+        processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx").getBytes());  // not the proxy: runs right here
 
         Map<String, Object> row = row(importId);
         assertThat(row.get("status")).isEqualTo("FAILED");
@@ -446,7 +522,7 @@ class TransactionImportIntegrationTest {
         TransactionImportProcessor processor = new TransactionImportProcessor(transactionImportRepository,
             transactionRepository, transactionManager, Clock.systemDefaultZone());
 
-        processor.process(importId, sample("nubank-conta.ofx").getBytes());  // not the proxy: runs right here
+        processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx").getBytes());  // not the proxy: runs right here
         // the guard of the final update itself, against the real database
         assertThat(transactionImportRepository.markReadyForReview(importId, 10, 10, 0, java.time.OffsetDateTime.now()))
             .isZero();
@@ -562,7 +638,7 @@ class TransactionImportIntegrationTest {
             .anyMatch(task -> task.getTask().toString().endsWith("TransactionImportProcessor.failStaleImports"));
         // @Async only works through the proxy of a separate bean: a plain bean would run in the request thread
         assertThat(AopUtils.isAopProxy(transactionImportProcessor)).isTrue();
-        assertThat(TransactionImportProcessor.class.getMethod("process", UUID.class, byte[].class)
+        assertThat(TransactionImportProcessor.class.getMethod("process", UUID.class, TransactionImport.FileType.class, byte[].class)
             .isAnnotationPresent(Async.class)).isTrue();
     }
 

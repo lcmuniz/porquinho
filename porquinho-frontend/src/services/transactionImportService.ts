@@ -17,7 +17,7 @@ export async function getImport(id: string): Promise<TransactionImport> {
 }
 
 /**
- * Story 5.1: envia o extrato OFX para a conta ou o cartão escolhido. `onProgress` recebe de 0 a 100.
+ * Stories 5.1 e 5.2: envia o extrato OFX ou CSV para a conta ou o cartão escolhido. `onProgress` recebe de 0 a 100.
  * 400 traz `detail` em pt-BR (formato, tamanho, extrato de cartão para conta e vice-versa); 404 "Conta não
  * encontrada" / "Cartão não encontrado" se o destino não for do usuário ou tiver sido removido.
  */

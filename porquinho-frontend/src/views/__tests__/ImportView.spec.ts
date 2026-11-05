@@ -197,7 +197,7 @@ describe('ImportView', () => {
     expect(mockUpload).not.toHaveBeenCalled()
   })
 
-  it('barra extensão diferente de .ofx antes de enviar', async () => {
+  it('barra extensão diferente de .ofx e .csv antes de enviar', async () => {
     const wrapper = await mountView()
     await wrapper.get('[data-testid="import-target-select"]').setValue('account:a1')
     await chooseFile(wrapper, ofxFile('extrato.pdf'))
@@ -205,6 +205,21 @@ describe('ImportView', () => {
     expect(wrapper.get('[data-testid="form-error"]').text()).toBe('Formato de arquivo não suportado')
     await submit(wrapper)
     expect(mockUpload).not.toHaveBeenCalled()
+  })
+
+  it('aceita e envia extrato CSV (Story 5.2)', async () => {
+    mockUpload.mockResolvedValue(imported({ id: 'i9', fileName: 'NUBANK-CONTA.CSV', fileType: 'CSV' }))
+    const wrapper = await mountView()
+    expect(wrapper.get('[data-testid="file-input"]').attributes('accept')).toBe('.ofx,.csv')
+    expect(wrapper.text()).toContain('OFX ou CSV')
+    await wrapper.get('[data-testid="import-target-select"]').setValue('account:a1')
+    const file = new File(['Data,Valor,Identificador,Descrição'], 'NUBANK-CONTA.CSV', { type: 'text/csv' })
+    await chooseFile(wrapper, file)
+
+    expect(wrapper.find('[data-testid="form-error"]').exists()).toBe(false)
+    await submit(wrapper)
+    expect(mockUpload).toHaveBeenCalledWith(file, { kind: 'account', id: 'a1' }, expect.any(Function))
+    expect(wrapper.get('[data-testid="import-i9"]').text()).toContain('NUBANK-CONTA.CSV')
   })
 
   it('aceita o arquivo solto na área de arrastar', async () => {

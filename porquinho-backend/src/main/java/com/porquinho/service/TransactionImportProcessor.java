@@ -19,12 +19,13 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
  * Background processing of an uploaded statement (Stories 5.3 and 5.4). Runs after the import row is committed,
- * outside the request thread, with the file content only in memory: detects the bank of the OFX, reads its entries
- * ({@link OfxTransactionParser}) and saves the valid ones as PENDING together with the import counters, moving the
+ * outside the request thread, with the file content only in memory: detects the bank of the OFX (or takes it from the
+ * CSV layout, Story 5.2), reads its entries ({@link OfxTransactionParser}, {@link CsvStatementReader}) and saves the valid ones as PENDING together with the import counters, moving the
  * import to REVIEW (decision 1A), all in one database transaction. Otherwise the import becomes FAILED with a clear
  * message and nothing is saved. Imports left PROCESSING with no processing running (backend restarted, upload
  * interrupted) are failed at startup and every 5 minutes. Logs carry only the import id, positions and reasons,
@@ -72,25 +73,38 @@ public class TransactionImportProcessor {
     }
 
     /**
-     * Processes the committed import {@code importId}. Never throws: any failure becomes FAILED with a generic
-     * message. The content is dropped when this returns.
+     * Processes the committed import {@code importId} of type {@code fileType}. Never throws: any failure becomes
+     * FAILED with a generic message. The content is dropped when this returns.
      */
     @Async
-    public void process(UUID importId, byte[] content) {
+    public void process(UUID importId, TransactionImport.FileType fileType, byte[] content) {
         try {
-            if (OfxBankDetector.isTruncated(content)) {
-                log.info("Import {} failed: truncated OFX", importId);
-                transactionImportRepository.markFailed(importId, TRUNCATED_MESSAGE, OffsetDateTime.now(clock));
-                return;
+            String bank;
+            if (fileType == TransactionImport.FileType.CSV) {
+                // Story 5.2: the layout, already checked at upload (decision 2A), tells the bank
+                Optional<CsvStatementReader.Layout> layout = CsvStatementReader.detect(content);
+                if (layout.isEmpty()) {
+                    log.info("Import {} failed: unknown CSV layout", importId);
+                    transactionImportRepository.markFailed(importId, TransactionImportService.UNKNOWN_CSV_MESSAGE,
+                        OffsetDateTime.now(clock));
+                    return;
+                }
+                bank = layout.get().bankName();
+            } else {
+                if (OfxBankDetector.isTruncated(content)) {
+                    log.info("Import {} failed: truncated OFX", importId);
+                    transactionImportRepository.markFailed(importId, TRUNCATED_MESSAGE, OffsetDateTime.now(clock));
+                    return;
+                }
+                bank = OfxBankDetector.detectBank(content);
             }
-            String bank = OfxBankDetector.detectBank(content);
             int updated = transactionImportRepository.recordBank(importId, bank, OffsetDateTime.now(clock));
             if (updated == 0) {
                 log.info("Import {} bank detected: {} (no longer processing)", importId, bank);
                 return;
             }
             log.info("Import {} bank detected: {}", importId, bank);
-            parseAndSave(importId, content);
+            parseAndSave(importId, fileType, content);
         } catch (Exception e) {
             // only the exception type: a message could quote the file
             log.error("Import {} failed: unexpected {}", importId, e.getClass().getName());
@@ -102,15 +116,17 @@ public class TransactionImportProcessor {
         }
     }
 
-    /** Story 5.4: reads the entries and saves them with the counters, all or nothing. */
-    private void parseAndSave(UUID importId, byte[] content) {
+    /** Stories 5.4 and 5.2: reads the entries (OFX or CSV) and saves them with the counters, all or nothing. */
+    private void parseAndSave(UUID importId, TransactionImport.FileType fileType, byte[] content) {
         TransactionImport transactionImport = transactionImportRepository.findById(importId).orElse(null);
         if (transactionImport == null) {
             log.info("Import {} no longer exists", importId);
             return;
         }
         boolean creditCard = transactionImport.getCreditCardId() != null;
-        OfxTransactionParser.Result result = OfxTransactionParser.parse(content, creditCard);
+        OfxTransactionParser.Result result = fileType == TransactionImport.FileType.CSV
+            ? CsvStatementReader.parse(content, creditCard)
+            : OfxTransactionParser.parse(content, creditCard);
         for (OfxTransactionParser.SkippedRow row : result.skippedRows()) {
             log.info("Import {} skipped row {}: {}", importId, row.position(), row.reason());
         }

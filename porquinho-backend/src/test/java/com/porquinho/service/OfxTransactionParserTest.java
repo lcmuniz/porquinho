@@ -192,7 +192,7 @@ class OfxTransactionParserTest {
         assertThat(cardPayments("itau-conta.ofx", false)).containsExactly("ITAU UNIBANCO CARTAO VISA");
         assertThat(cardPayments("bradesco-conta.ofx", false)).containsExactly("GASTOS CARTAO DE CREDITO BRADESCARD");
         assertThat(cardPayments("itau-cartao.ofx", true)).containsExactly("PAGAMENTO EFETUADO");
-        assertThat(cardPayments("bb-conta.ofx", false)).isEmpty();
+        assertThat(cardPayments("bb-conta.ofx", false)).containsExactly("PAGAMENTO CARTÃO DE CRÉDITO OURO");
         assertThat(cardPayments("caixa-conta.ofx", false)).isEmpty();
     }
 

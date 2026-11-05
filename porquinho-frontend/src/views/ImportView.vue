@@ -5,7 +5,7 @@
         <div>
           <h1 class="text-2xl font-semibold text-gray-900">Importar extrato</h1>
           <p class="mt-1 text-sm text-gray-600">
-            Envie o extrato OFX do seu banco para uma conta ou um cartão.
+            Envie o extrato OFX ou CSV do seu banco para uma conta ou um cartão.
           </p>
         </div>
         <RouterLink
@@ -78,7 +78,7 @@
                 @dragleave.prevent="isDragging = false"
                 @drop.prevent="onDrop"
               >
-                <p class="text-sm text-gray-700">Arraste o arquivo .ofx para cá ou</p>
+                <p class="text-sm text-gray-700">Arraste o arquivo .ofx ou .csv para cá ou</p>
                 <Button
                   type="button"
                   variant="outline"
@@ -92,7 +92,7 @@
                 <input
                   ref="fileInput"
                   type="file"
-                  accept=".ofx"
+                  accept=".ofx,.csv"
                   class="sr-only"
                   aria-label="Arquivo do extrato"
                   data-testid="file-input"
@@ -101,7 +101,7 @@
                 <p v-if="selectedFile" class="text-sm font-medium text-gray-900" data-testid="selected-file">
                   {{ selectedFile.name }} ({{ formatSize(selectedFile.size) }})
                 </p>
-                <p class="text-xs text-gray-500">Formato OFX, até 10MB.</p>
+                <p class="text-xs text-gray-500">Formato OFX ou CSV, até 10MB.</p>
               </div>
 
               <div v-if="isUploading" class="space-y-1" data-testid="upload-progress">
@@ -203,7 +203,7 @@ const STATUS_LABELS: Record<TransactionImportStatus, string> = {
   DISCARDED: 'Descartada',
 }
 
-/** Story 5.3: OTHER é um OFX de banco fora dos cinco suportados (decisão 2A). */
+/** Story 5.3: OTHER é um OFX de banco fora dos cinco suportados (decisão 2A). No CSV o layout já define o banco (Story 5.2). */
 const BANK_LABELS: Record<BankCode, string> = {
   NUBANK: 'Nubank',
   BANCO_DO_BRASIL: 'Banco do Brasil',
@@ -265,9 +265,10 @@ function onDrop(event: DragEvent) {
   selectFile(event.dataTransfer?.files?.[0])
 }
 
-/** Validação no cliente, antes de enviar: extensão .ofx e até 10MB. */
+/** Validação no cliente, antes de enviar: extensão .ofx ou .csv (Story 5.2) e até 10MB. */
 function fileProblem(file: File): string | null {
-  if (!file.name.toLowerCase().endsWith('.ofx')) {
+  const name = file.name.toLowerCase()
+  if (!name.endsWith('.ofx') && !name.endsWith('.csv')) {
     return MESSAGES.unsupported
   }
   if (file.size > MAX_FILE_SIZE) {

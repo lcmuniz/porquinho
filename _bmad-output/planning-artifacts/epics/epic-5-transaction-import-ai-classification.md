@@ -66,9 +66,8 @@ So that I can import transactions in CSV format.
 **And** Separator is detected (comma, semicolon, tab), including quoted fields
 **And** Import record is created in `transaction_imports` with file_type='CSV'
 **And** Layouts supported at first are those of the samples (`import-samples/README.md`): Nubank account and card, BB, Itaú, Bradesco and Caixa, including title/total/balance lines that are not transactions (BB "Saldo Anterior"/"S A L D O", Bradesco header and "Total"), separate credit/debit columns (Bradesco), D/C column (Caixa), and decimal comma with thousands separator
-**And** If the layout is not recognized, the error suggests exporting in OFX (NFR57): "Não reconhecemos o formato deste CSV. Tente exportar o extrato em OFX."
-**And** CSV detection (header or, for Itaú, line shape matched against the layouts above) runs in the background processing of Story 5.3, which is built first and covers OFX only (Luiz, 2026-11-04)
-**And** If detection is ambiguous, user is prompted: "Detectamos [Banco]. Está correto?", and can confirm or select the bank manually (moved from Story 5.3, decision 2A); if it fails completely (NFR57): "Não foi possível identificar o banco. Por favor, selecione manualmente"
+**And** Decision 2A (Luiz, 2026-11-05): the layout (header or, for Itaú, line shape matched against the layouts above) and the destination are checked at upload, like the OFX: an unknown layout is 400 with the suggestion to export in OFX (NFR57): "Não reconhecemos o formato deste CSV. Tente exportar o extrato em OFX."; a card layout sent to an account, or the opposite, is 400 with the wrong-destination messages of Story 5.1. Nothing is written. Recording the bank and reading the rows stay in the background processing of Stories 5.3/5.4
+**And** Decision 1A (Luiz, 2026-11-05): no manual choice of bank. In the CSV the recognized layout defines the bank; in the OFX the bank does not change the reading (`OTHER` stays "Banco não identificado"). The former "Detectamos [Banco]. Está correto?" criterion is removed from the epic
 
 ---
 
@@ -78,7 +77,7 @@ As a system,
 I want to automatically detect the file format (OFX/CSV) and originating bank,
 So that users don't have to manually specify the source.
 
-**Implementation order (Luiz, 2026-11-04):** Story 5.3 is built before Story 5.2 and covers OFX only. CSV detection (header or line shape against the bank layouts) and the manual choice of bank ("Detectamos [Banco]. Está correto?") move to Story 5.2.
+**Implementation order (Luiz, 2026-11-04):** Story 5.3 is built before Story 5.2 and covers OFX only. CSV detection (header or line shape against the bank layouts) moves to Story 5.2. The manual choice of bank was dropped (Story 5.2, decision 1A, Luiz, 2026-11-05).
 
 **Acceptance Criteria:**
 
@@ -117,7 +116,7 @@ So that users can import transactions even if files have minor issues.
 **And** `transactions` is included in data export and purge (LGPD), deleted before `accounts`/`credit_cards`
 **And** Decision 1A (Luiz, 2026-11-04): once the transactions are saved, the import goes to `REVIEW` (only from `PROCESSING`); the list on `/importar` shows "Pronta para revisão: X transações (Y linhas com erro) — a tela de revisão chega numa próxima etapa" and the 2-second polling stops. `PROCESSING` means processing is running again: the orphan sweep (startup and 15 min) fails every old `PROCESSING` import, with or without `bank_name`. Stories 5.5–5.8 run before `REVIEW`
 **And** Decision 2A (Luiz, 2026-11-04): no real progress in this story. While `PROCESSING` with a bank, the list shows "Banco detectado: <banco> — lendo as transações..." and keeps polling; counts only at the end. The progress column ("X de Y", NFR8) comes in Story 5.8
-**And** Decision 3A (Luiz, 2026-11-04): `kind = CARD_PAYMENT` is set while parsing by keyword in the description (without accents, upper case): "PAGAMENTO DA FATURA", "PAGAMENTO EFETUADO", "PAGAMENTO RECEBIDO", "ITAU UNIBANCO CARTAO", "GASTOS CARTAO DE CREDITO"; on an account only for `DEBIT`, on a card only for `CREDIT`. Everything else is `REGULAR`
+**And** Decision 3A (Luiz, 2026-11-04): `kind = CARD_PAYMENT` is set while parsing by keyword in the description (without accents, upper case): "PAGAMENTO DA FATURA", "PAGAMENTO EFETUADO", "PAGAMENTO RECEBIDO", "ITAU UNIBANCO CARTAO", "GASTOS CARTAO DE CREDITO" (and "PAGAMENTO CARTAO DE CREDITO", added by Story 5.2); on an account only for `DEBIT`, on a card only for `CREDIT`. Everything else is `REGULAR`
 
 ---
 
