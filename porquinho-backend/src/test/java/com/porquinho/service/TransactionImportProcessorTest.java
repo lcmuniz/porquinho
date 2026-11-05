@@ -111,10 +111,15 @@ class TransactionImportProcessorTest {
             assertThat(t.getReviewStatus()).isEqualTo(Transaction.ReviewStatus.PENDING);
             assertThat(t.getClassificationSource()).isEqualTo(Transaction.ClassificationSource.NONE);
             assertThat(t.isAffectsBalance()).isFalse();
-            assertThat(t.isPix()).isFalse();
             assertThat(t.isInstallment()).isFalse();
             assertThat(t.isFutureInstallment()).isFalse();
+            // Story 5.6: details only on the Pix ones
+            assertThat(t.getPixDetails() != null).isEqualTo(t.isPix());
         });
+        assertThat(saved).filteredOn(Transaction::isPix).hasSize(4);
+        assertThat(saved.get(0).getPixDetails()).isEqualTo("{\"detected\":true,\"direction\":\"RECEIVED\","
+            + "\"counterpart_name\":\"JOANA PEREIRA LIMA\",\"document\":\"•••.432.198-••\",\"counterpart_bank\":"
+            + "{\"name\":\"BCO DO BRASIL S.A.\",\"code\":\"0001\",\"agency\":\"1234\",\"account\":\"98765-4\"}}");
         assertThat(saved.get(0).getTransactionDate()).isEqualTo(LocalDate.of(2026, 10, 1));
         assertThat(saved.get(0).getAmount()).isEqualByComparingTo("2000.00");
         assertThat(saved.get(0).getTransactionType()).isEqualTo(Transaction.Type.CREDIT);
@@ -329,7 +334,11 @@ class TransactionImportProcessorTest {
 
         processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx"));
 
-        assertThat(savedTransactions()).hasSize(7);
+        List<Transaction> saved = savedTransactions();
+        assertThat(saved).hasSize(7);
+        // Story 5.6: the Pix dropped as transfer (Joana) and as duplicate (Carlos) create nothing
+        assertThat(saved).filteredOn(Transaction::isPix).extracting(Transaction::getDescription)
+            .allSatisfy(d -> assertThat(d).doesNotContain("JOANA", "CARLOS")).hasSize(2);
         verify(auditLogService).log(eq("import_duplicates_checked"), eq(userId), eq(null), anyString());
     }
 

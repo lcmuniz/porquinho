@@ -153,13 +153,14 @@ So that users can see who sent or received money via Pix.
 
 **Given** Transactions have been parsed (Story 5.4) and duplicates filtered (Story 5.5)
 **When** Pix identification runs
-**Then** For each transaction, system checks description for Pix indicators per bank (samples: Nubank "Transferência enviada/recebida pelo Pix", Itaú "PIX TRANSF"/"PIX QRS", BB "Pix - Enviado/Recebido", Bradesco "TRANSFERENCIA PIX DES:/REM:", Caixa "ENVIO PIX"/"PIX RECEBIDO")
+**Then** For each transaction, system checks description for Pix indicators per bank (samples: Nubank "Transferência enviada/recebida pelo Pix", Itaú "PIX TRANSF"/"PIX QRS", BB "Pix - Enviado/Recebido", Bradesco "TRANSFERENCIA PIX DES:/REM:", Caixa "ENVIO PIX"/"PIX RECEBIDO"); every bank pattern is tried on every import, whatever the detected bank (OTHER and cards included)
+**And** As a fallback, the word "pix" alone (word boundary, case-insensitive, not "PIXEL") also marks Pix, without extraction
 **And** If Pix is detected, is_pix flag is set to true
-**And** System extracts, when present: counterpart name, masked document (CPF as the bank shows it, CNPJ), counterpart bank/agency/account
-**And** Extracted details are stored in pix_details JSONB: {counterpart_name, direction (SENT/RECEIVED), document, counterpart_bank}
-**And** If details cannot be extracted, pix_details stores {detected: true}
-**And** Pix transactions are visually marked in the review and transaction lists with a Pix icon
-**And** Pix identification completes within overall parsing time budget (NFR6)
+**And** System extracts, when present: counterpart name, masked document (CPF as the bank shows it, CNPJ; a full CPF is masked as `•••.XXX.XXX-••`), counterpart bank/agency/account
+**And** pix_details JSONB always has `detected: true` and `direction` (from transaction_type: DEBIT → SENT, CREDIT → RECEIVED, never from the words of the description), plus `counterpart_name`, `document` and `counterpart_bank` ({name, code, agency, account}) only when present; a missing key is omitted, never null
+**And** Non-Pix transactions keep is_pix=false and pix_details null
+**And** The Pix icon is not part of this story (decision 1A of Story 5.6): it moved to Stories 5.9 and 5.12
+**And** Pix identification completes within overall parsing time budget (NFR6): precompiled patterns, no database query
 
 ---
 
@@ -220,6 +221,7 @@ So that I can review and confirm the categorizations.
 **Given** An import is in status 'REVIEW' (Story 5.8)
 **When** I open the review screen (`/importar/:id/revisao`, or the result of onboarding step 6)
 **Then** For each transaction, display: date, description, amount (BRL), suggested category, confidence indicator (High 80%+, Medium 50–79%, Low <50%), Pix and installment markers, edit button
+**And** Transactions with is_pix=true show a Pix icon (with text alternative, never icon alone); the API exposes `isPix` and `pixDetails` (moved from Story 5.6, decision 1A)
 **And** Transactions are grouped by confidence: High first, Low last; CARD_PAYMENT shown apart as "Pagamento de fatura"
 **And** Visual indicators: green check (High), yellow warning (Medium), red flag (Low, needs review); never color alone (WCAG)
 **And** "Aprovar todas de alta confiança" confirms all 80%+ transactions at once
@@ -288,6 +290,11 @@ So that I can correct errors or update transaction details.
 **And** Validation: amount > 0; future date shows a warning
 **And** Success message: "Transação atualizada"
 **And** Removing a transaction (soft delete) reverses its balance effect
+
+**Given** I am on the Transactions page (`/transacoes`)
+**When** The transaction list is displayed
+**Then** Transactions with is_pix=true show a Pix icon (with text alternative, never icon alone)
+**And** The API exposes `isPix` and `pixDetails` (moved from Story 5.6, decision 1A)
 
 ---
 

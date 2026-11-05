@@ -797,6 +797,46 @@ class DataExportServiceTest {
     }
 
     @Test
+    void collectUserDataShouldKeepInvalidPixDetailsAsText() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        Transaction transaction = new Transaction();
+        transaction.setId(UUID.randomUUID());
+        transaction.setUserId(userId);
+        transaction.setPix(true);
+        transaction.setPixDetails("nao-json");
+        when(transactionRepository.findByUserIdOrdered(userId)).thenReturn(List.of(transaction));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) dataExportService.collectUserData(userId)
+            .get("transactions");
+        com.fasterxml.jackson.databind.JsonNode details = (com.fasterxml.jackson.databind.JsonNode) rows.get(0).get("pix_details");
+        assertTrue(details.isTextual());
+        assertEquals("nao-json", details.asText());
+    }
+
+    @Test
+    void collectUserDataShouldExportPixDetailsAsAnObject() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        Transaction transaction = new Transaction();
+        transaction.setId(UUID.randomUUID());
+        transaction.setUserId(userId);
+        transaction.setPix(true);
+        transaction.setPixDetails("{\"detected\":true,\"direction\":\"SENT\",\"counterpart_name\":\"LOJA \\\"BOA\\\"\"}");
+        when(transactionRepository.findByUserIdOrdered(userId)).thenReturn(List.of(transaction));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) dataExportService.collectUserData(userId)
+            .get("transactions");
+        Map<String, Object> row = rows.get(0);
+        assertExportsEveryColumn(Transaction.class, row);
+        assertEquals(true, row.get("is_pix"));
+        com.fasterxml.jackson.databind.JsonNode details = (com.fasterxml.jackson.databind.JsonNode) row.get("pix_details");
+        assertTrue(details.isObject());
+        assertEquals("SENT", details.get("direction").asText());
+        assertEquals("LOJA \"BOA\"", details.get("counterpart_name").asText());
+    }
+
+    @Test
     void collectUserDataShouldExportEmptyTransactionListWhenNone() {
         when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
         assertEquals(List.of(), dataExportService.collectUserData(userId).get("transactions"));
