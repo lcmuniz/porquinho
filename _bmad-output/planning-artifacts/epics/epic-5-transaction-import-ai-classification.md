@@ -108,14 +108,16 @@ So that users can import transactions even if files have minor issues.
 **Then** A `transactions` table is created via migration (next free version) with fields: id (UUID, PK), user_id (FK), account_id (FK, nullable), credit_card_id (FK, nullable), CHECK exactly one of the two (D1), import_id (FK, nullable), external_id (FITID or bank identifier, nullable), transaction_date, description, original_description, amount DECIMAL(15,2) > 0, transaction_type (DEBIT/CREDIT), kind (REGULAR/CARD_PAYMENT, D8), category_id (FK, nullable), classification_source (AI/PATTERN/USER/NONE), classification_confidence (0-100), review_status (PENDING/CONFIRMED), affects_balance (boolean, D3), is_pix, pix_details (JSONB), is_installment, installment_number, installment_total, installment_group_id (UUID), is_future_installment, created_at, updated_at, deleted_at
 **And** For each transaction, extracts: date, description, amount (absolute value) and type (DEBIT/CREDIT from sign, D/C column or credit/debit columns); for cards, purchases are DEBIT and payments/refunds CREDIT
 **And** Parsing completes in < 30 seconds for 1 year of transactions (NFR6)
-**And** Progress is updated every 2 seconds: "X de Y transações processadas" (NFR8)
-**And** Error handling for malformed rows: skip the row and log it (no personal data in logs), keep parsing; invalid date tries the bank's known formats before skipping; missing or invalid amount skips the row
+**And** Error handling for malformed rows: skip the row and log it (no personal data in logs), keep parsing; invalid date tries the bank's known formats before skipping (OFX dates are always AAAAMMDD; the other formats apply to CSV, Story 5.2); missing or invalid amount skips the row
 **And** Import record is updated with total_transactions and skipped_rows
 **And** Transactions are saved with review_status='PENDING' and do not appear in lists, totals or balances until the import is finished (Story 5.10)
 **And** After parsing, Stories 5.5–5.7 (duplicates, Pix, installments) run in sequence
 **And** If parsing fails completely, status='FAILED' and error_message is saved
 **And** User sees: "Arquivo processado: X transações importadas, Y duplicadas ignoradas, Z linhas com erro"
 **And** `transactions` is included in data export and purge (LGPD), deleted before `accounts`/`credit_cards`
+**And** Decision 1A (Luiz, 2026-11-04): once the transactions are saved, the import goes to `REVIEW` (only from `PROCESSING`); the list on `/importar` shows "Pronta para revisão: X transações (Y linhas com erro) — a tela de revisão chega numa próxima etapa" and the 2-second polling stops. `PROCESSING` means processing is running again: the orphan sweep (startup and 15 min) fails every old `PROCESSING` import, with or without `bank_name`. Stories 5.5–5.8 run before `REVIEW`
+**And** Decision 2A (Luiz, 2026-11-04): no real progress in this story. While `PROCESSING` with a bank, the list shows "Banco detectado: <banco> — lendo as transações..." and keeps polling; counts only at the end. The progress column ("X de Y", NFR8) comes in Story 5.8
+**And** Decision 3A (Luiz, 2026-11-04): `kind = CARD_PAYMENT` is set while parsing by keyword in the description (without accents, upper case): "PAGAMENTO DA FATURA", "PAGAMENTO EFETUADO", "PAGAMENTO RECEBIDO", "ITAU UNIBANCO CARTAO", "GASTOS CARTAO DE CREDITO"; on an account only for `DEBIT`, on a card only for `CREDIT`. Everything else is `REGULAR`
 
 ---
 
@@ -200,6 +202,7 @@ So that users save time and don't have to manually categorize everything.
 **And** Batch of 100 transactions is classified in < 3 seconds (NFR7)
 **And** An `ai_classification_history` table is created via migration (next free version): id, user_id, transaction_id, predicted_category_id, confidence, was_corrected, corrected_category_id, created_at; included in export and purge (LGPD)
 **And** Progress indicator shows: "Classificando transações com IA... X de Y"
+**And** Progress is updated every 2 seconds: "X de Y transações processadas" (NFR8), moved from Story 5.4 (decision 2A of 5.4), with the progress column it needs
 **And** If the AI service is unavailable or times out, the transactions remain "Não classificado" (confidence 0) and the import still reaches review
 **And** The privacy policy (`PrivacyView`) names the AI provider as a data processor of transaction descriptions
 **And** After classification, the import status becomes 'REVIEW' and Story 5.9 is shown

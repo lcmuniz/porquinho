@@ -9,10 +9,13 @@ import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.CreditCardRepository;
 import com.porquinho.repository.TransactionImportRepository;
+import com.porquinho.repository.TransactionRepository;
 import com.porquinho.repository.UserRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.AdditionalAnswers;
+import org.mockito.Mockito;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
@@ -26,10 +29,13 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.config.ScheduledTaskHolder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.charset.Charset;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,11 +44,13 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 
 /**
- * Story 5.1: uploads against the real schema (PostgreSQL via Testcontainers, Flyway V25): the row and the audit,
- * nothing written on 400/404, the list with the target names, the CHECKs, purge order and export.
- * Not @Transactional: each service call commits. Cleans up after each test.
+ * Stories 5.1, 5.3 and 5.4: uploads against the real schema (PostgreSQL via Testcontainers, Flyway V25/V26): the row
+ * and the audit, nothing written on 400/404, the list with the target names, the background processing up to the
+ * transactions in REVIEW, the CHECKs, purge order and export. Not @Transactional: each service call commits. Cleans
+ * up after each test.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -76,6 +84,10 @@ class TransactionImportIntegrationTest {
     private ConfigurableApplicationContext context;
     @Autowired
     private ScheduledTaskHolder scheduledTaskHolder;
+    @Autowired
+    private TransactionRepository transactionRepository;
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     private final List<UUID> users = new ArrayList<>();
     private UUID userId;
@@ -88,7 +100,10 @@ class TransactionImportIntegrationTest {
     @AfterEach
     void tearDown() {
         for (UUID id : users) {
+            // stops any processing still running: its guarded updates find no PROCESSING row and write nothing
+            jdbc.update("UPDATE transaction_imports SET status = 'FAILED' WHERE user_id = ? AND status = 'PROCESSING'", id);
             jdbc.update("DELETE FROM audit_logs WHERE user_id = ?", id);
+            jdbc.update("DELETE FROM transactions WHERE user_id = ?", id);
             jdbc.update("DELETE FROM transaction_imports WHERE user_id = ?", id);
             jdbc.update("DELETE FROM account_balance_history WHERE user_id = ?", id);
             jdbc.update("DELETE FROM accounts WHERE user_id = ?", id);
@@ -121,13 +136,27 @@ class TransactionImportIntegrationTest {
     /** Polls the import row until {@code done} holds (the processing is asynchronous), at most 10 s. */
     private Map<String, Object> awaitRow(UUID importId, java.util.function.Predicate<Map<String, Object>> done)
         throws InterruptedException {
-        long deadline = System.currentTimeMillis() + 10_000;
+        return awaitRow(importId, done, Duration.ofSeconds(10));
+    }
+
+    private Map<String, Object> awaitRow(UUID importId, java.util.function.Predicate<Map<String, Object>> done,
+                                         Duration timeout) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeout.toMillis();
         Map<String, Object> row = jdbc.queryForMap("SELECT * FROM transaction_imports WHERE id = ?", importId);
         while (!done.test(row) && System.currentTimeMillis() < deadline) {
             Thread.sleep(50);
             row = jdbc.queryForMap("SELECT * FROM transaction_imports WHERE id = ?", importId);
         }
         return row;
+    }
+
+    private Map<String, Object> awaitDone(UUID importId) throws InterruptedException {
+        return awaitRow(importId, r -> !"PROCESSING".equals(r.get("status")));
+    }
+
+    private List<Map<String, Object>> transactionsOf(UUID importId) {
+        return jdbc.queryForList("SELECT * FROM transactions WHERE import_id = ? ORDER BY transaction_date, external_id",
+            importId);
     }
 
     private long imports(UUID owner) {
@@ -147,7 +176,8 @@ class TransactionImportIntegrationTest {
         assertThat(row.get("credit_card_id")).isNull();
         assertThat(row.get("file_name")).isEqualTo("nubank-conta.ofx");
         assertThat(row.get("file_type")).isEqualTo("OFX");
-        assertThat(row.get("status")).isEqualTo("PROCESSING");
+        assertThat(created.status()).isEqualTo("PROCESSING");
+        assertThat(row.get("status")).isIn("PROCESSING", "REVIEW");  // the background processing may be done already
         assertThat(row.get("file_size_kb")).isEqualTo(4);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_logs WHERE user_id = ? AND event_type = 'import_created'",
             Long.class, userId)).isEqualTo(1);
@@ -228,19 +258,24 @@ class TransactionImportIntegrationTest {
     }
 
     @Test
-    void purgeOrderDeletesImportsBeforeAccountsCardsAndTheUser() throws IOException {
+    void purgeOrderDeletesTransactionsAndImportsBeforeAccountsCardsAndTheUser() throws Exception {
         UUID nubank = account(userId, "Nubank");
         UUID itau = card(userId, "Itaú Visa");
-        transactionImportService.create(userId, nubank, null, sample("nubank-conta.ofx"), "127.0.0.1");
-        transactionImportService.create(userId, null, itau, sample("itau-cartao.ofx"), "127.0.0.1");
+        UUID toAccount = transactionImportService.create(userId, nubank, null, sample("nubank-conta.ofx"), "127.0.0.1").id();
+        UUID toCard = transactionImportService.create(userId, null, itau, sample("itau-cartao.ofx"), "127.0.0.1").id();
+        assertThat(awaitDone(toAccount).get("status")).isEqualTo("REVIEW");
+        assertThat(awaitDone(toCard).get("status")).isEqualTo("REVIEW");
 
-        // The FKs from transaction_imports block deleting the accounts and cards first
+        // The FKs from transactions block deleting the imports first; those from both block the accounts and cards
+        assertThatThrownBy(() -> jdbc.update("DELETE FROM transaction_imports WHERE user_id = ?", userId))
+            .isInstanceOf(DataIntegrityViolationException.class);
         assertThatThrownBy(() -> jdbc.update("DELETE FROM accounts WHERE user_id = ?", userId))
             .isInstanceOf(DataIntegrityViolationException.class);
         assertThatThrownBy(() -> jdbc.update("DELETE FROM credit_cards WHERE user_id = ?", userId))
             .isInstanceOf(DataIntegrityViolationException.class);
 
         transactionTemplate.executeWithoutResult(status -> {
+            assertThat(transactionRepository.deleteByUserId(userId)).isEqualTo(18);
             assertThat(transactionImportRepository.deleteByUserId(userId)).isEqualTo(2);
             balanceHistoryRepository.deleteByUserId(userId);
             assertThat(accountRepository.deleteByUserId(userId)).isEqualTo(1);
@@ -249,40 +284,218 @@ class TransactionImportIntegrationTest {
             assertThat(userRepository.deleteByIdNative(userId)).isEqualTo(1);
         });
         assertThat(imports(userId)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM transactions WHERE user_id = ?", Long.class, userId)).isZero();
     }
 
     @Test
-    void exportIncludesTheImports() throws IOException {
+    void exportIncludesTheImportsAndTheirTransactions() throws Exception {
         UUID nubank = account(userId, "Nubank");
         TransactionImportResponse created = transactionImportService.create(userId, nubank, null,
             sample("nubank-conta.ofx"), "127.0.0.1");
 
+        awaitDone(created.id());
+
+        Map<String, Object> data = dataExportService.collectUserData(userId);
         @SuppressWarnings("unchecked")
-        var rows = (List<Map<String, Object>>) dataExportService.collectUserData(userId).get("transaction_imports");
+        var rows = (List<Map<String, Object>>) data.get("transaction_imports");
+        @SuppressWarnings("unchecked")
+        var transactions = (List<Map<String, Object>>) data.get("transactions");
 
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0).get("id")).isEqualTo(created.id().toString());
         assertThat(rows.get(0).get("account_id")).isEqualTo(nubank.toString());
-        assertThat(rows.get(0).get("status")).isEqualTo("PROCESSING");
+        assertThat(rows.get(0).get("status")).isEqualTo("REVIEW");
+        assertThat(rows.get(0).get("total_transactions")).isEqualTo(10);
+        assertThat(transactions).hasSize(10).allSatisfy(t -> {
+            assertThat(t.get("import_id")).isEqualTo(created.id().toString());
+            assertThat(t.get("review_status")).isEqualTo("PENDING");
+        });
     }
 
     @Test
-    void uploadedOfxGetsItsBankInTheBackgroundAndStaysProcessing() throws Exception {
+    void uploadedOfxIsReadInTheBackgroundAndItsTransactionsWaitForReview() throws Exception {
         UUID nubank = account(userId, "Nubank");
+
+        TransactionImportResponse created = transactionImportService.create(userId, nubank, null,
+            sample("nubank-conta.ofx"), "127.0.0.1");
+
+        Map<String, Object> row = awaitDone(created.id());
+        assertThat(row.get("bank_name")).isEqualTo("NUBANK");
+        assertThat(row.get("status")).isEqualTo("REVIEW");
+        assertThat(row.get("total_transactions")).isEqualTo(10);
+        assertThat(row.get("imported_transactions")).isEqualTo(10);
+        assertThat(row.get("skipped_rows")).isEqualTo(0);
+        assertThat(row.get("error_message")).isNull();
+        List<Map<String, Object>> transactions = transactionsOf(created.id());
+        assertThat(transactions).hasSize(10).allSatisfy(t -> {
+            assertThat(t.get("user_id")).isEqualTo(userId);
+            assertThat(t.get("account_id")).isEqualTo(nubank);
+            assertThat(t.get("credit_card_id")).isNull();
+            assertThat(t.get("review_status")).isEqualTo("PENDING");
+            assertThat(t.get("classification_source")).isEqualTo("NONE");
+            assertThat(t.get("affects_balance")).isEqualTo(false);
+            assertThat(t.get("is_pix")).isEqualTo(false);
+            assertThat(t.get("is_installment")).isEqualTo(false);
+            assertThat(t.get("is_future_installment")).isEqualTo(false);
+            assertThat(t.get("deleted_at")).isNull();
+        });
+        Map<String, Object> first = transactions.get(0);
+        assertThat(first.get("transaction_date")).isEqualTo(java.sql.Date.valueOf("2026-10-01"));
+        assertThat((BigDecimal) first.get("amount")).isEqualByComparingTo("2000.00");
+        assertThat(first.get("transaction_type")).isEqualTo("CREDIT");
+        assertThat(first.get("external_id")).isEqualTo("bdd640fb-0667-1ad1-1c80-317fa3b1799d");
+        assertThat((String) first.get("description")).startsWith("Transferência recebida pelo Pix - JOANA PEREIRA LIMA - •••");
+        assertThat(transactions).filteredOn(t -> "CARD_PAYMENT".equals(t.get("kind")))
+            .extracting(t -> t.get("description")).containsExactly("Pagamento da fatura - Cartão Nubank");
+        // balance untouched (D3 is applied in Story 5.10)
+        assertThat(jdbc.queryForObject("SELECT current_balance FROM accounts WHERE id = ?", BigDecimal.class, nubank))
+            .isEqualByComparingTo("100.00");
+        TransactionImportResponse fetched = transactionImportService.get(userId, created.id());
+        assertThat(fetched.status()).isEqualTo("REVIEW");
+        assertThat(fetched.totalTransactions()).isEqualTo(10);
+        assertThat(fetched.importedTransactions()).isEqualTo(10);
+        assertThat(fetched.skippedRows()).isZero();
+        assertThat(fetched.targetName()).isEqualTo("Nubank");
+    }
+
+    @Test
+    void cardStatementTransactionsGoToTheCard() throws Exception {
         UUID itau = card(userId, "Itaú Visa");
 
-        TransactionImportResponse toAccount = transactionImportService.create(userId, nubank, null,
-            sample("nubank-conta.ofx"), "127.0.0.1");
-        TransactionImportResponse toCard = transactionImportService.create(userId, null, itau,
+        TransactionImportResponse created = transactionImportService.create(userId, null, itau,
             sample("itau-cartao.ofx"), "127.0.0.1");
 
-        Map<String, Object> accountRow = awaitRow(toAccount.id(), r -> r.get("bank_name") != null);
-        assertThat(accountRow.get("bank_name")).isEqualTo("NUBANK");
-        assertThat(accountRow.get("status")).isEqualTo("PROCESSING");
-        assertThat(accountRow.get("error_message")).isNull();
-        assertThat(awaitRow(toCard.id(), r -> r.get("bank_name") != null).get("bank_name")).isEqualTo("ITAU");
-        assertThat(transactionImportService.get(userId, toAccount.id()).bankName()).isEqualTo("NUBANK");
-        assertThat(transactionImportService.get(userId, toAccount.id()).targetName()).isEqualTo("Nubank");
+        Map<String, Object> row = awaitDone(created.id());
+        assertThat(row.get("bank_name")).isEqualTo("ITAU");
+        assertThat(row.get("status")).isEqualTo("REVIEW");
+        List<Map<String, Object>> transactions = transactionsOf(created.id());
+        assertThat(transactions).hasSize(8).allSatisfy(t -> {
+            assertThat(t.get("credit_card_id")).isEqualTo(itau);
+            assertThat(t.get("account_id")).isNull();
+        });
+        assertThat(transactions).filteredOn(t -> "CREDIT".equals(t.get("transaction_type")))
+            .extracting(t -> t.get("description"), t -> t.get("kind"))
+            .containsExactly(org.assertj.core.groups.Tuple.tuple("PAGAMENTO EFETUADO", "CARD_PAYMENT"));
+        assertThat(transactions).filteredOn(t -> "DEBIT".equals(t.get("transaction_type"))).hasSize(7)
+            .allSatisfy(t -> assertThat(t.get("kind")).isEqualTo("REGULAR"));
+    }
+
+    @Test
+    void badRowsAreSkippedAndCounted() throws Exception {
+        UUID itau = account(userId, "Itaú");
+
+        TransactionImportResponse created = transactionImportService.create(userId, itau, null,
+            sample("erro-ofx-linhas-invalidas.ofx"), "127.0.0.1");
+
+        Map<String, Object> row = awaitDone(created.id());
+        assertThat(row.get("status")).isEqualTo("REVIEW");
+        assertThat(row.get("total_transactions")).isEqualTo(6);
+        assertThat(row.get("imported_transactions")).isEqualTo(2);
+        assertThat(row.get("skipped_rows")).isEqualTo(4);
+        assertThat(transactionsOf(created.id())).extracting(t -> t.get("description"))
+            .containsExactly("PIX TRANSF CARLOS 02/10", "PADARIA SÃO JOSÉ");
+    }
+
+    @Test
+    void ofxWithoutTransactionsFails() throws Exception {
+        UUID itau = account(userId, "Itaú");
+        Charset cp1252 = Charset.forName("windows-1252");
+        String withoutEntries = new String(sample("itau-conta.ofx").getBytes(), cp1252)
+            .replaceAll("(?s)<STMTTRN>.*?</STMTTRN>\\s*", "");
+        MockMultipartFile upload = new MockMultipartFile("file", "vazio.ofx", "application/octet-stream",
+            withoutEntries.getBytes(cp1252));
+
+        TransactionImportResponse created = transactionImportService.create(userId, itau, null, upload, "127.0.0.1");
+
+        Map<String, Object> row = awaitDone(created.id());
+        assertThat(row.get("status")).isEqualTo("FAILED");
+        assertThat(row.get("error_message"))
+            .isEqualTo("Não encontramos transações neste arquivo. Exporte o extrato de novo e envie outra vez.");
+        assertThat(transactionsOf(created.id())).isEmpty();
+    }
+
+    @Test
+    void failureWhileSavingWritesNothing() throws Exception {
+        UUID nubank = account(userId, "Nubank");
+        UUID importId = insertProcessing(nubank, "0 seconds", null);
+        // the real repository, but saveAll fails after the rows reached the database
+        TransactionRepository failing = Mockito.mock(TransactionRepository.class,
+            AdditionalAnswers.delegatesTo(transactionRepository));
+        Mockito.doAnswer(invocation -> {
+            transactionRepository.saveAllAndFlush(invocation.getArgument(0));
+            throw new IllegalStateException("boom");
+        }).when(failing).saveAll(any());
+        TransactionImportProcessor processor = new TransactionImportProcessor(transactionImportRepository, failing,
+            transactionManager, Clock.systemDefaultZone());
+
+        processor.process(importId, sample("nubank-conta.ofx").getBytes());  // not the proxy: runs right here
+
+        Map<String, Object> row = row(importId);
+        assertThat(row.get("status")).isEqualTo("FAILED");
+        assertThat(row.get("error_message")).isEqualTo(TransactionImportProcessor.UNEXPECTED_ERROR_MESSAGE);
+        assertThat(row.get("total_transactions")).isEqualTo(0);
+        assertThat(transactionsOf(importId)).isEmpty();
+    }
+
+    @Test
+    void importThatAlreadyLeftProcessingGetsNoTransactions() throws Exception {
+        UUID nubank = account(userId, "Nubank");
+        UUID importId = insertProcessing(nubank, "0 seconds", "NUBANK");
+        jdbc.update("UPDATE transaction_imports SET status = 'FAILED', error_message = ? WHERE id = ?",
+            TransactionImportProcessor.INTERRUPTED_MESSAGE, importId);
+        TransactionImportProcessor processor = new TransactionImportProcessor(transactionImportRepository,
+            transactionRepository, transactionManager, Clock.systemDefaultZone());
+
+        processor.process(importId, sample("nubank-conta.ofx").getBytes());  // not the proxy: runs right here
+        // the guard of the final update itself, against the real database
+        assertThat(transactionImportRepository.markReadyForReview(importId, 10, 10, 0, java.time.OffsetDateTime.now()))
+            .isZero();
+
+        Map<String, Object> row = row(importId);
+        assertThat(row.get("status")).isEqualTo("FAILED");
+        assertThat(row.get("error_message")).isEqualTo(TransactionImportProcessor.INTERRUPTED_MESSAGE);
+        assertThat(row.get("total_transactions")).isEqualTo(0);
+        assertThat(row.get("imported_transactions")).isEqualTo(0);
+        assertThat(row.get("skipped_rows")).isEqualTo(0);
+        assertThat(transactionsOf(importId)).isEmpty();
+    }
+
+    @Test
+    void aWholeYearIsImportedWellUnderThirtySeconds() throws Exception {
+        UUID itau = account(userId, "Itaú");
+        MockMultipartFile upload = new MockMultipartFile("file", "ano.ofx", "application/octet-stream",
+            OfxTransactionParserTest.yearOfEntries(3000).getBytes(Charset.forName("windows-1252")));
+
+        long start = System.nanoTime();
+        TransactionImportResponse created = transactionImportService.create(userId, itau, null, upload, "127.0.0.1");
+        Map<String, Object> row = awaitRow(created.id(), r -> !"PROCESSING".equals(r.get("status")), Duration.ofSeconds(30));
+        Duration elapsed = Duration.ofNanos(System.nanoTime() - start);
+
+        assertThat(row.get("status")).isEqualTo("REVIEW");
+        assertThat(row.get("total_transactions")).isEqualTo(3000);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM transactions WHERE import_id = ?", Long.class, created.id()))
+            .isEqualTo(3000);
+        assertThat(elapsed).isLessThan(Duration.ofSeconds(30));
+    }
+
+    @Test
+    void transactionChecksRejectBothTargetsAndNonPositiveAmounts() {
+        UUID nubank = account(userId, "Nubank");
+        UUID itau = card(userId, "Itaú Visa");
+        String insert = "INSERT INTO transactions (user_id, account_id, credit_card_id, transaction_date, description, "
+            + "original_description, amount, transaction_type, kind) VALUES (?, ?, ?, DATE '2026-10-01', 'x', 'x', ?, ?, ?)";
+
+        assertThatThrownBy(() -> jdbc.update(insert, userId, nubank, itau, new BigDecimal("1.00"), "DEBIT", "REGULAR"))
+            .isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> jdbc.update(insert, userId, null, null, new BigDecimal("1.00"), "DEBIT", "REGULAR"))
+            .isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> jdbc.update(insert, userId, nubank, null, BigDecimal.ZERO, "DEBIT", "REGULAR"))
+            .isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> jdbc.update(insert, userId, nubank, null, new BigDecimal("1.00"), "OUT", "REGULAR"))
+            .isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> jdbc.update(insert, userId, nubank, null, new BigDecimal("1.00"), "DEBIT", "TRANSFER"))
+            .isInstanceOf(DataIntegrityViolationException.class);
+        assertThat(jdbc.update(insert, userId, null, itau, new BigDecimal("1.00"), "CREDIT", "CARD_PAYMENT")).isEqualTo(1);
     }
 
     @Test
@@ -310,7 +523,7 @@ class TransactionImportIntegrationTest {
     }
 
     @Test
-    void atStartupProcessingImportsWithoutBankFailAndDetectedOnesStay() throws IOException {
+    void atStartupEveryOldProcessingImportFailsWithOrWithoutBank() throws IOException {
         UUID nubank = account(userId, "Nubank");
         UUID old = insertProcessing(nubank, "1 day", null);
         UUID detected = insertProcessing(nubank, "1 day", "NUBANK");
@@ -321,12 +534,13 @@ class TransactionImportIntegrationTest {
         Map<String, Object> oldRow = row(old);
         assertThat(oldRow.get("status")).isEqualTo("FAILED");
         assertThat(oldRow.get("error_message")).isEqualTo("O processamento foi interrompido. Envie o arquivo de novo.");
-        // bank detected: this stage finished, it waits for the parsing (decision 1A)
-        assertThat(row(detected).get("status")).isEqualTo("PROCESSING");
+        // PROCESSING means processing is running (decision 1A of Story 5.4): with a bank it is an orphan too
+        assertThat(row(detected).get("status")).isEqualTo("FAILED");
+        assertThat(row(detected).get("error_message")).isEqualTo(TransactionImportProcessor.INTERRUPTED_MESSAGE);
     }
 
     @Test
-    void everyFiveMinutesOnlyImportsWithoutBankOlderThan15MinutesFail() throws IOException {
+    void everyFiveMinutesProcessingImportsOlderThan15MinutesFail() throws IOException {
         UUID nubank = account(userId, "Nubank");
         context.publishEvent(new ApplicationReadyEvent(new SpringApplication(), new String[0], context, Duration.ZERO));
         // inserted after the startup sweep, so only the periodic one can fail them
@@ -339,7 +553,7 @@ class TransactionImportIntegrationTest {
         assertThat(row(stale).get("status")).isEqualTo("FAILED");
         assertThat(row(stale).get("error_message")).isEqualTo("O processamento foi interrompido. Envie o arquivo de novo.");
         assertThat(row(recent).get("status")).isEqualTo("PROCESSING");
-        assertThat(row(detected).get("status")).isEqualTo("PROCESSING");
+        assertThat(row(detected).get("status")).isEqualTo("FAILED");
     }
 
     @Test

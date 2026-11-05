@@ -1,6 +1,9 @@
 package com.porquinho.service;
 
+import com.porquinho.entity.Transaction;
+import com.porquinho.entity.TransactionImport;
 import com.porquinho.repository.TransactionImportRepository;
+import com.porquinho.repository.TransactionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -9,18 +12,23 @@ import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
 import java.time.Duration;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
- * Background processing of an uploaded statement (Story 5.3). Runs after the import row is committed, outside the
- * request thread, with the file content only in memory: detects the bank of the OFX (the import stays PROCESSING with
- * bank_name set, decision 1A) or marks the import FAILED with a clear message. Story 5.4 extends this same processing
- * with the parsing. Imports left PROCESSING with no processing running (backend restarted, upload interrupted) are
- * failed at startup and every 5 minutes. Logs carry only the import id and the reason, never file content.
+ * Background processing of an uploaded statement (Stories 5.3 and 5.4). Runs after the import row is committed,
+ * outside the request thread, with the file content only in memory: detects the bank of the OFX, reads its entries
+ * ({@link OfxTransactionParser}) and saves the valid ones as PENDING together with the import counters, moving the
+ * import to REVIEW (decision 1A), all in one database transaction. Otherwise the import becomes FAILED with a clear
+ * message and nothing is saved. Imports left PROCESSING with no processing running (backend restarted, upload
+ * interrupted) are failed at startup and every 5 minutes. Logs carry only the import id, positions and reasons,
+ * never file content.
  *
  * <p>A separate bean so that {@code @Async} goes through the Spring proxy (a self-call would run synchronously).
  */
@@ -33,22 +41,32 @@ public class TransactionImportProcessor {
         "O arquivo está incompleto. Exporte o extrato de novo no site ou app do banco e envie outra vez.";
     public static final String UNEXPECTED_ERROR_MESSAGE = "Não foi possível processar o arquivo. Tente de novo.";
     public static final String INTERRUPTED_MESSAGE = "O processamento foi interrompido. Envie o arquivo de novo.";
+    public static final String NO_TRANSACTIONS_MESSAGE =
+        "Não encontramos transações neste arquivo. Exporte o extrato de novo e envie outra vez.";
 
     /** A PROCESSING import older than this has no processing running anymore. */
     static final Duration ORPHAN_AGE = Duration.ofMinutes(15);
 
     private final TransactionImportRepository transactionImportRepository;
+    private final TransactionRepository transactionRepository;
+    private final TransactionTemplate transactionTemplate;
     private final Clock clock;
     /** Taken when the bean is created, before the web server accepts uploads: older PROCESSING rows are orphans. */
     private final OffsetDateTime startedAt;
 
     @Autowired
-    public TransactionImportProcessor(TransactionImportRepository transactionImportRepository) {
-        this(transactionImportRepository, Clock.systemDefaultZone());
+    public TransactionImportProcessor(TransactionImportRepository transactionImportRepository,
+                                      TransactionRepository transactionRepository,
+                                      PlatformTransactionManager transactionManager) {
+        this(transactionImportRepository, transactionRepository, transactionManager, Clock.systemDefaultZone());
     }
 
-    TransactionImportProcessor(TransactionImportRepository transactionImportRepository, Clock clock) {
+    TransactionImportProcessor(TransactionImportRepository transactionImportRepository,
+                               TransactionRepository transactionRepository,
+                               PlatformTransactionManager transactionManager, Clock clock) {
         this.transactionImportRepository = transactionImportRepository;
+        this.transactionRepository = transactionRepository;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.clock = clock;
         this.startedAt = OffsetDateTime.now(clock);
     }
@@ -67,7 +85,12 @@ public class TransactionImportProcessor {
             }
             String bank = OfxBankDetector.detectBank(content);
             int updated = transactionImportRepository.recordBank(importId, bank, OffsetDateTime.now(clock));
-            log.info("Import {} bank detected: {}{}", importId, bank, updated == 0 ? " (no longer processing)" : "");
+            if (updated == 0) {
+                log.info("Import {} bank detected: {} (no longer processing)", importId, bank);
+                return;
+            }
+            log.info("Import {} bank detected: {}", importId, bank);
+            parseAndSave(importId, content);
         } catch (Exception e) {
             // only the exception type: a message could quote the file
             log.error("Import {} failed: unexpected {}", importId, e.getClass().getName());
@@ -77,6 +100,66 @@ public class TransactionImportProcessor {
                 log.error("Import {} could not be marked as failed: {}", importId, again.getClass().getName());
             }
         }
+    }
+
+    /** Story 5.4: reads the entries and saves them with the counters, all or nothing. */
+    private void parseAndSave(UUID importId, byte[] content) {
+        TransactionImport transactionImport = transactionImportRepository.findById(importId).orElse(null);
+        if (transactionImport == null) {
+            log.info("Import {} no longer exists", importId);
+            return;
+        }
+        boolean creditCard = transactionImport.getCreditCardId() != null;
+        OfxTransactionParser.Result result = OfxTransactionParser.parse(content, creditCard);
+        for (OfxTransactionParser.SkippedRow row : result.skippedRows()) {
+            log.info("Import {} skipped row {}: {}", importId, row.position(), row.reason());
+        }
+        if (result.entries().isEmpty()) {
+            log.info("Import {} failed: no transactions ({} skipped)", importId, result.skippedRows().size());
+            transactionImportRepository.markFailed(importId, NO_TRANSACTIONS_MESSAGE, OffsetDateTime.now(clock));
+            return;
+        }
+        List<Transaction> transactions = result.entries().stream()
+            .map(entry -> toTransaction(transactionImport, entry))
+            .toList();
+        Boolean saved = transactionTemplate.execute(status -> {
+            // the guarded update first: if the import already left PROCESSING nothing is written
+            int updated = transactionImportRepository.markReadyForReview(importId, result.totalRows(),
+                transactions.size(), result.skippedRows().size(), OffsetDateTime.now(clock));
+            if (updated == 0) {
+                return false;
+            }
+            transactionRepository.saveAll(transactions);
+            return true;
+        });
+        if (Boolean.TRUE.equals(saved)) {
+            log.info("Import {} ready for review: {} transaction(s), {} skipped row(s)", importId,
+                transactions.size(), result.skippedRows().size());
+        } else {
+            log.info("Import {} parsed but no longer processing: nothing saved", importId);
+        }
+    }
+
+    private static Transaction toTransaction(TransactionImport transactionImport, OfxTransactionParser.Entry entry) {
+        Transaction transaction = new Transaction();
+        transaction.setUserId(transactionImport.getUserId());
+        transaction.setAccountId(transactionImport.getAccountId());
+        transaction.setCreditCardId(transactionImport.getCreditCardId());
+        transaction.setImportId(transactionImport.getId());
+        transaction.setExternalId(entry.externalId());
+        transaction.setTransactionDate(entry.date());
+        transaction.setDescription(entry.description());
+        transaction.setOriginalDescription(entry.originalDescription());
+        transaction.setAmount(entry.amount());
+        transaction.setTransactionType(entry.type());
+        transaction.setKind(entry.cardPayment() ? Transaction.Kind.CARD_PAYMENT : Transaction.Kind.REGULAR);
+        transaction.setClassificationSource(Transaction.ClassificationSource.NONE);
+        transaction.setReviewStatus(Transaction.ReviewStatus.PENDING);
+        transaction.setAffectsBalance(false);
+        transaction.setPix(false);
+        transaction.setInstallment(false);
+        transaction.setFutureInstallment(false);
+        return transaction;
     }
 
     /** At startup: every import still PROCESSING that was created before this backend came up has no processing. */

@@ -3,6 +3,7 @@ package com.porquinho.service;
 import com.porquinho.entity.Account;
 import com.porquinho.entity.AccountBalanceHistory;
 import com.porquinho.entity.Reconciliation;
+import com.porquinho.entity.Transaction;
 import com.porquinho.entity.TransactionImport;
 import com.porquinho.entity.Transfer;
 import com.porquinho.entity.Category;
@@ -22,6 +23,7 @@ import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.ReconciliationRepository;
 import com.porquinho.repository.TransactionImportRepository;
+import com.porquinho.repository.TransactionRepository;
 import com.porquinho.repository.TransferRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.CategoryRepository;
@@ -113,6 +115,9 @@ class DataExportServiceTest {
 
     @Mock
     private TransactionImportRepository transactionImportRepository;
+
+    @Mock
+    private TransactionRepository transactionRepository;
 
     @InjectMocks
     private DataExportService dataExportService;
@@ -741,6 +746,60 @@ class DataExportServiceTest {
     void collectUserDataShouldExportEmptyTransactionImportListWhenNone() {
         when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
         assertEquals(List.of(), dataExportService.collectUserData(userId).get("transaction_imports"));
+    }
+
+    /** LGPD portability: every mapped column of the transactions (Story 5.4), oldest first. */
+    @Test
+    void collectUserDataShouldExportTheTransactions() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        OffsetDateTime created = OffsetDateTime.parse("2026-11-04T12:00:00Z");
+        UUID accountId = UUID.randomUUID();
+        UUID importId = UUID.randomUUID();
+        Transaction transaction = new Transaction();
+        transaction.setId(UUID.randomUUID());
+        transaction.setUserId(userId);
+        transaction.setAccountId(accountId);
+        transaction.setImportId(importId);
+        transaction.setExternalId("FIT-1");
+        transaction.setTransactionDate(java.time.LocalDate.of(2026, 10, 18));
+        transaction.setDescription("Pagamento da fatura - Cartão Nubank");
+        transaction.setOriginalDescription("Pagamento da fatura - Cartão Nubank");
+        transaction.setAmount(new java.math.BigDecimal("1243.67"));
+        transaction.setTransactionType(Transaction.Type.DEBIT);
+        transaction.setKind(Transaction.Kind.CARD_PAYMENT);
+        transaction.setCreatedAt(created);
+        transaction.setUpdatedAt(created);
+        when(transactionRepository.findByUserIdOrdered(userId)).thenReturn(List.of(transaction));
+
+        Map<String, Object> data = dataExportService.collectUserData(userId);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
+        assertTrue(((List<?>) metadata.get("exported_tables")).contains("transactions"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("transactions");
+        assertEquals(1, rows.size());
+        Map<String, Object> row = rows.get(0);
+        assertExportsEveryColumn(Transaction.class, row);
+        assertEquals(transaction.getId().toString(), row.get("id"));
+        assertEquals(accountId.toString(), row.get("account_id"));
+        assertNull(row.get("credit_card_id"));
+        assertEquals(importId.toString(), row.get("import_id"));
+        assertEquals("2026-10-18", row.get("transaction_date"));
+        assertEquals(new java.math.BigDecimal("1243.67"), row.get("amount"));
+        assertEquals("DEBIT", row.get("transaction_type"));
+        assertEquals("CARD_PAYMENT", row.get("kind"));
+        assertEquals("NONE", row.get("classification_source"));
+        assertEquals("PENDING", row.get("review_status"));
+        assertEquals(false, row.get("affects_balance"));
+        assertEquals(false, row.get("is_pix"));
+        assertNull(row.get("deleted_at"));
+    }
+
+    @Test
+    void collectUserDataShouldExportEmptyTransactionListWhenNone() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        assertEquals(List.of(), dataExportService.collectUserData(userId).get("transactions"));
     }
 
     private static void assertExportsEveryColumn(Class<?> entity, Map<String, Object> exported) {

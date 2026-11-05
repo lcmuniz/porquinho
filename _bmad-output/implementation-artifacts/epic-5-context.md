@@ -4,61 +4,74 @@
 
 ## Goal
 
-Trazer as transações do usuário para dentro do porquinho. O usuário envia o extrato OFX ou CSV do banco (Nubank, BB, Itaú, Bradesco, Caixa) para uma conta ou um cartão. O sistema detecta o banco, lê os lançamentos, descarta duplicatas e transferências já registradas, marca Pix e parcelas, e classifica cada transação numa categoria do usuário, primeiro pelos padrões aprendidos e depois pela IA. O usuário revisa, corrige e conclui. Também dá para editar e lançar transações à mão. Este é o momento "aha" do produto: a IA acertando a maior parte sozinha. A meta é 85%+ de precisão após 1 mês de uso. Os Epics 6 (orçamento) e 7 (dashboard) dependem da tabela `transactions` criada aqui.
+Permitir que o usuário importe extratos OFX/CSV dos 5 principais bancos brasileiros (Nubank, BB, Itaú, Bradesco, Caixa) para uma conta ou um cartão já cadastrados, com detecção de banco, parsing tolerante a falhas, descarte de duplicatas e de transferências já registradas, identificação de Pix e parcelamentos, classificação automática por IA e revisão rápida antes de confirmar. Também cobre a edição e a inclusão manual de transações. É o núcleo do ritual semanal (importar, revisar, ver o dashboard): a IA precisa classificar a maior parte sozinha (meta de 85%+ de precisão após um mês) para o usuário revisar só as exceções.
 
 ## Stories
 
-- Story 5.1: Upload de OFX (registra a importação em `PROCESSING`; nada roda em segundo plano ainda, decisão 1A)
-- Story 5.2: Upload de CSV
-- Story 5.3: Detecção do banco do OFX e o processamento em segundo plano (conteúdo só em memória; feita antes da 5.2, CSV e escolha manual do banco ficam na 5.2)
-- Story 5.4: Parsing com tratamento de erros (cria `transactions`)
-- Story 5.5: Duplicatas e transferências já registradas
-- Story 5.6: Pix
-- Story 5.7: Parcelas e parcelas futuras
+- Story 5.1: Upload de arquivos OFX
+- Story 5.2: Upload de arquivos CSV
+- Story 5.3: Detecção automática de formato e banco (só OFX; feita antes da 5.2)
+- Story 5.4: Parsing de transações com tratamento de erros
+- Story 5.5: Detecção de duplicatas
+- Story 5.6: Identificação de Pix e extração de detalhes
+- Story 5.7: Detecção de compras parceladas
 - Story 5.8: Classificação automática por IA
-- Story 5.9: Tela de revisão
-- Story 5.10: Ajustes e conclusão da importação (e o passo 6 do onboarding ligado ao upload, decisão 2A da 5.1)
-- Story 5.11: Aprendizado com as correções
-- Story 5.12: Editar transação (`/transacoes`)
-- Story 5.13: Adicionar transação manual
+- Story 5.9: Tela de revisão das transações classificadas
+- Story 5.10: Ajuste das classificações e conclusão da importação
+- Story 5.11: Aprendizado com as correções do usuário
+- Story 5.12: Edição manual de transações
+- Story 5.13: Inclusão manual de transações (gastos em dinheiro)
 
 ## Requirements & Constraints
 
-- Texto do épico revisado em 2026-11-04 com as decisões D1–D9 (`_bmad-output/planning-artifacts/epics/epic-5-transaction-import-ai-classification.md`). Leia o bloco de decisões no topo antes de qualquer story.
-- **D1:** cada transação pertence a uma conta **ou** a um cartão (CHECK no banco). **D2:** o destino é escolhido antes do upload; um OFX de cartão em conta (ou o contrário) é rejeitado.
-- **D3, saldo:** só transações de conta com data posterior à data de referência do saldo alteram `current_balance`. A data de referência é a do último snapshot `initial`, `edit` ou `reconciliation`. Isso fica em `affects_balance` e só tem efeito ao concluir a importação (5.10) ou ao lançar e editar à mão (5.12/5.13). Cartão nunca mexe em saldo de conta.
-- **D4:** um lançamento que corresponde a uma transferência da Story 4.5 não é importado. **D8:** pagamento de fatura é `kind=CARD_PAYMENT`: altera o saldo, mas não é gasto nem receita, e não vai para a IA.
-- **D7:** a parcela que chega num extrato posterior confirma a parcela futura já criada, em vez de duplicá-la.
-- **D9:** reconciliação continua sem transação de ajuste.
-- **Desempenho:** upload de 10MB em < 5 s (NFR5), parsing de 1 ano em < 30 s (NFR6), lote de 100 classificado em < 3 s (NFR7), progresso a cada 2 s (NFR8). Detecção de formato 95%+ (NFR56). Erros claros com sugestão (NFR57).
-- O processamento roda em segundo plano e a tela consulta o status da importação. As transações ficam `PENDING` (fora de listas, totais e saldo) até "Concluir importação". Uma importação não concluída pode ser retomada ou descartada.
-- **Arquivo:** nunca é guardado depois de processado. Logs sem dados pessoais (sem descrição, nome ou documento).
-- Valores sempre positivos, com `transaction_type` DEBIT/CREDIT. No cartão, compra = DEBIT e pagamento/estorno = CREDIT.
+- Upload de até 10MB (validado no frontend e no backend) em < 5s; parsing de 1 ano de transações em < 30s, incluindo duplicatas, Pix e parcelas; lote de 100 transações classificado pela IA em < 3s; progresso atualizado a cada 2s.
+- Detecção de formato/banco com 95%+ de precisão (100% nas amostras OFX). Arquivos malformados geram mensagens claras em português, que orientam o usuário (por exemplo, sugerir exportar em OFX quando o CSV não é reconhecido).
+- LGPD: o conteúdo do arquivo fica só em memória e nunca vai para disco, banco ou log. Logs e auditoria carregam só ids, contagens e motivos, nunca nome de arquivo nem dados pessoais. Toda tabela nova entra no export e no purge de dados na mesma story que a cria (`transactions` é apagada antes de `accounts`/`credit_cards`). A política de privacidade cita o provedor de IA como operador das descrições.
+- Transações importadas ficam `PENDING` e não aparecem em listas, totais ou saldos até a importação ser concluída. Concluir a mesma importação duas vezes, ou em paralelo, não muda nada na segunda vez.
+- A IA nunca toma ação financeira sozinha: abaixo de 80% de confiança a transação vai para revisão. Com a IA fora do ar, as transações ficam "Não classificado" e a importação chega à revisão do mesmo jeito.
+- Isolamento por usuário: recurso de outro usuário ou removido responde 404 sem gravar nada. Os padrões de aprendizado valem só para o usuário que os criou.
+- Fora do épico: atualizar o orçamento da categoria (Epic 6), cache e camadas do Dashboard GPS e projeções de parcelas (Epic 7), métrica de precisão da IA (Epic 10).
 
 ## Technical Decisions
 
-- **Migrations:** próxima versão livre (V25 em 2026-11-04). Os números V15–V18 do texto original já existem com outro conteúdo. Migration aplicada nunca é editada (o devtools aplica no Supabase de dev no primeiro teste).
-- **Convenções:** PK `id` UUID, `user_id` indexado, `deleted_at`, `DECIMAL(15,2)`, `ProblemDetail` (RFC 7807), API em `/api/v1/*`. O backend é organizado por camadas (`com.porquinho.controller/service/repository/entity/dto`), não por feature.
-- **Saldo:** qualquer mudança de `accounts.current_balance` passa pelo `BalanceHistoryRecorder` na mesma transação, com evento `transaction` (já aceito pelo CHECK da V20), conta bloqueada (`PESSIMISTIC_WRITE`) e limites `MAX_BALANCE`/`fits()`. É a regra 8 de `architecture/implementation-patterns-consistency-rules.md`.
-- **IA:** Claude Haiku 5.5 (`claude-haiku-5-5`) pela API da Anthropic, só no backend (chave em variável de ambiente, nunca no frontend). CPF e CNPJ são mascarados antes do envio. A resposta é validada contra as categorias do usuário. Timeout ou erro deixa a transação "Não classificado". A política de privacidade passa a citar o provedor de IA. Para a integração, consultar a skill `claude-api` (SDK Java, structured outputs) antes de escrever o cliente.
-- **LGPD:** cada story que cria tabela ou coluna com dado do usuário (`transaction_imports`, `transactions`, `ai_classification_history`, `user_classification_patterns`) inclui essa tabela no export (`DataExportService`) e no purge (`AccountDeletionService`), na ordem certa das FKs, e testa o conjunto de chaves do export (lição F3 da retro do Epic 2).
-- **Amostras de teste:** `porquinho-backend/src/test/resources/import-samples/`, geradas por `porquinho-backend/scripts/gerar-amostras-extrato.py`. São fictícias. O OFX tem confiança alta; os layouts CSV vão de baixa a média (ver o README). O OFX é o formato principal.
-- **Acesso:** rotas novas ficam atrás do `SubscriptionAccessFilter` (402 sem assinatura). O passo 6 do onboarding usa o mesmo endpoint de upload.
-- **Fora do épico:** orçamento da categoria (Epic 6), cache e Camadas do dashboard (Epic 7), métrica de precisão da IA (Epic 10).
+- **D1:** toda transação pertence a exatamente uma conta (`account_id`) ou um cartão (`credit_card_id`), garantido por CHECK. O mesmo vale para `transaction_imports`.
+- **D2:** o destino é escolhido antes do upload. O OFX só confirma ou sugere, e um OFX de cartão (`CCSTMTRS`) enviado para uma conta, ou o contrário, é rejeitado.
+- **D3 (saldo):** só transações de conta com data posterior à data de referência do saldo (último snapshot `initial`, `edit` ou `reconciliation`) alteram `current_balance`, registrado em `affects_balance`. Transações de cartão nunca mexem em saldo de conta. Toda mudança de saldo passa pelo `BalanceHistoryRecorder` na mesma transação (snapshot do tipo `transaction`), com lock `PESSIMISTIC_WRITE` nas contas em ordem de id, e os limites de valor saem de `MAX_BALANCE`/`fits()`.
+- **D4:** um lançamento que corresponde a uma transferência já registrada (mesma conta, data ±1 dia, mesmo valor, sentido certo) não é importado e é contado à parte.
+- **D5 (IA):** Claude Haiku 5.5 (`claude-haiku-5-5`) pela API da Anthropic, chamado do backend (a chave nunca vai ao frontend). CPF/CNPJ são mascarados antes do envio. Os padrões do usuário são aplicados antes e não chamam a IA. `CARD_PAYMENT` não vai para a IA. Uma categoria devolvida que não está na lista do usuário é descartada.
+- **D6:** não há arquivos reais. Os parsers são escritos e testados com as amostras fictícias de `porquinho-backend/src/test/resources/import-samples/` (ver o README). O OFX é o formato principal.
+- **D7:** uma parcela importada que corresponde a uma parcela futura já criada confirma essa parcela em vez de inserir outra. Todas as parcelas de uma compra compartilham `installment_group_id`.
+- **D8:** o pagamento de fatura é `kind = CARD_PAYMENT`. Altera o saldo da conta pela D3, mas não conta como gasto nem como receita.
+- **D9:** a reconciliação continua sem transação de ajuste.
+- **Story 5.4 – 1A (Luiz, 2026-11-04):** gravadas as transações, a importação vai para `REVIEW` (só a partir de `PROCESSING`) e a consulta de 2 s para. `PROCESSING` significa processamento ativo: a varredura de órfãs (subida e 15 min) falha toda `PROCESSING` antiga, com ou sem `bank_name`. As 5.5–5.8 entram antes do `REVIEW`.
+- **Story 5.4 – 2A (Luiz, 2026-11-04):** sem progresso real na 5.4; enquanto `PROCESSING` com banco, a lista mostra "Banco detectado: <banco> — lendo as transações..." e segue consultando. A coluna de progresso ("X de Y", NFR8) entra na 5.8.
+- **Story 5.4 – 3A (Luiz, 2026-11-04):** `kind = CARD_PAYMENT` marcado na leitura por palavra-chave na descrição (sem acento, maiúsculas): "PAGAMENTO DA FATURA", "PAGAMENTO EFETUADO", "PAGAMENTO RECEBIDO", "ITAU UNIBANCO CARTAO", "GASTOS CARTAO DE CREDITO". Na conta só vale para `DEBIT`; no cartão só para `CREDIT`.
+- Pipeline em segundo plano, fora da thread da requisição: detecção, parsing, duplicatas, Pix, parcelas, classificação e, por fim, status `REVIEW`. Status da importação: `PROCESSING`/`REVIEW`/`COMPLETED`/`FAILED`/`DISCARDED`. Importações presas em `PROCESSING` são marcadas `FAILED` na subida do backend e por uma varredura periódica.
+- Valores sempre positivos (`DECIMAL(15,2)`), com o sentido em `transaction_type` (DEBIT/CREDIT). No cartão, compras são DEBIT e pagamentos/estornos são CREDIT.
+- Tabelas novas do épico: `transaction_imports`, `transactions`, `ai_classification_history`, `user_classification_patterns`. Convenções: PK UUID `id`, `user_id` indexado, `created_at`/`updated_at`/`deleted_at`, soft delete, migrations na próxima versão livre do Flyway (V25 em diante).
+- API REST em `/api/v1/imports` e `/api/v1/transactions` (recursos no plural, JSON em camelCase), erros em RFC 7807 com mensagens em português.
 
 ## UX & Interaction Patterns
 
-- Upload por arrastar e soltar, com escolha da conta ou do cartão antes do envio. Progresso visível ("X de Y transações processadas", "Classificando transações com IA... X de Y").
-- Revisão agrupada por confiança (alta, média, baixa), com ícone **e** texto, nunca só cor (WCAG 2.1 AA). Marcadores de Pix e de parcela. "Pagamento de fatura" aparece separado.
-- "Aprovar todas de alta confiança", edição individual e em lote, "Concluir importação" e "Descartar importação".
-- Erros não culpam o usuário e dizem a ação: "Não reconhecemos o formato deste CSV. Tente exportar o extrato em OFX."
-- Interface em pt-BR, valores em BRL, datas DD/MM/AAAA. Skeleton screens em vez de spinners isolados.
+- `/importar` (link a partir do dashboard): escolha do destino, zona de arrastar e soltar ou botão "Enviar arquivo", barra de progresso, lista das importações recentes com o status de cada uma. O polling para quando o usuário sai da página.
+- Mostrar a IA trabalhando ("Classificando transações com IA... X de Y") e um resumo final com as contagens de importadas, duplicadas e linhas com erro.
+- Revisão em `/importar/:id/revisao`: agrupada por confiança (Alta 80%+, Média 50–79%, Baixa <50%), com ícone e texto além da cor (WCAG). Marcadores de Pix e de parcela, "Pagamento de fatura" à parte, "Aprovar todas de alta confiança", edição em lote, retomar ou descartar a importação. O foco fica nas exceções, com linguagem encorajadora ("Vamos revisar").
+- `/transacoes` para editar e adicionar transações manualmente. O passo 6 do onboarding (`ImportStep.vue`) reusa o mesmo componente e o mesmo endpoint de upload.
 
 ## Cross-Story Dependencies
 
-- A 5.1 cria `transaction_imports`, `POST/GET /api/v1/imports` e a página `/importar` (`ImportView.vue`), que a 5.2 estende para CSV. O `ImportStep.vue` do onboarding (item adiado da 3.6) só é ligado ao upload na 5.10 (decisão 2A).
-- A 5.3 depende de 5.1/5.2. A 5.4 cria `transactions`, que as stories seguintes usam. Na ordem do processamento, 5.5 → 5.6 → 5.7 → 5.8 rodam em sequência dentro da mesma importação.
-- A 5.8 usa os padrões da 5.11 se existirem. Antes da 5.11, ela só chama a IA.
-- A 5.10 aplica o efeito no saldo (D3) e depende do `BalanceHistoryRecorder` do Epic 4. A 5.11 é alimentada pela 5.10 e pela 5.12.
-- A 5.12/5.13 criam a página `/transacoes`, que o Epic 7 (Camada 3) vai reaproveitar ou substituir.
-- O Epic 6 vai ligar `transactions.category_id` ao orçamento. O Epic 4 já tem `accounts`, `credit_cards`, `transfers` e `account_balance_history`.
+- Ordem do pipeline: 5.1 → 5.3 → 5.4 → 5.5 → 5.6 → 5.7 → 5.8 → 5.9 → 5.10. A 5.2 (CSV) entra depois da 5.3 e estende a mesma detecção em segundo plano, incluindo a escolha manual do banco.
+- A 5.8 aplica primeiro os padrões da 5.11. A 5.10 e a 5.12 alimentam a 5.11.
+- A 5.10 conclui o onboarding: registra `first_import_completed` via `POST /api/v1/onboarding/me/import` (adiado da Story 3.6).
+- Depende do que já existe: categorias (Story 3.4), contas, cartões, transferências e histórico de saldo (Epic 4), export e purge LGPD (Stories 1.6/1.7) e auditoria.
+
+## Regras do projeto que valem para todas as stories
+
+- Migration aplicada nunca é editada; mudança de schema sempre em nova versão do Flyway (V26 é a última em 2026-11-05).
+- Backend em camadas `com.porquinho.controller/service/repository/entity/dto`; erros em `ProblemDetail` (RFC 7807) com mensagem em pt-BR.
+- Rotas novas ficam atrás do `SubscriptionAccessFilter` (402 sem assinatura).
+- Toda tabela ou coluna nova com dado do usuário entra no export (`DataExportService`) e no purge (`AccountDeletionService`) na ordem das FKs, e o teste confere o conjunto de chaves do export (lição F3 da retro do Epic 2).
+- Amostras de teste são fictícias e geradas por `porquinho-backend/scripts/gerar-amostras-extrato.py`; nunca commitar extrato real.
+- IA (5.8): consultar a skill `claude-api` (SDK Java, structured outputs) antes de escrever o cliente.
+- Datas do OFX são sempre AAAAMMDD; formatos alternativos de data só valem para o CSV (5.2).
+- A varredura de órfãs usa `created_at` (15 min). Quando a 5.8 tornar o processamento longo (IA em lotes), trocar o critério por `updated_at` atualizado a cada lote, senão importações grandes viram `FAILED` no meio.

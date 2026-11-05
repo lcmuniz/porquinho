@@ -287,7 +287,22 @@ describe('ImportView', () => {
     expect(wrapper.find('[data-testid="import-form"]').exists()).toBe(true)
   })
 
-  describe('consulta de status (Story 5.3)', () => {
+  it('importação pronta para revisão mostra as contagens (Story 5.4)', async () => {
+    mockListImports.mockResolvedValue([
+      imported({ status: 'REVIEW', bankName: 'NUBANK', totalTransactions: 10, importedTransactions: 10, skippedRows: 0 }),
+      imported({ id: 'i2', status: 'REVIEW', bankName: 'ITAU', totalTransactions: 6, importedTransactions: 2, skippedRows: 4 }),
+      imported({ id: 'i3', status: 'REVIEW', bankName: 'ITAU', totalTransactions: 2, importedTransactions: 1, skippedRows: 1 }),
+    ])
+    const wrapper = await mountView()
+
+    expect(wrapper.findAll('[data-testid="import-status"]').map((s) => s.text())).toEqual([
+      'Pronta para revisão: 10 transações — a tela de revisão chega numa próxima etapa',
+      'Pronta para revisão: 2 transações (4 linhas com erro) — a tela de revisão chega numa próxima etapa',
+      'Pronta para revisão: 1 transação (1 linha com erro) — a tela de revisão chega numa próxima etapa',
+    ])
+  })
+
+  describe('consulta de status (Stories 5.3 e 5.4)', () => {
     beforeEach(() => {
       vi.useFakeTimers()
     })
@@ -297,11 +312,12 @@ describe('ImportView', () => {
       await flushPromises()
     }
 
-    it('após o envio consulta a cada 2 s, mostra o banco detectado e para de consultar', async () => {
+    it('após o envio consulta a cada 2 s, mostra o banco, depois as contagens, e para de consultar', async () => {
       mockUpload.mockResolvedValue(imported())
       mockGetImport
         .mockResolvedValueOnce(imported())
         .mockResolvedValueOnce(imported({ bankName: 'NUBANK' }))
+        .mockResolvedValueOnce(imported({ bankName: 'NUBANK', status: 'REVIEW', totalTransactions: 10, importedTransactions: 10 }))
       const wrapper = await mountView()
       await wrapper.get('[data-testid="import-target-select"]').setValue('account:a1')
       await chooseFile(wrapper, ofxFile())
@@ -314,12 +330,19 @@ describe('ImportView', () => {
       await tick()
       expect(mockGetImport).toHaveBeenCalledTimes(2)
       expect(wrapper.get('[data-testid="import-i1"] [data-testid="import-status"]').text()).toBe(
-        'Banco detectado: Nubank — a leitura das transações chega na próxima etapa',
+        'Banco detectado: Nubank — lendo as transações...',
+      )
+
+      // com o banco detectado a consulta continua até a importação sair de PROCESSING (decisão 2A)
+      await tick()
+      expect(mockGetImport).toHaveBeenCalledTimes(3)
+      expect(wrapper.get('[data-testid="import-i1"] [data-testid="import-status"]').text()).toBe(
+        'Pronta para revisão: 10 transações — a tela de revisão chega numa próxima etapa',
       )
 
       await tick()
       await tick()
-      expect(mockGetImport).toHaveBeenCalledTimes(2)
+      expect(mockGetImport).toHaveBeenCalledTimes(3)
     })
 
     it('para de consultar quando a importação falha e mostra a mensagem', async () => {
@@ -353,9 +376,9 @@ describe('ImportView', () => {
       expect(mockGetImport).toHaveBeenCalledTimes(1)
     })
 
-    it('não consulta quando nenhuma importação está na etapa de detecção', async () => {
+    it('não consulta quando nenhuma importação está em processamento', async () => {
       mockListImports.mockResolvedValue([
-        imported({ bankName: 'ITAU', creditCardId: 'c1', accountId: null }),
+        imported({ status: 'REVIEW', bankName: 'ITAU', creditCardId: 'c1', accountId: null, totalTransactions: 8, importedTransactions: 8 }),
         imported({ id: 'i4', status: 'FAILED', errorMessage: 'O processamento foi interrompido. Envie o arquivo de novo.' }),
       ])
       const wrapper = await mountView()
@@ -363,7 +386,7 @@ describe('ImportView', () => {
       await tick()
       expect(mockGetImport).not.toHaveBeenCalled()
       expect(wrapper.findAll('[data-testid="import-status"]').map((s) => s.text())).toEqual([
-        'Banco detectado: Itaú — a leitura das transações chega na próxima etapa',
+        'Pronta para revisão: 8 transações — a tela de revisão chega numa próxima etapa',
         'Falhou',
       ])
       expect(wrapper.get('[data-testid="import-error"]').text()).toBe(
@@ -371,13 +394,17 @@ describe('ImportView', () => {
       )
     })
 
-    it('banco fora dos cinco aparece como "Banco não identificado"', async () => {
+    it('banco fora dos cinco aparece como "Banco não identificado" e a consulta continua', async () => {
       mockListImports.mockResolvedValue([imported({ bankName: 'OTHER' })])
+      mockGetImport.mockResolvedValue(imported({ bankName: 'OTHER' }))
       const wrapper = await mountView()
 
       expect(wrapper.get('[data-testid="import-status"]').text()).toBe(
-        'Banco não identificado — a leitura das transações chega na próxima etapa',
+        'Banco não identificado — lendo as transações...',
       )
+      await tick()
+      await tick()
+      expect(mockGetImport).toHaveBeenCalledTimes(2)
     })
 
     it('remove da lista a importação que deixou de existir (404)', async () => {

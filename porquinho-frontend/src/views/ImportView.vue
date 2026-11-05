@@ -191,7 +191,9 @@ const MESSAGES = {
 /** NFR8: progresso consultado a cada 2 s. */
 const POLL_INTERVAL_MS = 2000
 
-const NEXT_STEP = 'a leitura das transações chega na próxima etapa'
+/** Story 5.4 (decisão 2A): sem progresso real; as contagens só aparecem no fim. */
+const READING = 'lendo as transações...'
+const REVIEW_NEXT_STEP = 'a tela de revisão chega numa próxima etapa'
 
 const STATUS_LABELS: Record<TransactionImportStatus, string> = {
   PROCESSING: 'Recebido — identificando o banco...',
@@ -322,18 +324,31 @@ async function submit() {
   }
 }
 
-/** Decisão 1A da Story 5.3: depois da detecção a importação segue PROCESSING, com o banco gravado. */
+function plural(count: number, singular: string, pluralForm: string): string {
+  return `${count} ${count === 1 ? singular : pluralForm}`
+}
+
+/**
+ * Story 5.3: banco detectado durante o PROCESSING. Story 5.4 (decisões 1A e 2A): lidas as transações, a importação vai
+ * para REVIEW com as contagens (transações gravadas e linhas puladas).
+ */
 function statusLabel(item: TransactionImport): string {
   if (item.status === 'PROCESSING' && item.bankName) {
     const bank = BANK_LABELS[item.bankName] ?? item.bankName
-    return item.bankName === 'OTHER' ? `${bank} — ${NEXT_STEP}` : `Banco detectado: ${bank} — ${NEXT_STEP}`
+    return item.bankName === 'OTHER' ? `${bank} — ${READING}` : `Banco detectado: ${bank} — ${READING}`
+  }
+  if (item.status === 'REVIEW') {
+    const read = plural(item.importedTransactions, 'transação', 'transações')
+    const errors =
+      item.skippedRows > 0 ? ` (${plural(item.skippedRows, 'linha com erro', 'linhas com erro')})` : ''
+    return `Pronta para revisão: ${read}${errors} — ${REVIEW_NEXT_STEP}`
   }
   return STATUS_LABELS[item.status] ?? item.status
 }
 
-/** Ainda na etapa de detecção: PROCESSING sem banco. A consulta para quando o banco aparece ou o status muda. */
+/** Em processamento (com ou sem banco): a consulta segue até a importação sair de PROCESSING. */
 function isPending(item: TransactionImport): boolean {
-  return item.status === 'PROCESSING' && !item.bankName
+  return item.status === 'PROCESSING'
 }
 
 let pollTimer: ReturnType<typeof setTimeout> | null = null

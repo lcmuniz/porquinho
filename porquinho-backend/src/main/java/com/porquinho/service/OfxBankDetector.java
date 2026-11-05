@@ -104,7 +104,7 @@ public final class OfxBankDetector {
     }
 
     /** UTF-8 when the bytes are valid UTF-8, otherwise cp1252 (the usual charset of Brazilian OFX). */
-    private static String decode(byte[] bytes) {
+    static String decode(byte[] bytes) {
         try {
             return StandardCharsets.UTF_8.newDecoder()
                 .onMalformedInput(CodingErrorAction.REPORT)

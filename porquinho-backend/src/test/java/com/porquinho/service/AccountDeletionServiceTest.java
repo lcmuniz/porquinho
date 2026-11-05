@@ -14,6 +14,7 @@ import com.porquinho.repository.SubscriptionRepository;
 import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.ReconciliationRepository;
 import com.porquinho.repository.TransactionImportRepository;
+import com.porquinho.repository.TransactionRepository;
 import com.porquinho.repository.TransferRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.CategoryRepository;
@@ -95,6 +96,8 @@ class AccountDeletionServiceTest {
     @Mock
     private TransactionImportRepository transactionImportRepository;
     @Mock
+    private TransactionRepository transactionRepository;
+    @Mock
     private CategoryRepository categoryRepository;
     @Mock
     private GoalRepository goalRepository;
@@ -123,13 +126,13 @@ class AccountDeletionServiceTest {
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
             supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService,
             billingTransactionRepository, subscriptionService, onboardingProgressRepository, accountRepository,
-            creditCardRepository, categoryRepository, goalRepository, accountBalanceHistoryRepository, transferRepository, reconciliationRepository, transactionImportRepository, null);
+            creditCardRepository, categoryRepository, goalRepository, accountBalanceHistoryRepository, transferRepository, reconciliationRepository, transactionImportRepository, transactionRepository, null);
         service = new AccountDeletionService(
             userRepository, userSessionRepository, auditLogRepository, dataExportRepository,
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
             supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService,
             billingTransactionRepository, subscriptionService, onboardingProgressRepository, accountRepository,
-            creditCardRepository, categoryRepository, goalRepository, accountBalanceHistoryRepository, transferRepository, reconciliationRepository, transactionImportRepository, temp);
+            creditCardRepository, categoryRepository, goalRepository, accountBalanceHistoryRepository, transferRepository, reconciliationRepository, transactionImportRepository, transactionRepository, temp);
         // After construction, swap in the real reference so self == service (recursive ref ok
         // for tests because Spring's proxy would similarly route the call into this same bean).
         try {
@@ -352,6 +355,16 @@ class AccountDeletionServiceTest {
         transfersOrder.verify(transferRepository).deleteByUserId(userId);
         transfersOrder.verify(accountRepository).deleteByUserId(userId);
         transfersOrder.verify(userRepository).deleteByIdNative(userId);
+
+        // Story 5.4: transactions deleted BEFORE imports, accounts, cards, categories and user (FKs to all of them)
+        InOrder transactionsOrder = inOrder(transactionRepository, transactionImportRepository, accountRepository,
+            creditCardRepository, categoryRepository, userRepository);
+        transactionsOrder.verify(transactionRepository).deleteByUserId(userId);
+        transactionsOrder.verify(transactionImportRepository).deleteByUserId(userId);
+        transactionsOrder.verify(accountRepository).deleteByUserId(userId);
+        transactionsOrder.verify(creditCardRepository).deleteByUserId(userId);
+        transactionsOrder.verify(categoryRepository).deleteByUserId(userId);
+        transactionsOrder.verify(userRepository).deleteByIdNative(userId);
 
         // Story 5.1: imports deleted BEFORE accounts, cards and user (FKs to accounts.id, credit_cards.id and users.id)
         InOrder importsOrder = inOrder(transactionImportRepository, accountRepository, creditCardRepository, userRepository);

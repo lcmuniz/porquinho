@@ -132,3 +132,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-1-upload-ofx-files-from-5-brazilian-banks.md`
   summary: Importações criadas pela Story 5.1 ficam em `PROCESSING` sem arquivo guardado (decisão 1A); a Story 5.3 precisa dar destino a essas linhas (marcar `FAILED` com mensagem pedindo novo envio, ou permitir descartar).
   evidence: Sem o arquivo, a 5.3 não tem o que processar nas linhas antigas, e a lista em `/importar` mostraria "Recebido — a leitura das transações chega na próxima etapa" para sempre. O check manual do nginx (`client_max_body_size 11m`, envio de 2MB pelo proxy) também continua sem teste automatizado.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-4-parse-transactions-with-robust-error-handling.md`
+  summary: A varredura de órfãs marca FAILED toda importação PROCESSING criada há mais de 15 min, sem heartbeat; quando a 5.8 (IA em lotes) alongar o processamento, importações grandes ainda rodando serão derrubadas.
+  evidence: `failProcessingCreatedBefore` usa `createdAt`; hoje a leitura de 1 ano leva < 2 s, então só vira problema com a IA (5.8). Trocar por `updated_at` atualizado a cada lote.
