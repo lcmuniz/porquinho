@@ -1,5 +1,7 @@
 package com.porquinho.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.porquinho.dto.CreateAccountRequest;
 import com.porquinho.dto.CreateCreditCardRequest;
 import com.porquinho.dto.TransactionImportResponse;
@@ -343,7 +345,6 @@ class TransactionImportIntegrationTest {
             assertThat(t.get("review_status")).isEqualTo("PENDING");
             assertThat(t.get("classification_source")).isEqualTo("NONE");
             assertThat(t.get("affects_balance")).isEqualTo(false);
-            assertThat(t.get("is_pix")).isEqualTo(false);
             assertThat(t.get("is_installment")).isEqualTo(false);
             assertThat(t.get("is_future_installment")).isEqualTo(false);
             assertThat(t.get("deleted_at")).isNull();
@@ -365,6 +366,55 @@ class TransactionImportIntegrationTest {
         assertThat(fetched.importedTransactions()).isEqualTo(10);
         assertThat(fetched.skippedRows()).isZero();
         assertThat(fetched.targetName()).isEqualTo("Nubank");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"nubank-conta,4", "bb-conta,3", "itau-conta,3", "bradesco-conta,2", "caixa-conta,3"})
+    void pixEntriesAreFlaggedWithTheirDetailsInOfxAndCsv(String sample, int pixCount) throws Exception {
+        for (String extension : List.of("ofx", "csv")) {
+            // each file in its own account: in the same one the second would be all duplicates (Story 5.5)
+            UUID target = account(userId, sample + " " + extension);
+            TransactionImportResponse created = transactionImportService.create(userId, target, null,
+                sample(sample + "." + extension), "127.0.0.1");
+            assertThat(awaitDone(created.id()).get("status")).as(extension).isEqualTo("REVIEW");
+
+            List<Map<String, Object>> rows = jdbc.queryForList("SELECT is_pix, pix_details::text AS details, "
+                + "transaction_type FROM transactions WHERE import_id = ?", created.id());
+            assertThat(rows).as(sample + "." + extension).filteredOn(r -> Boolean.TRUE.equals(r.get("is_pix")))
+                .hasSize(pixCount).allSatisfy(r -> {
+                    JsonNode details = new ObjectMapper().readTree((String) r.get("details"));
+                    assertThat(details.get("detected").asBoolean()).isTrue();
+                    assertThat(details.get("direction").asText())
+                        .isEqualTo("DEBIT".equals(r.get("transaction_type")) ? "SENT" : "RECEIVED");
+                });
+            assertThat(rows).filteredOn(r -> Boolean.FALSE.equals(r.get("is_pix")))
+                .allSatisfy(r -> assertThat(r.get("details")).isNull());
+        }
+    }
+
+    @Test
+    void nubankPixDetailsAreReadBackFromTheDatabase() throws Exception {
+        UUID nubank = account(userId, "Nubank");
+        TransactionImportResponse created = transactionImportService.create(userId, nubank, null,
+            sample("nubank-conta.ofx"), "127.0.0.1");
+        awaitDone(created.id());
+
+        String json = jdbc.queryForObject("SELECT pix_details::text FROM transactions WHERE import_id = ? "
+            + "AND transaction_date = '2026-10-15'", String.class, created.id());
+        JsonNode details = new ObjectMapper().readTree(json);
+        assertThat(details.get("direction").asText()).isEqualTo("RECEIVED");
+        assertThat(details.get("counterpart_name").asText()).isEqualTo("ANA BEATRIZ COSTA");
+        assertThat(details.get("document").asText()).isEqualTo("•••.111.222-••");
+        assertThat(details.get("counterpart_bank").get("name").asText()).isEqualTo("NU PAGAMENTOS - IP");
+        assertThat(details.get("counterpart_bank").get("code").asText()).isEqualTo("0260");
+        assertThat(details.get("counterpart_bank").get("agency").asText()).isEqualTo("1");
+        assertThat(details.get("counterpart_bank").get("account").asText()).isEqualTo("7788990-1");
+
+        // the export carries it as an object, not as an escaped string
+        @SuppressWarnings("unchecked")
+        var exported = (List<Map<String, Object>>) dataExportService.collectUserData(userId).get("transactions");
+        assertThat(exported).filteredOn(t -> Boolean.TRUE.equals(t.get("is_pix"))).hasSize(4)
+            .allSatisfy(t -> assertThat(t.get("pix_details")).isInstanceOf(JsonNode.class));
     }
 
     @Test

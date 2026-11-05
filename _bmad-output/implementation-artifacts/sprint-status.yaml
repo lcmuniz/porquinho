@@ -107,7 +107,7 @@ development_status:
   5-3-auto-detect-file-format-and-bank: review
   5-4-parse-transactions-with-robust-error-handling: review
   5-5-detect-and-flag-duplicate-transactions: review
-  5-6-identify-pix-transactions-and-extract-details: backlog
+  5-6-identify-pix-transactions-and-extract-details: review
   5-7-detect-installment-purchases-and-split-across-months: backlog
   5-8-auto-classify-transactions-using-ai: backlog
   5-9-present-classified-transactions-for-user-review: backlog

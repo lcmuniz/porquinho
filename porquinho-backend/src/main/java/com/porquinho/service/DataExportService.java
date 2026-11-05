@@ -1,5 +1,7 @@
 package com.porquinho.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -430,7 +432,7 @@ public class DataExportService {
             transactionMap.put("review_status", transaction.getReviewStatus() != null ? transaction.getReviewStatus().name() : null);
             transactionMap.put("affects_balance", transaction.isAffectsBalance());
             transactionMap.put("is_pix", transaction.isPix());
-            transactionMap.put("pix_details", transaction.getPixDetails());
+            transactionMap.put("pix_details", pixDetailsJson(transaction.getPixDetails()));
             transactionMap.put("is_installment", transaction.isInstallment());
             transactionMap.put("installment_number", transaction.getInstallmentNumber());
             transactionMap.put("installment_total", transaction.getInstallmentTotal());
@@ -623,6 +625,19 @@ public class DataExportService {
 
         if (!toCleanup.isEmpty()) {
             log.info("Cleaned up {} expired/stuck data exports", toCleanup.size());
+        }
+    }
+
+    /** Story 5.6: {@code pix_details} goes out as a JSON object, not as an escaped string. */
+    private JsonNode pixDetailsJson(String pixDetails) {
+        if (pixDetails == null) {
+            return null;
+        }
+        try {
+            return objectMapper.readTree(pixDetails);
+        } catch (JsonProcessingException e) {
+            // never expected (the column is jsonb): keep the stored text rather than failing the export
+            return objectMapper.getNodeFactory().textNode(pixDetails);
         }
     }
 }

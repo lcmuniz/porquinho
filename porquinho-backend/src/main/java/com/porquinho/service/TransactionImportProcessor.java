@@ -32,14 +32,14 @@ import java.util.UUID;
 /**
  * Background processing of an uploaded statement (Stories 5.3 and 5.4). Runs after the import row is committed,
  * outside the request thread, with the file content only in memory: detects the bank of the OFX (or takes it from the
- * CSV layout, Story 5.2), reads its entries ({@link OfxTransactionParser}, {@link CsvStatementReader}) and saves the valid ones as PENDING together with the import counters, moving the
- * import to REVIEW (decision 1A), all in one database transaction. When the file cannot be read or has no
- * transactions the import becomes FAILED with a clear message and nothing is saved. Before saving, entries already in
- * the target (duplicates) or matching an already registered transfer are dropped and counted ({@link
- * DuplicateDetector}, Story 5.5); when nothing is left the import goes straight to COMPLETED (decision 1A of Story
- * 5.5). Imports left PROCESSING with no processing running (backend restarted, upload
- * interrupted) are failed at startup and every 5 minutes. Logs carry only the import id, positions and reasons,
- * never file content.
+ * CSV layout, Story 5.2), reads its entries ({@link OfxTransactionParser}, {@link CsvStatementReader}) and saves the
+ * valid ones as PENDING together with the import counters, moving the import to REVIEW (decision 1A), all in one
+ * database transaction. When the file cannot be read or has no transactions the import becomes FAILED with a clear
+ * message and nothing is saved. Before saving, entries already in the target (duplicates) or matching an already
+ * registered transfer are dropped and counted ({@link DuplicateDetector}, Story 5.5); when nothing is left the import
+ * goes straight to COMPLETED (decision 1A of Story 5.5). Each saved entry is checked for Pix ({@link PixDetector},
+ * Story 5.6). Imports left PROCESSING with no processing running (backend restarted, upload interrupted) are failed at
+ * startup and every 5 minutes. Logs carry only the import id, positions and reasons, never file content.
  *
  * <p>A separate bean so that {@code @Async} goes through the Spring proxy (a self-call would run synchronously).
  */
@@ -273,7 +273,10 @@ public class TransactionImportProcessor {
         transaction.setClassificationSource(Transaction.ClassificationSource.NONE);
         transaction.setReviewStatus(Transaction.ReviewStatus.PENDING);
         transaction.setAffectsBalance(false);
-        transaction.setPix(false);
+        // Story 5.6: after the duplicates, so the detector never changes how many rows are saved
+        Optional<String> pixDetails = PixDetector.detect(entry.description(), entry.type());
+        transaction.setPix(pixDetails.isPresent());
+        transaction.setPixDetails(pixDetails.orElse(null));
         transaction.setInstallment(false);
         transaction.setFutureInstallment(false);
         return transaction;
