@@ -2,8 +2,10 @@ package com.porquinho.service;
 
 import com.porquinho.entity.Transaction;
 import com.porquinho.entity.TransactionImport;
+import com.porquinho.entity.Transfer;
 import com.porquinho.repository.TransactionImportRepository;
 import com.porquinho.repository.TransactionRepository;
+import com.porquinho.repository.TransferRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,17 +19,25 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
  * Background processing of an uploaded statement (Stories 5.3 and 5.4). Runs after the import row is committed,
  * outside the request thread, with the file content only in memory: detects the bank of the OFX (or takes it from the
  * CSV layout, Story 5.2), reads its entries ({@link OfxTransactionParser}, {@link CsvStatementReader}) and saves the valid ones as PENDING together with the import counters, moving the
- * import to REVIEW (decision 1A), all in one database transaction. Otherwise the import becomes FAILED with a clear
- * message and nothing is saved. Imports left PROCESSING with no processing running (backend restarted, upload
+ * import to REVIEW (decision 1A), all in one database transaction. When the file cannot be read or has no
+ * transactions the import becomes FAILED with a clear message and nothing is saved. Before saving, entries already in
+ * the target (duplicates) or matching an already registered transfer are dropped and counted ({@link
+ * DuplicateDetector}, Story 5.5); when nothing is left the import goes straight to COMPLETED (decision 1A of Story
+ * 5.5). Imports left PROCESSING with no processing running (backend restarted, upload
  * interrupted) are failed at startup and every 5 minutes. Logs carry only the import id, positions and reasons,
  * never file content.
  *
@@ -45,11 +55,16 @@ public class TransactionImportProcessor {
     public static final String NO_TRANSACTIONS_MESSAGE =
         "Não encontramos transações neste arquivo. Exporte o extrato de novo e envie outra vez.";
 
+    /** Audit event of the duplicate check (Story 5.5): only the import id and the counts, IP null (no request). */
+    public static final String AUDIT_DUPLICATES_CHECKED = "import_duplicates_checked";
+
     /** A PROCESSING import older than this has no processing running anymore. */
     static final Duration ORPHAN_AGE = Duration.ofMinutes(15);
 
     private final TransactionImportRepository transactionImportRepository;
     private final TransactionRepository transactionRepository;
+    private final TransferRepository transferRepository;
+    private final AuditLogService auditLogService;
     private final TransactionTemplate transactionTemplate;
     private final Clock clock;
     /** Taken when the bean is created, before the web server accepts uploads: older PROCESSING rows are orphans. */
@@ -58,15 +73,20 @@ public class TransactionImportProcessor {
     @Autowired
     public TransactionImportProcessor(TransactionImportRepository transactionImportRepository,
                                       TransactionRepository transactionRepository,
+                                      TransferRepository transferRepository, AuditLogService auditLogService,
                                       PlatformTransactionManager transactionManager) {
-        this(transactionImportRepository, transactionRepository, transactionManager, Clock.systemDefaultZone());
+        this(transactionImportRepository, transactionRepository, transferRepository, auditLogService,
+            transactionManager, Clock.systemDefaultZone());
     }
 
     TransactionImportProcessor(TransactionImportRepository transactionImportRepository,
-                               TransactionRepository transactionRepository,
-                               PlatformTransactionManager transactionManager, Clock clock) {
+                               TransactionRepository transactionRepository, TransferRepository transferRepository,
+                               AuditLogService auditLogService, PlatformTransactionManager transactionManager,
+                               Clock clock) {
         this.transactionImportRepository = transactionImportRepository;
         this.transactionRepository = transactionRepository;
+        this.transferRepository = transferRepository;
+        this.auditLogService = auditLogService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.clock = clock;
         this.startedAt = OffsetDateTime.now(clock);
@@ -116,7 +136,10 @@ public class TransactionImportProcessor {
         }
     }
 
-    /** Stories 5.4 and 5.2: reads the entries (OFX or CSV) and saves them with the counters, all or nothing. */
+    /**
+     * Stories 5.4, 5.2 and 5.5: reads the entries (OFX or CSV), drops the duplicates and the already registered
+     * transfers, and saves the rest with the counters, all or nothing.
+     */
     private void parseAndSave(UUID importId, TransactionImport.FileType fileType, byte[] content) {
         TransactionImport transactionImport = transactionImportRepository.findById(importId).orElse(null);
         if (transactionImport == null) {
@@ -135,25 +158,103 @@ public class TransactionImportProcessor {
             transactionImportRepository.markFailed(importId, NO_TRANSACTIONS_MESSAGE, OffsetDateTime.now(clock));
             return;
         }
-        List<Transaction> transactions = result.entries().stream()
-            .map(entry -> toTransaction(transactionImport, entry))
-            .toList();
-        Boolean saved = transactionTemplate.execute(status -> {
+        int skipped = result.skippedRows().size();
+        DuplicateDetector.Result checked = transactionTemplate.execute(status -> {
+            // Story 5.5: imports into the same target run one at a time from here to the commit, so each sees the rows
+            // the other saved
+            UUID targetId = creditCard ? transactionImport.getCreditCardId() : transactionImport.getAccountId();
+            transactionImportRepository.lockTarget(lockKey(targetId));
+            DuplicateDetector.Result detection = detect(transactionImport, fileType, result.entries());
+            int total = result.totalRows();
+            OffsetDateTime now = OffsetDateTime.now(clock);
             // the guarded update first: if the import already left PROCESSING nothing is written
-            int updated = transactionImportRepository.markReadyForReview(importId, result.totalRows(),
-                transactions.size(), result.skippedRows().size(), OffsetDateTime.now(clock));
+            int updated = detection.toSave().isEmpty()
+                ? transactionImportRepository.markCompletedWithNothingNew(importId, total, detection.duplicates(),
+                    detection.transfers(), skipped, now)
+                : transactionImportRepository.markReadyForReview(importId, total, detection.toSave().size(),
+                    detection.duplicates(), detection.transfers(), skipped, now);
             if (updated == 0) {
-                return false;
+                return null;
             }
-            transactionRepository.saveAll(transactions);
-            return true;
+            if (!detection.toSave().isEmpty()) {
+                transactionRepository.saveAll(detection.toSave().stream()
+                    .map(entry -> toTransaction(transactionImport, entry))
+                    .toList());
+            }
+            auditLogService.log(AUDIT_DUPLICATES_CHECKED, transactionImport.getUserId(), null,
+                auditMetadata(importId, total, skipped, detection));
+            return detection;
         });
-        if (Boolean.TRUE.equals(saved)) {
-            log.info("Import {} ready for review: {} transaction(s), {} skipped row(s)", importId,
-                transactions.size(), result.skippedRows().size());
-        } else {
+        if (checked == null) {
             log.info("Import {} parsed but no longer processing: nothing saved", importId);
+        } else if (checked.toSave().isEmpty()) {
+            log.info("Import {} completed with nothing new: {} duplicate(s), {} transfer(s), {} skipped row(s)",
+                importId, checked.duplicates(), checked.transfers(), skipped);
+        } else {
+            log.info("Import {} ready for review: {} transaction(s), {} duplicate(s), {} transfer(s), {} skipped row(s)",
+                importId, checked.toSave().size(), checked.duplicates(), checked.transfers(), skipped);
         }
+    }
+
+    /**
+     * Story 5.5: one query for the target's active transactions and one for the account's active transfers, both
+     * between the earliest file date minus 1 day and the latest plus 1 day, both in a fixed order (date, creation, id)
+     * so that ties always pick the same candidate. The format of the imports the existing transactions came from feeds
+     * decision 4A.
+     */
+    private DuplicateDetector.Result detect(TransactionImport transactionImport, TransactionImport.FileType fileType,
+                                            List<OfxTransactionParser.Entry> entries) {
+        LocalDate first = entries.get(0).date();
+        LocalDate last = first;
+        for (OfxTransactionParser.Entry entry : entries) {
+            if (entry.date().isBefore(first)) {
+                first = entry.date();
+            }
+            if (entry.date().isAfter(last)) {
+                last = entry.date();
+            }
+        }
+        LocalDate from = first.minusDays(DuplicateDetector.MAX_DAYS_APART);
+        LocalDate to = last.plusDays(DuplicateDetector.MAX_DAYS_APART);
+        UUID userId = transactionImport.getUserId();
+        UUID accountId = transactionImport.getAccountId();
+        List<Transaction> existing;
+        List<Transfer> transfers;
+        if (accountId != null) {
+            existing = transactionRepository.findActiveByAccountBetween(userId, accountId, from, to);
+            transfers = transferRepository.findActiveByAccountBetween(userId, accountId, from, to);
+        } else {
+            existing = transactionRepository.findActiveByCreditCardBetween(userId,
+                transactionImport.getCreditCardId(), from, to);
+            transfers = List.of();
+        }
+        Set<UUID> importIds = new HashSet<>();
+        for (Transaction transaction : existing) {
+            if (transaction.getImportId() != null) {
+                importIds.add(transaction.getImportId());
+            }
+        }
+        Map<UUID, TransactionImport.FileType> importFileTypes = new HashMap<>();
+        if (!importIds.isEmpty()) {
+            for (TransactionImport origin : transactionImportRepository.findByUserIdAndIdIn(userId, importIds)) {
+                importFileTypes.put(origin.getId(), origin.getFileType());
+            }
+        }
+        return DuplicateDetector.detect(entries, fileType, existing, importFileTypes, transfers, accountId);
+    }
+
+    /** Advisory lock key of a target (account or card id). A collision only serializes two unrelated imports. */
+    static long lockKey(UUID targetId) {
+        return targetId.getMostSignificantBits() ^ targetId.getLeastSignificantBits();
+    }
+
+    /** Only the import id and the counts: never descriptions nor file content. */
+    static String auditMetadata(UUID importId, int total, int skipped, DuplicateDetector.Result detection) {
+        return "{\"import_id\":\"" + importId + "\",\"total_transactions\":" + total
+            + ",\"imported_transactions\":" + detection.toSave().size()
+            + ",\"duplicates_found\":" + detection.duplicates()
+            + ",\"transfers_found\":" + detection.transfers()
+            + ",\"skipped_rows\":" + skipped + "}";
     }
 
     private static Transaction toTransaction(TransactionImport transactionImport, OfxTransactionParser.Entry entry) {

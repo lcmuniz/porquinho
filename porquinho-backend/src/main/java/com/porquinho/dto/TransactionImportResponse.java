@@ -22,6 +22,7 @@ public record TransactionImportResponse(
     int totalTransactions,
     int importedTransactions,
     int duplicatesFound,
+    int transfersFound,
     int skippedRows,
     String errorMessage,
     OffsetDateTime createdAt
@@ -40,6 +41,7 @@ public record TransactionImportResponse(
             transactionImport.getTotalTransactions(),
             transactionImport.getImportedTransactions(),
             transactionImport.getDuplicatesFound(),
+            transactionImport.getTransfersFound(),
             transactionImport.getSkippedRows(),
             transactionImport.getErrorMessage(),
             transactionImport.getCreatedAt()

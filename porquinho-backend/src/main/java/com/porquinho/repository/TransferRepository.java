@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -24,6 +25,17 @@ public interface TransferRepository extends JpaRepository<Transfer, UUID> {
     @Query("SELECT t FROM Transfer t WHERE t.userId = :userId AND t.deletedAt IS NULL "
         + "ORDER BY t.transferDate DESC, t.createdAt DESC, t.id DESC")
     List<Transfer> findActiveByUserId(@Param("userId") UUID userId, Pageable page);
+
+    /**
+     * The user's active transfers from or to account {@code accountId} dated within [{@code from}, {@code to}]: the
+     * transfers an import into that account may already contain (Story 5.5, decision D4).
+     */
+    @Query("SELECT t FROM Transfer t WHERE t.userId = :userId AND t.deletedAt IS NULL "
+        + "AND (t.fromAccountId = :accountId OR t.toAccountId = :accountId) "
+        + "AND t.transferDate BETWEEN :from AND :to "
+        + "ORDER BY t.transferDate ASC, t.createdAt ASC, t.id ASC")
+    List<Transfer> findActiveByAccountBetween(@Param("userId") UUID userId, @Param("accountId") UUID accountId,
+                                              @Param("from") LocalDate from, @Param("to") LocalDate to);
 
     /** Every row of the user, removed ones included, oldest first (LGPD export). */
     @Query("SELECT t FROM Transfer t WHERE t.userId = :userId ORDER BY t.createdAt ASC, t.id ASC")

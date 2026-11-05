@@ -11,10 +11,13 @@ import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.CreditCardRepository;
 import com.porquinho.repository.TransactionImportRepository;
 import com.porquinho.repository.TransactionRepository;
+import com.porquinho.repository.TransferRepository;
 import com.porquinho.repository.UserRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.AdditionalAnswers;
 import org.mockito.Mockito;
 import org.springframework.aop.support.AopUtils;
@@ -89,6 +92,10 @@ class TransactionImportIntegrationTest {
     private TransactionRepository transactionRepository;
     @Autowired
     private PlatformTransactionManager transactionManager;
+    @Autowired
+    private TransferRepository transferRepository;
+    @Autowired
+    private AuditLogService auditLogService;
 
     private final List<UUID> users = new ArrayList<>();
     private UUID userId;
@@ -105,6 +112,7 @@ class TransactionImportIntegrationTest {
             jdbc.update("UPDATE transaction_imports SET status = 'FAILED' WHERE user_id = ? AND status = 'PROCESSING'", id);
             jdbc.update("DELETE FROM audit_logs WHERE user_id = ?", id);
             jdbc.update("DELETE FROM transactions WHERE user_id = ?", id);
+            jdbc.update("DELETE FROM transfers WHERE user_id = ?", id);
             jdbc.update("DELETE FROM transaction_imports WHERE user_id = ?", id);
             jdbc.update("DELETE FROM account_balance_history WHERE user_id = ?", id);
             jdbc.update("DELETE FROM accounts WHERE user_id = ?", id);
@@ -362,10 +370,12 @@ class TransactionImportIntegrationTest {
     @Test
     void uploadedCsvGetsItsBankAndTheSameTransactionsAsTheOfx() throws Exception {
         UUID nubank = account(userId, "Nubank");
+        // another account: in the same one the second file would be all duplicates (Story 5.5)
+        UUID nubankOfx = account(userId, "Nubank OFX");
 
         TransactionImportResponse fromCsv = transactionImportService.create(userId, nubank, null,
             sample("nubank-conta.csv"), "127.0.0.1");
-        TransactionImportResponse fromOfx = transactionImportService.create(userId, nubank, null,
+        TransactionImportResponse fromOfx = transactionImportService.create(userId, nubankOfx, null,
             sample("nubank-conta.ofx"), "127.0.0.1");
 
         Map<String, Object> row = awaitDone(fromCsv.id());
@@ -502,7 +512,7 @@ class TransactionImportIntegrationTest {
             throw new IllegalStateException("boom");
         }).when(failing).saveAll(any());
         TransactionImportProcessor processor = new TransactionImportProcessor(transactionImportRepository, failing,
-            transactionManager, Clock.systemDefaultZone());
+            transferRepository, auditLogService, transactionManager, Clock.systemDefaultZone());
 
         processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx").getBytes());  // not the proxy: runs right here
 
@@ -520,11 +530,11 @@ class TransactionImportIntegrationTest {
         jdbc.update("UPDATE transaction_imports SET status = 'FAILED', error_message = ? WHERE id = ?",
             TransactionImportProcessor.INTERRUPTED_MESSAGE, importId);
         TransactionImportProcessor processor = new TransactionImportProcessor(transactionImportRepository,
-            transactionRepository, transactionManager, Clock.systemDefaultZone());
+            transactionRepository, transferRepository, auditLogService, transactionManager, Clock.systemDefaultZone());
 
         processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx").getBytes());  // not the proxy: runs right here
         // the guard of the final update itself, against the real database
-        assertThat(transactionImportRepository.markReadyForReview(importId, 10, 10, 0, java.time.OffsetDateTime.now()))
+        assertThat(transactionImportRepository.markReadyForReview(importId, 10, 10, 0, 0, 0, java.time.OffsetDateTime.now()))
             .isZero();
 
         Map<String, Object> row = row(importId);
@@ -640,6 +650,157 @@ class TransactionImportIntegrationTest {
         assertThat(AopUtils.isAopProxy(transactionImportProcessor)).isTrue();
         assertThat(TransactionImportProcessor.class.getMethod("process", UUID.class, TransactionImport.FileType.class, byte[].class)
             .isAnnotationPresent(Async.class)).isTrue();
+    }
+
+    // Story 5.5
+
+    @Test
+    void sameFileTwiceSavesNothingTheSecondTimeAndCompletes() throws Exception {
+        UUID nubank = account(userId, "Nubank");
+        UUID first = transactionImportService.create(userId, nubank, null, sample("nubank-conta.ofx"), "127.0.0.1").id();
+        assertThat(awaitDone(first).get("status")).isEqualTo("REVIEW");
+
+        UUID second = transactionImportService.create(userId, nubank, null, sample("nubank-conta.ofx"), "127.0.0.1").id();
+
+        Map<String, Object> row = awaitDone(second);
+        assertThat(row.get("status")).isEqualTo("COMPLETED");
+        assertThat(row.get("total_transactions")).isEqualTo(10);
+        assertThat(row.get("imported_transactions")).isEqualTo(0);
+        assertThat(row.get("duplicates_found")).isEqualTo(10);
+        assertThat(row.get("transfers_found")).isEqualTo(0);
+        assertThat(transactionsOf(second)).isEmpty();
+        assertThat(transactionImportService.get(userId, second).duplicatesFound()).isEqualTo(10);
+        List<String> audits = jdbc.queryForList("SELECT metadata FROM audit_logs WHERE user_id = ? "
+            + "AND event_type = 'import_duplicates_checked' AND ip_address IS NULL", String.class, userId);
+        assertThat(audits).hasSize(2);
+        assertThat(audits).filteredOn(m -> m.contains(second.toString())).singleElement().asString().isEqualTo("{\"import_id\":\"" + second + "\",\"total_transactions\":10,"
+            + "\"imported_transactions\":0,\"duplicates_found\":10,\"transfers_found\":0,\"skipped_rows\":0}");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"nubank-conta.ofx, nubank-conta.csv, 10", "nubank-conta.csv, nubank-conta.ofx, 10",
+        "bb-conta.ofx, bb-conta.csv, 10", "bb-conta.csv, bb-conta.ofx, 10", "itau-conta.ofx, itau-conta.csv, 10",
+        "itau-conta.csv, itau-conta.ofx, 10", "bradesco-conta.ofx, bradesco-conta.csv, 9",
+        "bradesco-conta.csv, bradesco-conta.ofx, 9", "caixa-conta.ofx, caixa-conta.csv, 10",
+        "caixa-conta.csv, caixa-conta.ofx, 10"})
+    void ofxAndCsvOfTheSameMonthGiveOnlyDuplicates(String firstFile, String secondFile, int count) throws Exception {
+        UUID target = account(userId, "Conta");
+        UUID first = transactionImportService.create(userId, target, null, sample(firstFile), "127.0.0.1").id();
+        assertThat(awaitDone(first).get("status")).isEqualTo("REVIEW");
+
+        UUID second = transactionImportService.create(userId, target, null, sample(secondFile), "127.0.0.1").id();
+
+        Map<String, Object> row = awaitDone(second);
+        assertThat(row.get("status")).isEqualTo("COMPLETED");
+        assertThat(row.get("duplicates_found")).isEqualTo(count);
+        assertThat(row.get("imported_transactions")).isEqualTo(0);
+        assertThat(transactionsOf(second)).isEmpty();
+        assertThat(transactionsOf(first)).hasSize(count);
+    }
+
+    @Test
+    void registeredTransferIsNotImportedAndIsCountedApart() throws Exception {
+        UUID bb = account(userId, "BB");
+        UUID nubank = account(userId, "Nubank");
+        jdbc.update("INSERT INTO transfers (id, user_id, from_account_id, to_account_id, amount, transfer_date) "
+            + "VALUES (?, ?, ?, ?, 2000.00, DATE '2026-10-01')", UUID.randomUUID(), userId, bb, nubank);
+
+        UUID fromBb = transactionImportService.create(userId, bb, null, sample("bb-conta.ofx"), "127.0.0.1").id();
+        UUID toNubank = transactionImportService.create(userId, nubank, null, sample("nubank-conta.ofx"), "127.0.0.1").id();
+
+        Map<String, Object> bbRow = awaitDone(fromBb);
+        assertThat(bbRow.get("status")).isEqualTo("REVIEW");
+        assertThat(bbRow.get("transfers_found")).isEqualTo(1);
+        assertThat(bbRow.get("duplicates_found")).isEqualTo(0);
+        assertThat(bbRow.get("imported_transactions")).isEqualTo(9);
+        assertThat(transactionsOf(fromBb)).noneMatch(t -> ((BigDecimal) t.get("amount")).compareTo(new BigDecimal("2000")) == 0);
+        Map<String, Object> nubankRow = awaitDone(toNubank);
+        assertThat(nubankRow.get("transfers_found")).isEqualTo(1);
+        assertThat(nubankRow.get("imported_transactions")).isEqualTo(9);
+        assertThat(transactionImportService.get(userId, fromBb).transfersFound()).isEqualTo(1);
+    }
+
+    @Test
+    void removedTransactionDoesNotMakeADuplicateAndAnotherTargetIsIgnored() throws Exception {
+        UUID nubank = account(userId, "Nubank");
+        UUID other = account(userId, "Outra");
+        UUID first = transactionImportService.create(userId, nubank, null, sample("nubank-conta.ofx"), "127.0.0.1").id();
+        awaitDone(first);
+        jdbc.update("UPDATE transactions SET deleted_at = now() WHERE import_id = ? AND transaction_date = DATE '2026-10-01'",
+            first);
+
+        UUID again = transactionImportService.create(userId, nubank, null, sample("nubank-conta.ofx"), "127.0.0.1").id();
+        UUID elsewhere = transactionImportService.create(userId, other, null, sample("nubank-conta.ofx"), "127.0.0.1").id();
+
+        Map<String, Object> row = awaitDone(again);
+        assertThat(row.get("status")).isEqualTo("REVIEW");
+        assertThat(row.get("duplicates_found")).isEqualTo(9);
+        assertThat(row.get("imported_transactions")).isEqualTo(1);
+        assertThat(awaitDone(elsewhere).get("duplicates_found")).isEqualTo(0);
+    }
+
+    @Test
+    void sameCardFileTwiceIsAllDuplicatesButAnotherCardIsNot() throws Exception {
+        UUID itau = card(userId, "Itaú");
+        UUID otherCard = card(userId, "Outro");
+        UUID first = transactionImportService.create(userId, null, itau, sample("itau-cartao.ofx"), "127.0.0.1").id();
+        assertThat(awaitDone(first).get("status")).isEqualTo("REVIEW");
+
+        UUID again = transactionImportService.create(userId, null, itau, sample("itau-cartao.ofx"), "127.0.0.1").id();
+        Map<String, Object> row = awaitDone(again);
+        assertThat(row.get("status")).isEqualTo("COMPLETED");
+        assertThat(row.get("duplicates_found")).isEqualTo(row.get("total_transactions"));
+        assertThat(row.get("imported_transactions")).isEqualTo(0);
+        assertThat(transactionsOf(again)).isEmpty();
+
+        UUID elsewhere = transactionImportService.create(userId, null, otherCard, sample("itau-cartao.ofx"),
+            "127.0.0.1").id();
+        Map<String, Object> otherRow = awaitDone(elsewhere);
+        assertThat(otherRow.get("status")).isEqualTo("REVIEW");
+        assertThat(otherRow.get("duplicates_found")).isEqualTo(0);
+        assertThat(otherRow.get("imported_transactions")).isEqualTo(otherRow.get("total_transactions"));
+    }
+
+    @Test
+    void removedTransferDoesNotAbsorbTheEntry() throws Exception {
+        UUID bb = account(userId, "BB");
+        UUID nubank = account(userId, "Nubank");
+        jdbc.update("INSERT INTO transfers (id, user_id, from_account_id, to_account_id, amount, transfer_date, deleted_at) "
+            + "VALUES (?, ?, ?, ?, 2000.00, DATE '2026-10-01', now())", UUID.randomUUID(), userId, bb, nubank);
+
+        UUID fromBb = transactionImportService.create(userId, bb, null, sample("bb-conta.ofx"), "127.0.0.1").id();
+
+        Map<String, Object> row = awaitDone(fromBb);
+        assertThat(row.get("transfers_found")).isEqualTo(0);
+        assertThat(row.get("imported_transactions")).isEqualTo(10);
+        assertThat(transactionsOf(fromBb)).anyMatch(t -> ((BigDecimal) t.get("amount")).compareTo(new BigDecimal("2000")) == 0);
+    }
+
+    @Test
+    void twoImportsOfTheSameFileAtOnceSaveItOnlyOnce() throws Exception {
+        UUID nubank = account(userId, "Nubank");
+
+        UUID a = transactionImportService.create(userId, nubank, null, sample("nubank-conta.ofx"), "127.0.0.1").id();
+        UUID b = transactionImportService.create(userId, nubank, null, sample("nubank-conta.ofx"), "127.0.0.1").id();
+
+        awaitDone(a);
+        awaitDone(b);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM transactions WHERE account_id = ?", Long.class, nubank))
+            .isEqualTo(10);
+        assertThat(jdbc.queryForList("SELECT status FROM transaction_imports WHERE id IN (?, ?)", String.class, a, b))
+            .containsExactlyInAnyOrder("REVIEW", "COMPLETED");
+    }
+
+    @Test
+    void transfersFoundIsExportedAndChecked() throws Exception {
+        UUID nubank = account(userId, "Nubank");
+        awaitDone(transactionImportService.create(userId, nubank, null, sample("nubank-conta.ofx"), "127.0.0.1").id());
+
+        @SuppressWarnings("unchecked")
+        var rows = (List<Map<String, Object>>) dataExportService.collectUserData(userId).get("transaction_imports");
+        assertThat(rows.get(0)).containsEntry("transfers_found", 0);
+        assertThatThrownBy(() -> jdbc.update("UPDATE transaction_imports SET transfers_found = -1 WHERE user_id = ?", userId))
+            .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     private UUID insertProcessing(UUID accountId, String age, String bank) {

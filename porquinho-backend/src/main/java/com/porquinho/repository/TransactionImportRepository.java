@@ -7,9 +7,11 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -37,6 +39,10 @@ public interface TransactionImportRepository extends JpaRepository<TransactionIm
     @Query(value = "DELETE FROM transaction_imports WHERE user_id = :userId", nativeQuery = true)
     int deleteByUserId(@Param("userId") UUID userId);
 
+    /** The user's imports among {@code ids}: the format of the imports existing transactions came from (Story 5.5). */
+    @Query("SELECT i FROM TransactionImport i WHERE i.userId = :userId AND i.id IN :ids")
+    List<TransactionImport> findByUserIdAndIdIn(@Param("userId") UUID userId, @Param("ids") Collection<UUID> ids);
+
     /** One of the user's imports; empty when it does not exist or belongs to someone else (Story 5.3). */
     Optional<TransactionImport> findByIdAndUserId(UUID id, UUID userId);
 
@@ -59,16 +65,44 @@ public interface TransactionImportRepository extends JpaRepository<TransactionIm
     int markFailed(@Param("id") UUID id, @Param("message") String message, @Param("now") OffsetDateTime now);
 
     /**
-     * Ends the parsing (Story 5.4, decision 1A): records the counters ({@code imported} = transactions saved) and moves a PROCESSING import to REVIEW. Returns 0
-     * when the import is gone or already left PROCESSING (e.g. failed as orphan); the caller then rolls back.
+     * Ends the parsing (Story 5.4, decision 1A): records the counters ({@code imported} = transactions saved,
+     * {@code duplicates} and {@code transfers} = entries not saved, Story 5.5) and moves a PROCESSING import to REVIEW.
+     * Returns 0 when the import is gone or already left PROCESSING (e.g. failed as orphan); the caller then rolls back.
      */
     @Transactional
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE TransactionImport i SET i.status = com.porquinho.entity.TransactionImport.Status.REVIEW, "
-        + "i.totalTransactions = :total, i.importedTransactions = :imported, i.skippedRows = :skipped, i.updatedAt = :now "
+        + "i.totalTransactions = :total, i.importedTransactions = :imported, i.duplicatesFound = :duplicates, "
+        + "i.transfersFound = :transfers, i.skippedRows = :skipped, i.updatedAt = :now "
         + "WHERE i.id = :id AND i.status = com.porquinho.entity.TransactionImport.Status.PROCESSING")
     int markReadyForReview(@Param("id") UUID id, @Param("total") int total, @Param("imported") int imported,
+                           @Param("duplicates") int duplicates, @Param("transfers") int transfers,
                            @Param("skipped") int skipped, @Param("now") OffsetDateTime now);
+
+    /**
+     * Story 5.5, decision 1A: every entry was a duplicate or an already registered transfer, so nothing is saved and
+     * there is nothing to review. Records the counters ({@code imported} = 0) and moves a PROCESSING import straight to
+     * COMPLETED. Returns 0 when the import is gone or already left PROCESSING.
+     */
+    @Transactional
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE TransactionImport i SET i.status = com.porquinho.entity.TransactionImport.Status.COMPLETED, "
+        + "i.totalTransactions = :total, i.importedTransactions = 0, i.duplicatesFound = :duplicates, "
+        + "i.transfersFound = :transfers, i.skippedRows = :skipped, i.updatedAt = :now "
+        + "WHERE i.id = :id AND i.status = com.porquinho.entity.TransactionImport.Status.PROCESSING")
+    int markCompletedWithNothingNew(@Param("id") UUID id, @Param("total") int total,
+                                    @Param("duplicates") int duplicates, @Param("transfers") int transfers,
+                                    @Param("skipped") int skipped, @Param("now") OffsetDateTime now);
+
+    /**
+     * Serializes the imports of one target (Story 5.5): a transaction-scoped PostgreSQL advisory lock on {@code key},
+     * released at commit or rollback. Taken before reading the existing transactions so that two imports into the same
+     * account or card always see each other's rows. Must run inside a transaction (MANDATORY): outside one the lock
+     * would be released right away.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    @Query(value = "SELECT 1 FROM (SELECT pg_advisory_xact_lock(:key)) AS l", nativeQuery = true)
+    Integer lockTarget(@Param("key") long key);
 
     /**
      * Marks as FAILED every PROCESSING import created before {@code createdBefore}, whatever the user and whether its

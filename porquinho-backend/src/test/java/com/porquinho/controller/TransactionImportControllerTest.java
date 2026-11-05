@@ -69,7 +69,7 @@ class TransactionImportControllerTest {
 
     private TransactionImportResponse response() {
         return new TransactionImportResponse(UUID.randomUUID(), accountId, null, "Nubank", "nubank-conta.ofx", "OFX",
-            null, 4, "PROCESSING", 0, 0, 0, 0, null, OffsetDateTime.parse("2026-11-04T15:00:00Z"));
+            null, 4, "PROCESSING", 0, 0, 0, 0, 0, null, OffsetDateTime.parse("2026-11-04T15:00:00Z"));
     }
 
     @Test
@@ -154,7 +154,7 @@ class TransactionImportControllerTest {
     void getByIdReturnsTheImportOfTheJwtUser() throws Exception {
         TransactionImportResponse r = response();
         TransactionImportResponse detected = new TransactionImportResponse(r.id(), r.accountId(), null, "Nubank",
-            "nubank-conta.ofx", "OFX", "NUBANK", 4, "PROCESSING", 0, 0, 0, 0, null, r.createdAt());
+            "nubank-conta.ofx", "OFX", "NUBANK", 4, "PROCESSING", 0, 0, 0, 0, 0, null, r.createdAt());
         when(transactionImportService.get(userId, r.id())).thenReturn(detected);
 
         mockMvc.perform(get("/api/v1/imports/" + r.id()).with(authentication(authToken)))
