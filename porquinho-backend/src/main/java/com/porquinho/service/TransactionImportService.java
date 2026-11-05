@@ -28,8 +28,8 @@ import java.util.stream.Collectors;
 
 /**
  * Upload of a bank statement to one of the user's accounts or cards (Story 5.1). Validates the target (exactly one,
- * active, owned by the JWT user; otherwise 404 as if it did not exist) and the file (extension .ofx, at most 10MB,
- * content that looks like OFX, statement type matching the target), then records the import as PROCESSING and logs
+ * active, owned by the JWT user; otherwise 404 as if it did not exist) and the file (extension .ofx or .csv, at most
+ * 10MB, content that looks like OFX or a known CSV layout (Story 5.2), statement type matching the target), then records the import as PROCESSING and logs
  * "import_created". The file content is never stored nor logged: after the commit it is handed, in memory only, to
  * {@link TransactionImportProcessor} (Story 5.3).
  */
@@ -48,6 +48,8 @@ public class TransactionImportService {
     public static final String TARGET_REQUIRED_MESSAGE = "Escolha uma conta ou um cartão de destino";
     public static final String FILE_TOO_LARGE_MESSAGE = "Arquivo muito grande (máximo 10MB)";
     public static final String UNSUPPORTED_FORMAT_MESSAGE = "Formato de arquivo não suportado";
+    public static final String UNKNOWN_CSV_MESSAGE =
+        "Não reconhecemos o formato deste CSV. Tente exportar o extrato em OFX.";
     public static final String CARD_FILE_TO_ACCOUNT_MESSAGE =
         "Este arquivo é de cartão de crédito. Escolha um cartão como destino.";
     public static final String ACCOUNT_FILE_TO_CARD_MESSAGE =
@@ -76,8 +78,8 @@ public class TransactionImportService {
     }
 
     /**
-     * Records the upload. 400 when the target is missing or doubled, the file is empty, too large, not .ofx, not OFX
-     * content, or of the other statement type; 404 "Conta não encontrada" / "Cartão não encontrado" when the target is
+     * Records the upload. 400 when the target is missing or doubled, the file is empty, too large, not .ofx/.csv, not OFX
+     * content, a CSV of unknown layout, or of the other statement type; 404 "Conta não encontrada" / "Cartão não encontrado" when the target is
      * not one of the user's active rows. Nothing is written on error. The file is validated before the transaction
      * starts, so reading up to 10MB never holds a pooled connection. After the commit, the content (only in memory) goes
      * to the background processing (Story 5.3).
@@ -94,11 +96,9 @@ public class TransactionImportService {
             throw new BadRequestException(FILE_TOO_LARGE_MESSAGE);
         }
         String fileName = sanitizeFileName(file.getOriginalFilename());
-        if (!fileName.toLowerCase(Locale.ROOT).endsWith(".ofx")) {
-            throw new BadRequestException(UNSUPPORTED_FORMAT_MESSAGE);
-        }
+        TransactionImport.FileType fileType = fileType(fileName);
         byte[] content = read(file);
-        StatementKind kind = statementKind(content);
+        StatementKind kind = fileType == TransactionImport.FileType.CSV ? csvStatementKind(content) : statementKind(content);
         if (accountId != null && kind == StatementKind.CARD) {
             throw new BadRequestException(CARD_FILE_TO_ACCOUNT_MESSAGE);
         }
@@ -107,10 +107,10 @@ public class TransactionImportService {
         }
         int fileSizeKb = sizeKb(file.getSize());
         TransactionImportResponse created = transactionTemplate.execute(status ->
-            record(userId, accountId, creditCardId, fileName, fileSizeKb, ipAddress));
+            record(userId, accountId, creditCardId, fileName, fileType, fileSizeKb, ipAddress));
         // execute returned: the row is committed, so the background processing always finds it (Story 5.3)
         try {
-            transactionImportProcessor.process(created.id(), content);
+            transactionImportProcessor.process(created.id(), fileType, content);
         } catch (RuntimeException e) {
             // e.g. executor rejected the task: the upload itself succeeded, the import just fails now
             log.error("Import {} could not start processing: {}", created.id(), e.getClass().getName());
@@ -122,7 +122,7 @@ public class TransactionImportService {
     }
 
     private TransactionImportResponse record(UUID userId, UUID accountId, UUID creditCardId, String fileName,
-                                             int fileSizeKb, String ipAddress) {
+                                             TransactionImport.FileType fileType, int fileSizeKb, String ipAddress) {
         String targetName;
         if (accountId != null) {
             targetName = accountRepository.findByIdAndUserIdAndDeletedAtIsNull(accountId, userId)
@@ -135,7 +135,7 @@ public class TransactionImportService {
         }
 
         TransactionImport saved = transactionImportRepository.save(new TransactionImport(userId, accountId,
-            creditCardId, fileName, TransactionImport.FileType.OFX, fileSizeKb));
+            creditCardId, fileName, fileType, fileSizeKb));
         auditLogService.log(AUDIT_CREATED, userId, ipAddress, auditMetadata(saved));
         return TransactionImportResponse.of(saved, targetName);
     }
@@ -176,6 +176,25 @@ public class TransactionImportService {
         } catch (IOException e) {
             throw new BadRequestException(UNSUPPORTED_FORMAT_MESSAGE);
         }
+    }
+
+    /** OFX or CSV by the extension (ignoring case); anything else 400 "Formato de arquivo não suportado". */
+    static TransactionImport.FileType fileType(String fileName) {
+        String lower = fileName.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".ofx")) {
+            return TransactionImport.FileType.OFX;
+        }
+        if (lower.endsWith(".csv")) {
+            return TransactionImport.FileType.CSV;
+        }
+        throw new BadRequestException(UNSUPPORTED_FORMAT_MESSAGE);
+    }
+
+    /** Story 5.2, decision 2A: the CSV layout tells account or card; an unknown layout is 400 at upload. */
+    static StatementKind csvStatementKind(byte[] content) {
+        CsvStatementReader.Layout layout = CsvStatementReader.detect(content)
+            .orElseThrow(() -> new BadRequestException(UNKNOWN_CSV_MESSAGE));
+        return layout.card() ? StatementKind.CARD : StatementKind.ACCOUNT;
     }
 
     /**

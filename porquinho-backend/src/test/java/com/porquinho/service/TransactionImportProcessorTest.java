@@ -7,6 +7,8 @@ import com.porquinho.repository.TransactionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -87,7 +89,7 @@ class TransactionImportProcessorTest {
         processingImport(accountId, null);
         when(repository.markReadyForReview(importId, 10, 10, 0, now)).thenReturn(1);
 
-        processor.process(importId, sample("nubank-conta.ofx"));
+        processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx"));
 
         verify(repository).recordBank(importId, "NUBANK", now);
         verify(repository).markReadyForReview(importId, 10, 10, 0, now);
@@ -117,7 +119,7 @@ class TransactionImportProcessorTest {
         processingImport(null, cardId);
         when(repository.markReadyForReview(importId, 8, 8, 0, now)).thenReturn(1);
 
-        processor.process(importId, sample("itau-cartao.ofx"));
+        processor.process(importId, TransactionImport.FileType.OFX, sample("itau-cartao.ofx"));
 
         List<Transaction> saved = savedTransactions();
         assertThat(saved).hasSize(8).allSatisfy(t -> {
@@ -134,7 +136,7 @@ class TransactionImportProcessorTest {
         processingImport(accountId, null);
         when(repository.markReadyForReview(importId, 6, 2, 4, now)).thenReturn(1);
 
-        processor.process(importId, sample("erro-ofx-linhas-invalidas.ofx"));
+        processor.process(importId, TransactionImport.FileType.OFX, sample("erro-ofx-linhas-invalidas.ofx"));
 
         assertThat(savedTransactions()).hasSize(2);
         verify(repository, never()).markFailed(any(), anyString(), any());
@@ -147,7 +149,7 @@ class TransactionImportProcessorTest {
         byte[] empty = new String(sample("itau-conta.ofx"), cp1252)
             .replaceAll("(?s)<STMTTRN>.*?</STMTTRN>\\s*", "").getBytes(cp1252);
 
-        processor.process(importId, empty);
+        processor.process(importId, TransactionImport.FileType.OFX, empty);
 
         verify(repository).markFailed(importId,
             "Não encontramos transações neste arquivo. Exporte o extrato de novo e envie outra vez.", now);
@@ -161,7 +163,7 @@ class TransactionImportProcessorTest {
         when(repository.markReadyForReview(importId, 10, 10, 0, now)).thenReturn(1);
         when(transactionRepository.saveAll(any())).thenThrow(new IllegalStateException("boom"));
 
-        assertThatCode(() -> processor.process(importId, sample("nubank-conta.ofx"))).doesNotThrowAnyException();
+        assertThatCode(() -> processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx"))).doesNotThrowAnyException();
 
         verify(transactionManager).rollback(any());
         verify(transactionManager, never()).commit(any());
@@ -173,7 +175,7 @@ class TransactionImportProcessorTest {
         processingImport(accountId, null);
         when(repository.markReadyForReview(importId, 10, 10, 0, now)).thenReturn(0);
 
-        processor.process(importId, sample("nubank-conta.ofx"));
+        processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx"));
 
         verify(transactionRepository, never()).saveAll(any());
         verify(repository, never()).markFailed(any(), anyString(), any());
@@ -181,7 +183,7 @@ class TransactionImportProcessorTest {
 
     @Test
     void importThatLeftProcessingBeforeTheBankStopsThere() throws IOException {
-        processor.process(importId, sample("nubank-conta.ofx"));
+        processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx"));
 
         verify(repository).recordBank(importId, "NUBANK", now);
         verify(repository, never()).findById(any());
@@ -190,7 +192,7 @@ class TransactionImportProcessorTest {
 
     @Test
     void truncatedFileFailsWithTheIncompleteMessage() throws IOException {
-        processor.process(importId, sample("erro-ofx-truncado.ofx"));
+        processor.process(importId, TransactionImport.FileType.OFX, sample("erro-ofx-truncado.ofx"));
 
         verify(repository).markFailed(importId,
             "O arquivo está incompleto. Exporte o extrato de novo no site ou app do banco e envie outra vez.", now);
@@ -201,15 +203,72 @@ class TransactionImportProcessorTest {
     void unexpectedErrorFailsWithTheGenericMessage() throws IOException {
         when(repository.recordBank(any(), anyString(), any())).thenThrow(new IllegalStateException("boom"));
 
-        assertThatCode(() -> processor.process(importId, sample("bb-conta.ofx"))).doesNotThrowAnyException();
+        assertThatCode(() -> processor.process(importId, TransactionImport.FileType.OFX, sample("bb-conta.ofx"))).doesNotThrowAnyException();
 
         verify(repository).markFailed(importId, "Não foi possível processar o arquivo. Tente de novo.", now);
     }
 
     @Test
     void nullContentAlsoFailsWithoutThrowing() {
-        assertThatCode(() -> processor.process(importId, null)).doesNotThrowAnyException();
+        assertThatCode(() -> processor.process(importId, TransactionImport.FileType.OFX, null)).doesNotThrowAnyException();
         verify(repository).markFailed(eq(importId), eq(TransactionImportProcessor.UNEXPECTED_ERROR_MESSAGE), any());
+    }
+
+    @Test
+    void csvTakesTheBankFromTheLayoutAndGoesToReview() throws IOException {
+        processingImport(accountId, null);
+        when(repository.markReadyForReview(importId, 10, 10, 0, now)).thenReturn(1);
+
+        processor.process(importId, TransactionImport.FileType.CSV, sample("nubank-conta.csv"));
+
+        verify(repository).recordBank(importId, "NUBANK", now);
+        List<Transaction> saved = savedTransactions();
+        assertThat(saved).hasSize(10).allSatisfy(t -> assertThat(t.getAccountId()).isEqualTo(accountId));
+        assertThat(saved).filteredOn(t -> t.getKind() == Transaction.Kind.CARD_PAYMENT)
+            .extracting(Transaction::getDescription).containsExactly("Pagamento da fatura - Cartão Nubank");
+    }
+
+    @Test
+    void nubankCardCsvGoesToTheCard() throws IOException {
+        processingImport(null, cardId);
+        when(repository.markReadyForReview(importId, 9, 9, 0, now)).thenReturn(1);
+
+        processor.process(importId, TransactionImport.FileType.CSV, sample("nubank-cartao.csv"));
+
+        verify(repository).recordBank(importId, "NUBANK", now);
+        assertThat(savedTransactions()).hasSize(9).allSatisfy(t -> assertThat(t.getCreditCardId()).isEqualTo(cardId));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"bb-conta.csv, BANCO_DO_BRASIL, 10", "itau-conta.csv, ITAU, 10", "bradesco-conta.csv, BRADESCO, 9",
+        "caixa-conta.csv, CAIXA, 10"})
+    void eachBankCsvRecordsItsBank(String name, String bank, int entries) throws IOException {
+        processingImport(accountId, null);
+        when(repository.markReadyForReview(importId, entries, entries, 0, now)).thenReturn(1);
+
+        processor.process(importId, TransactionImport.FileType.CSV, sample(name));
+
+        verify(repository).recordBank(importId, bank, now);
+        assertThat(savedTransactions()).hasSize(entries);
+    }
+
+    @Test
+    void csvSkippedRowsAreCounted() throws IOException {
+        processingImport(accountId, null);
+        when(repository.markReadyForReview(importId, 6, 2, 4, now)).thenReturn(1);
+
+        processor.process(importId, TransactionImport.FileType.CSV, sample("erro-csv-linhas-invalidas.csv"));
+
+        assertThat(savedTransactions()).hasSize(2);
+        verify(repository, never()).markFailed(any(), anyString(), any());
+    }
+
+    @Test
+    void csvOfUnknownLayoutFailsWithoutBank() throws IOException {
+        processor.process(importId, TransactionImport.FileType.CSV, sample("erro-csv-banco-desconhecido.csv"));
+
+        verify(repository).markFailed(importId, TransactionImportService.UNKNOWN_CSV_MESSAGE, now);
+        verify(repository, never()).recordBank(any(), anyString(), any());
     }
 
     @Test

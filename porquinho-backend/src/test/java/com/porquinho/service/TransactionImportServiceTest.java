@@ -144,7 +144,70 @@ class TransactionImportServiceTest {
         // Story 5.3: after the commit, the same bytes go to the background processing
         InOrder order = inOrder(transactionManager, transactionImportProcessor);
         order.verify(transactionManager).commit(any());
-        order.verify(transactionImportProcessor).process(response.id(), upload.getBytes());
+        order.verify(transactionImportProcessor).process(response.id(), TransactionImport.FileType.OFX, upload.getBytes());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"nubank-conta.csv", "bb-conta.csv", "itau-conta.csv", "bradesco-conta.csv", "caixa-conta.csv"})
+    void accountCsvOfEachBankToAnAccountIsRecordedAsCsv(String name) throws IOException {
+        accountExists();
+        saveAssignsId();
+        MockMultipartFile upload = sample(name);
+
+        TransactionImportResponse response = service.create(userId, accountId, null, upload, "127.0.0.1");
+
+        ArgumentCaptor<TransactionImport> captor = ArgumentCaptor.forClass(TransactionImport.class);
+        verify(transactionImportRepository).save(captor.capture());
+        assertThat(captor.getValue().getFileType()).isEqualTo(TransactionImport.FileType.CSV);
+        assertThat(captor.getValue().getBankName()).isNull();  // recorded by the background processing
+        assertThat(response.status()).isEqualTo("PROCESSING");
+        verify(transactionImportProcessor).process(response.id(), TransactionImport.FileType.CSV, upload.getBytes());
+        ArgumentCaptor<String> metadata = ArgumentCaptor.forClass(String.class);
+        verify(auditLogService).log(eq("import_created"), eq(userId), eq("127.0.0.1"), metadata.capture());
+        assertThat(metadata.getValue()).contains("\"file_type\":\"CSV\"");
+    }
+
+    @Test
+    void nubankCardCsvToACardIsRecorded() throws IOException {
+        cardExists();
+        saveAssignsId();
+
+        TransactionImportResponse response = service.create(userId, null, cardId, sample("nubank-cartao.csv"), "127.0.0.1");
+
+        assertThat(response.creditCardId()).isEqualTo(cardId);
+        verify(transactionImportProcessor).process(eq(response.id()), eq(TransactionImport.FileType.CSV), any());
+    }
+
+    @Test
+    void csvExtensionIgnoresCase() throws IOException {
+        accountExists();
+        saveAssignsId();
+        MockMultipartFile upload = new MockMultipartFile("file", "EXTRATO.CSV", null, sample("itau-conta.csv").getBytes());
+
+        assertThat(service.create(userId, accountId, null, upload, "127.0.0.1").status()).isEqualTo("PROCESSING");
+    }
+
+    @Test
+    void csvOfUnknownLayoutIs400() throws IOException {
+        assertRejected(accountId, null, sample("erro-csv-banco-desconhecido.csv"),
+            "Não reconhecemos o formato deste CSV. Tente exportar o extrato em OFX.");
+        assertRejected(accountId, null, file("extrato.csv", "OFXHEADER:100\n<OFX><STMTRS>"),
+            TransactionImportService.UNKNOWN_CSV_MESSAGE);
+    }
+
+    @Test
+    void cardCsvToAnAccountIs400() throws IOException {
+        assertRejected(accountId, null, sample("nubank-cartao.csv"), TransactionImportService.CARD_FILE_TO_ACCOUNT_MESSAGE);
+    }
+
+    @Test
+    void accountCsvToACardIs400() throws IOException {
+        assertRejected(null, cardId, sample("nubank-conta.csv"), TransactionImportService.ACCOUNT_FILE_TO_CARD_MESSAGE);
+    }
+
+    @Test
+    void emptyCsvIs400() throws IOException {
+        assertRejected(accountId, null, sample("erro-arquivo-vazio.csv"), "Formato de arquivo não suportado");
     }
 
     @Test
@@ -209,7 +272,7 @@ class TransactionImportServiceTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"nubank-conta.csv", "extrato.pdf", "extrato", "extrato.ofx.txt"})
+    @ValueSource(strings = {"extrato.pdf", "extrato", "extrato.ofx.txt", "extrato.csv.txt"})
     void wrongExtensionIs400(String name) {
         assertRejected(accountId, null, file(name, "OFXHEADER:100\n<OFX><STMTRS>"), "Formato de arquivo não suportado");
     }
@@ -343,7 +406,7 @@ class TransactionImportServiceTest {
     void whenTheProcessingCannotStartTheImportFailsButTheUploadSucceeds() throws IOException {
         accountExists();
         saveAssignsId();
-        doThrow(new TaskRejectedException("full")).when(transactionImportProcessor).process(any(), any());
+        doThrow(new TaskRejectedException("full")).when(transactionImportProcessor).process(any(), any(), any());
         when(transactionImportRepository.findByIdAndUserId(any(), eq(userId))).thenAnswer(inv -> {
             TransactionImport failed = new TransactionImport(userId, accountId, null, "nubank-conta.ofx",
                 TransactionImport.FileType.OFX, 4);

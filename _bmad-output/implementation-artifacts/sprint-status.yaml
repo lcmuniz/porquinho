@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-13
-last_updated: 11-05-2026 10:00
+last_updated: 11-05-2026 12:00
 project: porquinho
 project_key: NOKEY
 tracking_system: file-system
@@ -103,7 +103,7 @@ development_status:
   # Epic 5: Transaction Import & AI Classification
   epic-5: in-progress
   5-1-upload-ofx-files-from-5-brazilian-banks: done
-  5-2-upload-csv-files-from-5-brazilian-banks: backlog
+  5-2-upload-csv-files-from-5-brazilian-banks: review
   5-3-auto-detect-file-format-and-bank: review
   5-4-parse-transactions-with-robust-error-handling: review
   5-5-detect-and-flag-duplicate-transactions: backlog

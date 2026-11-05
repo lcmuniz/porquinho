@@ -103,16 +103,21 @@ public final class OfxBankDetector {
         return value.isEmpty() ? Optional.empty() : Optional.of(value);
     }
 
-    /** UTF-8 when the bytes are valid UTF-8, otherwise cp1252 (the usual charset of Brazilian OFX). */
+    /**
+     * Without a leading UTF-8 BOM: UTF-8 when the bytes are valid UTF-8, otherwise cp1252 (the usual charset of
+     * Brazilian OFX and CSV; it also covers ISO-8859-1 text), so a BOM before a cp1252 body still reads as cp1252.
+     */
     static String decode(byte[] bytes) {
+        int start = bytes.length >= 3 && bytes[0] == (byte) 0xEF && bytes[1] == (byte) 0xBB && bytes[2] == (byte) 0xBF
+            ? 3 : 0;
         try {
             return StandardCharsets.UTF_8.newDecoder()
                 .onMalformedInput(CodingErrorAction.REPORT)
                 .onUnmappableCharacter(CodingErrorAction.REPORT)
-                .decode(ByteBuffer.wrap(bytes))
+                .decode(ByteBuffer.wrap(bytes, start, bytes.length - start))
                 .toString();
         } catch (CharacterCodingException e) {
-            return new String(bytes, WINDOWS_1252);
+            return new String(bytes, start, bytes.length - start, WINDOWS_1252);
         }
     }
 

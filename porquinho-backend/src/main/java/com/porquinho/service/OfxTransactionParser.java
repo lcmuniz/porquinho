@@ -26,7 +26,7 @@ import java.util.regex.Pattern;
  *       whitespace collapsed. FITID is the optional external id.</li>
  *   <li>A block without a valid date or amount, or with a zero amount, is skipped and reported with its position
  *       (1-based) and reason only.</li>
- *   <li>Card payment (decision 3A): keyword in the description (no accents, upper case); on an account only for
+ *   <li>Card payment (decision 3A, shared with the CSV reader of Story 5.2): keyword in the description (no accents, upper case); on an account only for
  *       DEBIT, on a card only for CREDIT.</li>
  * </ul>
  */
@@ -42,13 +42,14 @@ public final class OfxTransactionParser {
     /** Optional sign, digits and separators only (no exponent, no other character). */
     private static final Pattern AMOUNT = Pattern.compile("[+-]?[0-9.,]+");
 
-    /** Decision 3A: card payment keywords (upper case, without accents). */
+    /** Decision 3A (plus the BB one of Story 5.2): card payment keywords (upper case, without accents). */
     static final List<String> CARD_PAYMENT_KEYWORDS = List.of(
         "PAGAMENTO DA FATURA",
         "PAGAMENTO EFETUADO",
         "PAGAMENTO RECEBIDO",
         "ITAU UNIBANCO CARTAO",
-        "GASTOS CARTAO DE CREDITO"
+        "GASTOS CARTAO DE CREDITO",
+        "PAGAMENTO CARTAO DE CREDITO"
     );
 
     private static final Pattern BLOCK_START = Pattern.compile("<STMTTRN>", Pattern.CASE_INSENSITIVE);
@@ -137,17 +138,22 @@ public final class OfxTransactionParser {
         if (original == null) {
             original = value(block, NAME);
         }
-        if (original == null) {
-            original = NO_DESCRIPTION;
-        }
+        entries.add(entry(date, original, signed.abs(), type, value(block, FITID), creditCard));
+    }
+
+    /**
+     * Builds a valid entry (also for the CSV reader of Story 5.2): description trimmed ("Sem descrição" when blank),
+     * truncated to the column sizes, repeated whitespace collapsed; card payment by decision 3A. {@code amount} is
+     * positive with 2 decimals; a blank {@code externalId} becomes null.
+     */
+    static Entry entry(LocalDate date, String rawDescription, BigDecimal amount, Transaction.Type type,
+                       String externalId, boolean creditCard) {
+        String original = rawDescription == null || rawDescription.isBlank() ? NO_DESCRIPTION : rawDescription.trim();
         original = truncate(original, MAX_DESCRIPTION_LENGTH);
         String description = WHITESPACE.matcher(original).replaceAll(" ");
-        String externalId = value(block, FITID);
-        if (externalId != null) {
-            externalId = truncate(externalId, MAX_EXTERNAL_ID_LENGTH);
-        }
-        entries.add(new Entry(date, description, original, signed.abs(), type, externalId,
-            isCardPayment(description, type, creditCard)));
+        String id = externalId == null || externalId.isBlank() ? null
+            : truncate(externalId.trim(), MAX_EXTERNAL_ID_LENGTH);
+        return new Entry(date, description, original, amount, type, id, isCardPayment(description, type, creditCard));
     }
 
     /** Decision 3A. */
