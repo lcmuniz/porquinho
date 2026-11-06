@@ -149,7 +149,7 @@
   summary: Na Story 5.13 (transação manual), tomar o mesmo advisory lock por destino da importação, para a detecção de duplicatas ver a gravação concorrente.
   evidence: `lockTarget` só é chamado pela importação.
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-7-detect-installment-purchases-and-split-across-months.md`
-  summary: O descarte de importação da 5.10 precisa tratar as parcelas confirmadas por outra importação (decisão 2A da 5.7), sem apagar a parcela real nem deixar a confirmação de um arquivo descartado.
+  summary: O descarte de importação da 5.9 precisa tratar as parcelas confirmadas por outra importação (decisão 2A da 5.7), sem apagar a parcela real nem deixar a confirmação de um arquivo descartado.
   evidence: A futura confirmada fica com o import_id da importação que a criou; um descarte por import_id apagaria a parcela trazida pelo arquivo seguinte, e descartar a importação nova não volta a linha a futura.
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-7-detect-installment-purchases-and-split-across-months.md`
   summary: Conferir com extratos reais se algum banco usa marcadores "PARCELA 03 DE 10" / "03 DE 10" ou "3/10" de um dígito no fim da descrição do cartão.
@@ -184,3 +184,21 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-8-auto-classify-transactions-using-ai.md`
   summary: NFR7 medido com chave real depois da revisão da 2A; falta só observar a primeira chamada depois de subir o backend e a precisão em extratos reais.
   evidence: 4 chamadas simultâneas de 25 levaram 3,3 s na primeira rodada (fora da meta) e 2,0–2,2 s nas seguintes. A amostra tinha descrições fictícias e fáceis, então não mede a meta de 85%.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-9-present-classified-transactions-for-user-review.md`
+  summary: Resolvido na 5.9 o descarte de importação (itens da 5.5 e da 5.7 acima): soft delete das linhas, transferência e reversão das parcelas confirmadas (decisão 3A).
+  evidence: `TransactionImportReviewService.discard`. Confirmações gravadas antes da V29 não têm `confirmed_by_import_id` e somem com a importação que as criou.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-9-present-classified-transactions-for-user-review.md`
+  summary: A parcela transferida no descarte (3A) não atualiza os contadores da importação que a confirmou, que segue contando a linha como duplicata (5.7 – 2A).
+  evidence: O rótulo da `/importar` pode ficar uma linha abaixo do que a revisão mostra. Resolver na 5.10, se o resumo final usar `imported_transactions`.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-9-present-classified-transactions-for-user-review.md`
+  summary: A 5.10 precisa tomar o advisory lock do destino ao concluir a importação; o descarte lê o status da importação que confirmou para decidir entre `CONFIRMED` e manter o status da linha.
+  evidence: `TransactionRepository.transferConfirmedInstallments`. Sem o lock, uma conclusão simultânea deixaria a linha transferida sem `CONFIRMED`.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-9-present-classified-transactions-for-user-review.md`
+  summary: Descartar a importação que criou as futuras de uma compra deixa sem futuras a parcela mais antiga trazida depois por outra importação do mesmo grupo (ela não criou futuras porque já existiam).
+  evidence: As futuras voltam quando a parcela seguinte for importada, pois `InstallmentPlanner` cria as que faltam no grupo.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-9-present-classified-transactions-for-user-review.md`
+  summary: Na 5.10, tratar a parcela transferida no descarte para importação `COMPLETED`: ela fica `CONFIRMED` com `affects_balance = false` e nunca entra no saldo.
+  evidence: `transferConfirmedInstallments` só muda `review_status`. Uma importação concluída por `markCompletedWithNothingNew` não passa pela conclusão da 5.10, e a 5.9 não pode mexer em saldo.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-9-present-classified-transactions-for-user-review.md`
+  summary: A decisão 5A só avisa; os lançamentos ignorados como duplicatas de uma importação descartada dependem do reenvio pelo usuário.
+  evidence: Nada liga a entrada ignorada à linha original. `duplicatesFound` também conta parcelas confirmadas (5.7 – 2A), então o aviso pode aparecer sem perda real.

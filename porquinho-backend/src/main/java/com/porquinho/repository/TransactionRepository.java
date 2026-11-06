@@ -81,6 +81,62 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
                                        @Param("now") OffsetDateTime now);
 
     /**
+     * The rows of import {@code importId} shown in the review (Story 5.9, decision 2A): card payments included, future
+     * installments left out, by date.
+     */
+    @Query("SELECT t FROM Transaction t WHERE t.userId = :userId AND t.importId = :importId "
+        + "AND t.futureInstallment = false AND t.deletedAt IS NULL "
+        + "ORDER BY t.transactionDate ASC, t.createdAt ASC, t.id ASC")
+    List<Transaction> findForReviewByImport(@Param("userId") UUID userId, @Param("importId") UUID importId);
+
+    /**
+     * Story 5.9, decision 1A: approves the pending rows the review shows as high confidence. A row without category is
+     * "Não classificado", whatever its confidence. Rows already approved stay out, so a second call changes nothing.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE Transaction t SET t.reviewStatus = com.porquinho.entity.Transaction.ReviewStatus.APPROVED, "
+        + "t.updatedAt = :now WHERE t.userId = :userId AND t.importId = :importId "
+        + "AND t.kind = com.porquinho.entity.Transaction.Kind.REGULAR AND t.futureInstallment = false "
+        + "AND t.reviewStatus = com.porquinho.entity.Transaction.ReviewStatus.PENDING "
+        + "AND t.classificationConfidence >= :minConfidence AND t.categoryId IS NOT NULL AND t.deletedAt IS NULL")
+    int approveHighConfidence(@Param("userId") UUID userId, @Param("importId") UUID importId,
+                              @Param("minConfidence") int minConfidence, @Param("now") OffsetDateTime now);
+
+    /**
+     * Story 5.9, decision 3A: the import {@code importId} is being discarded, so the installments it created and another
+     * import confirmed go to that import, CONFIRMED when it is already COMPLETED. Native SQL: {@code import_id} is not
+     * updatable in the entity. Must run before {@link #softDeleteByImport}.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = "UPDATE transactions SET import_id = confirmed_by_import_id, confirmed_by_import_id = NULL, "
+        + "review_status = CASE WHEN (SELECT i.status FROM transaction_imports i "
+        + "WHERE i.id = transactions.confirmed_by_import_id) = 'COMPLETED' THEN 'CONFIRMED' ELSE review_status END, "
+        + "updated_at = :now WHERE user_id = :userId AND import_id = :importId "
+        + "AND confirmed_by_import_id IS NOT NULL AND deleted_at IS NULL", nativeQuery = true)
+    int transferConfirmedInstallments(@Param("userId") UUID userId, @Param("importId") UUID importId,
+                                      @Param("now") OffsetDateTime now);
+
+    /**
+     * Story 5.9, decision 3A: the import {@code importId} is being discarded, so the installments it confirmed for other
+     * imports are future again. Description, date and amount stay as the discarded file wrote them. An approval goes
+     * back to PENDING: nobody reviewed that data as it will come in the next confirmation. CONFIRMED stays.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE Transaction t SET t.futureInstallment = true, t.externalId = NULL, t.confirmedByImportId = NULL, "
+        + "t.reviewStatus = CASE WHEN t.reviewStatus = com.porquinho.entity.Transaction.ReviewStatus.APPROVED "
+        + "THEN com.porquinho.entity.Transaction.ReviewStatus.PENDING ELSE t.reviewStatus END, "
+        + "t.updatedAt = :now WHERE t.userId = :userId AND t.confirmedByImportId = :importId AND t.deletedAt IS NULL")
+    int revertConfirmedInstallments(@Param("userId") UUID userId, @Param("importId") UUID importId,
+                                    @Param("now") OffsetDateTime now);
+
+    /** Soft delete of every active row of import {@code importId}, future installments included (Story 5.9). */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE Transaction t SET t.deletedAt = :now, t.updatedAt = :now "
+        + "WHERE t.userId = :userId AND t.importId = :importId AND t.deletedAt IS NULL")
+    int softDeleteByImport(@Param("userId") UUID userId, @Param("importId") UUID importId,
+                           @Param("now") OffsetDateTime now);
+
+    /**
      * Hard-delete the user's transactions (LGPD account purge, Story 5.4). Must run BEFORE deleting the imports,
      * accounts, cards, categories and the user row (FKs to all of them).
      */

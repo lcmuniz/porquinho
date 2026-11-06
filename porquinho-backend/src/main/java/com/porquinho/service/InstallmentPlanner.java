@@ -174,9 +174,13 @@ final class InstallmentPlanner {
         return Math.abs(ChronoUnit.DAYS.between(expected, date)) <= MAX_DATE_DISTANCE_DAYS;
     }
 
-    /** Decision D7: the future becomes the installment of the file. */
+    /**
+     * Decision D7: the future becomes the installment of the file. Story 5.9, decision 3A: it stays with the import that
+     * created it, marked with the one that confirmed it, so that discarding either of them knows what to do.
+     */
     private static void confirm(Transaction future, Transaction row) {
         future.setFutureInstallment(false);
+        future.setConfirmedByImportId(row.getImportId());
         future.setExternalId(row.getExternalId());
         future.setTransactionDate(row.getTransactionDate());
         future.setAmount(row.getAmount());

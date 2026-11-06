@@ -95,6 +95,13 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      // Story 5.9: revisão das transações classificadas de uma importação
+      path: '/importar/:id/revisao',
+      name: 'import-review',
+      component: () => import('../views/ImportReviewView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       // Story 2.2: plano mensal (Stripe Checkout). Retorno do Checkout: ?status=sucesso|cancelado
       path: '/assinatura',
       name: 'subscription',

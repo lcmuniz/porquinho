@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { getImport, listImports, uploadImport } from '../transactionImportService'
+import {
+  approveHighConfidence,
+  discardImport,
+  getImport,
+  listImports,
+  listImportTransactions,
+  uploadImport,
+} from '../transactionImportService'
 
 const mockGet = vi.fn()
 const mockPost = vi.fn()
@@ -27,6 +34,24 @@ describe('transactionImportService', () => {
     mockGet.mockResolvedValue({ data: { id: 'i1', bankName: 'NUBANK' } })
     expect(await getImport('i1')).toEqual({ id: 'i1', bankName: 'NUBANK' })
     expect(mockGet).toHaveBeenCalledWith('/api/v1/imports/i1')
+  })
+
+  it('lista as linhas da revisão em /api/v1/imports/{id}/transactions (Story 5.9)', async () => {
+    mockGet.mockResolvedValue({ data: [{ id: 't1' }] })
+    expect(await listImportTransactions('i1')).toEqual([{ id: 't1' }])
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/imports/i1/transactions')
+  })
+
+  it('aprova em POST /api/v1/imports/{id}/approve-high-confidence (Story 5.9)', async () => {
+    mockPost.mockResolvedValue({ data: { affectedTransactions: 3 } })
+    expect(await approveHighConfidence('i1')).toEqual({ affectedTransactions: 3 })
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/imports/i1/approve-high-confidence')
+  })
+
+  it('descarta em POST /api/v1/imports/{id}/discard (Story 5.9)', async () => {
+    mockPost.mockResolvedValue({ data: { status: 'DISCARDED' } })
+    expect(await discardImport('i1')).toEqual({ status: 'DISCARDED' })
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/imports/i1/discard')
   })
 
   it('envia multipart com file e accountId e repassa o progresso', async () => {

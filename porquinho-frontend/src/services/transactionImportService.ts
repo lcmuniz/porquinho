@@ -1,5 +1,10 @@
 import { api } from './api'
-import type { ImportTarget, TransactionImport } from '@/types/transactionImport'
+import type {
+  ImportReviewActionResult,
+  ImportTarget,
+  ImportTransaction,
+  TransactionImport,
+} from '@/types/transactionImport'
 
 /** Story 5.1: as 20 importações mais recentes do usuário logado, com o nome do destino. */
 export async function listImports(): Promise<TransactionImport[]> {
@@ -38,5 +43,23 @@ export async function uploadImport(
       }
     },
   })
+  return response.data
+}
+
+/** Story 5.9: as linhas da importação para a revisão, sem as parcelas futuras. 404 se não for do usuário. */
+export async function listImportTransactions(id: string): Promise<ImportTransaction[]> {
+  const response = await api.get<ImportTransaction[]>(`/api/v1/imports/${id}/transactions`)
+  return response.data
+}
+
+/** Story 5.9: aprova as linhas de alta confiança. 404 se não for do usuário; 409 fora de REVIEW, com `detail` em pt-BR. */
+export async function approveHighConfidence(id: string): Promise<ImportReviewActionResult> {
+  const response = await api.post<ImportReviewActionResult>(`/api/v1/imports/${id}/approve-high-confidence`)
+  return response.data
+}
+
+/** Story 5.9: descarta a importação e as linhas dela. 404 se não for do usuário; 409 fora de REVIEW, com `detail` em pt-BR. */
+export async function discardImport(id: string): Promise<ImportReviewActionResult> {
+  const response = await api.post<ImportReviewActionResult>(`/api/v1/imports/${id}/discard`)
   return response.data
 }

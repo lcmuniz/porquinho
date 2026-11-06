@@ -15,7 +15,7 @@ import java.util.UUID;
  * One entry of an account or a credit card (Story 5.4, V26). Exactly one of account_id / credit_card_id is set
  * (decision D1). The amount is always positive; the direction is in {@link #transactionType}. Imported entries are
  * born PENDING with {@code affectsBalance = false}: they show up in no list, total or balance until the import is
- * finished (Story 5.10). Pix, installments and classification come in Stories 5.6–5.8.
+ * finished (Story 5.10). Pix, installments and classification come in Stories 5.6–5.8; the review, APPROVED (Story 5.9).
  */
 @Entity
 @Table(name = "transactions")
@@ -28,7 +28,7 @@ public class Transaction {
 
     public enum ClassificationSource { AI, PATTERN, USER, NONE }
 
-    public enum ReviewStatus { PENDING, CONFIRMED }
+    public enum ReviewStatus { PENDING, APPROVED, CONFIRMED }
 
     @Id
     @GeneratedValue(generator = "UUID")
@@ -110,6 +110,10 @@ public class Transaction {
 
     @Column(name = "is_future_installment", nullable = false)
     private boolean futureInstallment;
+
+    /** The import that confirmed this future installment, when another one created it (Story 5.9, decision 3A). */
+    @Column(name = "confirmed_by_import_id")
+    private UUID confirmedByImportId;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
@@ -206,6 +210,9 @@ public class Transaction {
 
     public boolean isFutureInstallment() { return futureInstallment; }
     public void setFutureInstallment(boolean futureInstallment) { this.futureInstallment = futureInstallment; }
+
+    public UUID getConfirmedByImportId() { return confirmedByImportId; }
+    public void setConfirmedByImportId(UUID confirmedByImportId) { this.confirmedByImportId = confirmedByImportId; }
 
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }

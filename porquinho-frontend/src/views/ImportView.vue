@@ -145,6 +145,14 @@
                 {{ item.creditCardId ? 'Cartão' : 'Conta' }}: {{ item.targetName ?? '—' }}
               </p>
               <p class="text-xs text-gray-700" data-testid="import-status">{{ statusLabel(item) }}</p>
+              <RouterLink
+                v-if="item.status === 'REVIEW'"
+                :to="`/importar/${item.id}/revisao`"
+                class="inline-flex min-h-[44px] items-center text-sm font-medium text-purple-700 underline"
+                :data-testid="`review-link-${item.id}`"
+              >
+                Revisar
+              </RouterLink>
               <p
                 v-if="item.status === 'FAILED' && item.errorMessage"
                 class="text-xs text-red-600"
@@ -165,6 +173,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { plural } from '@/lib/plural'
 import { listAccounts } from '@/services/accountService'
 import { listCards } from '@/services/cardService'
 import { getImport, listImports, uploadImport } from '@/services/transactionImportService'
@@ -193,14 +202,13 @@ const POLL_INTERVAL_MS = 2000
 
 /** Story 5.4 (decisão 2A): sem progresso real; as contagens só aparecem no fim. */
 const READING = 'lendo as transações...'
-const REVIEW_NEXT_STEP = 'a tela de revisão chega numa próxima etapa'
 
 const STATUS_LABELS: Record<TransactionImportStatus, string> = {
   PROCESSING: 'Recebido — identificando o banco...',
   REVIEW: 'Aguardando revisão',
   COMPLETED: 'Concluída',
   FAILED: 'Falhou',
-  DISCARDED: 'Descartada',
+  DISCARDED: 'Descartada — nenhuma transação foi importada',
 }
 
 /** Story 5.3: OTHER é um OFX de banco fora dos cinco suportados (decisão 2A). No CSV o layout já define o banco (Story 5.2). */
@@ -325,10 +333,6 @@ async function submit() {
   }
 }
 
-function plural(count: number, singular: string, pluralForm: string): string {
-  return `${count} ${count === 1 ? singular : pluralForm}`
-}
-
 /**
  * Story 5.5 (decisão 2A): sufixos de duplicatas e transferências já registradas, só quando a contagem passa de 0.
  */
@@ -365,7 +369,7 @@ function statusLabel(item: TransactionImport): string {
   if (item.status === 'REVIEW') {
     const read = plural(item.importedTransactions, 'transação', 'transações')
     const ignored = ignoredParts(item).map((part) => ` · ${part}`).join('')
-    return `Pronta para revisão: ${read}${skippedSuffix(item)}${ignored} — ${REVIEW_NEXT_STEP}`
+    return `Pronta para revisão: ${read}${skippedSuffix(item)}${ignored}`
   }
   if (item.status === 'COMPLETED' && item.importedTransactions === 0 && item.duplicatesFound + item.transfersFound > 0) {
     return `Nenhuma transação nova${skippedSuffix(item)} — ${ignoredParts(item).join(' · ')}`

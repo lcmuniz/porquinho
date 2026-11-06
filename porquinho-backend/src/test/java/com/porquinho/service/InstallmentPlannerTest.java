@@ -131,6 +131,7 @@ class InstallmentPlannerTest {
         assertThat(plan.installments()).isEqualTo(1);
         assertThat(plan.futuresCreated()).isZero();
         assertThat(future4.isFutureInstallment()).isFalse();
+        assertThat(future4.getConfirmedByImportId()).isEqualTo(next.getImportId()); // Story 5.9, decision 3A
         assertThat(future4.getExternalId()).isEqualTo("n");
         assertThat(future4.getTransactionDate()).isEqualTo(LocalDate.of(2026, 11, 3));
         assertThat(future4.getImportId()).isEqualTo(IMPORT);

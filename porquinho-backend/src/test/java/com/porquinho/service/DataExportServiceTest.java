@@ -798,7 +798,25 @@ class DataExportServiceTest {
         assertEquals("PENDING", row.get("review_status"));
         assertEquals(false, row.get("affects_balance"));
         assertEquals(false, row.get("is_pix"));
+        assertNull(row.get("confirmed_by_import_id"));
         assertNull(row.get("deleted_at"));
+    }
+
+    /** Story 5.9, decision 3A: the mark of a confirmed installment goes out too. */
+    @Test
+    void collectUserDataShouldExportWhichImportConfirmedTheInstallment() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        UUID confirmedBy = UUID.randomUUID();
+        Transaction transaction = new Transaction();
+        transaction.setId(UUID.randomUUID());
+        transaction.setUserId(userId);
+        transaction.setConfirmedByImportId(confirmedBy);
+        when(transactionRepository.findByUserIdOrdered(userId)).thenReturn(List.of(transaction));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) dataExportService.collectUserData(userId)
+            .get("transactions");
+        assertEquals(confirmedBy.toString(), rows.get(0).get("confirmed_by_import_id"));
     }
 
     @Test

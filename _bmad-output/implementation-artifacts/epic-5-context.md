@@ -58,7 +58,11 @@ Permitir que o usuário importe extratos OFX/CSV dos 5 principais bancos brasile
 - **Story 5.7 – 5A (Luiz, 2026-11-05):** a 5.7 não detecta estorno, antecipação nem cartão apagado. As Epics 6 e 7 ignoram futuras de cartão apagado, que voltam a contar se o cartão for restaurado. A 5.12 ganha a ação "remover parcelas futuras desta compra", para o usuário tratar estorno e antecipação.
 - **Story 5.8 – 1A (Luiz, 2026-11-06):** as parcelas futuras criadas pela importação herdam categoria, origem e confiança da parcela do arquivo no mesmo grupo e na mesma importação. Não vão para a IA, não contam em Y e não geram histórico. A futura confirmada por outra importação continua com a importação que a criou (5.7 – 2A) e não volta à classificação.
 - **Story 5.8 – 2A (Luiz, 2026-11-06):** cada lote de 100 sai em 4 chamadas simultâneas de até 25 (NFR7). Numa chamada só, 100 levaram de 5,5 a 6,7 s; em paralelo, cerca de 2 s depois da primeira rodada.
-- **Parcelas futuras na 5.9 (pendente):** as futuras da 5.7 têm o `import_id` da importação e `review_status = PENDING`. A 5.9 precisa decidir se aparecem na lista de revisão e no "Aprovar todas". A 5.10 precisa tratar no descarte a parcela confirmada por outra importação (ver deferred-work).
+- **Story 5.9 – 1A (Luiz, 2026-11-06):** "Aprovar todas" grava o novo valor `APPROVED` em `review_status` (V29). `CONFIRMED` continua significando importação concluída. Sem mexer em saldo, `affects_balance` nem status da importação.
+- **Story 5.9 – 2A (Luiz, 2026-11-06):** as parcelas futuras não aparecem na revisão nem contam em X ou Y; "restam N parcelas" as representa. Seguem a parcela do arquivo no descarte (5.9) e na conclusão (5.10). `isFutureInstallment` continua no DTO.
+- **Story 5.9 – 3A (Luiz, 2026-11-06):** `confirmed_by_import_id` (V29) é gravada na confirmação. Descartar a importação que criou a futura transfere a linha para a que a confirmou (`CONFIRMED` se esta estiver `COMPLETED`). Descartar a que confirmou volta a linha a futura (`is_future_installment = true`, `external_id` nulo, marca nula), mantendo descrição, data e valor do arquivo descartado; `APPROVED` volta a `PENDING`. Confirmações gravadas antes da V29 não têm a marca e somem com a importação que as criou. A 5.10 precisa tomar o advisory lock do destino ao concluir, para o descarte ler o status certo da importação que confirmou.
+- **Story 5.9 – 4A (Luiz, 2026-11-06):** "Editar" fica para a 5.10. "Continuar" vira "Continuar depois" e volta para a `/importar`.
+- **Story 5.9 – 5A (Luiz, 2026-11-06):** descartar uma importação apaga as linhas que um arquivo posterior ignorou como duplicatas delas. O diálogo avisa e nomeia esses arquivos, cujo reenvio recupera os lançamentos. Sem coluna nova e sem bloquear o descarte.
 - Pipeline em segundo plano, fora da thread da requisição: detecção, parsing, duplicatas, Pix, parcelas, classificação e, por fim, status `REVIEW`. Status da importação: `PROCESSING`/`REVIEW`/`COMPLETED`/`FAILED`/`DISCARDED` (`COMPLETED` também quando nada novo foi gravado, 5.5 – 1A). Importações presas em `PROCESSING` (sem mudança em `updated_at`) são tratadas na subida do backend e por uma varredura periódica: com linhas gravadas vão para `REVIEW`, sem linhas para `FAILED` (5.8).
 - Valores sempre positivos (`DECIMAL(15,2)`), com o sentido em `transaction_type` (DEBIT/CREDIT). No cartão, compras são DEBIT e pagamentos/estornos são CREDIT.
 - Tabelas novas do épico: `transaction_imports`, `transactions`, `ai_classification_history`, `user_classification_patterns`. Convenções: PK UUID `id`, `user_id` indexado, `created_at`/`updated_at`/`deleted_at`, soft delete, migrations na próxima versão livre do Flyway (V25 em diante).
@@ -68,7 +72,7 @@ Permitir que o usuário importe extratos OFX/CSV dos 5 principais bancos brasile
 
 - `/importar` (link a partir do dashboard): escolha do destino, zona de arrastar e soltar ou botão "Enviar arquivo", barra de progresso, lista das importações recentes com o status de cada uma. O polling para quando o usuário sai da página.
 - Mostrar a IA trabalhando ("Classificando transações com IA... X de Y") e um resumo final com as contagens de importadas, duplicadas e linhas com erro.
-- Revisão em `/importar/:id/revisao`: agrupada por confiança (Alta 80%+, Média 50–79%, Baixa <50%), com ícone e texto além da cor (WCAG). Marcadores de Pix e de parcela, "Pagamento de fatura" à parte, "Aprovar todas de alta confiança", edição em lote, retomar ou descartar a importação. O foco fica nas exceções, com linguagem encorajadora ("Vamos revisar").
+- Revisão em `/importar/:id/revisao`: agrupada por confiança (Alta 80%+, Média 50–79%, Baixa <50%), com ícone e texto além da cor (WCAG). Marcadores de Pix e de parcela, "Pagamento de fatura" à parte, "Aprovar todas de alta confiança", retomar ou descartar a importação (5.9) e edição em lote (5.10). O foco fica nas exceções, com linguagem encorajadora ("Vamos revisar").
 - `/transacoes` para editar e adicionar transações manualmente. O passo 6 do onboarding (`ImportStep.vue`) reusa o mesmo componente e o mesmo endpoint de upload.
 
 ## Cross-Story Dependencies
@@ -80,7 +84,7 @@ Permitir que o usuário importe extratos OFX/CSV dos 5 principais bancos brasile
 
 ## Regras do projeto que valem para todas as stories
 
-- Migration aplicada nunca é editada; mudança de schema sempre em nova versão do Flyway (V28 é a última em 2026-11-06).
+- Migration aplicada nunca é editada; mudança de schema sempre em nova versão do Flyway (V29 é a última em 2026-11-06).
 - Backend em camadas `com.porquinho.controller/service/repository/entity/dto`; erros em `ProblemDetail` (RFC 7807) com mensagem em pt-BR.
 - Rotas novas ficam atrás do `SubscriptionAccessFilter` (402 sem assinatura).
 - Toda tabela ou coluna nova com dado do usuário entra no export (`DataExportService`) e no purge (`AccountDeletionService`) na ordem das FKs, e o teste confere o conjunto de chaves do export (lição F3 da retro do Epic 2).

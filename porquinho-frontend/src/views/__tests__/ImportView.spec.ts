@@ -314,10 +314,32 @@ describe('ImportView', () => {
     const wrapper = await mountView()
 
     expect(wrapper.findAll('[data-testid="import-status"]').map((s) => s.text())).toEqual([
-      'Pronta para revisão: 10 transações — a tela de revisão chega numa próxima etapa',
-      'Pronta para revisão: 2 transações (4 linhas com erro) — a tela de revisão chega numa próxima etapa',
-      'Pronta para revisão: 1 transação (1 linha com erro) — a tela de revisão chega numa próxima etapa',
+      'Pronta para revisão: 10 transações',
+      'Pronta para revisão: 2 transações (4 linhas com erro)',
+      'Pronta para revisão: 1 transação (1 linha com erro)',
     ])
+  })
+
+  it('importação em revisão leva à tela de revisão; as demais não têm o link (Story 5.9)', async () => {
+    mockListImports.mockResolvedValue([
+      imported({ id: 'i1', status: 'REVIEW', importedTransactions: 2 }),
+      imported({ id: 'i2', status: 'COMPLETED' }),
+      imported({ id: 'i3', status: 'DISCARDED' }),
+    ])
+    const wrapper = await mountView()
+
+    const link = wrapper.get('[data-testid="review-link-i1"]')
+    expect(link.text()).toBe('Revisar')
+    expect(wrapper.findAllComponents(RouterLinkStub).map((l) => l.props('to'))).toContain('/importar/i1/revisao')
+    expect(wrapper.find('[data-testid="review-link-i2"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="review-link-i3"]').exists()).toBe(false)
+  })
+
+  it('importação descartada mostra o novo status (Story 5.9)', async () => {
+    mockListImports.mockResolvedValue([imported({ status: 'DISCARDED', importedTransactions: 3 })])
+    const wrapper = await mountView()
+
+    expect(wrapper.get('[data-testid="import-status"]').text()).toBe('Descartada — nenhuma transação foi importada')
   })
 
   it('mostra duplicatas e transferências já registradas no rótulo (Story 5.5, decisões 1A e 2A)', async () => {
@@ -332,9 +354,9 @@ describe('ImportView', () => {
     const wrapper = await mountView()
 
     expect(wrapper.findAll('[data-testid="import-status"]').map((s) => s.text())).toEqual([
-      'Pronta para revisão: 7 transações (1 linha com erro) · 3 duplicatas detectadas e ignoradas · 1 transferência já registrada — a tela de revisão chega numa próxima etapa',
-      'Pronta para revisão: 2 transações · 1 duplicata detectada e ignorada — a tela de revisão chega numa próxima etapa',
-      'Pronta para revisão: 1 transação · 2 transferências já registradas — a tela de revisão chega numa próxima etapa',
+      'Pronta para revisão: 7 transações (1 linha com erro) · 3 duplicatas detectadas e ignoradas · 1 transferência já registrada',
+      'Pronta para revisão: 2 transações · 1 duplicata detectada e ignorada',
+      'Pronta para revisão: 1 transação · 2 transferências já registradas',
       'Nenhuma transação nova — 10 duplicatas detectadas e ignoradas',
       'Nenhuma transação nova — 9 duplicatas detectadas e ignoradas · 1 transferência já registrada',
       'Concluída',
@@ -393,7 +415,7 @@ describe('ImportView', () => {
       await tick()
       expect(mockGetImport).toHaveBeenCalledTimes(3)
       expect(wrapper.get('[data-testid="import-i1"] [data-testid="import-status"]').text()).toBe(
-        'Pronta para revisão: 10 transações — a tela de revisão chega numa próxima etapa',
+        'Pronta para revisão: 10 transações',
       )
 
       await tick()
@@ -419,7 +441,7 @@ describe('ImportView', () => {
       await tick()
       expect(label()).toBe('Classificando transações com IA... 250 de 250')
       await tick()
-      expect(label()).toBe('Pronta para revisão: 250 transações — a tela de revisão chega numa próxima etapa')
+      expect(label()).toBe('Pronta para revisão: 250 transações')
 
       await tick()
       expect(mockGetImport).toHaveBeenCalledTimes(3)
@@ -476,7 +498,7 @@ describe('ImportView', () => {
       await tick()
       expect(mockGetImport).not.toHaveBeenCalled()
       expect(wrapper.findAll('[data-testid="import-status"]').map((s) => s.text())).toEqual([
-        'Pronta para revisão: 8 transações — a tela de revisão chega numa próxima etapa',
+        'Pronta para revisão: 8 transações',
         'Falhou',
       ])
       expect(wrapper.get('[data-testid="import-error"]').text()).toBe(
