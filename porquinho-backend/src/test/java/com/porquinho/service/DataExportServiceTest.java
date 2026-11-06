@@ -1,5 +1,6 @@
 package com.porquinho.service;
 
+import com.porquinho.entity.AiClassificationHistory;
 import com.porquinho.entity.Account;
 import com.porquinho.entity.AccountBalanceHistory;
 import com.porquinho.entity.Reconciliation;
@@ -20,6 +21,7 @@ import com.porquinho.entity.User.AuthProvider;
 import com.porquinho.entity.UserSession;
 import com.porquinho.exception.RateLimitExceededException;
 import com.porquinho.exception.ResourceNotFoundException;
+import com.porquinho.repository.AiClassificationHistoryRepository;
 import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.ReconciliationRepository;
 import com.porquinho.repository.TransactionImportRepository;
@@ -118,6 +120,8 @@ class DataExportServiceTest {
 
     @Mock
     private TransactionRepository transactionRepository;
+    @Mock
+    private AiClassificationHistoryRepository aiClassificationHistoryRepository;
 
     @InjectMocks
     private DataExportService dataExportService;
@@ -725,7 +729,8 @@ class DataExportServiceTest {
         assertExportsEveryColumn(TransactionImport.class, first);
         assertEquals(Set.of("id", "user_id", "account_id", "credit_card_id", "file_name", "file_type", "bank_name",
             "file_size_kb", "status", "total_transactions", "imported_transactions", "duplicates_found", "transfers_found",
-            "skipped_rows", "error_message", "created_at", "updated_at"), first.keySet());
+            "skipped_rows", "classification_total", "classified_count", "error_message", "created_at", "updated_at"),
+            first.keySet());
         assertEquals(toAccount.getId().toString(), first.get("id"));
         assertEquals(userId.toString(), first.get("user_id"));
         assertEquals(accountId.toString(), first.get("account_id"));
@@ -840,6 +845,43 @@ class DataExportServiceTest {
     void collectUserDataShouldExportEmptyTransactionListWhenNone() {
         when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
         assertEquals(List.of(), dataExportService.collectUserData(userId).get("transactions"));
+    }
+
+    @Test
+    void collectUserDataShouldExportTheAiClassificationHistory() {
+        // Story 5.8: every stored column, the corrected fields too
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        UUID transactionId = UUID.randomUUID();
+        UUID predicted = UUID.randomUUID();
+        UUID corrected = UUID.randomUUID();
+        AiClassificationHistory history = new AiClassificationHistory(userId, transactionId, predicted, 60);
+        history.setId(UUID.randomUUID());
+        history.setWasCorrected(true);
+        history.setCorrectedCategoryId(corrected);
+        history.setCreatedAt(OffsetDateTime.parse("2026-11-06T12:00:00Z"));
+        AiClassificationHistory noCategory = new AiClassificationHistory(userId, UUID.randomUUID(), null, 30);
+        noCategory.setId(UUID.randomUUID());
+        when(aiClassificationHistoryRepository.findByUserIdOrdered(userId)).thenReturn(List.of(history, noCategory));
+
+        Map<String, Object> data = dataExportService.collectUserData(userId);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
+        assertTrue(((List<?>) metadata.get("exported_tables")).contains("ai_classification_history"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("ai_classification_history");
+        assertEquals(2, rows.size());
+        Map<String, Object> first = rows.get(0);
+        assertExportsEveryColumn(AiClassificationHistory.class, first);
+        assertEquals(Set.of("id", "user_id", "transaction_id", "predicted_category_id", "confidence", "was_corrected",
+            "corrected_category_id", "created_at"), first.keySet());
+        assertEquals(transactionId.toString(), first.get("transaction_id"));
+        assertEquals(predicted.toString(), first.get("predicted_category_id"));
+        assertEquals(60, first.get("confidence"));
+        assertEquals(true, first.get("was_corrected"));
+        assertEquals(corrected.toString(), first.get("corrected_category_id"));
+        assertEquals("2026-11-06T12:00Z", first.get("created_at"));
+        assertEquals(null, rows.get(1).get("predicted_category_id"));
     }
 
     private static void assertExportsEveryColumn(Class<?> entity, Map<String, Object> exported) {

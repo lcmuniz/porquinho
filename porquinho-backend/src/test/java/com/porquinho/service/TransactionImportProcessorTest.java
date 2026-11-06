@@ -59,6 +59,8 @@ class TransactionImportProcessorTest {
     @Mock
     private AuditLogService auditLogService;
     @Mock
+    private TransactionClassificationService classificationService;
+    @Mock
     private PlatformTransactionManager transactionManager;
 
     private TransactionImportProcessor processor;
@@ -74,7 +76,7 @@ class TransactionImportProcessorTest {
     void setUp() {
         org.mockito.Mockito.lenient().when(transactionManager.getTransaction(any())).thenReturn(transactionStatus);
         processor = new TransactionImportProcessor(repository, transactionRepository, transferRepository,
-            auditLogService, transactionManager,
+            auditLogService, classificationService, transactionManager,
             Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -99,12 +101,12 @@ class TransactionImportProcessorTest {
     @Test
     void entriesAreSavedAsPendingAndTheImportGoesToReview() throws IOException {
         processingImport(accountId, null);
-        when(repository.markReadyForReview(importId, 10, 10, 0, 0, 0, now)).thenReturn(1);
+        when(repository.recordParsed(importId, 10, 10, 0, 0, 0, now)).thenReturn(1);
 
         processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx"));
 
         verify(repository).recordBank(importId, "NUBANK", now);
-        verify(repository).markReadyForReview(importId, 10, 10, 0, 0, 0, now);
+        verify(repository).recordParsed(importId, 10, 10, 0, 0, 0, now);
         verify(repository, never()).markFailed(any(), anyString(), any());
         List<Transaction> saved = savedTransactions();
         assertThat(saved).hasSize(10).allSatisfy(t -> {
@@ -134,7 +136,7 @@ class TransactionImportProcessorTest {
     @Test
     void cardEntriesGoToTheCard() throws IOException {
         processingImport(null, cardId);
-        when(repository.markReadyForReview(importId, 8, 8, 0, 0, 0, now)).thenReturn(1);
+        when(repository.recordParsed(importId, 8, 8, 0, 0, 0, now)).thenReturn(1);
 
         processor.process(importId, TransactionImport.FileType.OFX, sample("itau-cartao.ofx"));
 
@@ -153,7 +155,7 @@ class TransactionImportProcessorTest {
     @Test
     void skippedRowsAreCountedAndTheValidOnesSaved() throws IOException {
         processingImport(accountId, null);
-        when(repository.markReadyForReview(importId, 6, 2, 0, 0, 4, now)).thenReturn(1);
+        when(repository.recordParsed(importId, 6, 2, 0, 0, 4, now)).thenReturn(1);
 
         processor.process(importId, TransactionImport.FileType.OFX, sample("erro-ofx-linhas-invalidas.ofx"));
 
@@ -172,14 +174,14 @@ class TransactionImportProcessorTest {
 
         verify(repository).markFailed(importId,
             "Não encontramos transações neste arquivo. Exporte o extrato de novo e envie outra vez.", now);
-        verify(repository, never()).markReadyForReview(any(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), any());
+        verify(repository, never()).recordParsed(any(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), any());
         verify(transactionRepository, never()).saveAll(any());
     }
 
     @Test
     void failureWhileSavingFailsWithTheGenericMessage() throws IOException {
         processingImport(accountId, null);
-        when(repository.markReadyForReview(importId, 10, 10, 0, 0, 0, now)).thenReturn(1);
+        when(repository.recordParsed(importId, 10, 10, 0, 0, 0, now)).thenReturn(1);
         when(transactionRepository.saveAll(any())).thenThrow(new IllegalStateException("boom"));
 
         assertThatCode(() -> processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx"))).doesNotThrowAnyException();
@@ -192,7 +194,7 @@ class TransactionImportProcessorTest {
     @Test
     void importThatLeftProcessingBeforeTheSaveGetsNothing() throws IOException {
         processingImport(accountId, null);
-        when(repository.markReadyForReview(importId, 10, 10, 0, 0, 0, now)).thenReturn(0);
+        when(repository.recordParsed(importId, 10, 10, 0, 0, 0, now)).thenReturn(0);
 
         processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx"));
 
@@ -218,7 +220,7 @@ class TransactionImportProcessorTest {
         future.setInstallmentGroupId(UUID.randomUUID());
         future.setFutureInstallment(true);
         when(transactionRepository.findActiveInstallmentsByCreditCard(userId, cardId)).thenReturn(List.of(future));
-        when(repository.markReadyForReview(importId, 8, 7, 1, 0, 0, now)).thenReturn(0);
+        when(repository.recordParsed(importId, 8, 7, 1, 0, 0, now)).thenReturn(0);
 
         processor.process(importId, TransactionImport.FileType.OFX, sample("itau-cartao.ofx"));
 
@@ -263,7 +265,7 @@ class TransactionImportProcessorTest {
     @Test
     void csvTakesTheBankFromTheLayoutAndGoesToReview() throws IOException {
         processingImport(accountId, null);
-        when(repository.markReadyForReview(importId, 10, 10, 0, 0, 0, now)).thenReturn(1);
+        when(repository.recordParsed(importId, 10, 10, 0, 0, 0, now)).thenReturn(1);
 
         processor.process(importId, TransactionImport.FileType.CSV, sample("nubank-conta.csv"));
 
@@ -277,7 +279,7 @@ class TransactionImportProcessorTest {
     @Test
     void nubankCardCsvGoesToTheCard() throws IOException {
         processingImport(null, cardId);
-        when(repository.markReadyForReview(importId, 9, 9, 0, 0, 0, now)).thenReturn(1);
+        when(repository.recordParsed(importId, 9, 9, 0, 0, 0, now)).thenReturn(1);
 
         processor.process(importId, TransactionImport.FileType.CSV, sample("nubank-cartao.csv"));
 
@@ -292,7 +294,7 @@ class TransactionImportProcessorTest {
         "caixa-conta.csv, CAIXA, 10"})
     void eachBankCsvRecordsItsBank(String name, String bank, int entries) throws IOException {
         processingImport(accountId, null);
-        when(repository.markReadyForReview(importId, entries, entries, 0, 0, 0, now)).thenReturn(1);
+        when(repository.recordParsed(importId, entries, entries, 0, 0, 0, now)).thenReturn(1);
 
         processor.process(importId, TransactionImport.FileType.CSV, sample(name));
 
@@ -303,7 +305,7 @@ class TransactionImportProcessorTest {
     @Test
     void csvSkippedRowsAreCounted() throws IOException {
         processingImport(accountId, null);
-        when(repository.markReadyForReview(importId, 6, 2, 0, 0, 4, now)).thenReturn(1);
+        when(repository.recordParsed(importId, 6, 2, 0, 0, 4, now)).thenReturn(1);
 
         processor.process(importId, TransactionImport.FileType.CSV, sample("erro-csv-linhas-invalidas.csv"));
 
@@ -345,7 +347,7 @@ class TransactionImportProcessorTest {
         verify(repository).lockTarget(TransactionImportProcessor.lockKey(accountId));
         verify(transferRepository).findActiveByAccountBetween(userId, accountId, LocalDate.of(2026, 9, 30),
             LocalDate.of(2026, 10, 28));
-        verify(repository, never()).markReadyForReview(any(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), any());
+        verify(repository, never()).recordParsed(any(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), any());
         verify(transactionRepository, never()).saveAll(any());
         verify(auditLogService).log("import_duplicates_checked", userId, null, "{\"import_id\":\"" + importId
             + "\",\"total_transactions\":10,\"imported_transactions\":0,\"duplicates_found\":10,\"transfers_found\":0,"
@@ -354,6 +356,7 @@ class TransactionImportProcessorTest {
         order.verify(repository).lockTarget(TransactionImportProcessor.lockKey(accountId));
         order.verify(transactionRepository).findActiveByAccountBetween(any(), any(), any(), any());
         order.verify(repository).markCompletedWithNothingNew(importId, 10, 10, 0, 0, now);
+        verify(classificationService, never()).classify(any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
     }
 
     @Test
@@ -365,7 +368,7 @@ class TransactionImportProcessorTest {
         com.porquinho.entity.Transfer transfer = new com.porquinho.entity.Transfer(UUID.randomUUID(), userId,
             UUID.randomUUID(), accountId, new BigDecimal("2000.00"), LocalDate.of(2026, 10, 1), null);
         when(transferRepository.findActiveByAccountBetween(any(), any(), any(), any())).thenReturn(List.of(transfer));
-        when(repository.markReadyForReview(importId, 10, 7, 2, 1, 0, now)).thenReturn(1);
+        when(repository.recordParsed(importId, 10, 7, 2, 1, 0, now)).thenReturn(1);
 
         processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx"));
 
@@ -380,7 +383,7 @@ class TransactionImportProcessorTest {
     @Test
     void cardChecksOnlyTheCardAndNoTransfers() throws IOException {
         processingImport(null, cardId);
-        when(repository.markReadyForReview(importId, 8, 8, 0, 0, 0, now)).thenReturn(1);
+        when(repository.recordParsed(importId, 8, 8, 0, 0, 0, now)).thenReturn(1);
 
         processor.process(importId, TransactionImport.FileType.OFX, sample("itau-cartao.ofx"));
 
@@ -389,14 +392,14 @@ class TransactionImportProcessorTest {
         order.verify(repository).lockTarget(TransactionImportProcessor.lockKey(cardId));
         order.verify(transactionRepository).findActiveByCreditCardBetween(eq(userId), eq(cardId), any(), any());
         order.verify(transactionRepository).findActiveInstallmentsByCreditCard(userId, cardId);
-        order.verify(repository).markReadyForReview(importId, 8, 8, 0, 0, 0, now);
+        order.verify(repository).recordParsed(importId, 8, 8, 0, 0, 0, now);
         order.verify(transactionRepository).saveAll(any());
     }
 
     @Test
     void skippedRowsGoToTheAuditMetadata() throws IOException {
         processingImport(accountId, null);
-        when(repository.markReadyForReview(importId, 6, 2, 0, 0, 4, now)).thenReturn(1);
+        when(repository.recordParsed(importId, 6, 2, 0, 0, 4, now)).thenReturn(1);
 
         processor.process(importId, TransactionImport.FileType.OFX, sample("erro-ofx-linhas-invalidas.ofx"));
 
@@ -435,7 +438,7 @@ class TransactionImportProcessorTest {
     @Test
     void importThatLeftProcessingWritesNoCounterNorAudit() throws IOException {
         processingImport(accountId, null);
-        when(repository.markReadyForReview(importId, 10, 10, 0, 0, 0, now)).thenReturn(0);
+        when(repository.recordParsed(importId, 10, 10, 0, 0, 0, now)).thenReturn(0);
 
         processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx"));
 
@@ -453,7 +456,7 @@ class TransactionImportProcessorTest {
 
         processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx"));
 
-        verify(repository, never()).markReadyForReview(any(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), any());
+        verify(repository, never()).recordParsed(any(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), any());
         verify(transactionRepository, never()).saveAll(any());
         verify(auditLogService, never()).log(anyString(), any(), any(), anyString());
     }
@@ -484,18 +487,82 @@ class TransactionImportProcessorTest {
     }
 
     @Test
-    void atStartupEveryImportCreatedBeforeTheBackendCameUpFails() {
+    void atStartupOrphansGoToReviewWithRowsAndFailWithout() {
         processor.failImportsInterruptedByRestart();
 
-        verify(repository).failProcessingCreatedBefore(now,
+        verify(repository).reviewOrphansWithRows(now, now);
+        verify(repository).failOrphansWithoutRows(now,
             "O processamento foi interrompido. Envie o arquivo de novo.", now);
     }
 
     @Test
-    void everyFiveMinutesImportsOlderThan15MinutesFail() {
+    void everyFiveMinutesImportsWithNoChangeFor15MinutesAreSwept() {
         processor.failStaleImports();
 
-        verify(repository).failProcessingCreatedBefore(now.minusMinutes(15),
+        verify(repository).reviewOrphansWithRows(now.minusMinutes(15), now);
+        verify(repository).failOrphansWithoutRows(now.minusMinutes(15),
             TransactionImportProcessor.INTERRUPTED_MESSAGE, now);
+    }
+
+    // Story 5.8
+
+    @Test
+    void theRowsAreClassifiedAfterTheCommitAndOnlyThenTheImportGoesToReview() throws IOException {
+        processingImport(accountId, null);
+        when(repository.recordParsed(importId, 10, 10, 0, 0, 0, now)).thenReturn(1);
+        when(repository.markReadyForReview(importId, now)).thenReturn(1);
+
+        processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx"));
+
+        InOrder order = inOrder(repository, transactionManager, classificationService);
+        order.verify(repository).lockTarget(TransactionImportProcessor.lockKey(accountId));
+        order.verify(repository).recordParsed(importId, 10, 10, 0, 0, 0, now);
+        order.verify(transactionManager).commit(any());
+        order.verify(classificationService).classify(importId, userId, false);
+        order.verify(repository).markReadyForReview(importId, now);
+    }
+
+    @Test
+    void rowsAreBornUnclassifiedAndCardPaymentsWithoutConfidence() throws IOException {
+        processingImport(null, cardId);
+        when(repository.recordParsed(eq(importId), anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), eq(now)))
+            .thenReturn(1);
+
+        processor.process(importId, TransactionImport.FileType.OFX, sample("itau-cartao.ofx"));
+
+        List<Transaction> saved = savedTransactions();
+        assertThat(saved).anyMatch(t -> t.getKind() == Transaction.Kind.CARD_PAYMENT);
+        assertThat(saved).allSatisfy(t -> {
+            assertThat(t.getCategoryId()).isNull();
+            assertThat(t.getClassificationSource()).isEqualTo(Transaction.ClassificationSource.NONE);
+            assertThat(t.getClassificationConfidence())
+                .isEqualTo(t.getKind() == Transaction.Kind.CARD_PAYMENT ? null : Integer.valueOf(0));
+        });
+        verify(classificationService).classify(importId, userId, true);
+    }
+
+    @Test
+    void importThatLeftProcessingAfterTheParsingIsNotClassified() throws IOException {
+        processingImport(accountId, null);
+        when(transactionRepository.findActiveByAccountBetween(any(), any(), any(), any()))
+            .thenReturn(java.util.Collections.emptyList());
+        when(repository.recordParsed(importId, 10, 10, 0, 0, 0, now)).thenReturn(0);
+
+        processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx"));
+
+        verify(classificationService, never()).classify(any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
+        verify(repository, never()).markReadyForReview(any(), any());
+    }
+
+    @Test
+    void failureAfterTheCommitNeverFailsTheImport() throws IOException {
+        processingImport(accountId, null);
+        when(repository.recordParsed(importId, 10, 10, 0, 0, 0, now)).thenReturn(1);
+        when(repository.markReadyForReview(importId, now)).thenThrow(new IllegalStateException("database down"));
+
+        assertThatCode(() -> processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx")))
+            .doesNotThrowAnyException();
+
+        verify(repository, never()).markFailed(any(), anyString(), any());
     }
 }

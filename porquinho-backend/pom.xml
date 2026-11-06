@@ -100,6 +100,13 @@
 			<version>34.1.0</version>
 		</dependency>
 
+		<!-- Anthropic - classificação das transações importadas (Story 5.8) -->
+		<dependency>
+			<groupId>com.anthropic</groupId>
+			<artifactId>anthropic-java</artifactId>
+			<version>3.6.0</version>
+		</dependency>
+
 		<!-- Redis - Caching -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

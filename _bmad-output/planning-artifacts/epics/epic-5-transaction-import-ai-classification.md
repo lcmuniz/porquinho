@@ -199,8 +199,7 @@ So that users save time and don't have to manually categorize everything.
 
 **Given** Transactions have been imported and processed (Stories 5.4–5.7)
 **When** Classification runs
-**Then** User patterns (Story 5.11) are applied first: a matching pattern sets the category with classification_source='PATTERN', without calling the AI
-**And** Transfers are not imported (D4) and CARD_PAYMENT transactions (D8) are not sent to the AI
+**Then** Transfers are not imported (D4) and CARD_PAYMENT transactions (D8) are not sent to the AI
 **And** The remaining transactions are sent in batches of up to 100 (NFR7) to Claude Haiku 5.5 (`claude-haiku-5-5`) with: description with CPF/CNPJ masked, amount, type, account or card, and the user's active categories (id, name, group); the API key stays on the backend
 **And** The model returns, per transaction, a category from the user's list (or none) and a confidence 0–100; any category outside the list is discarded
 **And** If confidence >= 80, the category is applied with classification_source='AI'; below 80, the transaction is flagged for review with the suggestion kept
@@ -211,6 +210,9 @@ So that users save time and don't have to manually categorize everything.
 **And** If the AI service is unavailable or times out, the transactions remain "Não classificado" (confidence 0) and the import still reaches review
 **And** The privacy policy (`PrivacyView`) names the AI provider as a data processor of transaction descriptions
 **And** After classification, the import status becomes 'REVIEW' and Story 5.9 is shown
+**And** User patterns are not applied here: `user_classification_patterns` does not exist yet, and Story 5.11 starts applying them before the AI call
+**And** Decision 1A (Luiz, 2026-11-06): the future installments created by the import inherit category, source and confidence from the installment in the file (same group, same import). They do not go to the AI, do not count in Y and get no history row
+**And** Decision 2A (Luiz, 2026-11-06): this story delivers sequential batches of up to 100, with no real-time test. NFR7 stays pending until there is an `ANTHROPIC_API_KEY` (see deferred-work)
 
 ---
 

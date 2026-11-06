@@ -8,6 +8,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.porquinho.dto.DataExportResponse;
 import com.porquinho.entity.Account;
 import com.porquinho.entity.AccountBalanceHistory;
+import com.porquinho.entity.AiClassificationHistory;
 import com.porquinho.entity.Category;
 import com.porquinho.entity.CreditCard;
 import com.porquinho.entity.Goal;
@@ -25,6 +26,7 @@ import com.porquinho.exception.RateLimitExceededException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.AccountRepository;
+import com.porquinho.repository.AiClassificationHistoryRepository;
 import com.porquinho.repository.CategoryRepository;
 import com.porquinho.repository.CreditCardRepository;
 import com.porquinho.repository.GoalRepository;
@@ -84,6 +86,7 @@ public class DataExportService {
     private final TransactionImportRepository transactionImportRepository;
     private final ReconciliationRepository reconciliationRepository;
     private final TransactionRepository transactionRepository;
+    private final AiClassificationHistoryRepository aiClassificationHistoryRepository;
     private final ObjectMapper objectMapper;
 
     @Value("${app.export.directory:./exports}")
@@ -114,7 +117,8 @@ public class DataExportService {
             TransferRepository transferRepository,
             TransactionImportRepository transactionImportRepository,
             ReconciliationRepository reconciliationRepository,
-            TransactionRepository transactionRepository) {
+            TransactionRepository transactionRepository,
+            AiClassificationHistoryRepository aiClassificationHistoryRepository) {
         this.dataExportRepository = dataExportRepository;
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -134,6 +138,7 @@ public class DataExportService {
         this.transactionImportRepository = transactionImportRepository;
         this.reconciliationRepository = reconciliationRepository;
         this.transactionRepository = transactionRepository;
+        this.aiClassificationHistoryRepository = aiClassificationHistoryRepository;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
         this.objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
@@ -212,7 +217,7 @@ public class DataExportService {
         metadata.put("user_id", userId.toString());
         metadata.put("data_version", "1.0");
         metadata.put("exported_tables", List.of("users", "user_sessions", "audit_logs", "subscriptions",
-            "billing_transactions", "onboarding_progress", "accounts", "account_balance_history", "transfers", "reconciliation_history", "credit_cards", "transaction_imports", "transactions", "categories", "goals"));
+            "billing_transactions", "onboarding_progress", "accounts", "account_balance_history", "transfers", "reconciliation_history", "credit_cards", "transaction_imports", "transactions", "ai_classification_history", "categories", "goals"));
         data.put("metadata", metadata);
 
         // User profile (sanitized)
@@ -397,6 +402,8 @@ public class DataExportService {
             importMap.put("duplicates_found", transactionImport.getDuplicatesFound());
             importMap.put("transfers_found", transactionImport.getTransfersFound());
             importMap.put("skipped_rows", transactionImport.getSkippedRows());
+            importMap.put("classification_total", transactionImport.getClassificationTotal());
+            importMap.put("classified_count", transactionImport.getClassifiedCount());
             importMap.put("error_message", transactionImport.getErrorMessage());
             importMap.put("created_at",
                 transactionImport.getCreatedAt() != null ? transactionImport.getCreatedAt().toString() : null);
@@ -445,6 +452,24 @@ public class DataExportService {
             transactionList.add(transactionMap);
         }
         data.put("transactions", transactionList);
+
+        // AI classification history (Story 5.8) - every stored column, oldest first
+        List<Map<String, Object>> classificationHistoryList = new ArrayList<>();
+        for (AiClassificationHistory history : aiClassificationHistoryRepository.findByUserIdOrdered(userId)) {
+            Map<String, Object> historyMap = new LinkedHashMap<>();
+            historyMap.put("id", history.getId() != null ? history.getId().toString() : null);
+            historyMap.put("user_id", history.getUserId() != null ? history.getUserId().toString() : null);
+            historyMap.put("transaction_id", history.getTransactionId() != null ? history.getTransactionId().toString() : null);
+            historyMap.put("predicted_category_id",
+                history.getPredictedCategoryId() != null ? history.getPredictedCategoryId().toString() : null);
+            historyMap.put("confidence", history.getConfidence());
+            historyMap.put("was_corrected", history.isWasCorrected());
+            historyMap.put("corrected_category_id",
+                history.getCorrectedCategoryId() != null ? history.getCorrectedCategoryId().toString() : null);
+            historyMap.put("created_at", history.getCreatedAt() != null ? history.getCreatedAt().toString() : null);
+            classificationHistoryList.add(historyMap);
+        }
+        data.put("ai_classification_history", classificationHistoryList);
 
         // Reconciliations (Story 4.6) - every stored column, oldest first; money as JSON numbers
         List<Map<String, Object>> reconciliationList = new ArrayList<>();

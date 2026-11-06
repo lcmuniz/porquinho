@@ -201,6 +201,7 @@ final class InstallmentPlanner {
         future.setTransactionType(row.getTransactionType());
         future.setKind(row.getKind());
         future.setClassificationSource(Transaction.ClassificationSource.NONE);
+        future.setClassificationConfidence(row.getClassificationConfidence());
         future.setReviewStatus(row.getReviewStatus());
         future.setAffectsBalance(false);
         future.setPix(row.isPix());

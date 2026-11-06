@@ -167,3 +167,17 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-7-detect-installment-purchases-and-split-across-months.md`
   summary: A ação "remover parcelas futuras desta compra" da 5.12 precisa durar; hoje uma parcela anterior importada depois recria os números removidos.
   evidence: `InstallmentPlanner.plan` só recebe parcelas ativas e cria todo número ausente depois da linha inserida. A remoção ainda não existe no código, então o caso só aparece com a 5.12.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-8-auto-classify-transactions-using-ai.md`
+  summary: Medir o NFR7 (lote de 100 em menos de 3 s) com uma `ANTHROPIC_API_KEY` real (decisão 2A).
+  evidence: A 5.8 foi testada só contra servidor HTTP local; nenhuma chamada real ao `claude-haiku-5-5` foi feita. Sem chave, tempo de resposta, qualidade da classificação e aceitação do schema pela API seguem sem medição.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-8-auto-classify-transactions-using-ai.md`
+  summary: A política de privacidade cita a Anthropic, mas não fala em transferência internacional nem em retenção, e a data de "Última atualização" é sempre o dia de hoje.
+  evidence: `PrivacyView.vue` usa `new Date()` em `currentDate`, e a seção 10 promete aviso por e-mail em mudanças significativas, que não existe. Precisa de decisão jurídica antes de ir a produção.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-8-auto-classify-transactions-using-ai.md`
+  summary: A 5.9 precisa tratar `classification_confidence` nula de linhas anteriores à 5.8 como "Não classificado".
+  evidence: linhas e futuras gravadas antes da 5.8 têm confiança nula e escapam do filtro `< 80`; só `CARD_PAYMENT` deveria ficar nulo.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-8-auto-classify-transactions-using-ai.md`
+  summary: Conferir na primeira execução com chave real que `anthropic.api-key` chega ao cliente.
+  evidence: nenhum teste exercita o construtor de produção; um erro de digitação deixa tudo "Não classificado", só com um WARN na subida.

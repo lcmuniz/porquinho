@@ -75,6 +75,9 @@ stripe:
   # Segredos só no backend. Vazios = Checkout indisponível (503) e webhook rejeitado (400).
   secret-key: ${STRIPE_SECRET_KEY:}
   webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+anthropic:
+  # Segredo só no backend. Vazio = IA fora do ar: as transações importadas ficam "Não classificado" (Story 5.8).
+  api-key: ${ANTHROPIC_API_KEY:}
 supabase:
   project-url: ${SUPABASE_PROJECT_URL:}
   service-role-key: ${SUPABASE_SERVICE_ROLE_KEY:}

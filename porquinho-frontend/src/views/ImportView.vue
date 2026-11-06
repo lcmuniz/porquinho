@@ -351,9 +351,13 @@ function skippedSuffix(item: TransactionImport): string {
 /**
  * Story 5.3: banco detectado durante o PROCESSING. Story 5.4 (decisões 1A e 2A): lidas as transações, a importação vai
  * para REVIEW com as contagens (transações gravadas e linhas puladas). Story 5.5: duplicatas e transferências já
- * registradas no mesmo rótulo (decisão 2A); sem nada novo, a importação já chega COMPLETED (decisão 1A).
+ * registradas no mesmo rótulo (decisão 2A); sem nada novo, a importação já chega COMPLETED (decisão 1A). Story 5.8:
+ * com linhas enviadas à IA, o PROCESSING mostra o progresso da classificação.
  */
 function statusLabel(item: TransactionImport): string {
+  if (item.status === 'PROCESSING' && item.classificationTotal > 0) {
+    return `Classificando transações com IA... ${item.classifiedCount} de ${item.classificationTotal}`
+  }
   if (item.status === 'PROCESSING' && item.bankName) {
     const bank = BANK_LABELS[item.bankName] ?? item.bankName
     return item.bankName === 'OTHER' ? `${bank} — ${READING}` : `Banco detectado: ${bank} — ${READING}`

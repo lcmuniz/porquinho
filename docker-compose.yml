@@ -23,6 +23,7 @@ services:
       SUPABASE_DB_USERNAME: ${SUPABASE_DB_USERNAME}
       SUPABASE_DB_PASSWORD: ${SUPABASE_DB_PASSWORD}
       REDIS_HOST: redis
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       JWT_ISSUER_URI: ${SUPABASE_URL}/auth/v1
     restart: unless-stopped
     depends_on:

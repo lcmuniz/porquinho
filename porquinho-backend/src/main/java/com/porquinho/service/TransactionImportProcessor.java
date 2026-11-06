@@ -33,15 +33,16 @@ import java.util.UUID;
  * Background processing of an uploaded statement (Stories 5.3 and 5.4). Runs after the import row is committed,
  * outside the request thread, with the file content only in memory: detects the bank of the OFX (or takes it from the
  * CSV layout, Story 5.2), reads its entries ({@link OfxTransactionParser}, {@link CsvStatementReader}) and saves the
- * valid ones as PENDING together with the import counters, moving the import to REVIEW (decision 1A), all in one
- * database transaction. When the file cannot be read or has no transactions the import becomes FAILED with a clear
- * message and nothing is saved. Before saving, entries already in the target (duplicates) or matching an already
+ * valid ones as PENDING together with the import counters, all in one database transaction. When the file cannot be
+ * read or has no transactions the import becomes FAILED with a clear message and nothing is saved. Before saving, entries already in the target (duplicates) or matching an already
  * registered transfer are dropped and counted ({@link DuplicateDetector}, Story 5.5); when nothing is left the import
  * goes straight to COMPLETED (decision 1A of Story 5.5). Each saved entry is checked for Pix ({@link PixDetector},
  * Story 5.6). On a card, purchases with an installment marker join their purchase's group and create the future
- * installments, or confirm a future one saved before ({@link InstallmentPlanner}, Story 5.7). Imports left
- * PROCESSING with no processing running (backend restarted, upload interrupted) are failed at startup and every
- * 5 minutes. Logs carry only the import id, positions and reasons, never file content.
+ * installments, or confirm a future one saved before ({@link InstallmentPlanner}, Story 5.7). After the commit, so
+ * with the advisory lock released, the rows are classified by the AI ({@link TransactionClassificationService}, Story
+ * 5.8) and only then the import goes to REVIEW (decision 1A). Imports left PROCESSING with no processing running
+ * (backend restarted, upload interrupted) are swept at startup and every 5 minutes: to REVIEW when their rows were
+ * already saved, to FAILED when not. Logs carry only the import id, positions and reasons, never file content.
  *
  * <p>A separate bean so that {@code @Async} goes through the Spring proxy (a self-call would run synchronously).
  */
@@ -60,13 +61,14 @@ public class TransactionImportProcessor {
     /** Audit event of the duplicate check (Story 5.5): only the import id and the counts, IP null (no request). */
     public static final String AUDIT_DUPLICATES_CHECKED = "import_duplicates_checked";
 
-    /** A PROCESSING import older than this has no processing running anymore. */
+    /** A PROCESSING import with no change for this long has no processing running anymore. */
     static final Duration ORPHAN_AGE = Duration.ofMinutes(15);
 
     private final TransactionImportRepository transactionImportRepository;
     private final TransactionRepository transactionRepository;
     private final TransferRepository transferRepository;
     private final AuditLogService auditLogService;
+    private final TransactionClassificationService classificationService;
     private final TransactionTemplate transactionTemplate;
     private final Clock clock;
     /** Taken when the bean is created, before the web server accepts uploads: older PROCESSING rows are orphans. */
@@ -76,19 +78,22 @@ public class TransactionImportProcessor {
     public TransactionImportProcessor(TransactionImportRepository transactionImportRepository,
                                       TransactionRepository transactionRepository,
                                       TransferRepository transferRepository, AuditLogService auditLogService,
+                                      TransactionClassificationService classificationService,
                                       PlatformTransactionManager transactionManager) {
         this(transactionImportRepository, transactionRepository, transferRepository, auditLogService,
-            transactionManager, Clock.systemDefaultZone());
+            classificationService, transactionManager, Clock.systemDefaultZone());
     }
 
     TransactionImportProcessor(TransactionImportRepository transactionImportRepository,
                                TransactionRepository transactionRepository, TransferRepository transferRepository,
-                               AuditLogService auditLogService, PlatformTransactionManager transactionManager,
-                               Clock clock) {
+                               AuditLogService auditLogService,
+                               TransactionClassificationService classificationService,
+                               PlatformTransactionManager transactionManager, Clock clock) {
         this.transactionImportRepository = transactionImportRepository;
         this.transactionRepository = transactionRepository;
         this.transferRepository = transferRepository;
         this.auditLogService = auditLogService;
+        this.classificationService = classificationService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.clock = clock;
         this.startedAt = OffsetDateTime.now(clock);
@@ -140,7 +145,7 @@ public class TransactionImportProcessor {
 
     /**
      * Stories 5.4, 5.2 and 5.5: reads the entries (OFX or CSV), drops the duplicates and the already registered
-     * transfers, and saves the rest with the counters, all or nothing.
+     * transfers, and saves the rest with the counters, all or nothing. Story 5.8: then classifies them.
      */
     private void parseAndSave(UUID importId, TransactionImport.FileType fileType, byte[] content) {
         TransactionImport transactionImport = transactionImportRepository.findById(importId).orElse(null);
@@ -184,7 +189,7 @@ public class TransactionImportProcessor {
             int updated = imported == 0
                 ? transactionImportRepository.markCompletedWithNothingNew(importId, total, duplicates,
                     detection.transfers(), skipped, now)
-                : transactionImportRepository.markReadyForReview(importId, total, imported, duplicates,
+                : transactionImportRepository.recordParsed(importId, total, imported, duplicates,
                     detection.transfers(), skipped, now);
             if (updated == 0) {
                 // the planner already changed the confirmed futures (managed entities): the guarded update flushed
@@ -210,10 +215,28 @@ public class TransactionImportProcessor {
                 + "{} installment(s) confirmed", importId, checked.duplicates(), checked.transfers(), skipped,
                 checked.plan().confirmed().size());
         } else {
-            log.info("Import {} ready for review: {} transaction(s), {} duplicate(s), {} transfer(s), "
+            log.info("Import {} saved: {} transaction(s), {} duplicate(s), {} transfer(s), "
                 + "{} skipped row(s), {} installment(s), {} future installment(s), {} confirmed", importId,
                 checked.imported(), checked.duplicates(), checked.transfers(), skipped, checked.plan().installments(),
                 checked.plan().futuresCreated(), checked.plan().confirmed().size());
+            classifyAndFinish(importId, transactionImport.getUserId(), creditCard);
+        }
+    }
+
+    /**
+     * Story 5.8: the rows are committed, so nothing here can make the import FAILED (they would stay active and a new
+     * upload would see them as duplicates). If the last update fails, the sweep moves the import to REVIEW.
+     */
+    private void classifyAndFinish(UUID importId, UUID userId, boolean creditCard) {
+        try {
+            classificationService.classify(importId, userId, creditCard);
+            if (transactionImportRepository.markReadyForReview(importId, OffsetDateTime.now(clock)) == 0) {
+                log.info("Import {} classified but no longer processing", importId);
+            } else {
+                log.info("Import {} ready for review", importId);
+            }
+        } catch (Exception e) {
+            log.error("Import {} could not be moved to review: {}", importId, e.getClass().getName());
         }
     }
 
@@ -301,6 +324,9 @@ public class TransactionImportProcessor {
         transaction.setTransactionType(entry.type());
         transaction.setKind(entry.cardPayment() ? Transaction.Kind.CARD_PAYMENT : Transaction.Kind.REGULAR);
         transaction.setClassificationSource(Transaction.ClassificationSource.NONE);
+        // Story 5.8: "Não classificado" from the start, so a row the AI never reaches needs no write; a card payment
+        // does not go to the AI and has no confidence at all
+        transaction.setClassificationConfidence(entry.cardPayment() ? null : 0);
         transaction.setReviewStatus(Transaction.ReviewStatus.PENDING);
         transaction.setAffectsBalance(false);
         // Story 5.6: after the duplicates, so the detector never changes how many rows are saved
@@ -313,24 +339,24 @@ public class TransactionImportProcessor {
         return transaction;
     }
 
-    /** At startup: every import still PROCESSING that was created before this backend came up has no processing. */
+    /** At startup: every import still PROCESSING with no change since before this backend came up has no processing. */
     @EventListener(ApplicationReadyEvent.class)
     public void failImportsInterruptedByRestart() {
-        int failed = transactionImportRepository.failProcessingCreatedBefore(startedAt, INTERRUPTED_MESSAGE,
-            OffsetDateTime.now(clock));
-        if (failed > 0) {
-            log.info("{} import(s) interrupted by restart marked as failed", failed);
-        }
+        sweepOrphans(startedAt, "interrupted by restart");
     }
 
-    /** Every 5 minutes: imports PROCESSING for more than 15 minutes (processing lost or stuck). */
+    /** Every 5 minutes: imports PROCESSING with no change for more than 15 minutes (processing lost or stuck). */
     @Scheduled(fixedRate = 300_000, initialDelay = 300_000)
     public void failStaleImports() {
+        sweepOrphans(OffsetDateTime.now(clock).minus(ORPHAN_AGE), "stale");
+    }
+
+    private void sweepOrphans(OffsetDateTime updatedBefore, String reason) {
         OffsetDateTime now = OffsetDateTime.now(clock);
-        int failed = transactionImportRepository.failProcessingCreatedBefore(now.minus(ORPHAN_AGE),
-            INTERRUPTED_MESSAGE, now);
-        if (failed > 0) {
-            log.info("{} stale import(s) marked as failed", failed);
+        int reviewed = transactionImportRepository.reviewOrphansWithRows(updatedBefore, now);
+        int failed = transactionImportRepository.failOrphansWithoutRows(updatedBefore, INTERRUPTED_MESSAGE, now);
+        if (reviewed + failed > 0) {
+            log.info("{} import(s): {} moved to review, {} marked as failed", reason, reviewed, failed);
         }
     }
 }

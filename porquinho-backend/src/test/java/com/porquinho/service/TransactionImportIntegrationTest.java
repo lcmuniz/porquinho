@@ -8,6 +8,7 @@ import com.porquinho.dto.TransactionImportResponse;
 import com.porquinho.entity.TransactionImport;
 import com.porquinho.exception.BadRequestException;
 import com.porquinho.exception.ResourceNotFoundException;
+import com.porquinho.repository.AiClassificationHistoryRepository;
 import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.CreditCardRepository;
@@ -35,6 +36,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.config.ScheduledTaskHolder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -47,13 +49,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 
 /**
- * Stories 5.1, 5.3 and 5.4: uploads against the real schema (PostgreSQL via Testcontainers, Flyway V25/V26): the row
+ * Stories 5.1, 5.3, 5.4 and 5.8: uploads against the real schema (PostgreSQL via Testcontainers, Flyway V25/V26): the row
  * and the audit, nothing written on 400/404, the list with the target names, the background processing up to the
  * transactions in REVIEW, the CHECKs, purge order and export. Not @Transactional: each service call commits. Cleans
  * up after each test.
@@ -98,6 +102,13 @@ class TransactionImportIntegrationTest {
     private TransferRepository transferRepository;
     @Autowired
     private AuditLogService auditLogService;
+    @Autowired
+    private TransactionClassificationService classificationService;
+    @Autowired
+    private AiClassificationHistoryRepository aiClassificationHistoryRepository;
+    /** Never the real client: every test here runs without network. Answers nothing unless stubbed. */
+    @MockitoBean
+    private TransactionClassifier classifier;
 
     private final List<UUID> users = new ArrayList<>();
     private UUID userId;
@@ -113,12 +124,14 @@ class TransactionImportIntegrationTest {
             // stops any processing still running: its guarded updates find no PROCESSING row and write nothing
             jdbc.update("UPDATE transaction_imports SET status = 'FAILED' WHERE user_id = ? AND status = 'PROCESSING'", id);
             jdbc.update("DELETE FROM audit_logs WHERE user_id = ?", id);
+            jdbc.update("DELETE FROM ai_classification_history WHERE user_id = ?", id);
             jdbc.update("DELETE FROM transactions WHERE user_id = ?", id);
             jdbc.update("DELETE FROM transfers WHERE user_id = ?", id);
             jdbc.update("DELETE FROM transaction_imports WHERE user_id = ?", id);
             jdbc.update("DELETE FROM account_balance_history WHERE user_id = ?", id);
             jdbc.update("DELETE FROM accounts WHERE user_id = ?", id);
             jdbc.update("DELETE FROM credit_cards WHERE user_id = ?", id);
+            jdbc.update("DELETE FROM categories WHERE user_id = ?", id);
             jdbc.update("DELETE FROM users WHERE id = ?", id);
         }
     }
@@ -570,7 +583,7 @@ class TransactionImportIntegrationTest {
             throw new IllegalStateException("boom");
         }).when(failing).saveAll(any());
         TransactionImportProcessor processor = new TransactionImportProcessor(transactionImportRepository, failing,
-            transferRepository, auditLogService, transactionManager, Clock.systemDefaultZone());
+            transferRepository, auditLogService, classificationService, transactionManager, Clock.systemDefaultZone());
 
         processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx").getBytes());  // not the proxy: runs right here
 
@@ -585,19 +598,24 @@ class TransactionImportIntegrationTest {
     void importThatAlreadyLeftProcessingGetsNoTransactions() throws Exception {
         UUID nubank = account(userId, "Nubank");
         UUID importId = insertProcessing(nubank, "0 seconds", "NUBANK");
-        jdbc.update("UPDATE transaction_imports SET status = 'FAILED', error_message = ? WHERE id = ?",
-            TransactionImportProcessor.INTERRUPTED_MESSAGE, importId);
+        jdbc.update("UPDATE transaction_imports SET status = 'FAILED', error_message = ?, classification_total = 9, "
+            + "classified_count = 4 WHERE id = ?", TransactionImportProcessor.INTERRUPTED_MESSAGE, importId);
         TransactionImportProcessor processor = new TransactionImportProcessor(transactionImportRepository,
-            transactionRepository, transferRepository, auditLogService, transactionManager, Clock.systemDefaultZone());
+            transactionRepository, transferRepository, auditLogService, classificationService, transactionManager, Clock.systemDefaultZone());
 
         processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx").getBytes());  // not the proxy: runs right here
         // the guard of the final update itself, against the real database
-        assertThat(transactionImportRepository.markReadyForReview(importId, 10, 10, 0, 0, 0, java.time.OffsetDateTime.now()))
+        assertThat(transactionImportRepository.recordParsed(importId, 10, 10, 0, 0, 0, java.time.OffsetDateTime.now()))
             .isZero();
+        assertThat(transactionImportRepository.markReadyForReview(importId, java.time.OffsetDateTime.now())).isZero();
+        assertThat(transactionImportRepository.startClassification(importId, 20, java.time.OffsetDateTime.now())).isZero();
+        assertThat(transactionImportRepository.addClassified(importId, 3, java.time.OffsetDateTime.now())).isZero();
 
         Map<String, Object> row = row(importId);
         assertThat(row.get("status")).isEqualTo("FAILED");
         assertThat(row.get("error_message")).isEqualTo(TransactionImportProcessor.INTERRUPTED_MESSAGE);
+        assertThat(row.get("classification_total")).isEqualTo(9);
+        assertThat(row.get("classified_count")).isEqualTo(4);
         assertThat(row.get("total_transactions")).isEqualTo(0);
         assertThat(row.get("imported_transactions")).isEqualTo(0);
         assertThat(row.get("skipped_rows")).isEqualTo(0);
@@ -1116,12 +1134,276 @@ class TransactionImportIntegrationTest {
         });
     }
 
+    // Story 5.8
+
+    /** A group of the user with one child. Returns the child. */
+    private UUID childCategory(UUID owner, String name) {
+        UUID group = UUID.randomUUID();
+        UUID child = UUID.randomUUID();
+        String insert = "INSERT INTO categories (id, user_id, category_name, parent_category_id, color_hex, icon_name, "
+            + "is_system_default) VALUES (?, ?, ?, ?, '#000000', 'tag', FALSE)";
+        jdbc.update(insert, group, owner, "Grupo de " + name, null);
+        jdbc.update(insert, child, owner, name, group);
+        return child;
+    }
+
+    private void everyItemGetsTheFirstCategory(int confidence) {
+        Mockito.when(classifier.classify(any(), any())).thenAnswer(invocation -> {
+            List<TransactionClassifier.Item> items = invocation.getArgument(0);
+            return items.stream()
+                .map(item -> new TransactionClassifier.Result(item.index(), 1, confidence))
+                .toList();
+        });
+    }
+
+    /** doAnswer: stubbing again with when() would run the previous answer. */
+    private void everyItemGets(String categoryName, int confidence) {
+        Mockito.doAnswer(invocation -> {
+            List<TransactionClassifier.Item> items = invocation.getArgument(0);
+            List<TransactionClassifier.CategoryChoice> categories = invocation.getArgument(1);
+            int category = categories.stream().filter(c -> c.name().equals(categoryName)).findFirst().orElseThrow().id();
+            return items.stream()
+                .map(item -> new TransactionClassifier.Result(item.index(), category, confidence))
+                .toList();
+        }).when(classifier).classify(any(), any());
+    }
+
+    @Test
+    void theResponseCarriesTheClassificationProgress() {
+        UUID importId = insertProcessing(account(userId, "Nubank"), "0 seconds", "NUBANK");
+        transactionImportRepository.startClassification(importId, 9, java.time.OffsetDateTime.now());
+        transactionImportRepository.addClassified(importId, 4, java.time.OffsetDateTime.now());
+
+        TransactionImportResponse response = transactionImportService.get(userId, importId);
+
+        assertThat(response.classificationTotal()).isEqualTo(9);
+        assertThat(response.classifiedCount()).isEqualTo(4);
+    }
+
+    @Test
+    void anotherImportOfThePurchaseLeavesTheClassificationOfTheFirstAlone() throws Exception {
+        UUID casa = childCategory(userId, "Casa");
+        UUID lazer = childCategory(userId, "Lazer");
+        UUID nubank = card(userId, "Nubank");
+        everyItemGets("Casa", 88);
+        UUID first = transactionImportService.create(userId, null, nubank, sample("nubank-cartao.csv"), "127.0.0.1").id();
+        assertThat(awaitDone(first).get("status")).isEqualTo("REVIEW");
+        // parcel 2 is new in the group of the first import, so its classification reaches the futures query; 4 confirms
+        MockMultipartFile second = new MockMultipartFile("file", "outro.csv", "text/csv",
+            ("date,title,amount\n2026-09-02,Magazine Luiza - Parcela 2/10,189.90\n"
+                + "2026-11-03,Magazine Luiza - Parcela 4/10,189.90\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        everyItemGets("Lazer", 55);
+
+        UUID other = transactionImportService.create(userId, null, nubank, second, "127.0.0.1").id();
+
+        assertThat(awaitDone(other).get("status")).isEqualTo("REVIEW");
+        String byDescription = "SELECT * FROM transactions WHERE user_id = ? AND description = ?";
+        Map<String, Object> confirmed = jdbc.queryForMap(byDescription, userId, "Magazine Luiza - Parcela 4/10");
+        UUID group = (UUID) confirmed.get("installment_group_id");
+        assertThat(transactionsOf(other)).singleElement().satisfies(t -> {
+            assertThat(t.get("installment_group_id")).isEqualTo(group);
+            assertThat(t.get("category_id")).isEqualTo(lazer);
+            assertThat(t.get("classification_confidence")).isEqualTo(55);
+        });
+        assertThat(confirmed.get("import_id")).isEqualTo(first);
+        assertThat(confirmed.get("is_future_installment")).isEqualTo(false);
+        assertThat(confirmed.get("category_id")).isEqualTo(casa);
+        assertThat(confirmed.get("classification_confidence")).isEqualTo(88);
+        assertThat(futuresOf(first)).filteredOn(t -> group.equals(t.get("installment_group_id"))).hasSize(6)
+            .allSatisfy(t -> {
+                assertThat(t.get("category_id")).isEqualTo(casa);
+                assertThat(t.get("classification_confidence")).isEqualTo(88);
+            });
+
+        // an answer of the first import arriving now: only what is still future changes
+        transactionTemplate.executeWithoutResult(status -> transactionRepository.applyAiClassificationToFutures(first,
+            group, lazer, 40, java.time.OffsetDateTime.now()));
+
+        assertThat(futuresOf(first)).filteredOn(t -> group.equals(t.get("installment_group_id"))).hasSize(6)
+            .allSatisfy(t -> assertThat(t.get("classification_confidence")).isEqualTo(40));
+        for (String description : List.of("Magazine Luiza - Parcela 3/10", "Magazine Luiza - Parcela 4/10")) {
+            Map<String, Object> kept = jdbc.queryForMap(byDescription, userId, description);
+            assertThat(kept.get("category_id")).isEqualTo(casa);
+            assertThat(kept.get("classification_confidence")).isEqualTo(88);
+        }
+    }
+
+    @Test
+    void cardImportIsClassifiedAndTheFuturesInheritBeforeReview() throws Exception {
+        UUID category = childCategory(userId, "Casa");
+        UUID itau = card(userId, "Itaú Visa");
+        everyItemGetsTheFirstCategory(88);
+
+        UUID created = transactionImportService.create(userId, null, itau, sample("itau-cartao.ofx"), "127.0.0.1").id();
+
+        Map<String, Object> row = awaitDone(created);
+        assertThat(row.get("status")).isEqualTo("REVIEW");
+        List<Map<String, Object>> rows = transactionsOf(created);
+        List<Map<String, Object>> regular = rows.stream().filter(t -> "REGULAR".equals(t.get("kind"))).toList();
+        List<Map<String, Object>> payments = rows.stream().filter(t -> "CARD_PAYMENT".equals(t.get("kind"))).toList();
+        assertThat(payments).isNotEmpty().allSatisfy(t -> {
+            assertThat(t.get("category_id")).isNull();
+            assertThat(t.get("classification_source")).isEqualTo("NONE");
+            assertThat(t.get("classification_confidence")).isNull();
+        });
+        assertThat(regular).isNotEmpty().allSatisfy(t -> {
+            assertThat(t.get("category_id")).isEqualTo(category);
+            assertThat(t.get("classification_source")).isEqualTo("AI");
+            assertThat(t.get("classification_confidence")).isEqualTo(88);
+        });
+        assertThat(row.get("classification_total")).isEqualTo(regular.size());
+        assertThat(row.get("classified_count")).isEqualTo(regular.size());
+        assertThat(futuresOf(created)).hasSize(21).allSatisfy(t -> {
+            assertThat(t.get("category_id")).isEqualTo(category);
+            assertThat(t.get("classification_source")).isEqualTo("AI");
+            assertThat(t.get("classification_confidence")).isEqualTo(88);
+        });
+        // only the rows the AI answered: neither the payments nor the futures
+        assertThat(aiClassificationHistoryRepository.findByUserIdOrdered(userId)).hasSize(regular.size());
+    }
+
+    @Test
+    void withTheAiDownTheImportStillReachesReviewAndNoRowIsLost() throws Exception {
+        childCategory(userId, "Casa");
+        UUID nubank = account(userId, "Nubank");
+        Mockito.when(classifier.classify(any(), any())).thenThrow(new IllegalStateException("boom"));
+
+        UUID created = transactionImportService.create(userId, nubank, null, sample("nubank-conta.ofx"), "127.0.0.1").id();
+
+        Map<String, Object> row = awaitDone(created);
+        assertThat(row.get("status")).isEqualTo("REVIEW");
+        // 10 rows, one of them a card payment that does not go to the AI
+        assertThat(row.get("classification_total")).isEqualTo(9);
+        assertThat(row.get("classified_count")).isEqualTo(9);
+        assertThat(transactionsOf(created)).hasSize(10).allSatisfy(t -> {
+            assertThat(t.get("category_id")).isNull();
+            assertThat(t.get("classification_source")).isEqualTo("NONE");
+            assertThat(t.get("classification_confidence")).isEqualTo("REGULAR".equals(t.get("kind")) ? 0 : null);
+        });
+        assertThat(aiClassificationHistoryRepository.findByUserIdOrdered(userId)).isEmpty();
+    }
+
+    @Test
+    void withoutChildCategoriesTheAiIsNotCalled() throws Exception {
+        UUID nubank = account(userId, "Nubank");
+
+        UUID created = transactionImportService.create(userId, nubank, null, sample("nubank-conta.ofx"), "127.0.0.1").id();
+
+        Map<String, Object> row = awaitDone(created);
+        assertThat(row.get("status")).isEqualTo("REVIEW");
+        assertThat(row.get("classification_total")).isEqualTo(0);
+        Mockito.verifyNoInteractions(classifier);
+    }
+
+    @Test
+    void anotherImportOfTheSameTargetDoesNotWaitForTheAi() throws Exception {
+        childCategory(userId, "Casa");
+        UUID nubank = account(userId, "Nubank");
+        CountDownLatch classifying = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        Mockito.when(classifier.classify(any(), any())).thenAnswer(invocation -> {
+            classifying.countDown();
+            release.await(30, TimeUnit.SECONDS);
+            return List.of();
+        });
+        try {
+            UUID first = transactionImportService.create(userId, nubank, null, sample("nubank-conta.ofx"), "127.0.0.1").id();
+            assertThat(classifying.await(10, TimeUnit.SECONDS)).isTrue();
+
+            UUID second = transactionImportService.create(userId, nubank, null, sample("nubank-conta.ofx"), "127.0.0.1").id();
+
+            // the first one is still in the AI call: the second took the lock and saw its rows as duplicates
+            assertThat(awaitDone(second).get("status")).isEqualTo("COMPLETED");
+            Map<String, Object> running = row(first);
+            assertThat(running.get("status")).isEqualTo("PROCESSING");
+            assertThat(running.get("classification_total")).isEqualTo(9);
+            assertThat(running.get("classified_count")).isEqualTo(0);
+            release.countDown();
+            assertThat(awaitDone(first).get("status")).isEqualTo("REVIEW");
+        } finally {
+            release.countDown();
+        }
+    }
+
+    @Test
+    void orphanWithSavedRowsGoesToReviewAndOneWithoutRowsFails() throws Exception {
+        UUID nubank = account(userId, "Nubank");
+        context.publishEvent(new ApplicationReadyEvent(new SpringApplication(), new String[0], context, Duration.ZERO));
+        UUID withRows = insertProcessing(nubank, "20 minutes", "NUBANK");
+        jdbc.update("UPDATE transaction_imports SET imported_transactions = 3, classification_total = 3 WHERE id = ?",
+            withRows);
+        UUID withoutRows = insertProcessing(nubank, "20 minutes", "NUBANK");
+
+        transactionImportProcessor.failStaleImports();
+
+        assertThat(row(withRows).get("status")).isEqualTo("REVIEW");
+        assertThat(row(withRows).get("error_message")).isNull();
+        assertThat(row(withoutRows).get("status")).isEqualTo("FAILED");
+    }
+
+    @Test
+    void importAtStartupWithSavedRowsGoesToReview() throws Exception {
+        UUID nubank = account(userId, "Nubank");
+        UUID withRows = insertProcessing(nubank, "1 day", "NUBANK");
+        jdbc.update("UPDATE transaction_imports SET imported_transactions = 3 WHERE id = ?", withRows);
+
+        context.publishEvent(new ApplicationReadyEvent(new SpringApplication(), new String[0], context, Duration.ZERO));
+
+        assertThat(row(withRows).get("status")).isEqualTo("REVIEW");
+    }
+
+    @Test
+    void longImportWithFreshBatchesIsNotSwept() throws Exception {
+        UUID nubank = account(userId, "Nubank");
+        context.publishEvent(new ApplicationReadyEvent(new SpringApplication(), new String[0], context, Duration.ZERO));
+        UUID running = insertProcessing(nubank, "1 hour", "NUBANK");
+        jdbc.update("UPDATE transaction_imports SET classification_total = 3 WHERE id = ?", running);
+        assertThat(transactionImportRepository.addClassified(running, 1, java.time.OffsetDateTime.now())).isEqualTo(1);
+
+        transactionImportProcessor.failStaleImports();
+
+        assertThat(row(running).get("status")).isEqualTo("PROCESSING");
+        assertThat(row(running).get("classified_count")).isEqualTo(1);
+    }
+
+    @Test
+    void historyIsPurgedBeforeTheTransactionsAndExportedWithEveryColumn() throws Exception {
+        childCategory(userId, "Casa");
+        UUID nubank = account(userId, "Nubank");
+        everyItemGetsTheFirstCategory(92);
+        UUID created = transactionImportService.create(userId, nubank, null, sample("nubank-conta.ofx"), "127.0.0.1").id();
+        assertThat(awaitDone(created).get("status")).isEqualTo("REVIEW");
+
+        @SuppressWarnings("unchecked")
+        var exported = (List<Map<String, Object>>) dataExportService.collectUserData(userId).get("ai_classification_history");
+        assertThat(exported).hasSize(9);  // the card payment does not go to the AI
+        assertThat(exported.get(0)).containsOnlyKeys("id", "user_id", "transaction_id", "predicted_category_id",
+            "confidence", "was_corrected", "corrected_category_id", "created_at");
+
+        // the FK from the history blocks deleting the transactions first
+        assertThatThrownBy(() -> jdbc.update("DELETE FROM transactions WHERE user_id = ?", userId))
+            .isInstanceOf(DataIntegrityViolationException.class);
+        transactionTemplate.executeWithoutResult(status -> {
+            assertThat(aiClassificationHistoryRepository.deleteByUserId(userId)).isEqualTo(9);
+            assertThat(transactionRepository.deleteByUserId(userId)).isEqualTo(10);
+        });
+    }
+
+    @Test
+    void progressCannotPassTheTotal() throws Exception {
+        UUID nubank = account(userId, "Nubank");
+        UUID running = insertProcessing(nubank, "0 seconds", "NUBANK");
+
+        assertThatThrownBy(() -> transactionImportRepository.addClassified(running, 1, java.time.OffsetDateTime.now()))
+            .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
     private UUID insertProcessing(UUID accountId, String age, String bank) {
         UUID id = UUID.randomUUID();
         jdbc.update("INSERT INTO transaction_imports (id, user_id, account_id, file_name, file_type, file_size_kb, "
             + "bank_name, status, created_at, updated_at) "
-            + "VALUES (?, ?, ?, 'x.ofx', 'OFX', 1, ?, 'PROCESSING', now() - ?::interval, now())",
-            id, userId, accountId, bank, age);
+            + "VALUES (?, ?, ?, 'x.ofx', 'OFX', 1, ?, 'PROCESSING', now() - ?::interval, now() - ?::interval)",
+            id, userId, accountId, bank, age, age);
         return id;
     }
 

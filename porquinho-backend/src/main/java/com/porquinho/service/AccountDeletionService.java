@@ -12,6 +12,7 @@ import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountDeletionRepository;
 import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.AccountRepository;
+import com.porquinho.repository.AiClassificationHistoryRepository;
 import com.porquinho.repository.CategoryRepository;
 import com.porquinho.repository.CreditCardRepository;
 import com.porquinho.repository.GoalRepository;
@@ -57,7 +58,7 @@ import java.util.UUID;
  * - Each AccountDeletion is processed in its own transaction (REQUIRES_NEW) so a single
  *   failure does not block the queue.
  * - Hard-deletes data_exports, user_sessions, audit_logs, billing_transactions, subscriptions,
- *   onboarding_progress, transactions, transaction_imports, transfers, reconciliation_history,
+ *   onboarding_progress, ai_classification_history, transactions, transaction_imports, transfers, reconciliation_history,
  *   account_balance_history, accounts, credit_cards, categories, goals, users
  *   (in that order, native SQL to bypass @Where filters on User and UserSession; billing_transactions
  *   has FKs to subscriptions and users, so it goes before both).
@@ -96,6 +97,7 @@ public class AccountDeletionService {
     private final ReconciliationRepository reconciliationRepository;
     private final TransactionImportRepository transactionImportRepository;
     private final TransactionRepository transactionRepository;
+    private final AiClassificationHistoryRepository aiClassificationHistoryRepository;
 
     @Value("${app.export.directory:./exports}")
     private String exportDirectory;
@@ -133,6 +135,7 @@ public class AccountDeletionService {
             ReconciliationRepository reconciliationRepository,
             TransactionImportRepository transactionImportRepository,
             TransactionRepository transactionRepository,
+            AiClassificationHistoryRepository aiClassificationHistoryRepository,
             @Lazy AccountDeletionService self) {
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -158,6 +161,7 @@ public class AccountDeletionService {
         this.reconciliationRepository = reconciliationRepository;
         this.transactionImportRepository = transactionImportRepository;
         this.transactionRepository = transactionRepository;
+        this.aiClassificationHistoryRepository = aiClassificationHistoryRepository;
         this.self = self;
     }
 
@@ -364,6 +368,7 @@ public class AccountDeletionService {
         billingTransactionRepository.deleteByUserId(userId);  // Story 2.6: FKs to subscriptions and users
         subscriptionRepository.deleteByUserId(userId);  // Story 2.1: FK to users, must go first
         onboardingProgressRepository.deleteByUserId(userId);  // Story 3.1: FK to users
+        aiClassificationHistoryRepository.deleteByUserId(userId);  // Story 5.8: FKs to transactions, categories and users
         transactionRepository.deleteByUserId(userId);  // Story 5.4: FKs to imports, accounts, cards, categories and users
         transactionImportRepository.deleteByUserId(userId);  // Story 5.1: FKs to accounts, credit_cards and users
         transferRepository.deleteByUserId(userId);  // Story 4.5: FKs to accounts and users (removed transfers too)

@@ -67,6 +67,14 @@ public class TransactionImport {
     @Column(name = "skipped_rows", nullable = false)
     private int skippedRows;
 
+    /** Rows sent to the AI: the Y of "X de Y" (Story 5.8). */
+    @Column(name = "classification_total", nullable = false)
+    private int classificationTotal;
+
+    /** Rows of the finished batches, failed ones included: the X of "X de Y" (Story 5.8). */
+    @Column(name = "classified_count", nullable = false)
+    private int classifiedCount;
+
     @Column(name = "error_message", length = 500)
     private String errorMessage;
 
@@ -142,6 +150,12 @@ public class TransactionImport {
 
     public int getSkippedRows() { return skippedRows; }
     public void setSkippedRows(int skippedRows) { this.skippedRows = skippedRows; }
+
+    public int getClassificationTotal() { return classificationTotal; }
+    public void setClassificationTotal(int classificationTotal) { this.classificationTotal = classificationTotal; }
+
+    public int getClassifiedCount() { return classifiedCount; }
+    public void setClassifiedCount(int classifiedCount) { this.classifiedCount = classifiedCount; }
 
     public String getErrorMessage() { return errorMessage; }
     public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
