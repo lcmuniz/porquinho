@@ -181,3 +181,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-8-auto-classify-transactions-using-ai.md`
   summary: Conferir na primeira execução com chave real que `anthropic.api-key` chega ao cliente.
   evidence: nenhum teste exercita o construtor de produção; um erro de digitação deixa tudo "Não classificado", só com um WARN na subida.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-8-auto-classify-transactions-using-ai.md`
+  summary: NFR7 medido com chave real depois da revisão da 2A; falta só observar a primeira chamada depois de subir o backend e a precisão em extratos reais.
+  evidence: 4 chamadas simultâneas de 25 levaram 3,3 s na primeira rodada (fora da meta) e 2,0–2,2 s nas seguintes. A amostra tinha descrições fictícias e fáceis, então não mede a meta de 85%.

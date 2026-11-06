@@ -26,6 +26,9 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -228,14 +231,14 @@ class TransactionClassificationServiceTest {
     }
 
     @Test
-    void twoHundredAndFiftyRowsGoInThreeBatchesAndTheProgressFollows() {
+    void twoHundredAndFiftyRowsGoInThreeBatchesOfCallsOf25AndTheProgressFollows() {
         withGroupedCategories();
         rows(250);
         when(classifier.classify(any(), any())).thenReturn(List.of());
 
         service.classify(importId, userId, false);
 
-        verify(classifier, times(3)).classify(any(), any());
+        verify(classifier, times(10)).classify(any(), any());
         InOrder order = inOrder(importRepository);
         order.verify(importRepository).startClassification(importId, 250, now);
         order.verify(importRepository, times(2)).addClassified(importId, 100, now);
@@ -246,10 +249,18 @@ class TransactionClassificationServiceTest {
     void aFailedBatchDoesNotStopTheNextOnes() {
         withGroupedCategories();
         List<Transaction> rows = rows(250);
-        when(classifier.classify(any(), any()))
-            .thenReturn(List.of(result(0, 2, 90)))
-            .thenThrow(new IllegalStateException("timeout"))
-            .thenReturn(List.of(result(0, 1, 85)));
+        // the calls of a batch run at the same time, so the answer goes by the rows of the call
+        when(classifier.classify(any(), any())).thenAnswer(invocation -> {
+            List<TransactionClassifier.Item> items = invocation.getArgument(0);
+            String description = items.get(0).description();
+            if (description.equals("COMPRA 100")) {
+                throw new IllegalStateException("timeout");
+            }
+            if (description.equals("COMPRA 0")) {
+                return List.of(result(0, 2, 90));
+            }
+            return description.equals("COMPRA 200") ? List.of(result(0, 1, 85)) : List.of();
+        });
 
         service.classify(importId, userId, false);
 
@@ -272,12 +283,67 @@ class TransactionClassificationServiceTest {
 
         assertThatCode(() -> service.classify(importId, userId, false)).doesNotThrowAnyException();
 
-        verify(classifier, times(3)).classify(any(), any());
+        verify(classifier, times(10)).classify(any(), any());
         verify(transactionRepository).applyAiClassification(rows.get(0).getId(), mercado, 90, now);
         assertNothingWrittenTo(rows.get(100));
         verify(transactionRepository).applyAiClassification(rows.get(200).getId(), mercado, 90, now);
         verify(transactionManager).rollback(any());
         verify(transactionManager, times(2)).commit(any());
+    }
+
+    @Test
+    void theFourCallsOfABatchRunAtTheSameTime() {
+        withGroupedCategories();
+        rows(100);
+        CountDownLatch allStarted = new CountDownLatch(4);
+        AtomicInteger together = new AtomicInteger();
+        when(classifier.classify(any(), any())).thenAnswer(invocation -> {
+            allStarted.countDown();
+            if (allStarted.await(5, TimeUnit.SECONDS)) {
+                together.incrementAndGet();
+            }
+            return List.of();
+        });
+
+        service.classify(importId, userId, false);
+
+        assertThat(together).hasValue(4);
+    }
+
+    @Test
+    void aFailedCallLeavesOnlyItsRowsUnclassified() {
+        withGroupedCategories();
+        List<Transaction> rows = rows(100);
+        when(classifier.classify(any(), any())).thenAnswer(invocation -> {
+            List<TransactionClassifier.Item> items = invocation.getArgument(0);
+            int first = items.get(0).index();
+            if (first == 25) {
+                throw new IllegalStateException("timeout");
+            }
+            return List.of(result(first, 2, 90));
+        });
+
+        service.classify(importId, userId, false);
+
+        verify(transactionRepository).applyAiClassification(rows.get(0).getId(), mercado, 90, now);
+        assertNothingWrittenTo(rows.get(25));
+        verify(transactionRepository).applyAiClassification(rows.get(50).getId(), mercado, 90, now);
+        verify(transactionRepository).applyAiClassification(rows.get(75).getId(), mercado, 90, now);
+        verify(importRepository).addClassified(importId, 100, now);
+    }
+
+    @Test
+    void anIndexOfAnotherCallIsDiscarded() {
+        withGroupedCategories();
+        List<Transaction> rows = rows(50);
+        when(classifier.classify(any(), any())).thenAnswer(invocation -> {
+            List<TransactionClassifier.Item> items = invocation.getArgument(0);
+            return items.get(0).index() == 0 ? List.of(result(30, 2, 90)) : List.of();
+        });
+
+        service.classify(importId, userId, false);
+
+        assertNothingWrittenTo(rows.get(30));
     }
 
     @Test
@@ -385,7 +451,7 @@ class TransactionClassificationServiceTest {
 
         service.classify(importId, userId, false);
 
-        verify(classifier, times(1)).classify(any(), any());
+        verify(classifier, times(4)).classify(any(), any());
         verify(transactionRepository, never()).applyAiClassification(any(), any(), anyInt(), any());
     }
 

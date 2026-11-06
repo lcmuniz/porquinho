@@ -51,7 +51,7 @@ context:
 | Sem categoria | IA devolve nenhuma, 30 | `NONE`, confiança 0, histórico com categoria nula |
 | Categoria fora da lista | id que não foi enviado | item descartado: `NONE`, 0, sem histórico |
 | Item faltando | IA responde 99 de 100 | a linha faltante fica `NONE`, 0 |
-| 250 transações | 3 lotes | 3 chamadas; X vai a 100, 200, 250 |
+| 250 transações | 3 lotes | 10 chamadas (4 + 4 + 2); X vai a 100, 200, 250 |
 | Segundo lote falha | timeout no lote 2 de 3 | lotes 1 e 3 aplicados; lote 2 `NONE`, 0; `REVIEW` |
 | Sem chave | `ANTHROPIC_API_KEY` vazia | nenhuma chamada; todas `NONE`, 0; `REVIEW` |
 | Só pagamento de fatura | todas `CARD_PAYMENT` | nenhuma chamada, Y = 0, `REVIEW` |
@@ -65,7 +65,7 @@ context:
 ## Decisões
 
 - **1A — parcelas futuras (Luiz, 2026-11-06):** as futuras criadas pela importação herdam categoria, origem e confiança da parcela do arquivo no mesmo grupo e na mesma importação. Não vão para a IA, não contam em Y e não geram histórico.
-- **2A — NFR7 (Luiz, 2026-11-06):** a story entrega lotes sequenciais de até 100, sem teste de tempo real. O NFR7 fica pendente até haver `ANTHROPIC_API_KEY`, registrado em deferred-work.
+- **2A — NFR7 (Luiz, 2026-11-06, revista depois da medição):** com a chave real, 100 transações numa chamada levaram de 5,5 a 6,7 s. Cada lote de 100 passa a sair em 4 chamadas simultâneas de até 25. Os lotes continuam sequenciais, e o progresso e a transação continuam por lote. Uma chamada com falha deixa só as suas linhas "Não classificado".
 - **Tamanho (Luiz, 2026-11-06):** a spec fica inteira, sem dividir (como na 5.6 e na 5.7).
 
 </frozen-after-approval>
@@ -125,6 +125,8 @@ Prefixos: `B` = `porquinho-backend/src/main/java/com/porquinho`, `T` = `porquinh
 - Verificação final: backend 1224 testes, 0 falhas (JDK 21); frontend 629 testes, lint sem erros, `vue-tsc` limpo. Nenhuma chamada real à API da Anthropic (2A).
 
 ## Spec Change Log
+
+- **Depois da entrega (2026-11-06):** medição com chave real reprovou o NFR7 (5,5–6,7 s por lote de 100) → o humano reviu a 2A para 4 chamadas simultâneas de 25. Emendado: decisão 2A e a linha "250 transações" da matriz. Medido depois da mudança, pelo `TransactionClassificationService` com o classificador real e repositórios simulados: 3,3 s na primeira rodada e 2,0–2,2 s nas três seguintes, 100 de 100 aplicadas. KEEP: lotes sequenciais, progresso e transação por lote.
 
 ## Review Triage Log
 
