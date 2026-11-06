@@ -7,6 +7,7 @@ import com.porquinho.dto.CreateCreditCardRequest;
 import com.porquinho.dto.TransactionImportResponse;
 import com.porquinho.entity.TransactionImport;
 import com.porquinho.exception.BadRequestException;
+import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AiClassificationHistoryRepository;
 import com.porquinho.repository.AccountBalanceHistoryRepository;
@@ -49,8 +50,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -106,6 +109,8 @@ class TransactionImportIntegrationTest {
     private TransactionClassificationService classificationService;
     @Autowired
     private AiClassificationHistoryRepository aiClassificationHistoryRepository;
+    @Autowired
+    private TransactionImportReviewService reviewService;
     /** Never the real client: every test here runs without network. Answers nothing unless stubbed. */
     @MockitoBean
     private TransactionClassifier classifier;
@@ -1396,6 +1401,183 @@ class TransactionImportIntegrationTest {
 
         assertThatThrownBy(() -> transactionImportRepository.addClassified(running, 1, java.time.OffsetDateTime.now()))
             .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    private long activeRows(UUID owner) {
+        return jdbc.queryForObject("SELECT COUNT(*) FROM transactions WHERE user_id = ? AND deleted_at IS NULL", Long.class,
+            owner);
+    }
+
+    /** Parcela 4/10 of the purchase in nubank-cartao.csv plus, when {@code extra}, a purchase of its own. */
+    private static MockMultipartFile novemberCsv(boolean extra) {
+        String content = "date,title,amount\n2026-11-03,Magazine Luiza - Parcela 4/10,189.90\n"
+            + (extra ? "2026-11-04,Padaria do Bairro,12.50\n" : "");
+        return new MockMultipartFile("file", "nov.csv", "text/csv", content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    private Map<String, Object> fourthInstallment() {
+        return jdbc.queryForMap("SELECT * FROM transactions WHERE user_id = ? AND deleted_at IS NULL "
+            + "AND description = 'Magazine Luiza - Parcela 4/10'", userId);
+    }
+
+    /** Story 5.9: the discarded rows are no duplicates, so the same file comes in again, and only once. */
+    @Test
+    void discardedFileCanBeSentAgainWithoutDuplicates() throws Exception {
+        UUID nubank = account(userId, "Nubank");
+        UUID first = transactionImportService.create(userId, nubank, null, sample("nubank-conta.ofx"), "127.0.0.1").id();
+        Map<String, Object> reviewed = awaitDone(first);
+        assertThat(reviewed.get("status")).isEqualTo("REVIEW");
+        long rows = activeRows(userId);
+
+        reviewService.discard(userId, first, "127.0.0.1");
+
+        assertThat(activeRows(userId)).isZero();
+        assertThat(transactionImportService.get(userId, first).status()).isEqualTo("DISCARDED");
+
+        UUID second = transactionImportService.create(userId, nubank, null, sample("nubank-conta.ofx"), "127.0.0.1").id();
+
+        Map<String, Object> again = awaitDone(second);
+        assertThat(again.get("status")).isEqualTo("REVIEW");
+        assertThat(again.get("imported_transactions")).isEqualTo(reviewed.get("imported_transactions"));
+        assertThat(again.get("duplicates_found")).isEqualTo(0);
+        assertThat(activeRows(userId)).isEqualTo(rows);
+    }
+
+    /** Story 5.9: a discarded card file takes its future installments with it, and the same file creates them again. */
+    @Test
+    void discardedCardFileTakesItsFuturesAndComesBackWhole() throws Exception {
+        UUID nubank = card(userId, "Nubank");
+        UUID first = transactionImportService.create(userId, null, nubank, sample("nubank-cartao.csv"), "127.0.0.1").id();
+        assertThat(awaitDone(first).get("status")).isEqualTo("REVIEW");
+        long rows = activeRows(userId);
+        int futures = futuresOf(first).size();
+        assertThat(futures).isPositive();
+
+        reviewService.discard(userId, first, "127.0.0.1");
+
+        assertThat(activeRows(userId)).isZero();
+
+        UUID second = transactionImportService.create(userId, null, nubank, sample("nubank-cartao.csv"), "127.0.0.1").id();
+
+        assertThat(awaitDone(second).get("duplicates_found")).isEqualTo(0);
+        assertThat(futuresOf(second)).hasSize(futures);
+        assertThat(activeRows(userId)).isEqualTo(rows);
+    }
+
+    /** Story 5.9, decision 3A: the real pipeline writes the mark, and the confirmed row survives its creator. */
+    @Test
+    void discardingTheCreatorLeavesTheConfirmedInstallmentWithTheCompletedConfirmer() throws Exception {
+        UUID nubank = card(userId, "Nubank");
+        UUID creator = transactionImportService.create(userId, null, nubank, sample("nubank-cartao.csv"), "127.0.0.1").id();
+        assertThat(awaitDone(creator).get("status")).isEqualTo("REVIEW");
+        UUID confirmer = transactionImportService.create(userId, null, nubank, novemberCsv(false), "127.0.0.1").id();
+        assertThat(awaitDone(confirmer).get("status")).isEqualTo("COMPLETED");
+        assertThat(fourthInstallment().get("confirmed_by_import_id")).isEqualTo(confirmer);
+
+        reviewService.discard(userId, creator, "127.0.0.1");
+
+        Map<String, Object> confirmed = fourthInstallment();
+        assertThat(confirmed.get("import_id")).isEqualTo(confirmer);
+        assertThat(confirmed.get("review_status")).isEqualTo("CONFIRMED");
+        assertThat(activeRows(userId)).isEqualTo(1);
+    }
+
+    /** Story 5.9, decision 3A: discarding the confirmer gives the future back, and the same file confirms it again. */
+    @Test
+    void discardingTheConfirmerGivesTheFutureBackAndTheFileConfirmsItAgain() throws Exception {
+        UUID nubank = card(userId, "Nubank");
+        UUID creator = transactionImportService.create(userId, null, nubank, sample("nubank-cartao.csv"), "127.0.0.1").id();
+        assertThat(awaitDone(creator).get("status")).isEqualTo("REVIEW");
+        long rows = activeRows(userId);
+        UUID confirmer = transactionImportService.create(userId, null, nubank, novemberCsv(true), "127.0.0.1").id();
+        assertThat(awaitDone(confirmer).get("status")).isEqualTo("REVIEW");
+
+        reviewService.discard(userId, confirmer, "127.0.0.1");
+
+        Map<String, Object> reverted = fourthInstallment();
+        assertThat(reverted.get("is_future_installment")).isEqualTo(true);
+        assertThat(reverted.get("import_id")).isEqualTo(creator);
+        assertThat(reverted.get("confirmed_by_import_id")).isNull();
+        assertThat(reverted.get("transaction_date").toString()).isEqualTo("2026-11-03");
+        assertThat(activeRows(userId)).isEqualTo(rows);
+
+        UUID again = transactionImportService.create(userId, null, nubank, novemberCsv(true), "127.0.0.1").id();
+
+        Map<String, Object> row = awaitDone(again);
+        assertThat(row.get("status")).isEqualTo("REVIEW");
+        assertThat(row.get("imported_transactions")).isEqualTo(1);
+        assertThat(row.get("duplicates_found")).isEqualTo(1);
+        Map<String, Object> confirmed = fourthInstallment();
+        assertThat(confirmed.get("is_future_installment")).isEqualTo(false);
+        assertThat(confirmed.get("import_id")).isEqualTo(creator);
+        assertThat(confirmed.get("confirmed_by_import_id")).isEqualTo(again);
+        assertThat(activeRows(userId)).isEqualTo(rows + 1);
+    }
+
+    /** Runs {@code lock} in a transaction of its own and returns with it held; commits after {@code release}. */
+    private CompletableFuture<Void> holding(Runnable lock, CountDownLatch release, Runnable beforeCommit)
+        throws InterruptedException {
+        CountDownLatch held = new CountDownLatch(1);
+        CompletableFuture<Void> holder = CompletableFuture.runAsync(() -> transactionTemplate.executeWithoutResult(status -> {
+            lock.run();
+            held.countDown();
+            try {
+                release.await(30, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            beforeCommit.run();
+        }));
+        assertThat(held.await(10, TimeUnit.SECONDS)).isTrue();
+        return holder;
+    }
+
+    /** Story 5.9: a file of the same target being saved holds the advisory lock, and the discard waits for it. */
+    @Test
+    void discardWaitsForTheAdvisoryLockOfTheTarget() throws Exception {
+        UUID nubank = account(userId, "Nubank");
+        UUID id = transactionImportService.create(userId, nubank, null, sample("nubank-conta.ofx"), "127.0.0.1").id();
+        assertThat(awaitDone(id).get("status")).isEqualTo("REVIEW");
+        CountDownLatch release = new CountDownLatch(1);
+        try {
+            CompletableFuture<Void> holder = holding(
+                () -> transactionImportRepository.lockTarget(TransactionImportProcessor.lockKey(nubank)), release, () -> { });
+
+            CompletableFuture<Void> discard = CompletableFuture.runAsync(() -> reviewService.discard(userId, id, "127.0.0.1"));
+
+            assertThatThrownBy(() -> discard.get(500, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+            assertThat(row(id).get("status")).isEqualTo("REVIEW");
+            release.countDown();
+            discard.get(10, TimeUnit.SECONDS);
+            holder.get(10, TimeUnit.SECONDS);
+            assertThat(row(id).get("status")).isEqualTo("DISCARDED");
+        } finally {
+            release.countDown();
+        }
+    }
+
+    /** Story 5.9: the approval waits for the import row and reads the status left there, here a discard: 409. */
+    @Test
+    void approvalWaitsForTheImportRowAndSeesTheStatusLeftThere() throws Exception {
+        UUID nubank = account(userId, "Nubank");
+        UUID id = transactionImportService.create(userId, nubank, null, sample("nubank-conta.ofx"), "127.0.0.1").id();
+        assertThat(awaitDone(id).get("status")).isEqualTo("REVIEW");
+        CountDownLatch release = new CountDownLatch(1);
+        try {
+            CompletableFuture<Void> holder = holding(
+                () -> jdbc.queryForList("SELECT id FROM transaction_imports WHERE id = ? FOR UPDATE", id), release,
+                () -> jdbc.update("UPDATE transaction_imports SET status = 'DISCARDED' WHERE id = ?", id));
+
+            CompletableFuture<Void> approval = CompletableFuture.runAsync(
+                () -> reviewService.approveHighConfidence(userId, id, "127.0.0.1"));
+
+            assertThatThrownBy(() -> approval.get(500, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+            release.countDown();
+            assertThatThrownBy(() -> approval.get(10, TimeUnit.SECONDS)).hasCauseInstanceOf(ConflictException.class);
+            holder.get(10, TimeUnit.SECONDS);
+        } finally {
+            release.countDown();
+        }
     }
 
     private UUID insertProcessing(UUID accountId, String age, String bank) {

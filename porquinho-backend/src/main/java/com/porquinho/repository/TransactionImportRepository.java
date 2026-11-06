@@ -1,8 +1,10 @@
 package com.porquinho.repository;
 
 import com.porquinho.entity.TransactionImport;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -45,6 +47,14 @@ public interface TransactionImportRepository extends JpaRepository<TransactionIm
 
     /** One of the user's imports; empty when it does not exist or belongs to someone else (Story 5.3). */
     Optional<TransactionImport> findByIdAndUserId(UUID id, UUID userId);
+
+    /**
+     * Same as {@link #findByIdAndUserId}, with the row locked until the end of the transaction: the status read stays
+     * true while the batch approval of Story 5.9 runs, even with a discard at the same time.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT i FROM TransactionImport i WHERE i.id = :id AND i.userId = :userId")
+    Optional<TransactionImport> findByIdAndUserIdForUpdate(@Param("id") UUID id, @Param("userId") UUID userId);
 
     /**
      * Records the detected bank while the import is still PROCESSING (Story 5.3, decision 1A: the status stays
@@ -104,6 +114,14 @@ public interface TransactionImportRepository extends JpaRepository<TransactionIm
         + "i.updatedAt = :now "
         + "WHERE i.id = :id AND i.status = com.porquinho.entity.TransactionImport.Status.PROCESSING")
     int markReadyForReview(@Param("id") UUID id, @Param("now") OffsetDateTime now);
+
+    /** Discards an import under review (Story 5.9). Returns 0 when it is not in REVIEW. */
+    @Transactional
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE TransactionImport i SET i.status = com.porquinho.entity.TransactionImport.Status.DISCARDED, "
+        + "i.updatedAt = :now "
+        + "WHERE i.id = :id AND i.status = com.porquinho.entity.TransactionImport.Status.REVIEW")
+    int markDiscarded(@Param("id") UUID id, @Param("now") OffsetDateTime now);
 
     /**
      * Story 5.5, decision 1A: every entry was a duplicate or an already registered transfer, so nothing is saved and

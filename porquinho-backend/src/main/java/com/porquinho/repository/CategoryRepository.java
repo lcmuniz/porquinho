@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -35,6 +36,10 @@ public interface CategoryRepository extends JpaRepository<Category, UUID> {
 
     /** Every row of the user, removed ones included (LGPD export). */
     List<Category> findByUserIdOrderByCreatedAtAsc(UUID userId);
+
+    /** The user's categories among {@code ids}, removed ones included: the review shows the name saved (Story 5.9). */
+    @Query("SELECT c FROM Category c WHERE c.userId = :userId AND c.id IN :ids")
+    List<Category> findByUserIdAndIdIn(@Param("userId") UUID userId, @Param("ids") Collection<UUID> ids);
 
     /**
      * Hard-delete the user's categories (LGPD account purge, Story 3.4). A single statement, so the

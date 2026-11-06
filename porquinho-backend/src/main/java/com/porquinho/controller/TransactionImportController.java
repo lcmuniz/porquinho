@@ -1,6 +1,9 @@
 package com.porquinho.controller;
 
+import com.porquinho.dto.ImportReviewActionResponse;
+import com.porquinho.dto.ImportTransactionResponse;
 import com.porquinho.dto.TransactionImportResponse;
+import com.porquinho.service.TransactionImportReviewService;
 import com.porquinho.service.TransactionImportService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
@@ -21,16 +24,20 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Bank statement uploads (Story 5.1), used by the /importar page. The user always comes from the JWT.
+ * Bank statement uploads (Story 5.1), used by the /importar page, and their review (Story 5.9). The user always comes
+ * from the JWT.
  */
 @RestController
 @RequestMapping("/api/v1/imports")
 public class TransactionImportController {
 
     private final TransactionImportService transactionImportService;
+    private final TransactionImportReviewService transactionImportReviewService;
 
-    public TransactionImportController(TransactionImportService transactionImportService) {
+    public TransactionImportController(TransactionImportService transactionImportService,
+                                       TransactionImportReviewService transactionImportReviewService) {
         this.transactionImportService = transactionImportService;
+        this.transactionImportReviewService = transactionImportReviewService;
     }
 
     /** The user's 20 most recent imports, with the target name. */
@@ -60,5 +67,29 @@ public class TransactionImportController {
     @GetMapping("/{id}")
     public ResponseEntity<TransactionImportResponse> get(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
         return ResponseEntity.ok(transactionImportService.get(UUID.fromString(jwt.getSubject()), id));
+    }
+
+    /** The rows of an import for the review, without the future installments (Story 5.9). 404 if not the user's. */
+    @GetMapping("/{id}/transactions")
+    public ResponseEntity<List<ImportTransactionResponse>> transactions(@AuthenticationPrincipal Jwt jwt,
+                                                                        @PathVariable UUID id) {
+        return ResponseEntity.ok(transactionImportReviewService.list(UUID.fromString(jwt.getSubject()), id));
+    }
+
+    /** Approves the high-confidence rows (Story 5.9). 404 if not the user's; 409 outside REVIEW. */
+    @PostMapping("/{id}/approve-high-confidence")
+    public ResponseEntity<ImportReviewActionResponse> approveHighConfidence(@AuthenticationPrincipal Jwt jwt,
+                                                                            @PathVariable UUID id,
+                                                                            HttpServletRequest httpRequest) {
+        return ResponseEntity.ok(transactionImportReviewService.approveHighConfidence(
+            UUID.fromString(jwt.getSubject()), id, httpRequest.getRemoteAddr()));
+    }
+
+    /** Discards an import under review (Story 5.9). 404 if not the user's; 409 outside REVIEW. */
+    @PostMapping("/{id}/discard")
+    public ResponseEntity<ImportReviewActionResponse> discard(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
+                                                              HttpServletRequest httpRequest) {
+        return ResponseEntity.ok(transactionImportReviewService.discard(
+            UUID.fromString(jwt.getSubject()), id, httpRequest.getRemoteAddr()));
     }
 }

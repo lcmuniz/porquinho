@@ -43,3 +43,43 @@ export type BankCode = 'NUBANK' | 'BANCO_DO_BRASIL' | 'ITAU' | 'BRADESCO' | 'CAI
 
 /** Destino escolhido antes do envio (decisão D2 do Epic 5). */
 export type ImportTarget = { kind: 'account'; id: string } | { kind: 'card'; id: string }
+
+/** Estado da linha na revisão (Story 5.9): APPROVED pelo "Aprovar todas"; CONFIRMED com a importação concluída. */
+export type ImportReviewStatus = 'PENDING' | 'APPROVED' | 'CONFIRMED'
+
+/** Detalhes do Pix (Story 5.6), com as chaves como foram gravadas. */
+export interface PixDetails {
+  direction: 'SENT' | 'RECEIVED'
+  counterpart_name?: string
+}
+
+/** Uma linha da importação na revisão (Story 5.9). As parcelas futuras não vêm na lista (decisão 2A). */
+export interface ImportTransaction {
+  id: string
+  /** Data sem hora (AAAA-MM-DD): formatar com `formatLocalDateBR`. */
+  date: string
+  description: string
+  /** Sempre positivo; o sentido está em `type`. */
+  amount: number
+  type: 'DEBIT' | 'CREDIT'
+  kind: 'REGULAR' | 'CARD_PAYMENT'
+  /** Resolvida no backend, inclusive categoria removida; null sem categoria. `group` é o nome da categoria pai. */
+  category: { id: string; name: string; group: string | null } | null
+  source: 'AI' | 'PATTERN' | 'USER' | 'NONE'
+  /** De 0 a 100; null em CARD_PAYMENT e em linhas anteriores à Story 5.8. */
+  confidence: number | null
+  reviewStatus: ImportReviewStatus
+  isPix: boolean
+  pixDetails: PixDetails | null
+  isInstallment: boolean
+  installmentNumber: number | null
+  installmentTotal: number | null
+  isFutureInstallment: boolean
+}
+
+/** Resultado de aprovar ou descartar: o status da importação e quantas linhas foram afetadas (Story 5.9). */
+export interface ImportReviewActionResult {
+  importId: string
+  status: TransactionImportStatus
+  affectedTransactions: number
+}

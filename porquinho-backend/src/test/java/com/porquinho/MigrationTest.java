@@ -251,6 +251,19 @@ class MigrationTest {
     }
 
     @Test
+    void v29ShouldAcceptApprovedAndIndexTheConfirmingImport() {
+        String check = jdbcTemplate.queryForObject(
+            "SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'transactions_review_status_check'",
+            String.class);
+        assertThat(check).contains("PENDING").contains("APPROVED").contains("CONFIRMED");
+
+        Integer index = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM pg_indexes WHERE tablename = 'transactions' " +
+            "AND indexname = 'idx_transactions_confirmed_by_import_id'", Integer.class);
+        assertThat(index).isEqualTo(1);
+    }
+
+    @Test
     void v26ShouldCreateTransactionsTable() {
         java.util.Map<String, String> expected = new java.util.LinkedHashMap<>();
         expected.put("id", "uuid");
@@ -277,6 +290,7 @@ class MigrationTest {
         expected.put("installment_total", "integer");
         expected.put("installment_group_id", "uuid");
         expected.put("is_future_installment", "boolean");
+        expected.put("confirmed_by_import_id", "uuid"); // V29
         expected.put("created_at", "timestamp with time zone");
         expected.put("updated_at", "timestamp with time zone");
         expected.put("deleted_at", "timestamp with time zone");
@@ -301,7 +315,7 @@ class MigrationTest {
         Integer foreignKeys = jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM information_schema.table_constraints " +
             "WHERE table_name = 'transactions' AND constraint_type = 'FOREIGN KEY'", Integer.class);
-        assertThat(foreignKeys).isEqualTo(5);
+        assertThat(foreignKeys).isEqualTo(6);
 
         Integer cascades = jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM pg_constraint WHERE conrelid = 'transactions'::regclass AND contype = 'f' " +

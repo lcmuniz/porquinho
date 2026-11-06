@@ -110,7 +110,7 @@ development_status:
   5-6-identify-pix-transactions-and-extract-details: review
   5-7-detect-installment-purchases-and-split-across-months: review
   5-8-auto-classify-transactions-using-ai: review
-  5-9-present-classified-transactions-for-user-review: backlog
+  5-9-present-classified-transactions-for-user-review: review
   5-10-review-and-adjust-ai-classifications: backlog
   5-11-learn-from-user-corrections-to-improve-ai: backlog
   5-12-manually-edit-any-transaction: backlog

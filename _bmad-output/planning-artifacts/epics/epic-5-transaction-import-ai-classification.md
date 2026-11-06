@@ -226,15 +226,18 @@ So that I can review and confirm the categorizations.
 
 **Given** An import is in status 'REVIEW' (Story 5.8)
 **When** I open the review screen (`/importar/:id/revisao`, or the result of onboarding step 6)
-**Then** For each transaction, display: date, description, amount (BRL), suggested category, confidence indicator (High 80%+, Medium 50–79%, Low <50%), Pix and installment markers, edit button
+**Then** For each transaction, display: date, description, amount (BRL), suggested category, confidence indicator (High 80%+, Medium 50–79%, Low <50%), Pix and installment markers (the edit button comes with Story 5.10, decision 4A)
 **And** Transactions with is_pix=true show a Pix icon (with text alternative, never icon alone); the API exposes `isPix` and `pixDetails` (moved from Story 5.6, decision 1A)
 **And** Installments show "Compra parcelada: 3/10 — restam 7 parcelas"; the API exposes `isInstallment`, `installmentNumber`, `installmentTotal` and `isFutureInstallment` (moved from Story 5.7, decision 1A)
 **And** Transactions are grouped by confidence: High first, Low last; CARD_PAYMENT shown apart as "Pagamento de fatura"
 **And** Visual indicators: green check (High), yellow warning (Medium), red flag (Low, needs review); never color alone (WCAG)
-**And** "Aprovar todas de alta confiança" confirms all 80%+ transactions at once
+**And** "Aprovar todas de alta confiança" approves all 80%+ transactions at once, writing `review_status = 'APPROVED'` (decision 1A, Luiz, 2026-11-06); `CONFIRMED` still means the import was finished
 **And** Count shows: "X transações de alta confiança, Y precisam de revisão"
-**And** An unfinished import stays in REVIEW and can be resumed from `/importar`, or discarded ("Descartar importação"), which deletes its pending transactions and future installments
-**And** "Continuar" moves to Story 5.10
+**And** An unfinished import stays in REVIEW and can be resumed from `/importar`, or discarded ("Descartar importação"), which soft-deletes its pending transactions and future installments
+**And** Decision 2A (Luiz, 2026-11-06): future installments do not appear in the review nor count in X or Y; "restam N parcelas" stands for them. They follow the installment in the file on discard and on completion
+**And** Decision 3A (Luiz, 2026-11-06): `confirmed_by_import_id` (V29) is written on confirmation. Discarding the import that created a future moves the row to the import that confirmed it, `CONFIRMED` if that one is `COMPLETED`. Discarding the import that confirmed it makes the row future again (`is_future_installment = true`, `external_id` null, mark null), keeping the description, date and amount of the discarded file. Confirmations saved before V29 have no mark
+**And** Decision 4A (Luiz, 2026-11-06): "Editar" moves to Story 5.10; "Continuar" becomes "Continuar depois" and goes back to `/importar`
+**And** Decision 5A (Luiz, 2026-11-06): discarding an import removes the rows a later file skipped as duplicates of them, so the discard dialog names those files and asks to send them again, which brings the entries back
 
 ---
 
