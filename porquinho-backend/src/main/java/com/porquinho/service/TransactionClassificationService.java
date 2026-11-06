@@ -23,12 +23,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 /**
  * Classifies the rows of an import already committed (Story 5.8), outside the advisory lock of the import, while it is
- * still PROCESSING. The rows go in sequential batches of up to {@value #BATCH_SIZE}, one short database transaction
- * per batch, whatever its result: the classification with its history, the future installments of the batch (decision
- * 1A) and the progress, which also keeps {@code updated_at} fresh for the orphan sweep.
+ * still PROCESSING. The rows go in sequential batches of up to {@value #BATCH_SIZE}, each one sent to the AI in
+ * simultaneous calls of up to {@value #CALL_SIZE} (NFR7: the time of a call grows with its answer), and one short
+ * database transaction per batch, whatever its result: the classification with its history, the future installments
+ * of the batch (decision 1A) and the progress, which also keeps {@code updated_at} fresh for the orphan sweep.
  *
  * <p>The rows are born "Não classificado" ({@code NONE}, confidence 0, see {@link TransactionImportProcessor}), so a
  * failed batch or a discarded item writes nothing to them. Any confidence keeps the category: flagged for review is
@@ -40,6 +44,8 @@ public class TransactionClassificationService {
     private static final Logger log = LoggerFactory.getLogger(TransactionClassificationService.class);
 
     static final int BATCH_SIZE = 100;
+    /** Rows per AI call: 100 in one call took 5.5–6.7 s against the real API, and 25 took 2.2–2.6 s (NFR7: < 3 s). */
+    static final int CALL_SIZE = 25;
 
     private final TransactionRepository transactionRepository;
     private final TransactionImportRepository transactionImportRepository;
@@ -153,11 +159,28 @@ public class TransactionClassificationService {
             items.add(new TransactionClassifier.Item(index, SensitiveDataMasker.mask(row.getDescription()),
                 row.getAmount(), row.getTransactionType().name(), creditCard ? "cartão" : "conta"));
         }
+        List<Future<List<TransactionClassifier.Result>>> answers = new ArrayList<>();
+        try (ExecutorService calls = Executors.newVirtualThreadPerTaskExecutor()) {
+            for (int from = 0; from < items.size(); from += CALL_SIZE) {
+                List<TransactionClassifier.Item> part = items.subList(from, Math.min(from + CALL_SIZE, items.size()));
+                answers.add(calls.submit(() -> askPart(importId, part, categories)));
+            }
+        }
+        return answers.stream().flatMap(answer -> answer.resultNow().stream()).toList();
+    }
+
+    /** One AI call. A failed one leaves only its rows unclassified; an index of another call is an unknown index. */
+    private List<TransactionClassifier.Result> askPart(UUID importId, List<TransactionClassifier.Item> part,
+                                                       List<TransactionClassifier.CategoryChoice> categories) {
+        int first = part.getFirst().index();
+        int last = part.getLast().index();
         try {
-            return classifier.classify(items, categories);
+            return classifier.classify(part, categories).stream()
+                .filter(result -> result.index() >= first && result.index() <= last)
+                .toList();
         } catch (Exception e) {
-            // a failed batch never stops the next ones
-            log.warn("Import {} batch failed: {}", importId, e.getClass().getName());
+            // a failed call never stops the others
+            log.warn("Import {} AI call failed: {}", importId, e.getClass().getName());
             return List.of();
         }
     }
