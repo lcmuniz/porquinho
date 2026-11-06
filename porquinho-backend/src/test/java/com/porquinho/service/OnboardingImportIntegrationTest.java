@@ -2,6 +2,7 @@ package com.porquinho.service;
 
 import com.porquinho.dto.CreateAccountRequest;
 import com.porquinho.exception.ConflictException;
+import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.CategoryRepository;
 import com.porquinho.repository.OnboardingProgressRepository;
@@ -22,9 +23,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Story 3.6: onboarding step 6 (first import, still without upload) against the real schema (PostgreSQL via
- * Testcontainers): "Importar depois" advances to step 7 with import_skipped and the audit, repeating changes
- * nothing, and steps 1 and 5 are a conflict (2 to 4 are covered by the unit test).
+ * Stories 3.6 and 5.10: onboarding step 6 (first import) against the real schema (PostgreSQL via Testcontainers):
+ * "Importar depois" advances to step 7 with import_skipped and the audit, a finished import does it with
+ * first_import_completed, repeating changes nothing, and steps 1 and 5 are a conflict (2 to 4 are covered by the unit
+ * test).
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -91,7 +93,7 @@ class OnboardingImportIntegrationTest {
     void acceptanceImportLaterRecordsImportSkippedMovesToStepSevenAndAudits() {
         atStepSix();
 
-        onboardingService.completeImport(userId, "127.0.0.1");
+        onboardingService.completeImport(userId, null, "127.0.0.1");
         onboardingProgressRepository.flush();
 
         assertThat(progressRow()).containsEntry("current_step", 7).containsEntry("is_completed", false)
@@ -105,11 +107,11 @@ class OnboardingImportIntegrationTest {
     @Test
     void repeatingTheStepSixPostChangesNothingAndWritesNoAudit() {
         atStepSix();
-        onboardingService.completeImport(userId, "127.0.0.1");
+        onboardingService.completeImport(userId, null, "127.0.0.1");
         onboardingProgressRepository.flush();
         Object stepsBefore = progressRow().get("steps_completed");
 
-        onboardingService.completeImport(userId, "127.0.0.1");
+        onboardingService.completeImport(userId, null, "127.0.0.1");
         onboardingProgressRepository.flush();
 
         assertThat(progressRow()).containsEntry("current_step", 7).containsEntry("steps_completed", stepsBefore);
@@ -119,14 +121,56 @@ class OnboardingImportIntegrationTest {
     @Test
     void stepSixPostIsAConflictOnStepsOneAndFive() {
         onboardingService.getOrCreate(userId);
-        assertThatThrownBy(() -> onboardingService.completeImport(userId, "127.0.0.1"))
+        assertThatThrownBy(() -> onboardingService.completeImport(userId, null, "127.0.0.1"))
             .isInstanceOf(ConflictException.class);
 
         atStepFive();
-        assertThatThrownBy(() -> onboardingService.completeImport(userId, "127.0.0.1"))
+        assertThatThrownBy(() -> onboardingService.completeImport(userId, null, "127.0.0.1"))
             .isInstanceOf(ConflictException.class);
 
         assertThat(progressRow()).containsEntry("current_step", 5);
+        assertThat(importAudits()).isEmpty();
+    }
+
+    private UUID newImport(UUID owner, String status) {
+        UUID cardId = UUID.randomUUID();
+        jdbc.update("INSERT INTO credit_cards (id, user_id, card_name, card_limit, due_day) "
+            + "VALUES (?, ?, 'Nubank', 1000, 10)", cardId, owner);
+        UUID id = UUID.randomUUID();
+        jdbc.update("INSERT INTO transaction_imports (id, user_id, credit_card_id, file_name, file_type, file_size_kb, "
+            + "status) VALUES (?, ?, ?, 'x.ofx', 'OFX', 1, ?)", id, owner, cardId, status);
+        return id;
+    }
+
+    @Test
+    void aCompletedImportRecordsFirstImportCompletedMovesToStepSevenAndAudits() {
+        atStepSix();
+        UUID importId = newImport(userId, "COMPLETED");
+
+        onboardingService.completeImport(userId, importId, "127.0.0.1");
+        onboardingProgressRepository.flush();
+
+        assertThat(progressRow()).containsEntry("current_step", 7);
+        assertThat((String) progressRow().get("steps_completed")).contains("first_import_completed")
+            .doesNotContain("import_skipped");
+        assertThat(importAudits()).containsExactly("{\"skipped\":false}");
+    }
+
+    @Test
+    void anImportInReviewOrOfAnotherUserKeepsTheStep() {
+        atStepSix();
+        UUID inReview = newImport(userId, "REVIEW");
+        UUID stranger = UUID.randomUUID();
+        jdbc.update("INSERT INTO users (id, email, auth_provider) VALUES (?, ?, 'EMAIL')", stranger,
+            stranger + "@example.com");
+        UUID foreign = newImport(stranger, "COMPLETED");
+
+        assertThatThrownBy(() -> onboardingService.completeImport(userId, inReview, "127.0.0.1"))
+            .isInstanceOf(ConflictException.class);
+        assertThatThrownBy(() -> onboardingService.completeImport(userId, foreign, "127.0.0.1"))
+            .isInstanceOf(ResourceNotFoundException.class);
+
+        assertThat(progressRow()).containsEntry("current_step", 6);
         assertThat(importAudits()).isEmpty();
     }
 }

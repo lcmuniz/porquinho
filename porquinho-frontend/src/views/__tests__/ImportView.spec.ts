@@ -359,7 +359,27 @@ describe('ImportView', () => {
       'Pronta para revisão: 1 transação · 2 transferências já registradas',
       'Nenhuma transação nova — 10 duplicatas detectadas e ignoradas',
       'Nenhuma transação nova — 9 duplicatas detectadas e ignoradas · 1 transferência já registrada',
-      'Concluída',
+      'Concluída: 2 transações',
+    ])
+  })
+
+  it('rótulo de uma importação concluída traz as contagens (Story 5.10)', async () => {
+    mockListImports.mockResolvedValue([
+      imported({ status: 'COMPLETED', importedTransactions: 1 }),
+      imported({
+        id: 'i2',
+        status: 'COMPLETED',
+        importedTransactions: 7,
+        skippedRows: 1,
+        duplicatesFound: 3,
+        transfersFound: 1,
+      }),
+    ])
+    const wrapper = await mountView()
+
+    expect(wrapper.findAll('[data-testid="import-status"]').map((s) => s.text())).toEqual([
+      'Concluída: 1 transação',
+      'Concluída: 7 transações (1 linha com erro) · 3 duplicatas detectadas e ignoradas · 1 transferência já registrada',
     ])
   })
 

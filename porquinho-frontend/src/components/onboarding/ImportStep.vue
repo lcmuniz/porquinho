@@ -10,17 +10,7 @@
         </p>
       </div>
 
-      <div
-        role="note"
-        class="flex items-start gap-3 rounded-lg border border-purple-200 bg-purple-50 p-4"
-        data-testid="import-coming-soon"
-      >
-        <Info class="mt-0.5 h-5 w-5 shrink-0 text-purple-600" aria-hidden="true" />
-        <p class="text-sm text-gray-800">
-          A importação de arquivos chega em breve. Por enquanto, siga para o próximo passo — você
-          poderá importar depois.
-        </p>
-      </div>
+      <ImportUploader @imports-change="imports = $event" />
 
       <div class="space-y-2">
         <h2 class="text-sm font-medium text-gray-900">Como baixar o extrato no seu banco</h2>
@@ -55,7 +45,7 @@
       </div>
     </section>
 
-    <div class="flex gap-3">
+    <div class="flex flex-wrap gap-3">
       <Button
         variant="outline"
         class="min-h-[44px] flex-1"
@@ -67,12 +57,24 @@
         Voltar
       </Button>
       <Button
-        class="min-h-[44px] flex-1 bg-purple-600 text-white hover:bg-purple-700"
+        :variant="completedImport ? 'outline' : 'default'"
+        class="min-h-[44px] flex-1"
+        :class="completedImport ? '' : 'bg-purple-600 text-white hover:bg-purple-700'"
         data-testid="import-later-button"
         :disabled="finishing"
-        @click="finish"
+        @click="finish()"
       >
         {{ finishing ? 'Salvando...' : 'Importar depois' }}
+        <ChevronRight class="h-4 w-4" aria-hidden="true" />
+      </Button>
+      <Button
+        v-if="completedImport"
+        class="min-h-[44px] flex-1 bg-purple-600 text-white hover:bg-purple-700"
+        data-testid="import-continue-button"
+        :disabled="finishing"
+        @click="finish(completedImport.id)"
+      >
+        {{ finishing ? 'Salvando...' : 'Continuar' }}
         <ChevronRight class="h-4 w-4" aria-hidden="true" />
       </Button>
     </div>
@@ -80,16 +82,19 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { ChevronDown, ChevronLeft, ChevronRight, Info, Landmark } from 'lucide-vue-next'
+import { computed, onMounted, ref } from 'vue'
+import { ChevronDown, ChevronLeft, ChevronRight, Landmark } from 'lucide-vue-next'
+import ImportUploader from '@/components/import/ImportUploader.vue'
 import { Button } from '@/components/ui/button'
 import { completeImport } from '@/services/onboardingService'
 import type { OnboardingProgress } from '@/types/onboarding'
+import type { TransactionImport } from '@/types/transactionImport'
 
 /**
- * Story 3.6 (decisão A, versão sem upload): passo 6 do onboarding. Explica como baixar o extrato em OFX ou
- * CSV nos 5 bancos suportados e avisa que a importação chega em breve. "Importar depois" avança o passo
- * (o backend grava `import_skipped`). Upload, progresso e prévia classificada ficam para o Epic 5.
+ * Passo 6 do onboarding (Stories 3.6 e 5.10). Explica como baixar o extrato em OFX ou CSV nos 5 bancos suportados e
+ * usa o mesmo envio da /importar. A revisão, ao concluir, faz o POST e volta para cá já no passo 7. "Continuar" aparece
+ * quando já há importação concluída: cobre a falha desse POST e a importação sem nada novo (5.5, decisão 1A), que nem
+ * passa pela revisão. "Importar depois" avança o passo sem importar (o backend grava `import_skipped`).
  */
 const emit = defineEmits<{
   back: []
@@ -159,18 +164,21 @@ const BANK_GUIDES: BankGuide[] = [
 
 const finishing = ref(false)
 const heading = ref<HTMLElement | null>(null)
+const imports = ref<TransactionImport[]>([])
+
+const completedImport = computed(() => imports.value.find((item) => item.status === 'COMPLETED'))
 
 interface ApiError {
   response?: { data?: { detail?: string } }
 }
 
-async function finish() {
+async function finish(importId?: string) {
   // Duplo clique no mesmo tick: o botão ainda não foi desabilitado
   if (finishing.value) return
   finishing.value = true
   let progress: OnboardingProgress
   try {
-    progress = await completeImport()
+    progress = await (importId ? completeImport(importId) : completeImport())
   } catch (err) {
     // Só libera os botões no erro: no sucesso a tela troca, e liberar antes permitiria outro POST
     finishing.value = false

@@ -8,6 +8,11 @@ const mockList = vi.fn()
 const mockListImports = vi.fn()
 const mockApprove = vi.fn()
 const mockDiscard = vi.fn()
+const mockUpdateCategory = vi.fn()
+const mockComplete = vi.fn()
+const mockListCategories = vi.fn()
+const mockGetOnboarding = vi.fn()
+const mockCompleteOnboardingImport = vi.fn()
 const mockPush = vi.fn()
 
 vi.mock('@/services/transactionImportService', () => ({
@@ -16,6 +21,17 @@ vi.mock('@/services/transactionImportService', () => ({
   listImports: (...a: unknown[]) => mockListImports(...a),
   approveHighConfidence: (...a: unknown[]) => mockApprove(...a),
   discardImport: (...a: unknown[]) => mockDiscard(...a),
+  updateImportCategory: (...a: unknown[]) => mockUpdateCategory(...a),
+  completeTransactionImport: (...a: unknown[]) => mockComplete(...a),
+}))
+
+vi.mock('@/services/categoryService', () => ({
+  listCategories: (...a: unknown[]) => mockListCategories(...a),
+}))
+
+vi.mock('@/services/onboardingService', () => ({
+  getMyOnboarding: (...a: unknown[]) => mockGetOnboarding(...a),
+  completeImport: (...a: unknown[]) => mockCompleteOnboardingImport(...a),
 }))
 
 // Rota reativa: o teste troca o id para conferir a recarga
@@ -492,10 +508,9 @@ describe('ImportReviewView', () => {
     expect(w.find('[data-testid="review-not-found"]').exists()).toBe(true)
   })
 
-  it('"Continuar depois" volta para /importar', async () => {
+  it('mostra "Continuar depois"', async () => {
     const w = await mountView([transaction('high')])
 
-    expect(w.getComponent(RouterLinkStub).props('to')).toBe('/importar')
     expect(w.get('[data-testid="continue-later"]').text()).toBe('Continuar depois')
   })
 
@@ -537,5 +552,528 @@ describe('ImportReviewView', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-testid="transaction-high"]').exists()).toBe(true)
+  })
+
+  // ---- Story 5.10 ----
+
+  const inDialog = <T extends Element = HTMLElement>(testId: string) =>
+    document.body.querySelector<T>(`[data-testid="${testId}"]`)
+
+  const categoriesList = [
+    { id: 'g1', categoryName: 'Alimentação', parentCategoryId: null },
+    { id: 'g2', categoryName: 'Vazio', parentCategoryId: null },
+    { id: 'c2', categoryName: 'Restaurante', parentCategoryId: 'g1' },
+    { id: 'c1', categoryName: 'Mercado', parentCategoryId: 'g1' },
+  ]
+
+  async function openEdit(w: VueWrapper, id: string) {
+    await w.get(`[data-testid="edit-${id}"]`).trigger('click')
+    await flushPromises()
+  }
+
+  async function choose(categoryId: string) {
+    const select = inDialog<HTMLSelectElement>('category-select')!
+    select.value = categoryId
+    select.dispatchEvent(new Event('change'))
+    await flushPromises()
+  }
+
+  async function save() {
+    inDialog<HTMLFormElement>('category-form')!.dispatchEvent(new Event('submit', { cancelable: true }))
+    await flushPromises()
+  }
+
+  async function openComplete(w: VueWrapper) {
+    await w.get('[data-testid="complete-import"]').trigger('click')
+    await flushPromises()
+  }
+
+  async function confirmComplete() {
+    inDialog('complete-confirm')!.click()
+    await flushPromises()
+  }
+
+  describe('edição de categoria', () => {
+    beforeEach(() => {
+      mockListCategories.mockReset().mockResolvedValue(categoriesList)
+      mockUpdateCategory.mockReset().mockResolvedValue({ importId: 'i1', status: 'REVIEW', affectedTransactions: 1 })
+    })
+
+    it('mostra data, descrição, valor e categoria atual só para leitura, e o select agrupado', async () => {
+      const w = await mountView([transaction('t1', { confidence: 60 })])
+
+      await openEdit(w, 't1')
+
+      expect(inDialog('dialog-date')?.textContent).toContain('03/11/2026')
+      expect(inDialog('dialog-description')?.textContent).toContain('Compra t1')
+      expect(plain(inDialog('dialog-amount')?.textContent ?? '')).toContain('189,90')
+      expect(inDialog('dialog-current-category')?.textContent).toContain('Alimentação › Mercado')
+      expect(document.body.querySelectorAll('dd input, dd select, dd textarea')).toHaveLength(0)
+
+      const select = inDialog<HTMLSelectElement>('category-select')!
+      expect(select.value).toBe('c1')
+      const groups = [...select.querySelectorAll('optgroup')]
+      expect(groups.map((g) => g.label)).toEqual(['Alimentação'])
+      expect([...groups[0]!.querySelectorAll('option')].map((o) => o.textContent?.trim())).toEqual([
+        'Mercado',
+        'Restaurante',
+      ])
+    })
+
+    it('linha sem categoria mostra "Não classificado" e exige a escolha', async () => {
+      const w = await mountView([transaction('t1', { category: null, confidence: null })])
+
+      await openEdit(w, 't1')
+
+      expect(inDialog('dialog-current-category')?.textContent).toContain('Não classificado')
+      expect(inDialog<HTMLButtonElement>('category-save')?.disabled).toBe(true)
+    })
+
+    it('categoria atual removida não fica escolhida', async () => {
+      const w = await mountView([transaction('t1', { category: { id: 'x', name: 'Antiga', group: null } })])
+
+      await openEdit(w, 't1')
+
+      expect(inDialog('dialog-current-category')?.textContent).toContain('Antiga')
+      expect(inDialog<HTMLSelectElement>('category-select')?.value).toBe('')
+      expect(inDialog<HTMLButtonElement>('category-save')?.disabled).toBe(true)
+    })
+
+    it('salvar envia a linha e leva para "Revisadas por você", com ícone e texto', async () => {
+      const w = await mountView([transaction('t1', { confidence: 60 }), transaction('t2', { confidence: 60 })])
+      expect(count(w)).toContain('2 precisam de revisão')
+      await openEdit(w, 't1')
+      await choose('c2')
+      mockList.mockResolvedValue([
+        transaction('t1', {
+          category: { id: 'c2', name: 'Restaurante', group: 'Alimentação' },
+          source: 'USER',
+          confidence: 100,
+          reviewStatus: 'APPROVED',
+        }),
+        transaction('t2', { confidence: 60 }),
+      ])
+
+      await save()
+
+      expect(mockUpdateCategory).toHaveBeenCalledExactlyOnceWith('i1', ['t1'], 'c2')
+      expect(groupIds(w)).toEqual(['group-medium', 'group-reviewed'])
+      expect(w.get('[data-testid="group-reviewed"] h2').text()).toBe('Revisadas por você (1)')
+      const mark = w.get('[data-testid="group-reviewed"] [data-testid="row-confidence"]')
+      expect(mark.text()).toBe('Revisada por você')
+      expect(mark.find('svg').exists()).toBe(true)
+      expect(w.find('[data-testid="group-reviewed"] [data-testid="row-approved"]').exists()).toBe(false)
+      expect(count(w)).toContain('1 precisa de revisão')
+      expect(w.get('[data-testid="review-success"]').text()).toBe('1 categoria alterada')
+      expect(inDialog('category-dialog')).toBeNull()
+    })
+
+    it('salvar a mesma categoria também é permitido (decisão 2A)', async () => {
+      const w = await mountView([transaction('t1', { confidence: 60 })])
+
+      await openEdit(w, 't1')
+      await save()
+
+      expect(mockUpdateCategory).toHaveBeenCalledExactlyOnceWith('i1', ['t1'], 'c1')
+    })
+
+    it('linha revisada não conta como alta confiança nem como revisão', async () => {
+      const w = await mountView([transaction('t1', { source: 'USER', confidence: 100, reviewStatus: 'APPROVED' })])
+
+      expect(count(w)).toBe('0 transações de alta confiança, 0 precisam de revisão')
+      expect(groupIds(w)).toEqual(['group-reviewed'])
+    })
+
+    it('pagamento de fatura não tem checkbox nem "Editar"', async () => {
+      const w = await mountView([transaction('t1', { kind: 'CARD_PAYMENT', category: null, confidence: null })])
+
+      expect(w.find('[data-testid="select-t1"]').exists()).toBe(false)
+      expect(w.find('[data-testid="edit-t1"]').exists()).toBe(false)
+    })
+
+    it('"Alterar categoria" muda as marcadas e limpa a seleção', async () => {
+      const w = await mountView([transaction('t1'), transaction('t2'), transaction('t3')])
+      const button = w.get('[data-testid="change-category"]')
+      expect(button.attributes('disabled')).toBeDefined()
+
+      await w.get('[data-testid="select-t1"]').setValue(true)
+      await w.get('[data-testid="select-t3"]').setValue(true)
+      expect(button.text()).toBe('Alterar categoria (2)')
+      await button.trigger('click')
+      await flushPromises()
+      expect(inDialog('category-dialog-row')).toBeNull()
+      expect(inDialog('category-dialog')?.textContent).toContain('2 transações selecionadas recebem')
+      await choose('c2')
+      mockUpdateCategory.mockResolvedValue({ importId: 'i1', status: 'REVIEW', affectedTransactions: 2 })
+
+      await save()
+
+      expect(mockUpdateCategory).toHaveBeenCalledExactlyOnceWith('i1', ['t1', 't3'], 'c2')
+      expect(w.get('[data-testid="review-success"]').text()).toBe('2 categorias alteradas')
+      expect(w.get('[data-testid="change-category"]').text()).toBe('Alterar categoria')
+      expect((w.get('[data-testid="select-t1"]').element as HTMLInputElement).checked).toBe(false)
+    })
+
+    it('desmarcar tira a linha da seleção', async () => {
+      const w = await mountView([transaction('t1')])
+      const box = w.get('[data-testid="select-t1"]')
+
+      await box.setValue(true)
+      await box.setValue(false)
+
+      expect(w.get('[data-testid="change-category"]').attributes('disabled')).toBeDefined()
+    })
+
+    it('404 de categoria removida mostra a mensagem e mantém a revisão', async () => {
+      mockUpdateCategory.mockRejectedValue({
+        response: { status: 404, data: { detail: 'Categoria não encontrada' } },
+      })
+      const w = await mountView([transaction('t1')])
+      await openEdit(w, 't1')
+
+      await save()
+
+      expect(w.get('[data-testid="review-action-error"]').text()).toBe('Categoria não encontrada')
+      expect(w.find('[data-testid="review-not-found"]').exists()).toBe(false)
+      expect(w.find('[data-testid="transaction-t1"]').exists()).toBe(true)
+    })
+
+    it('409 recarrega e mostra que a importação saiu da revisão', async () => {
+      mockUpdateCategory.mockRejectedValue({
+        response: { status: 409, data: { detail: 'Esta importação não está em revisão' } },
+      })
+      const w = await mountView([transaction('t1')])
+      await openEdit(w, 't1')
+      mockGetImport.mockResolvedValue(importRow({ status: 'COMPLETED' }))
+
+      await save()
+
+      expect(w.find('[data-testid="review-closed"]').exists()).toBe(true)
+    })
+
+    it('com as categorias carregando, "Salvar" fica desabilitado e não grava', async () => {
+      const pending = deferred<unknown>()
+      mockListCategories.mockReturnValue(pending.promise)
+      const w = await mountView([transaction('t1')])
+
+      await openEdit(w, 't1')
+
+      expect(inDialog<HTMLButtonElement>('category-save')?.disabled).toBe(true)
+      await save()
+      expect(mockUpdateCategory).not.toHaveBeenCalled()
+
+      pending.resolve(categoriesList)
+      await flushPromises()
+      expect(inDialog<HTMLButtonElement>('category-save')?.disabled).toBe(false)
+    })
+
+    it('com a carga das categorias falhada, "Salvar" fica desabilitado e não grava', async () => {
+      mockListCategories.mockRejectedValue(new Error('Network Error'))
+      const w = await mountView([transaction('t1')])
+
+      await openEdit(w, 't1')
+
+      expect(inDialog<HTMLButtonElement>('category-save')?.disabled).toBe(true)
+      await save()
+      expect(mockUpdateCategory).not.toHaveBeenCalled()
+    })
+
+    it('em linha parcelada avisa que as parcelas futuras recebem a mesma categoria', async () => {
+      const w = await mountView([
+        transaction('t1', { isInstallment: true, installmentNumber: 3, installmentTotal: 10 }),
+        transaction('t2'),
+      ])
+
+      await openEdit(w, 't1')
+      expect(inDialog('category-dialog')?.textContent).toContain('parcelas futuras desta compra')
+
+      inDialog('category-cancel')!.click()
+      await flushPromises()
+      await openEdit(w, 't2')
+      expect(inDialog('category-dialog')?.textContent).toContain('só a categoria desta transação')
+    })
+
+    it('a recarga tira da seleção a linha que saiu da revisão', async () => {
+      const w = await mountView([transaction('t1'), transaction('t2')])
+      await w.get('[data-testid="select-t1"]').setValue(true)
+      await w.get('[data-testid="select-t2"]').setValue(true)
+      await w.get('[data-testid="change-category"]').trigger('click')
+      await flushPromises()
+      await choose('c2')
+      mockUpdateCategory.mockRejectedValueOnce({
+        response: { status: 404, data: { detail: 'Transação não encontrada nesta revisão' } },
+      })
+      mockList.mockResolvedValue([transaction('t1')])
+
+      await save()
+
+      expect(w.get('[data-testid="change-category"]').text()).toBe('Alterar categoria (1)')
+
+      await w.get('[data-testid="change-category"]').trigger('click')
+      await flushPromises()
+      await choose('c2')
+      await save()
+
+      expect(mockUpdateCategory).toHaveBeenLastCalledWith('i1', ['t1'], 'c2')
+    })
+
+    it('com o PATCH em andamento o diálogo não fecha', async () => {
+      const pending = deferred<unknown>()
+      mockUpdateCategory.mockReturnValue(pending.promise)
+      const w = await mountView([transaction('t1')])
+      await openEdit(w, 't1')
+
+      await save()
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      await flushPromises()
+
+      expect(inDialog('category-dialog')).not.toBeNull()
+      expect(inDialog<HTMLButtonElement>('category-cancel')?.disabled).toBe(true)
+
+      pending.resolve({ importId: 'i1', status: 'REVIEW', affectedTransactions: 1 })
+      await flushPromises()
+      expect(inDialog('category-dialog')).toBeNull()
+    })
+
+    it('falha ao carregar as categorias avisa no diálogo e deixa tentar de novo', async () => {
+      mockListCategories.mockRejectedValueOnce(new Error('Network Error'))
+      const w = await mountView([transaction('t1', { category: null, confidence: null })])
+
+      await openEdit(w, 't1')
+
+      const error = inDialog('categories-error')!
+      expect(error.textContent).toContain('Não foi possível carregar suas categorias')
+      error.querySelector('button')!.click()
+      await flushPromises()
+      expect(inDialog('categories-error')).toBeNull()
+      expect(inDialog<HTMLSelectElement>('category-select')?.querySelectorAll('optgroup')).toHaveLength(1)
+    })
+  })
+
+  describe('saída da revisão no onboarding', () => {
+    const atStep = (currentStep: number) => ({ currentStep, stepsCompleted: [], completed: false })
+
+    async function leaveLater(w: VueWrapper) {
+      await w.get('[data-testid="continue-later"]').trigger('click')
+      await flushPromises()
+    }
+
+    async function discardNow(w: VueWrapper) {
+      await openDialog(w)
+      confirmButton()!.click()
+      await flushPromises()
+    }
+
+    beforeEach(() => {
+      mockGetOnboarding.mockReset().mockResolvedValue(atStep(6))
+      mockCompleteOnboardingImport.mockReset()
+      mockDiscard.mockReset().mockResolvedValue({ importId: 'i1', status: 'DISCARDED', affectedTransactions: 1 })
+    })
+
+    it('no passo 6, "Continuar depois" vai para /onboarding sem o POST', async () => {
+      const w = await mountView([transaction('t1')])
+
+      await leaveLater(w)
+
+      expect(mockPush).toHaveBeenCalledExactlyOnceWith('/onboarding')
+      expect(mockCompleteOnboardingImport).not.toHaveBeenCalled()
+    })
+
+    it('no passo 6, o descarte vai para /onboarding sem o POST', async () => {
+      const w = await mountView([transaction('t1')])
+
+      await discardNow(w)
+
+      expect(mockPush).toHaveBeenCalledExactlyOnceWith('/onboarding')
+      expect(mockCompleteOnboardingImport).not.toHaveBeenCalled()
+    })
+
+    it('em outro passo ou com o onboarding concluído, os dois vão para a /importar', async () => {
+      mockGetOnboarding.mockResolvedValueOnce(atStep(5))
+      const w = await mountView([transaction('t1')])
+      await leaveLater(w)
+
+      mockGetOnboarding.mockResolvedValueOnce({ ...atStep(6), completed: true })
+      await discardNow(w)
+
+      expect(mockPush.mock.calls).toEqual([['/importar'], ['/importar']])
+    })
+
+    it('sem conseguir ler o onboarding, os dois vão para a /importar', async () => {
+      mockGetOnboarding.mockRejectedValue(new Error('Network Error'))
+      const w = await mountView([transaction('t1')])
+
+      await leaveLater(w)
+      await discardNow(w)
+
+      expect(mockPush.mock.calls).toEqual([['/importar'], ['/importar']])
+    })
+  })
+
+  describe('conclusão', () => {
+    beforeEach(() => {
+      mockComplete.mockReset().mockResolvedValue({ importId: 'i1', status: 'COMPLETED', affectedTransactions: 3 })
+      mockGetOnboarding.mockReset().mockResolvedValue({ currentStep: 8, stepsCompleted: [], completed: true })
+      mockCompleteOnboardingImport.mockReset().mockResolvedValue({ currentStep: 7 })
+    })
+
+    it('sempre pede confirmação e informa o que segue sem revisão e sem categoria', async () => {
+      const w = await mountView([
+        transaction('t1'),
+        transaction('t2', { category: null, confidence: null }),
+        transaction('t3', { reviewStatus: 'APPROVED' }),
+        transaction('t4', { kind: 'CARD_PAYMENT', category: null, confidence: null }),
+      ])
+
+      await openComplete(w)
+
+      expect(mockComplete).not.toHaveBeenCalled()
+      expect(inDialog('complete-dialog')?.textContent).toContain('não dá para desfazer')
+      expect(inDialog('complete-unreviewed')?.textContent).toContain('2 transações seguem sem revisão')
+      expect(inDialog('complete-uncategorized')?.textContent).toContain('1 transação segue sem categoria')
+    })
+
+    it('em importação de conta explica que só o que vem depois do último ajuste altera o saldo', async () => {
+      const w = await mountView([transaction('t1')])
+
+      await openComplete(w)
+
+      expect(inDialog('complete-dialog')?.textContent).toContain(
+        'Só as transações posteriores ao último ajuste do saldo alteram o saldo da conta',
+      )
+    })
+
+    it('em importação de cartão explica que nenhum saldo de conta muda', async () => {
+      const w = await mountView([transaction('t1')], importRow({ accountId: null, creditCardId: 'k1' }))
+
+      await openComplete(w)
+
+      expect(inDialog('complete-dialog')?.textContent).toContain('não alteram o saldo de nenhuma conta')
+      expect(inDialog('complete-dialog')?.textContent).toContain('não dá para desfazer')
+    })
+
+    it('com o POST em andamento o diálogo não fecha', async () => {
+      const pending = deferred<unknown>()
+      mockComplete.mockReturnValue(pending.promise)
+      const w = await mountView([transaction('t1')])
+      await openComplete(w)
+
+      await confirmComplete()
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      await flushPromises()
+
+      expect(inDialog('complete-dialog')).not.toBeNull()
+      expect(inDialog<HTMLButtonElement>('complete-cancel')?.disabled).toBe(true)
+
+      pending.resolve({ importId: 'i1', status: 'COMPLETED', affectedTransactions: 1 })
+      await flushPromises()
+      expect(inDialog('complete-dialog')).toBeNull()
+    })
+
+    it('cancelar não conclui', async () => {
+      const w = await mountView([transaction('t1')])
+      await openComplete(w)
+
+      inDialog('complete-cancel')!.click()
+      await flushPromises()
+
+      expect(mockComplete).not.toHaveBeenCalled()
+      expect(inDialog('complete-dialog')).toBeNull()
+    })
+
+    it('terminada, volta para a /importar', async () => {
+      const w = await mountView([transaction('t1')])
+      await openComplete(w)
+
+      await confirmComplete()
+
+      expect(mockComplete).toHaveBeenCalledExactlyOnceWith('i1')
+      expect(mockCompleteOnboardingImport).not.toHaveBeenCalled()
+      expect(mockPush).toHaveBeenCalledExactlyOnceWith('/importar')
+    })
+
+    it('no passo 5 do onboarding não faz o POST e volta para a /importar', async () => {
+      mockGetOnboarding.mockResolvedValue({ currentStep: 5, stepsCompleted: [], completed: false })
+      const w = await mountView([transaction('t1')])
+      await openComplete(w)
+
+      await confirmComplete()
+
+      expect(mockCompleteOnboardingImport).not.toHaveBeenCalled()
+      expect(mockPush).toHaveBeenCalledExactlyOnceWith('/importar')
+    })
+
+    it('no passo 6 do onboarding faz o POST e vai para /onboarding', async () => {
+      mockGetOnboarding.mockResolvedValue({ currentStep: 6, stepsCompleted: [], completed: false })
+      const w = await mountView([transaction('t1')])
+      await openComplete(w)
+
+      await confirmComplete()
+
+      expect(mockCompleteOnboardingImport).toHaveBeenCalledExactlyOnceWith('i1')
+      expect(mockPush).toHaveBeenCalledExactlyOnceWith('/onboarding')
+    })
+
+    it('falha no POST do onboarding não prende o usuário: o passo 6 mostra "Continuar"', async () => {
+      mockGetOnboarding.mockResolvedValue({ currentStep: 6, stepsCompleted: [], completed: false })
+      mockCompleteOnboardingImport.mockRejectedValue(new Error('Network Error'))
+      const w = await mountView([transaction('t1')])
+      await openComplete(w)
+
+      await confirmComplete()
+
+      expect(mockPush).toHaveBeenCalledExactlyOnceWith('/onboarding')
+      expect(w.find('[data-testid="review-action-error"]').exists()).toBe(false)
+    })
+
+    it('sem conseguir ler o onboarding, volta para a /importar', async () => {
+      mockGetOnboarding.mockRejectedValue(new Error('Network Error'))
+      const w = await mountView([transaction('t1')])
+      await openComplete(w)
+
+      await confirmComplete()
+
+      expect(mockPush).toHaveBeenCalledExactlyOnceWith('/importar')
+    })
+
+    it('400 mostra a mensagem e a revisão continua disponível', async () => {
+      mockComplete.mockRejectedValue({
+        response: { status: 400, data: { detail: 'Concluir esta importação deixaria o saldo da conta fora do limite' } },
+      })
+      const w = await mountView([transaction('t1')])
+      await openComplete(w)
+
+      await confirmComplete()
+
+      expect(w.get('[data-testid="review-action-error"]').text()).toContain('fora do limite')
+      expect(w.find('[data-testid="complete-import"]').exists()).toBe(true)
+      expect(inDialog('complete-dialog')).toBeNull()
+      expect(mockPush).not.toHaveBeenCalled()
+    })
+
+    it('409 de destino removido mostra a mensagem com a importação ainda em REVIEW', async () => {
+      mockComplete.mockRejectedValue({
+        response: { status: 409, data: { detail: 'A conta desta importação foi removida: restaure ou descarte a importação' } },
+      })
+      const w = await mountView([transaction('t1')])
+      await openComplete(w)
+
+      await confirmComplete()
+
+      expect(w.get('[data-testid="review-action-error"]').text()).toContain('restaure ou descarte a importação')
+      expect(w.find('[data-testid="discard"]').exists()).toBe(true)
+      expect(mockPush).not.toHaveBeenCalled()
+    })
+
+    it('duplo clique conclui uma vez só', async () => {
+      const w = await mountView([transaction('t1')])
+      await openComplete(w)
+
+      inDialog('complete-confirm')!.click()
+      inDialog('complete-confirm')!.click()
+      await flushPromises()
+
+      expect(mockComplete).toHaveBeenCalledOnce()
+    })
   })
 })

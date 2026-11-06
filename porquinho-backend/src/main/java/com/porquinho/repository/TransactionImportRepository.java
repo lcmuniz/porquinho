@@ -123,6 +123,18 @@ public interface TransactionImportRepository extends JpaRepository<TransactionIm
         + "WHERE i.id = :id AND i.status = com.porquinho.entity.TransactionImport.Status.REVIEW")
     int markDiscarded(@Param("id") UUID id, @Param("now") OffsetDateTime now);
 
+    /** Finishes an import under review (Story 5.10). Returns 0 when it is not in REVIEW. */
+    @Transactional
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE TransactionImport i SET i.status = com.porquinho.entity.TransactionImport.Status.COMPLETED, "
+        + "i.updatedAt = :now "
+        + "WHERE i.id = :id AND i.status = com.porquinho.entity.TransactionImport.Status.REVIEW")
+    int markCompleted(@Param("id") UUID id, @Param("now") OffsetDateTime now);
+
+    /** The status in the database right now, whatever the persistence context holds (Story 5.10). */
+    @Query("SELECT i.status FROM TransactionImport i WHERE i.id = :id")
+    TransactionImport.Status findStatusById(@Param("id") UUID id);
+
     /**
      * Story 5.5, decision 1A: every entry was a duplicate or an already registered transfer, so nothing is saved and
      * there is nothing to review. Records the counters ({@code imported} = 0) and moves a PROCESSING import straight to

@@ -64,6 +64,12 @@ describe('onboardingService', () => {
     })
   })
 
+  it('completeImport com id envia a importação concluída (Story 5.10)', async () => {
+    mockPost.mockResolvedValue({ data: { currentStep: 7 } })
+    await completeImport('i1')
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/onboarding/me/import', { importId: 'i1' })
+  })
+
   it('completeImport faz POST em /api/v1/onboarding/me/import sem corpo', async () => {
     await expect(completeImport()).resolves.toEqual(progress)
     expect(mockPost).toHaveBeenCalledWith('/api/v1/onboarding/me/import')

@@ -7,8 +7,10 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -101,6 +103,65 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
         + "AND t.classificationConfidence >= :minConfidence AND t.categoryId IS NOT NULL AND t.deletedAt IS NULL")
     int approveHighConfidence(@Param("userId") UUID userId, @Param("importId") UUID importId,
                               @Param("minConfidence") int minConfidence, @Param("now") OffsetDateTime now);
+
+    /** How many of {@code ids} are rows the user can edit in the review of the import (Story 5.10). */
+    @Query("SELECT COUNT(t) FROM Transaction t WHERE t.userId = :userId AND t.importId = :importId AND t.id IN :ids "
+        + "AND t.kind = com.porquinho.entity.Transaction.Kind.REGULAR AND t.futureInstallment = false "
+        + "AND t.deletedAt IS NULL")
+    long countEditable(@Param("userId") UUID userId, @Param("importId") UUID importId,
+                       @Param("ids") Collection<UUID> ids);
+
+    /** Writes the category the user chose on rows of the review (Story 5.10): reviewed by the user, so APPROVED. */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE Transaction t SET t.categoryId = :categoryId, t.classificationConfidence = :confidence, "
+        + "t.classificationSource = com.porquinho.entity.Transaction.ClassificationSource.USER, "
+        + "t.reviewStatus = com.porquinho.entity.Transaction.ReviewStatus.APPROVED, t.updatedAt = :now "
+        + "WHERE t.userId = :userId AND t.importId = :importId AND t.id IN :ids "
+        + "AND t.kind = com.porquinho.entity.Transaction.Kind.REGULAR AND t.futureInstallment = false "
+        + "AND t.deletedAt IS NULL")
+    int applyUserCategory(@Param("userId") UUID userId, @Param("importId") UUID importId,
+                          @Param("ids") Collection<UUID> ids, @Param("categoryId") UUID categoryId,
+                          @Param("confidence") int confidence, @Param("now") OffsetDateTime now);
+
+    /**
+     * Story 5.8, decision 1A, for the choice of the user: the future installments of import {@code importId} follow the
+     * rows {@code ids} of their purchases. They stay out of the review, so their review status does not change.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE Transaction t SET t.categoryId = :categoryId, t.classificationConfidence = :confidence, "
+        + "t.classificationSource = com.porquinho.entity.Transaction.ClassificationSource.USER, t.updatedAt = :now "
+        + "WHERE t.userId = :userId AND t.importId = :importId AND t.futureInstallment = true "
+        + "AND t.deletedAt IS NULL AND t.installmentGroupId IN (SELECT r.installmentGroupId FROM Transaction r "
+        + "WHERE r.userId = :userId AND r.id IN :ids AND r.installmentGroupId IS NOT NULL)")
+    int applyUserCategoryToFutures(@Param("userId") UUID userId, @Param("importId") UUID importId,
+                                   @Param("ids") Collection<UUID> ids, @Param("categoryId") UUID categoryId,
+                                   @Param("confidence") int confidence, @Param("now") OffsetDateTime now);
+
+    /**
+     * Decision D3 (Story 5.10): what the rows of import {@code importId} dated after {@code reference} add to the
+     * balance, credits minus debits. Same rows as {@link #markAffectsBalance}.
+     */
+    @Query("SELECT COALESCE(SUM(CASE WHEN t.transactionType = com.porquinho.entity.Transaction.Type.CREDIT "
+        + "THEN t.amount ELSE -t.amount END), 0) FROM Transaction t WHERE t.userId = :userId "
+        + "AND t.importId = :importId AND t.transactionDate > :reference AND t.futureInstallment = false "
+        + "AND t.deletedAt IS NULL")
+    BigDecimal sumBalanceEffect(@Param("userId") UUID userId, @Param("importId") UUID importId,
+                                @Param("reference") LocalDate reference);
+
+    /** Decision D3 (Story 5.10): marks the rows that {@link #sumBalanceEffect} added to the balance. */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE Transaction t SET t.affectsBalance = true, t.updatedAt = :now WHERE t.userId = :userId "
+        + "AND t.importId = :importId AND t.transactionDate > :reference AND t.futureInstallment = false "
+        + "AND t.deletedAt IS NULL")
+    int markAffectsBalance(@Param("userId") UUID userId, @Param("importId") UUID importId,
+                           @Param("reference") LocalDate reference, @Param("now") OffsetDateTime now);
+
+    /** The import is finished (Story 5.10): every active row is CONFIRMED, future installments included (5.9, 2A). */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE Transaction t SET t.reviewStatus = com.porquinho.entity.Transaction.ReviewStatus.CONFIRMED, "
+        + "t.updatedAt = :now WHERE t.userId = :userId AND t.importId = :importId AND t.deletedAt IS NULL")
+    int confirmByImport(@Param("userId") UUID userId, @Param("importId") UUID importId,
+                        @Param("now") OffsetDateTime now);
 
     /**
      * Story 5.9, decision 3A: the import {@code importId} is being discarded, so the installments it created and another

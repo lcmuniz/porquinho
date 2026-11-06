@@ -10,8 +10,8 @@ import java.util.UUID;
 /**
  * One snapshot of an account's current balance (Story 4.3, V20). Append-only: written on creation
  * ("initial"), when an edit changes the balance ("edit"), on both sides of a transfer ("transfer", Story 4.5) and
- * when a reconciliation changes the balance ("reconciliation", Story 4.6); transactions come later. Read by the
- * balance chart of Story 4.7. Written only by BalanceHistoryRecorder.
+ * when a reconciliation changes the balance ("reconciliation", Story 4.6) and when a finished import changes it
+ * ("transaction", Story 5.10). Read by the balance chart of Story 4.7. Written only by BalanceHistoryRecorder.
  */
 @Entity
 @Table(name = "account_balance_history")
@@ -21,6 +21,7 @@ public class AccountBalanceHistory {
     public static final String EVENT_EDIT = "edit";
     public static final String EVENT_TRANSFER = "transfer";
     public static final String EVENT_RECONCILIATION = "reconciliation";
+    public static final String EVENT_TRANSACTION = "transaction";
 
     @Id
     @GeneratedValue(generator = "UUID")

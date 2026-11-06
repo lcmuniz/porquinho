@@ -63,3 +63,28 @@ export async function discardImport(id: string): Promise<ImportReviewActionResul
   const response = await api.post<ImportReviewActionResult>(`/api/v1/imports/${id}/discard`)
   return response.data
 }
+
+/**
+ * Story 5.10: troca a categoria de uma ou de várias linhas, e das parcelas futuras das compras delas. 400 em grupo; 404
+ * com linha ou categoria indisponível, sem gravar nada; 409 fora de REVIEW. `detail` sempre em pt-BR.
+ */
+export async function updateImportCategory(
+  id: string,
+  transactionIds: string[],
+  categoryId: string,
+): Promise<ImportReviewActionResult> {
+  const response = await api.patch<ImportReviewActionResult>(`/api/v1/imports/${id}/transactions/category`, {
+    transactionIds,
+    categoryId,
+  })
+  return response.data
+}
+
+/**
+ * Story 5.10: conclui a importação. Repetir responde 200 sem mudar nada. 400 se o saldo estourar; 404 se não for do
+ * usuário; 409 em outro status ou com o destino removido. `detail` sempre em pt-BR.
+ */
+export async function completeTransactionImport(id: string): Promise<ImportReviewActionResult> {
+  const response = await api.post<ImportReviewActionResult>(`/api/v1/imports/${id}/complete`)
+  return response.data
+}

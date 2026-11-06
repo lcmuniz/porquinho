@@ -1,7 +1,7 @@
 /**
  * Status de uma importação de extrato (Story 5.1). PROCESSING enquanto o processamento roda (o banco aparece no meio,
  * Story 5.3, e a classificação pela IA, Story 5.8); REVIEW quando as transações foram gravadas e classificadas (Story
- * 5.4, decisão 1A); COMPLETED direto quando
+ * 5.4, decisão 1A); COMPLETED ao concluir a revisão (Story 5.10) ou direto quando
  * todos os lançamentos eram duplicatas ou transferências já registradas (Story 5.5, decisão 1A); FAILED com `errorMessage`
  * quando o arquivo está incompleto, não tem transações ou o processamento cai.
  */
@@ -44,7 +44,7 @@ export type BankCode = 'NUBANK' | 'BANCO_DO_BRASIL' | 'ITAU' | 'BRADESCO' | 'CAI
 /** Destino escolhido antes do envio (decisão D2 do Epic 5). */
 export type ImportTarget = { kind: 'account'; id: string } | { kind: 'card'; id: string }
 
-/** Estado da linha na revisão (Story 5.9): APPROVED pelo "Aprovar todas"; CONFIRMED com a importação concluída. */
+/** Estado da linha na revisão: APPROVED pelo "Aprovar todas" (5.9) ou pela edição (5.10); CONFIRMED com a importação concluída. */
 export type ImportReviewStatus = 'PENDING' | 'APPROVED' | 'CONFIRMED'
 
 /** Detalhes do Pix (Story 5.6), com as chaves como foram gravadas. */
@@ -77,7 +77,7 @@ export interface ImportTransaction {
   isFutureInstallment: boolean
 }
 
-/** Resultado de aprovar ou descartar: o status da importação e quantas linhas foram afetadas (Story 5.9). */
+/** Resultado de uma ação da revisão: o status da importação e quantas linhas foram afetadas (Stories 5.9 e 5.10). */
 export interface ImportReviewActionResult {
   importId: string
   status: TransactionImportStatus

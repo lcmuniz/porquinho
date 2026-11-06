@@ -11,6 +11,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -40,6 +41,10 @@ public interface CategoryRepository extends JpaRepository<Category, UUID> {
     /** The user's categories among {@code ids}, removed ones included: the review shows the name saved (Story 5.9). */
     @Query("SELECT c FROM Category c WHERE c.userId = :userId AND c.id IN :ids")
     List<Category> findByUserIdAndIdIn(@Param("userId") UUID userId, @Param("ids") Collection<UUID> ids);
+
+    /** One of the user's active categories; empty when it is removed or belongs to someone else (Story 5.10). */
+    @Query("SELECT c FROM Category c WHERE c.id = :id AND c.userId = :userId AND c.deletedAt IS NULL")
+    Optional<Category> findActiveByIdAndUserId(@Param("id") UUID id, @Param("userId") UUID userId);
 
     /**
      * Hard-delete the user's categories (LGPD account purge, Story 3.4). A single statement, so the

@@ -74,7 +74,7 @@ class OnboardingDashboardTourIntegrationTest {
 
     private void atStepSeven() {
         atStepSix();
-        onboardingService.completeImport(userId, "127.0.0.1");
+        onboardingService.completeImport(userId, null, "127.0.0.1");
         onboardingProgressRepository.flush();
     }
 

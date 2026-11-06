@@ -3,17 +3,21 @@ package com.porquinho.controller;
 import com.porquinho.dto.ImportReviewActionResponse;
 import com.porquinho.dto.ImportTransactionResponse;
 import com.porquinho.dto.TransactionImportResponse;
+import com.porquinho.dto.UpdateImportCategoryRequest;
 import com.porquinho.service.TransactionImportReviewService;
 import com.porquinho.service.TransactionImportService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
@@ -24,8 +28,8 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Bank statement uploads (Story 5.1), used by the /importar page, and their review (Story 5.9). The user always comes
- * from the JWT.
+ * Bank statement uploads (Story 5.1), used by the /importar page, and their review and conclusion (Stories 5.9 and
+ * 5.10). The user always comes from the JWT.
  */
 @RestController
 @RequestMapping("/api/v1/imports")
@@ -90,6 +94,29 @@ public class TransactionImportController {
     public ResponseEntity<ImportReviewActionResponse> discard(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
                                                               HttpServletRequest httpRequest) {
         return ResponseEntity.ok(transactionImportReviewService.discard(
+            UUID.fromString(jwt.getSubject()), id, httpRequest.getRemoteAddr()));
+    }
+
+    /**
+     * Sets the category of one or several rows, and of the future installments of their purchases (Story 5.10). 400
+     * for a group or an invalid body; 404 for an import, row or category that is not available; 409 outside REVIEW.
+     */
+    @PatchMapping("/{id}/transactions/category")
+    public ResponseEntity<ImportReviewActionResponse> updateCategory(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
+                                                                     @Valid @RequestBody UpdateImportCategoryRequest request,
+                                                                     HttpServletRequest httpRequest) {
+        return ResponseEntity.ok(transactionImportReviewService.updateCategory(
+            UUID.fromString(jwt.getSubject()), id, request, httpRequest.getRemoteAddr()));
+    }
+
+    /**
+     * Finishes an import under review (Story 5.10). 200 with nothing changed if it is already COMPLETED; 400 if the
+     * balance would go out of range; 404 if not the user's; 409 in any other status or with the target removed.
+     */
+    @PostMapping("/{id}/complete")
+    public ResponseEntity<ImportReviewActionResponse> complete(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
+                                                               HttpServletRequest httpRequest) {
+        return ResponseEntity.ok(transactionImportReviewService.complete(
             UUID.fromString(jwt.getSubject()), id, httpRequest.getRemoteAddr()));
     }
 }

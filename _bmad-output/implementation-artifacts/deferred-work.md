@@ -190,15 +190,21 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-9-present-classified-transactions-for-user-review.md`
   summary: A parcela transferida no descarte (3A) não atualiza os contadores da importação que a confirmou, que segue contando a linha como duplicata (5.7 – 2A).
   evidence: O rótulo da `/importar` pode ficar uma linha abaixo do que a revisão mostra. Resolver na 5.10, se o resumo final usar `imported_transactions`.
+  status: Continua aberto. O rótulo "Concluída" da 5.10 usa `imported_transactions`, e o ajuste do contador no descarte ficou fora da spec.
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-9-present-classified-transactions-for-user-review.md`
   summary: A 5.10 precisa tomar o advisory lock do destino ao concluir a importação; o descarte lê o status da importação que confirmou para decidir entre `CONFIRMED` e manter o status da linha.
   evidence: `TransactionRepository.transferConfirmedInstallments`. Sem o lock, uma conclusão simultânea deixaria a linha transferida sem `CONFIRMED`.
+  resolution: Feito na 5.10. `TransactionImportReviewService.complete` toma o lock antes do update com guarda.
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-9-present-classified-transactions-for-user-review.md`
   summary: Descartar a importação que criou as futuras de uma compra deixa sem futuras a parcela mais antiga trazida depois por outra importação do mesmo grupo (ela não criou futuras porque já existiam).
   evidence: As futuras voltam quando a parcela seguinte for importada, pois `InstallmentPlanner` cria as que faltam no grupo.
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-9-present-classified-transactions-for-user-review.md`
   summary: Na 5.10, tratar a parcela transferida no descarte para importação `COMPLETED`: ela fica `CONFIRMED` com `affects_balance = false` e nunca entra no saldo.
   evidence: `transferConfirmedInstallments` só muda `review_status`. Uma importação concluída por `markCompletedWithNothingNew` não passa pela conclusão da 5.10, e a 5.9 não pode mexer em saldo.
+  resolution: Fechado na 5.10 sem mudança de código. Parcelas futuras só existem em cartão, e a D3 não mexe em saldo de cartão, então `affects_balance = false` é o valor certo para essa linha.
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-9-present-classified-transactions-for-user-review.md`
   summary: A decisão 5A só avisa; os lançamentos ignorados como duplicatas de uma importação descartada dependem do reenvio pelo usuário.
   evidence: Nada liga a entrada ignorada à linha original. `duplicatesFound` também conta parcelas confirmadas (5.7 – 2A), então o aviso pode aparecer sem perda real.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-10-review-and-adjust-ai-classifications.md`
+  summary: Uma transferência registrada depois do upload e antes de concluir a importação entra em dobro no saldo.
+  evidence: A D4 só procura transferências no processamento do arquivo, e `REFERENCE_EVENTS` exclui `transfer`, então `sumBalanceEffect` soma de novo a linha do extrato. Luiz adiou em 2026-11-06; a reconciliação corrige o saldo. Possível correção: repetir a checagem da D4 ao concluir.

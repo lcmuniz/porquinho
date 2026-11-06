@@ -5,6 +5,7 @@ import com.porquinho.config.TestWebSecurityConfig;
 import com.porquinho.dto.ImportReviewActionResponse;
 import com.porquinho.dto.ImportTransactionResponse;
 import com.porquinho.dto.TransactionImportResponse;
+import com.porquinho.dto.UpdateImportCategoryRequest;
 import com.porquinho.exception.BadRequestException;
 import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
@@ -16,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -42,6 +44,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -267,5 +270,108 @@ class TransactionImportControllerTest {
         mockMvc.perform(post("/api/v1/imports/" + id + "/discard").with(authentication(authToken)))
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.detail").value("Esta importação não está em revisão"));
+    }
+
+    // ---- Story 5.10 ----
+
+    private String categoryBody(UUID row, UUID category) {
+        return "{\"transactionIds\":[\"" + row + "\"],\"categoryId\":\"" + category + "\"}";
+    }
+
+    @Test
+    void categoryChangeGoesToTheJwtUser() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID row = UUID.randomUUID();
+        UUID category = UUID.randomUUID();
+        when(transactionImportReviewService.updateCategory(eq(userId), eq(id),
+            eq(new UpdateImportCategoryRequest(List.of(row), category)), anyString()))
+            .thenReturn(new ImportReviewActionResponse(id, "REVIEW", 1));
+
+        mockMvc.perform(patch("/api/v1/imports/" + id + "/transactions/category").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content(categoryBody(row, category)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("REVIEW"))
+            .andExpect(jsonPath("$.affectedTransactions").value(1));
+    }
+
+    @Test
+    void categoryChangeWithoutIdsOrCategoryIs400WithoutCallingTheService() throws Exception {
+        UUID id = UUID.randomUUID();
+        String url = "/api/v1/imports/" + id + "/transactions/category";
+
+        mockMvc.perform(patch(url).with(authentication(authToken)).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"transactionIds\":[],\"categoryId\":\"" + UUID.randomUUID() + "\"}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.detail").value("Escolha ao menos uma transação"));
+        mockMvc.perform(patch(url).with(authentication(authToken)).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"transactionIds\":[\"" + UUID.randomUUID() + "\"]}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.detail").value("Escolha uma categoria"));
+        mockMvc.perform(patch(url).with(authentication(authToken)).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"transactionIds\":[null],\"categoryId\":\"" + UUID.randomUUID() + "\"}"))
+            .andExpect(status().isBadRequest());
+        mockMvc.perform(patch(url).with(authentication(authToken)).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"transactionIds\":[\"x\"],\"categoryId\":\"" + UUID.randomUUID() + "\"}"))
+            .andExpect(status().isBadRequest());
+        verifyNoInteractions(transactionImportReviewService);
+    }
+
+    @Test
+    void categoryChangeAboveTheLimitOfIdsIs400WithoutCallingTheService() throws Exception {
+        String ids = java.util.stream.Stream.generate(UUID::randomUUID).limit(5001)
+            .map(id -> "\"" + id + "\"").collect(java.util.stream.Collectors.joining(","));
+
+        mockMvc.perform(patch("/api/v1/imports/" + UUID.randomUUID() + "/transactions/category")
+                .with(authentication(authToken)).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"transactionIds\":[" + ids + "],\"categoryId\":\"" + UUID.randomUUID() + "\"}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.detail").value("Altere no máximo 5000 transações de uma vez"));
+        verifyNoInteractions(transactionImportReviewService);
+    }
+
+    @Test
+    void categoryChangeErrorsKeepTheirStatusAndMessage() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(transactionImportReviewService.updateCategory(eq(userId), eq(id), any(), anyString()))
+            .thenThrow(new ConflictException(TransactionImportReviewService.NOT_IN_REVIEW_MESSAGE))
+            .thenThrow(new BadRequestException(TransactionImportReviewService.GROUP_NOT_ALLOWED_MESSAGE))
+            .thenThrow(new ResourceNotFoundException(TransactionImportReviewService.TRANSACTION_NOT_FOUND_MESSAGE));
+        String url = "/api/v1/imports/" + id + "/transactions/category";
+        String body = categoryBody(UUID.randomUUID(), UUID.randomUUID());
+
+        mockMvc.perform(patch(url).with(authentication(authToken)).contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isConflict());
+        mockMvc.perform(patch(url).with(authentication(authToken)).contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.detail").value("Escolha uma categoria, não um grupo"));
+        mockMvc.perform(patch(url).with(authentication(authToken)).contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void completeGoesToTheJwtUser() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(transactionImportReviewService.complete(eq(userId), eq(id), anyString()))
+            .thenReturn(new ImportReviewActionResponse(id, "COMPLETED", 4));
+
+        mockMvc.perform(post("/api/v1/imports/" + id + "/complete").with(authentication(authToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("COMPLETED"))
+            .andExpect(jsonPath("$.affectedTransactions").value(4));
+    }
+
+    @Test
+    void completeErrorsKeepTheirStatusAndMessage() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(transactionImportReviewService.complete(eq(userId), eq(id), anyString()))
+            .thenThrow(new ConflictException(TransactionImportReviewService.ACCOUNT_REMOVED_MESSAGE))
+            .thenThrow(new BadRequestException(TransactionImportReviewService.BALANCE_OUT_OF_RANGE_MESSAGE));
+
+        mockMvc.perform(post("/api/v1/imports/" + id + "/complete").with(authentication(authToken)))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.detail").value(TransactionImportReviewService.ACCOUNT_REMOVED_MESSAGE));
+        mockMvc.perform(post("/api/v1/imports/" + id + "/complete").with(authentication(authToken)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.detail").value(TransactionImportReviewService.BALANCE_OUT_OF_RANGE_MESSAGE));
     }
 }
