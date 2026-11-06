@@ -74,6 +74,9 @@ So that I implement the envelope budgeting method.
 **And** System validates: Total allocated <= Total available in accounts
 **And** Clicking "Save Monthly Budget" creates/updates budget_allocation records for current month
 **And** Each category shows: Allocated, Spent (from transactions), Remaining
+**And** Spent counts only transactions with is_future_installment=false: a future installment (Story 5.7) is spending of its own month only once confirmed by an import
+**And** From the current month on, each month also shows as committed the sum of the future installments dated in that month (is_future_installment=true), apart from Spent; closed months show no committed amount (the cut is the first day of the current month)
+**And** Committed ignores the future installments of a deleted card; they count again if the card is restored (decision 5A of Story 5.7)
 **And** Visual progress bar shows: Spent / Allocated ratio
 **And** If total allocated > total available, warning: "Você está alocando mais do que tem disponível"
 **And** Allocations can be edited throughout the month
@@ -159,6 +162,7 @@ So that category balances stay accurate without manual updates.
   - spent_amount += transaction amount (for debit transactions)
   - remaining_amount is recalculated (allocated - spent)
 **And** If transaction is credit (income), it does NOT reduce budget (only debits reduce)
+**And** If transaction is a classified future installment (is_future_installment=true), it does NOT enter spent_amount; it starts counting in its own month when an import confirms it (Story 5.7)
 **And** If transaction is edited to different category:
   - Old category: spent_amount -= transaction amount
   - New category: spent_amount += transaction amount

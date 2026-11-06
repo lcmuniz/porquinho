@@ -165,9 +165,16 @@ class TransactionImportIntegrationTest {
         return awaitRow(importId, r -> !"PROCESSING".equals(r.get("status")));
     }
 
+    /** The rows that came from the file of {@code importId} (the future installments it created are left out). */
     private List<Map<String, Object>> transactionsOf(UUID importId) {
-        return jdbc.queryForList("SELECT * FROM transactions WHERE import_id = ? ORDER BY transaction_date, external_id",
-            importId);
+        return jdbc.queryForList("SELECT * FROM transactions WHERE import_id = ? AND is_future_installment = FALSE "
+            + "ORDER BY transaction_date, external_id", importId);
+    }
+
+    /** The future installments created by {@code importId} (Story 5.7). */
+    private List<Map<String, Object>> futuresOf(UUID importId) {
+        return jdbc.queryForList("SELECT * FROM transactions WHERE import_id = ? AND is_future_installment = TRUE "
+            + "ORDER BY installment_group_id, installment_number", importId);
     }
 
     private long imports(UUID owner) {
@@ -286,7 +293,8 @@ class TransactionImportIntegrationTest {
             .isInstanceOf(DataIntegrityViolationException.class);
 
         transactionTemplate.executeWithoutResult(status -> {
-            assertThat(transactionRepository.deleteByUserId(userId)).isEqualTo(18);
+            // 10 + 8 entries and the 21 future installments of the Itaú card (Story 5.7)
+            assertThat(transactionRepository.deleteByUserId(userId)).isEqualTo(39);
             assertThat(transactionImportRepository.deleteByUserId(userId)).isEqualTo(2);
             balanceHistoryRepository.deleteByUserId(userId);
             assertThat(accountRepository.deleteByUserId(userId)).isEqualTo(1);
@@ -724,7 +732,7 @@ class TransactionImportIntegrationTest {
             + "AND event_type = 'import_duplicates_checked' AND ip_address IS NULL", String.class, userId);
         assertThat(audits).hasSize(2);
         assertThat(audits).filteredOn(m -> m.contains(second.toString())).singleElement().asString().isEqualTo("{\"import_id\":\"" + second + "\",\"total_transactions\":10,"
-            + "\"imported_transactions\":0,\"duplicates_found\":10,\"transfers_found\":0,\"skipped_rows\":0}");
+            + "\"imported_transactions\":0,\"duplicates_found\":10,\"transfers_found\":0,\"skipped_rows\":0,\"installments_found\":0,\"future_installments_created\":0,\"installments_confirmed\":0}");
     }
 
     @ParameterizedTest
@@ -851,6 +859,261 @@ class TransactionImportIntegrationTest {
         assertThat(rows.get(0)).containsEntry("transfers_found", 0);
         assertThatThrownBy(() -> jdbc.update("UPDATE transaction_imports SET transfers_found = -1 WHERE user_id = ?", userId))
             .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    // Story 5.7
+
+    @Test
+    void cardInstallmentsGetTheirGroupsAndFutureMonths() throws Exception {
+        UUID nubank = card(userId, "Nubank");
+        UUID created = transactionImportService.create(userId, null, nubank, sample("nubank-cartao.csv"), "127.0.0.1").id();
+
+        Map<String, Object> row = awaitDone(created);
+        assertThat(row.get("status")).isEqualTo("REVIEW");
+        assertThat(row.get("imported_transactions")).isEqualTo(9);
+        List<Map<String, Object>> installments = transactionsOf(created).stream()
+            .filter(t -> Boolean.TRUE.equals(t.get("is_installment"))).toList();
+        assertThat(installments).extracting(t -> t.get("description"), t -> t.get("installment_number"),
+                t -> t.get("installment_total"))
+            .containsExactly(org.assertj.core.groups.Tuple.tuple("Magazine Luiza - Parcela 3/10", 3, 10),
+                org.assertj.core.groups.Tuple.tuple("Smart Fit - Parcela 2/12", 2, 12));
+        List<Map<String, Object>> futures = futuresOf(created);
+        assertThat(futures).hasSize(17).allSatisfy(t -> {
+            assertThat(t.get("is_installment")).isEqualTo(true);
+            assertThat(t.get("external_id")).isNull();
+            assertThat(t.get("review_status")).isEqualTo("PENDING");
+            assertThat(t.get("credit_card_id")).isEqualTo(nubank);
+        });
+        Object magazineGroup = installments.get(0).get("installment_group_id");
+        assertThat(futures).filteredOn(t -> magazineGroup.equals(t.get("installment_group_id")))
+            .extracting(t -> t.get("installment_number"), t -> t.get("transaction_date").toString(),
+                t -> t.get("description"))
+            .startsWith(org.assertj.core.groups.Tuple.tuple(4, "2026-11-02", "Magazine Luiza - Parcela 4/10"))
+            .endsWith(org.assertj.core.groups.Tuple.tuple(10, "2027-05-02", "Magazine Luiza - Parcela 10/10"))
+            .hasSize(7);
+        assertThat(futures).filteredOn(t -> magazineGroup.equals(t.get("installment_group_id")))
+            .allSatisfy(t -> assertThat((BigDecimal) t.get("amount")).isEqualByComparingTo("189.90"));
+    }
+
+    @Test
+    void itauCardOfxHasFourInstallments() throws Exception {
+        UUID itau = card(userId, "Itaú Visa");
+        UUID created = transactionImportService.create(userId, null, itau, sample("itau-cartao.ofx"), "127.0.0.1").id();
+
+        assertThat(awaitDone(created).get("status")).isEqualTo("REVIEW");
+        assertThat(transactionsOf(created)).filteredOn(t -> Boolean.TRUE.equals(t.get("is_installment")))
+            .extracting(t -> t.get("description"))
+            .containsExactly("MAGAZINELUIZA 03/10", "CASASBAHIA 07/12", "MERCADOLIVRE*LOJA 01/03",
+                "ANUIDADE DIFERENCIADA 05/12");
+        assertThat(futuresOf(created)).hasSize(21);
+        assertThat(futuresOf(created)).extracting(t -> t.get("original_description"))
+            .contains("MAGAZINELUIZA  04/10", "CASASBAHIA     12/12");
+    }
+
+    @Test
+    void accountImportHasNoInstallments() throws Exception {
+        UUID itau = account(userId, "Itaú");
+        UUID created = transactionImportService.create(userId, itau, null, sample("itau-conta.ofx"), "127.0.0.1").id();
+
+        assertThat(awaitDone(created).get("status")).isEqualTo("REVIEW");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM transactions WHERE user_id = ? AND is_installment = TRUE",
+            Long.class, userId)).isZero();
+    }
+
+    @Test
+    void nextMonthConfirmsTheFutureInstallment() throws Exception {
+        UUID nubank = card(userId, "Nubank");
+        UUID first = transactionImportService.create(userId, null, nubank, sample("nubank-cartao.csv"), "127.0.0.1").id();
+        assertThat(awaitDone(first).get("status")).isEqualTo("REVIEW");
+        long rowsBefore = jdbc.queryForObject("SELECT COUNT(*) FROM transactions WHERE user_id = ?", Long.class, userId);
+        MockMultipartFile november = new MockMultipartFile("file", "nov.csv", "text/csv",
+            "date,title,amount\n2026-11-03,Magazine Luiza - Parcela 4/10,189.90\n2026-11-05,Padaria,12.00\n"
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        UUID second = transactionImportService.create(userId, null, nubank, november, "127.0.0.1").id();
+
+        Map<String, Object> row = awaitDone(second);
+        assertThat(row.get("status")).isEqualTo("REVIEW");
+        assertThat(row.get("imported_transactions")).isEqualTo(1);
+        assertThat(row.get("duplicates_found")).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM transactions WHERE user_id = ?", Long.class, userId))
+            .isEqualTo(rowsBefore + 1);
+        Map<String, Object> confirmed = jdbc.queryForMap("SELECT * FROM transactions WHERE user_id = ? "
+            + "AND description = 'Magazine Luiza - Parcela 4/10'", userId);
+        assertThat(confirmed.get("is_future_installment")).isEqualTo(false);
+        assertThat(confirmed.get("import_id")).isEqualTo(first);
+        assertThat(confirmed.get("transaction_date").toString()).isEqualTo("2026-11-03");
+        assertThat(confirmed.get("external_id")).isNull(); // the Nubank card CSV has no id: kept as the file brings it
+        assertThat(futuresOf(second)).isEmpty();
+        assertThat(jdbc.queryForList("SELECT metadata FROM audit_logs WHERE user_id = ? "
+            + "AND event_type = 'import_duplicates_checked' AND metadata LIKE ?",
+            String.class, userId, "%" + second + "%")).singleElement().asString()
+            .contains("\"installments_found\":1,\"future_installments_created\":0,\"installments_confirmed\":1");
+    }
+
+    @Test
+    void cardFileWithOnlyConfirmationsCompletes() throws Exception {
+        UUID nubank = card(userId, "Nubank");
+        UUID first = transactionImportService.create(userId, null, nubank, sample("nubank-cartao.csv"), "127.0.0.1").id();
+        assertThat(awaitDone(first).get("status")).isEqualTo("REVIEW");
+        long rowsBefore = jdbc.queryForObject("SELECT COUNT(*) FROM transactions WHERE user_id = ?", Long.class, userId);
+        MockMultipartFile november = new MockMultipartFile("file", "nov.csv", "text/csv",
+            "date,title,amount\n2026-11-03,Magazine Luiza - Parcela 4/10,189.90\n"
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        UUID second = transactionImportService.create(userId, null, nubank, november, "127.0.0.1").id();
+
+        Map<String, Object> row = awaitDone(second);
+        assertThat(row.get("status")).isEqualTo("COMPLETED");
+        assertThat(row.get("imported_transactions")).isEqualTo(0);
+        assertThat(row.get("duplicates_found")).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM transactions WHERE user_id = ?", Long.class, userId))
+            .isEqualTo(rowsBefore);
+        Map<String, Object> confirmed = jdbc.queryForMap("SELECT * FROM transactions WHERE user_id = ? "
+            + "AND description = 'Magazine Luiza - Parcela 4/10'", userId);
+        assertThat(confirmed.get("is_future_installment")).isEqualTo(false);
+        assertThat(confirmed.get("transaction_date").toString()).isEqualTo("2026-11-03");
+    }
+
+    @Test
+    void sameCardFileAgainCreatesNoFutures() throws Exception {
+        UUID itau = card(userId, "Itaú Visa");
+        UUID first = transactionImportService.create(userId, null, itau, sample("itau-cartao.ofx"), "127.0.0.1").id();
+        assertThat(awaitDone(first).get("status")).isEqualTo("REVIEW");
+
+        UUID second = transactionImportService.create(userId, null, itau, sample("itau-cartao.ofx"), "127.0.0.1").id();
+
+        Map<String, Object> row = awaitDone(second);
+        assertThat(row.get("status")).isEqualTo("COMPLETED");
+        assertThat(row.get("duplicates_found")).isEqualTo(8);
+        assertThat(futuresOf(second)).isEmpty();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM transactions WHERE user_id = ?", Long.class, userId))
+            .isEqualTo(29L);
+    }
+
+    @Test
+    void confirmationKeepsTheOfxIdAndDescriptionsAndTheSameFileAgainChangesNothing() throws Exception {
+        UUID itau = card(userId, "Itaú Visa");
+        UUID first = transactionImportService.create(userId, null, itau, sample("itau-cartao.ofx"), "127.0.0.1").id();
+        assertThat(awaitDone(first).get("status")).isEqualTo("REVIEW");
+        long rowsBefore = jdbc.queryForObject("SELECT COUNT(*) FROM transactions WHERE user_id = ?", Long.class, userId);
+        UUID future = jdbc.queryForObject("SELECT id FROM transactions WHERE user_id = ? "
+            + "AND original_description = 'MAGAZINELUIZA  04/10'", UUID.class, userId);
+
+        UUID second = transactionImportService.create(userId, null, itau, novemberOfx(), "127.0.0.1").id();
+
+        Map<String, Object> row = awaitDone(second);
+        assertThat(row.get("status")).isEqualTo("COMPLETED");
+        assertThat(row.get("duplicates_found")).isEqualTo(1);
+        Map<String, Object> confirmed = jdbc.queryForMap("SELECT * FROM transactions WHERE id = ?", future);
+        assertThat(confirmed.get("is_future_installment")).isEqualTo(false);
+        assertThat(confirmed.get("external_id")).isEqualTo("20261103000001");
+        assertThat(confirmed.get("description")).isEqualTo("MAGAZINE LUIZA 04/10");
+        assertThat(confirmed.get("original_description")).isEqualTo("MAGAZINE  LUIZA  04/10");
+        assertThat(confirmed.get("import_id")).isEqualTo(first);
+
+        UUID third = transactionImportService.create(userId, null, itau, novemberOfx(), "127.0.0.1").id();
+
+        Map<String, Object> again = awaitDone(third);
+        assertThat(again.get("status")).isEqualTo("COMPLETED");
+        assertThat(again.get("duplicates_found")).isEqualTo(1);
+        assertThat(futuresOf(third)).isEmpty();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM transactions WHERE user_id = ?", Long.class, userId))
+            .isEqualTo(rowsBefore);
+        assertThat(jdbc.queryForList("SELECT metadata FROM audit_logs WHERE user_id = ? "
+            + "AND event_type = 'import_duplicates_checked' AND metadata LIKE ?",
+            String.class, userId, "%" + third + "%")).singleElement().asString()
+            .contains("\"installments_found\":0,\"future_installments_created\":0,\"installments_confirmed\":0");
+    }
+
+    @Test
+    void sameFileWithoutIdAfterTheConfirmationIsADuplicate() throws Exception {
+        UUID nubank = card(userId, "Nubank");
+        UUID first = transactionImportService.create(userId, null, nubank, sample("nubank-cartao.csv"), "127.0.0.1").id();
+        assertThat(awaitDone(first).get("status")).isEqualTo("REVIEW");
+        byte[] csv = "date,title,amount\n2026-11-03,Magazine Luiza - Parcela 4/10,189.90\n"
+            .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        UUID second = transactionImportService.create(userId, null, nubank,
+            new MockMultipartFile("file", "nov.csv", "text/csv", csv), "127.0.0.1").id();
+        assertThat(awaitDone(second).get("status")).isEqualTo("COMPLETED");
+        long rowsBefore = jdbc.queryForObject("SELECT COUNT(*) FROM transactions WHERE user_id = ?", Long.class, userId);
+
+        UUID third = transactionImportService.create(userId, null, nubank,
+            new MockMultipartFile("file", "nov.csv", "text/csv", csv), "127.0.0.1").id();
+
+        Map<String, Object> row = awaitDone(third);
+        assertThat(row.get("status")).isEqualTo("COMPLETED");
+        assertThat(row.get("imported_transactions")).isEqualTo(0);
+        assertThat(row.get("duplicates_found")).isEqualTo(1);
+        assertThat(futuresOf(third)).isEmpty();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM transactions WHERE user_id = ?", Long.class, userId))
+            .isEqualTo(rowsBefore);
+    }
+
+    /** The Itaú card statement with a single entry: the next month of its first installment, with an OFX id. */
+    private static MockMultipartFile novemberOfx() throws IOException {
+        Charset charset = Charset.forName("windows-1252");
+        String ofx = new String(sample("itau-cartao.ofx").getBytes(), charset);
+        int start = ofx.indexOf("<STMTTRN>");
+        int end = ofx.lastIndexOf("</STMTTRN>") + "</STMTTRN>".length();
+        String entry = "<STMTTRN>\n<TRNTYPE>DEBIT\n<DTPOSTED>20261103000000[-3:BRT]\n<TRNAMT>-189.90\n"
+            + "<FITID>20261103000001\n<MEMO>MAGAZINE  LUIZA  04/10\n</STMTTRN>";
+        return new MockMultipartFile("file", "nov.ofx", "application/octet-stream",
+            (ofx.substring(0, start) + entry + ofx.substring(end)).getBytes(charset));
+    }
+
+    @Test
+    void installmentOnAnotherCardDoesNotConfirmTheFirstCardsFuture() throws Exception {
+        UUID nubank = card(userId, "Nubank");
+        UUID other = card(userId, "Nubank Virtual");
+        UUID first = transactionImportService.create(userId, null, nubank, sample("nubank-cartao.csv"), "127.0.0.1").id();
+        assertThat(awaitDone(first).get("status")).isEqualTo("REVIEW");
+        MockMultipartFile november = new MockMultipartFile("file", "nov.csv", "text/csv",
+            "date,title,amount\n2026-11-03,Magazine Luiza - Parcela 4/10,189.90\n"
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        UUID second = transactionImportService.create(userId, null, other, november, "127.0.0.1").id();
+
+        Map<String, Object> row = awaitDone(second);
+        assertThat(row.get("status")).isEqualTo("REVIEW");
+        assertThat(row.get("imported_transactions")).isEqualTo(1);
+        assertThat(row.get("duplicates_found")).isEqualTo(0);
+        assertThat(futuresOf(first)).hasSize(17);
+        assertThat(futuresOf(second)).hasSize(6).allSatisfy(t -> assertThat(t.get("credit_card_id")).isEqualTo(other));
+        assertThat(transactionsOf(second)).singleElement().satisfies(t -> {
+            assertThat(t.get("credit_card_id")).isEqualTo(other);
+            assertThat(t.get("installment_group_id")).isNotIn(futuresOf(first).stream()
+                .map(future -> future.get("installment_group_id")).toList());
+        });
+    }
+
+    @Test
+    void deletedFutureIsNotConfirmed() throws Exception {
+        UUID nubank = card(userId, "Nubank");
+        UUID first = transactionImportService.create(userId, null, nubank, sample("nubank-cartao.csv"), "127.0.0.1").id();
+        assertThat(awaitDone(first).get("status")).isEqualTo("REVIEW");
+        UUID deleted = jdbc.queryForObject("SELECT id FROM transactions WHERE user_id = ? "
+            + "AND description = 'Magazine Luiza - Parcela 4/10'", UUID.class, userId);
+        jdbc.update("UPDATE transactions SET deleted_at = NOW() WHERE id = ?", deleted);
+        MockMultipartFile november = new MockMultipartFile("file", "nov.csv", "text/csv",
+            "date,title,amount\n2026-11-03,Magazine Luiza - Parcela 4/10,189.90\n"
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        UUID second = transactionImportService.create(userId, null, nubank, november, "127.0.0.1").id();
+
+        Map<String, Object> row = awaitDone(second);
+        assertThat(row.get("status")).isEqualTo("REVIEW");
+        assertThat(row.get("imported_transactions")).isEqualTo(1);
+        assertThat(row.get("duplicates_found")).isEqualTo(0);
+        Map<String, Object> stillDeleted = jdbc.queryForMap("SELECT * FROM transactions WHERE id = ?", deleted);
+        assertThat(stillDeleted.get("is_future_installment")).isEqualTo(true);
+        assertThat(stillDeleted.get("transaction_date").toString()).isEqualTo("2026-11-02");
+        // the free number joins the group of the purchase; 5..10 already exist there
+        assertThat(futuresOf(second)).isEmpty();
+        assertThat(transactionsOf(second)).singleElement().satisfies(t -> {
+            assertThat(t.get("installment_number")).isEqualTo(4);
+            assertThat(t.get("installment_group_id")).isEqualTo(stillDeleted.get("installment_group_id"));
+        });
     }
 
     private UUID insertProcessing(UUID accountId, String age, String bank) {

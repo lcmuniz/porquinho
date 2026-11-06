@@ -16,6 +16,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.SimpleTransactionStatus;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -67,8 +68,11 @@ class TransactionImportProcessorTest {
     private final UUID cardId = UUID.randomUUID();
     private final OffsetDateTime now = OffsetDateTime.ofInstant(NOW, ZoneOffset.UTC);
 
+    private final SimpleTransactionStatus transactionStatus = new SimpleTransactionStatus();
+
     @BeforeEach
     void setUp() {
+        org.mockito.Mockito.lenient().when(transactionManager.getTransaction(any())).thenReturn(transactionStatus);
         processor = new TransactionImportProcessor(repository, transactionRepository, transferRepository,
             auditLogService, transactionManager,
             Clock.fixed(NOW, ZoneOffset.UTC));
@@ -135,7 +139,9 @@ class TransactionImportProcessorTest {
         processor.process(importId, TransactionImport.FileType.OFX, sample("itau-cartao.ofx"));
 
         List<Transaction> saved = savedTransactions();
-        assertThat(saved).hasSize(8).allSatisfy(t -> {
+        // Story 5.7: 8 entries plus the futures of 03/10 (7), 07/12 (5), 01/03 (2) and 05/12 (7)
+        assertThat(saved).hasSize(29).filteredOn(t -> !t.isFutureInstallment()).hasSize(8);
+        assertThat(saved).allSatisfy(t -> {
             assertThat(t.getCreditCardId()).isEqualTo(cardId);
             assertThat(t.getAccountId()).isNull();
         });
@@ -195,6 +201,33 @@ class TransactionImportProcessorTest {
     }
 
     @Test
+    void confirmedFutureIsRolledBackWhenTheImportLeftProcessing() throws IOException {
+        processingImport(null, cardId);
+        Transaction future = new Transaction();
+        future.setId(UUID.randomUUID());
+        future.setUserId(userId);
+        future.setCreditCardId(cardId);
+        future.setDescription("MAGAZINELUIZA 03/10");
+        future.setOriginalDescription("MAGAZINELUIZA 03/10");
+        future.setAmount(new BigDecimal("189.90"));
+        future.setTransactionDate(java.time.LocalDate.of(2026, 10, 1));
+        future.setTransactionType(Transaction.Type.DEBIT);
+        future.setInstallment(true);
+        future.setInstallmentNumber(3);
+        future.setInstallmentTotal(10);
+        future.setInstallmentGroupId(UUID.randomUUID());
+        future.setFutureInstallment(true);
+        when(transactionRepository.findActiveInstallmentsByCreditCard(userId, cardId)).thenReturn(List.of(future));
+        when(repository.markReadyForReview(importId, 8, 7, 1, 0, 0, now)).thenReturn(0);
+
+        processor.process(importId, TransactionImport.FileType.OFX, sample("itau-cartao.ofx"));
+
+        verify(transactionRepository, never()).saveAll(any());
+        assertThat(transactionStatus.isRollbackOnly()).isTrue();
+        verify(repository, never()).markFailed(any(), anyString(), any());
+    }
+
+    @Test
     void importThatLeftProcessingBeforeTheBankStopsThere() throws IOException {
         processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx"));
 
@@ -249,7 +282,9 @@ class TransactionImportProcessorTest {
         processor.process(importId, TransactionImport.FileType.CSV, sample("nubank-cartao.csv"));
 
         verify(repository).recordBank(importId, "NUBANK", now);
-        assertThat(savedTransactions()).hasSize(9).allSatisfy(t -> assertThat(t.getCreditCardId()).isEqualTo(cardId));
+        // Story 5.7: 9 entries plus the futures of Parcela 3/10 (7) and Parcela 2/12 (10)
+        assertThat(savedTransactions()).hasSize(26).allSatisfy(t -> assertThat(t.getCreditCardId()).isEqualTo(cardId))
+            .filteredOn(t -> !t.isFutureInstallment()).hasSize(9);
     }
 
     @ParameterizedTest
@@ -314,7 +349,7 @@ class TransactionImportProcessorTest {
         verify(transactionRepository, never()).saveAll(any());
         verify(auditLogService).log("import_duplicates_checked", userId, null, "{\"import_id\":\"" + importId
             + "\",\"total_transactions\":10,\"imported_transactions\":0,\"duplicates_found\":10,\"transfers_found\":0,"
-            + "\"skipped_rows\":0}");
+            + "\"skipped_rows\":0,\"installments_found\":0,\"future_installments_created\":0,\"installments_confirmed\":0}");
         InOrder order = inOrder(repository, transactionRepository);
         order.verify(repository).lockTarget(TransactionImportProcessor.lockKey(accountId));
         order.verify(transactionRepository).findActiveByAccountBetween(any(), any(), any(), any());
@@ -353,6 +388,7 @@ class TransactionImportProcessorTest {
         InOrder order = inOrder(repository, transactionRepository);
         order.verify(repository).lockTarget(TransactionImportProcessor.lockKey(cardId));
         order.verify(transactionRepository).findActiveByCreditCardBetween(eq(userId), eq(cardId), any(), any());
+        order.verify(transactionRepository).findActiveInstallmentsByCreditCard(userId, cardId);
         order.verify(repository).markReadyForReview(importId, 8, 8, 0, 0, 0, now);
         order.verify(transactionRepository).saveAll(any());
     }
@@ -366,7 +402,7 @@ class TransactionImportProcessorTest {
 
         verify(auditLogService).log("import_duplicates_checked", userId, null, "{\"import_id\":\"" + importId
             + "\",\"total_transactions\":6,\"imported_transactions\":2,\"duplicates_found\":0,\"transfers_found\":0,"
-            + "\"skipped_rows\":4}");
+            + "\"skipped_rows\":4,\"installments_found\":0,\"future_installments_created\":0,\"installments_confirmed\":0}");
     }
 
     @Test

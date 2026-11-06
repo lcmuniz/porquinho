@@ -1,5 +1,5 @@
 # generated: 2026-03-13
-# last_updated: 2026-11-05
+# last_updated: 2026-11-06
 # project: porquinho
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-13
-last_updated: 2026-11-05
+last_updated: 2026-11-06
 project: porquinho
 project_key: NOKEY
 tracking_system: file-system
@@ -108,7 +108,7 @@ development_status:
   5-4-parse-transactions-with-robust-error-handling: review
   5-5-detect-and-flag-duplicate-transactions: review
   5-6-identify-pix-transactions-and-extract-details: review
-  5-7-detect-installment-purchases-and-split-across-months: backlog
+  5-7-detect-installment-purchases-and-split-across-months: review
   5-8-auto-classify-transactions-using-ai: backlog
   5-9-present-classified-transactions-for-user-review: backlog
   5-10-review-and-adjust-ai-classifications: backlog

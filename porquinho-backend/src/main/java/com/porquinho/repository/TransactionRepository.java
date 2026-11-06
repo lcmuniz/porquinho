@@ -38,6 +38,15 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
                                                     @Param("from") LocalDate from, @Param("to") LocalDate to);
 
     /**
+     * The user's active installments (imported and future) of credit card {@code creditCardId}, oldest first: the
+     * groups a card import can join or confirm (Story 5.7).
+     */
+    @Query("SELECT t FROM Transaction t WHERE t.userId = :userId AND t.creditCardId = :creditCardId "
+        + "AND t.installment = true AND t.deletedAt IS NULL ORDER BY t.createdAt ASC, t.id ASC")
+    List<Transaction> findActiveInstallmentsByCreditCard(@Param("userId") UUID userId,
+                                                         @Param("creditCardId") UUID creditCardId);
+
+    /**
      * Hard-delete the user's transactions (LGPD account purge, Story 5.4). Must run BEFORE deleting the imports,
      * accounts, cards, categories and the user row (FKs to all of them).
      */
