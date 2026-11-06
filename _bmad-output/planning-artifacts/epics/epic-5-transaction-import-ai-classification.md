@@ -259,6 +259,11 @@ So that my transactions are accurately categorized.
 **And** Transactions left without category are confirmed as "Não classificado"
 **And** Finishing an import twice, or concurrently, changes nothing the second time
 **And** Onboarding step 6 (`ImportStep.vue`) uses the same upload component and endpoint as `/importar`; finishing that first import records `first_import_completed` through `POST /api/v1/onboarding/me/import` (deferred from Story 3.6; moved here by decision 2A of Story 5.1)
+**And** Decision 1A (Luiz, 2026-11-06): a row with source `USER` goes to the new group "Revisadas por você", after Low, with its own icon and color; it counts neither in X nor in Y
+**And** Decision 2A (Luiz, 2026-11-06): saving the same category counts as reviewed (`APPROVED`, `USER`, 100); Story 5.11 tells a correction apart through `was_corrected`, which compares the categories
+**And** The reference date of D3 is the latest of the last `initial`/`edit`/`reconciliation` snapshot and `last_reconciliation_date`, as a São Paulo date; a transaction on that same day does not change the balance
+**And** A target removed after the upload makes finishing a 409 ("restaure ou descarte a importação") and a balance out of range a 400, with nothing changed and the import still in REVIEW
+**And** Step 6 shows "Continuar" once a `COMPLETED` import exists, which covers a failure of that POST and an import with nothing new (Story 5.5, decision 1A); "Importar depois" stays
 
 ---
 

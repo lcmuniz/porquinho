@@ -103,15 +103,15 @@ development_status:
   # Epic 5: Transaction Import & AI Classification
   epic-5: in-progress
   5-1-upload-ofx-files-from-5-brazilian-banks: done
-  5-2-upload-csv-files-from-5-brazilian-banks: review
-  5-3-auto-detect-file-format-and-bank: review
-  5-4-parse-transactions-with-robust-error-handling: review
-  5-5-detect-and-flag-duplicate-transactions: review
-  5-6-identify-pix-transactions-and-extract-details: review
-  5-7-detect-installment-purchases-and-split-across-months: review
-  5-8-auto-classify-transactions-using-ai: review
-  5-9-present-classified-transactions-for-user-review: review
-  5-10-review-and-adjust-ai-classifications: backlog
+  5-2-upload-csv-files-from-5-brazilian-banks: done
+  5-3-auto-detect-file-format-and-bank: done
+  5-4-parse-transactions-with-robust-error-handling: done
+  5-5-detect-and-flag-duplicate-transactions: done
+  5-6-identify-pix-transactions-and-extract-details: done
+  5-7-detect-installment-purchases-and-split-across-months: done
+  5-8-auto-classify-transactions-using-ai: done
+  5-9-present-classified-transactions-for-user-review: done
+  5-10-review-and-adjust-ai-classifications: review
   5-11-learn-from-user-corrections-to-improve-ai: backlog
   5-12-manually-edit-any-transaction: backlog
   5-13-manually-add-transactions-cash-expenses: backlog

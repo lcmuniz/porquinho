@@ -1,6 +1,7 @@
 package com.porquinho.controller;
 
 import com.porquinho.dto.CompleteCategoriesRequest;
+import com.porquinho.dto.CompleteOnboardingImportRequest;
 import com.porquinho.dto.OnboardingProgressResponse;
 import com.porquinho.service.OnboardingService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -112,15 +113,18 @@ public class OnboardingController {
     }
 
     /**
-     * Step 6 done (Story 3.6, no upload yet): "Importar depois" records import_skipped and moves to step 7.
-     * No body. 409 while on steps 1 to 5; idempotent from step 7 on.
+     * Step 6 done, moving to step 7. Without body, "Importar depois" records import_skipped (Story 3.6); with
+     * {importId}, a finished import records first_import_completed (Story 5.10): 404 if not the user's, 409 in any other
+     * status. 409 while on steps 1 to 5; idempotent from step 7 on.
      */
     @PostMapping("/me/import")
     public ResponseEntity<OnboardingProgressResponse> completeImport(@AuthenticationPrincipal Jwt jwt,
+                                                                     @RequestBody(required = false) CompleteOnboardingImportRequest body,
                                                                      HttpServletRequest request) {
         UUID userId = UUID.fromString(jwt.getSubject());
+        UUID importId = body == null ? null : body.importId();
         return ResponseEntity.ok(OnboardingProgressResponse.of(
-            onboardingService.completeImport(userId, request.getRemoteAddr())));
+            onboardingService.completeImport(userId, importId, request.getRemoteAddr())));
     }
 
     /**

@@ -9,7 +9,9 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -39,6 +41,12 @@ public interface AccountBalanceHistoryRepository extends JpaRepository<AccountBa
         + "AND h.snapshotDate < :from ORDER BY h.snapshotDate DESC, h.createdAt DESC, h.id DESC")
     List<AccountBalanceHistory> findByAccountBefore(@Param("accountId") UUID accountId, @Param("userId") UUID userId,
                                                     @Param("from") OffsetDateTime from, Pageable pageable);
+
+    /** When the account last got a snapshot of one of {@code events}: part of the reference date of D3 (Story 5.10). */
+    @Query("SELECT MAX(h.snapshotDate) FROM AccountBalanceHistory h WHERE h.accountId = :accountId "
+        + "AND h.userId = :userId AND h.createdByEvent IN :events")
+    Optional<OffsetDateTime> findLastSnapshotDate(@Param("accountId") UUID accountId, @Param("userId") UUID userId,
+                                                  @Param("events") Collection<String> events);
 
     /**
      * Hard-delete the user's snapshots (LGPD account purge, Story 4.3).

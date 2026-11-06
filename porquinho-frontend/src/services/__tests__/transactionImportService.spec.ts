@@ -1,20 +1,24 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   approveHighConfidence,
+  completeTransactionImport,
   discardImport,
   getImport,
   listImports,
   listImportTransactions,
+  updateImportCategory,
   uploadImport,
 } from '../transactionImportService'
 
 const mockGet = vi.fn()
 const mockPost = vi.fn()
+const mockPatch = vi.fn()
 
 vi.mock('../api', () => ({
   api: {
     get: (...a: unknown[]) => mockGet(...a),
     post: (...a: unknown[]) => mockPost(...a),
+    patch: (...a: unknown[]) => mockPatch(...a),
   },
 }))
 
@@ -22,6 +26,28 @@ describe('transactionImportService', () => {
   beforeEach(() => {
     mockGet.mockReset()
     mockPost.mockReset()
+    mockPatch.mockReset()
+  })
+
+  it('troca a categoria com PATCH em /transactions/category (Story 5.10)', async () => {
+    const result = { importId: 'i1', status: 'REVIEW', affectedTransactions: 2 }
+    mockPatch.mockResolvedValue({ data: result })
+
+    expect(await updateImportCategory('i1', ['t1', 't2'], 'c1')).toEqual(result)
+
+    expect(mockPatch).toHaveBeenCalledWith('/api/v1/imports/i1/transactions/category', {
+      transactionIds: ['t1', 't2'],
+      categoryId: 'c1',
+    })
+  })
+
+  it('conclui com POST em /complete (Story 5.10)', async () => {
+    const result = { importId: 'i1', status: 'COMPLETED', affectedTransactions: 3 }
+    mockPost.mockResolvedValue({ data: result })
+
+    expect(await completeTransactionImport('i1')).toEqual(result)
+
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/imports/i1/complete')
   })
 
   it('lista as importações em /api/v1/imports', async () => {

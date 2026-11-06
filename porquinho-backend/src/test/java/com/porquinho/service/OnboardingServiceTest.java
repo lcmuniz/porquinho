@@ -1,7 +1,10 @@
 package com.porquinho.service;
 
 import com.porquinho.entity.OnboardingProgress;
+import com.porquinho.entity.TransactionImport;
+import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.OnboardingProgressRepository;
+import com.porquinho.repository.TransactionImportRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -35,6 +38,8 @@ class OnboardingServiceTest {
 
     @Mock
     private GoalService goalService;
+    @Mock
+    private TransactionImportRepository transactionImportRepository;
 
     private OnboardingService service;
     private UUID userId;
@@ -42,8 +47,8 @@ class OnboardingServiceTest {
     @BeforeEach
     void setUp() {
         userId = UUID.randomUUID();
-        OnboardingService temp = new OnboardingService(repository, auditLogService, accountService, creditCardService, categoryService, goalService, null);
-        service = new OnboardingService(repository, auditLogService, accountService, creditCardService, categoryService, goalService, temp);
+        OnboardingService temp = new OnboardingService(repository, auditLogService, accountService, creditCardService, categoryService, goalService, transactionImportRepository, null);
+        service = new OnboardingService(repository, auditLogService, accountService, creditCardService, categoryService, goalService, transactionImportRepository, temp);
         // self == service: in production it is the Spring proxy of this same bean
         try {
             java.lang.reflect.Field selfField = OnboardingService.class.getDeclaredField("self");
@@ -503,7 +508,7 @@ class OnboardingServiceTest {
         when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
         when(repository.save(progress)).thenReturn(progress);
 
-        OnboardingProgress result = service.completeImport(userId, "10.0.0.1");
+        OnboardingProgress result = service.completeImport(userId, null, "10.0.0.1");
 
         assertEquals(7, result.getCurrentStep());
         assertEquals(List.of("tutorial_viewed", "accounts_added", "cards_skipped", "categories_suggested",
@@ -513,6 +518,67 @@ class OnboardingServiceTest {
         verifyNoInteractions(categoryService);
     }
 
+    private OnboardingProgress atImportStep() {
+        OnboardingProgress progress = progressAt(6, "tutorial_viewed", "accounts_added", "cards_skipped",
+            "categories_suggested", "categories_customized");
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
+        when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
+        return progress;
+    }
+
+    private TransactionImport importWith(TransactionImport.Status status) {
+        TransactionImport transactionImport = new TransactionImport();
+        transactionImport.setStatus(status);
+        return transactionImport;
+    }
+
+    @Test
+    void aCompletedImportRecordsFirstImportCompletedAndAudits() {
+        OnboardingProgress progress = atImportStep();
+        UUID importId = UUID.randomUUID();
+        when(transactionImportRepository.findByIdAndUserId(importId, userId))
+            .thenReturn(Optional.of(importWith(TransactionImport.Status.COMPLETED)));
+        when(repository.save(progress)).thenReturn(progress);
+
+        OnboardingProgress result = service.completeImport(userId, importId, "10.0.0.1");
+
+        assertEquals(7, result.getCurrentStep());
+        assertTrue(result.getSteps().contains("first_import_completed"));
+        assertFalse(result.getSteps().contains("import_skipped"));
+        verify(auditLogService).log("onboarding_import_completed", userId, "10.0.0.1", "{\"skipped\":false}");
+    }
+
+    @Test
+    void anImportOfAnotherUserIs404AndTheStepDoesNotChange() {
+        OnboardingProgress progress = atImportStep();
+        UUID importId = UUID.randomUUID();
+        when(transactionImportRepository.findByIdAndUserId(importId, userId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> service.completeImport(userId, importId, "10.0.0.1"));
+
+        assertEquals(6, progress.getCurrentStep());
+        verifyNoInteractions(auditLogService);
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void anImportInAnyOtherStatusIsAConflictAndTheStepDoesNotChange() {
+        OnboardingProgress progress = atImportStep();
+        UUID importId = UUID.randomUUID();
+        for (TransactionImport.Status status : List.of(TransactionImport.Status.PROCESSING, TransactionImport.Status.REVIEW,
+            TransactionImport.Status.FAILED, TransactionImport.Status.DISCARDED)) {
+            when(transactionImportRepository.findByIdAndUserId(importId, userId))
+                .thenReturn(Optional.of(importWith(status)));
+
+            assertThrows(ConflictException.class, () -> service.completeImport(userId, importId, "10.0.0.1"));
+        }
+
+        assertEquals(6, progress.getCurrentStep());
+        assertEquals(5, progress.getSteps().size());
+        verifyNoInteractions(auditLogService);
+        verify(repository, never()).save(any());
+    }
+
     @Test
     void importStepIsIdempotentFromStepSeven() {
         OnboardingProgress progress = progressAt(7, "tutorial_viewed", "accounts_added", "cards_added",
@@ -520,7 +586,7 @@ class OnboardingServiceTest {
         when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
         when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
 
-        OnboardingProgress result = service.completeImport(userId, "10.0.0.1");
+        OnboardingProgress result = service.completeImport(userId, null, "10.0.0.1");
 
         assertEquals(7, result.getCurrentStep());
         assertEquals(6, result.getSteps().size());
@@ -536,7 +602,7 @@ class OnboardingServiceTest {
             when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
             when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
 
-            OnboardingProgress result = service.completeImport(userId, "10.0.0.1");
+            OnboardingProgress result = service.completeImport(userId, null, "10.0.0.1");
 
             assertEquals(step, result.getCurrentStep());
             assertTrue(result.getSteps().isEmpty());
@@ -552,7 +618,7 @@ class OnboardingServiceTest {
             when(repository.findByUserId(userId)).thenReturn(Optional.of(progress));
             when(repository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(progress));
 
-            assertThrows(ConflictException.class, () -> service.completeImport(userId, "10.0.0.1"));
+            assertThrows(ConflictException.class, () -> service.completeImport(userId, null, "10.0.0.1"));
 
             assertEquals(step, progress.getCurrentStep());
         }

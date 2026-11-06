@@ -1,9 +1,11 @@
 package com.porquinho.service;
 
 import com.porquinho.entity.OnboardingProgress;
+import com.porquinho.entity.TransactionImport;
 import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.OnboardingProgressRepository;
+import com.porquinho.repository.TransactionImportRepository;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -42,6 +44,7 @@ public class OnboardingService {
     public static final String STEP_CUSTOMIZATION_SKIPPED = "customization_skipped";
     public static final String AUDIT_CUSTOMIZATION_COMPLETED = "onboarding_customization_completed";
     public static final String STEP_IMPORT_SKIPPED = "import_skipped";
+    public static final String STEP_FIRST_IMPORT_COMPLETED = "first_import_completed";
     public static final String AUDIT_IMPORT_COMPLETED = "onboarding_import_completed";
     public static final String STEP_DASHBOARD_GPS_EXPLAINED = "dashboard_gps_explained";
     public static final String AUDIT_DASHBOARD_TOUR_COMPLETED = "onboarding_dashboard_tour_completed";
@@ -67,6 +70,7 @@ public class OnboardingService {
     private final CreditCardService creditCardService;
     private final CategoryService categoryService;
     private final GoalService goalService;
+    private final TransactionImportRepository transactionImportRepository;
 
     /** Spring proxy of this bean, so the calls to the apply* methods go through @Transactional. */
     private final OnboardingService self;
@@ -77,6 +81,7 @@ public class OnboardingService {
                              CreditCardService creditCardService,
                              CategoryService categoryService,
                              GoalService goalService,
+                             TransactionImportRepository transactionImportRepository,
                              @Lazy OnboardingService self) {
         this.onboardingProgressRepository = onboardingProgressRepository;
         this.auditLogService = auditLogService;
@@ -84,6 +89,7 @@ public class OnboardingService {
         this.creditCardService = creditCardService;
         this.categoryService = categoryService;
         this.goalService = goalService;
+        this.transactionImportRepository = transactionImportRepository;
         this.self = self;
     }
 
@@ -284,19 +290,20 @@ public class OnboardingService {
     }
 
     /**
-     * Step 6 done (Story 3.6, version without upload): file import arrives with Epic 5, so the only way forward
-     * is "Importar depois". Records import_skipped (never first_import_completed), moves to step 7 and writes the
-     * onboarding_import_completed audit {skipped: true}. 409 while steps 1 to 5 are pending. Idempotent: once
-     * past step 6, repeating returns the current state with no change and no audit.
+     * Step 6 done. With {@code importId} (Story 5.10), the user finished that import: it must be one of the user's
+     * (404) and COMPLETED (409), and records first_import_completed with the onboarding_import_completed audit
+     * {skipped: false}. Without it (Story 3.6, "Importar depois"), records import_skipped with {skipped: true}. Either
+     * way moves to step 7. 409 while steps 1 to 5 are pending. Idempotent: once past step 6, repeating returns the
+     * current state with no change and no audit.
      */
-    public OnboardingProgress completeImport(UUID userId, String ipAddress) {
+    public OnboardingProgress completeImport(UUID userId, UUID importId, String ipAddress) {
         getOrCreate(userId);
-        return self.applyImport(userId, ipAddress);
+        return self.applyImport(userId, importId, ipAddress);
     }
 
     /** Transactional half of {@link #completeImport}; public only so the Spring proxy can apply @Transactional. */
     @Transactional
-    public OnboardingProgress applyImport(UUID userId, String ipAddress) {
+    public OnboardingProgress applyImport(UUID userId, UUID importId, String ipAddress) {
         // Row lock (same as the other steps): it serializes concurrent POSTs, so only the first should advance
         // and audit.
         OnboardingProgress progress = onboardingProgressRepository.findByUserIdForUpdate(userId)
@@ -309,12 +316,24 @@ public class OnboardingService {
             throw new ConflictException("Conclua os passos anteriores antes de importar suas transações.");
         }
 
-        progress.addStep(STEP_IMPORT_SKIPPED);
+        boolean skipped = importId == null;
+        if (!skipped) {
+            requireCompletedImport(userId, importId);
+        }
+        progress.addStep(skipped ? STEP_IMPORT_SKIPPED : STEP_FIRST_IMPORT_COMPLETED);
         progress.setCurrentStep(NEXT_STEP_AFTER_IMPORT);
         OnboardingProgress saved = onboardingProgressRepository.save(progress);
 
-        auditLogService.log(AUDIT_IMPORT_COMPLETED, userId, ipAddress, "{\"skipped\":true}");
+        auditLogService.log(AUDIT_IMPORT_COMPLETED, userId, ipAddress, "{\"skipped\":" + skipped + "}");
         return saved;
+    }
+
+    private void requireCompletedImport(UUID userId, UUID importId) {
+        TransactionImport transactionImport = transactionImportRepository.findByIdAndUserId(importId, userId)
+            .orElseThrow(() -> new ResourceNotFoundException(TransactionImportService.NOT_FOUND_MESSAGE));
+        if (transactionImport.getStatus() != TransactionImport.Status.COMPLETED) {
+            throw new ConflictException("Conclua a importação antes de seguir para o próximo passo.");
+        }
     }
 
     /**

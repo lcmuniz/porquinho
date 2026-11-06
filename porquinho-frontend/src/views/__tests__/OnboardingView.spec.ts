@@ -59,7 +59,14 @@ vi.mock('@/services/accountService', () => ({
   deleteAccount: vi.fn(),
 }))
 
+vi.mock('@/services/transactionImportService', () => ({
+  listImports: vi.fn().mockResolvedValue([]),
+  uploadImport: vi.fn(),
+  getImport: vi.fn(),
+}))
+
 vi.mock('vue-router', () => ({
+  RouterLink: { template: '<a><slot /></a>' },
   useRouter: () => ({
     push: (...args: unknown[]) => mockPush(...args),
     replace: (...args: unknown[]) => mockReplace(...args),
@@ -360,7 +367,7 @@ describe('OnboardingView', () => {
     expect(mockListCategories).toHaveBeenCalledOnce()
   })
 
-  it('mostra o passo 6 (importação) com os 5 bancos e o aviso de que chega em breve', async () => {
+  it('mostra o passo 6 (importação) com os 5 bancos e sem o aviso de que chega em breve', async () => {
     mockGetMyOnboarding.mockResolvedValue(
       progress({ currentStep: 6, stepsCompleted: STEP_SIX_DONE }),
     )
@@ -374,7 +381,7 @@ describe('OnboardingView', () => {
     for (const bank of ['Nubank', 'Banco do Brasil', 'Itaú', 'Bradesco', 'Caixa']) {
       expect(wrapper.text()).toContain(bank)
     }
-    expect(wrapper.text()).toContain('A importação de arquivos chega em breve.')
+    expect(wrapper.text()).not.toContain('chega em breve')
   })
 
   it('mostra o passo 8 (meta de Reserva de Emergência) pré-preenchido', async () => {

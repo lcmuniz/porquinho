@@ -2,6 +2,8 @@ package com.porquinho.service;
 
 import com.porquinho.dto.ImportReviewActionResponse;
 import com.porquinho.dto.ImportTransactionResponse;
+import com.porquinho.dto.UpdateImportCategoryRequest;
+import com.porquinho.exception.BadRequestException;
 import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.AfterEach;
@@ -13,15 +15,25 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** Story 5.9: the review of an import against the real schema (PostgreSQL via Testcontainers, Flyway through V29). */
+/**
+ * Stories 5.9 and 5.10: the review and the conclusion of an import against the real schema (PostgreSQL via
+ * Testcontainers, Flyway through V29). Not @Transactional: the concurrent conclusions really race.
+ */
 @SpringBootTest
 @ActiveProfiles("test")
 class TransactionImportReviewServiceTest {
@@ -52,6 +64,8 @@ class TransactionImportReviewServiceTest {
             jdbc.update("DELETE FROM audit_logs WHERE user_id = ?", id);
             jdbc.update("DELETE FROM transactions WHERE user_id = ?", id);
             jdbc.update("DELETE FROM transaction_imports WHERE user_id = ?", id);
+            jdbc.update("DELETE FROM account_balance_history WHERE user_id = ?", id);
+            jdbc.update("DELETE FROM accounts WHERE user_id = ?", id);
             jdbc.update("DELETE FROM credit_cards WHERE user_id = ?", id);
             jdbc.update("DELETE FROM categories WHERE user_id = ?", id);
             jdbc.update("DELETE FROM users WHERE id = ?", id);
@@ -372,5 +386,518 @@ class TransactionImportReviewServiceTest {
         assertThat(reviewService.list(userId, creator)).isEmpty();
         assertThat(auditOf(TransactionImportReviewService.AUDIT_DISCARDED)).singleElement().asString()
             .contains("\"discarded_transactions\":1").contains("\"installments_reverted\":1");
+    }
+
+    // ---- Story 5.10: changing categories ----
+
+    /** A child category of a new group. */
+    private UUID newChildCategory() {
+        return newCategory("Mercado " + UUID.randomUUID(), newCategory("Grupo " + UUID.randomUUID(), null));
+    }
+
+    private UpdateImportCategoryRequest edit(UUID categoryId, UUID... rows) {
+        return new UpdateImportCategoryRequest(List.of(rows), categoryId);
+    }
+
+    /** Marks {@code row} as installment 3/10 of {@code group}. */
+    private void asInstallment(UUID row, UUID group) {
+        jdbc.update("UPDATE transactions SET is_installment = TRUE, installment_number = 3, installment_total = 10, "
+            + "installment_group_id = ? WHERE id = ?", group, row);
+    }
+
+    /** A future installment of {@code group} in {@code importId}. */
+    private UUID newFuture(UUID importId, UUID group, UUID categoryId) {
+        UUID future = newRow(importId, 60, categoryId);
+        asInstallment(future, group);
+        jdbc.update("UPDATE transactions SET is_future_installment = TRUE WHERE id = ?", future);
+        return future;
+    }
+
+    private void assertReviewedByUser(UUID row, UUID categoryId) {
+        assertThat(rowOf(row)).containsEntry("category_id", categoryId).containsEntry("classification_source", "USER")
+            .containsEntry("classification_confidence", 100).containsEntry("review_status", "APPROVED");
+    }
+
+    private void assertUntouched(UUID row, UUID categoryId) {
+        assertThat(rowOf(row)).containsEntry("category_id", categoryId).containsEntry("classification_source", "AI")
+            .containsEntry("review_status", "PENDING");
+    }
+
+    @Test
+    void editingARowMarksItAsReviewedByTheUserAndAuditsOnlyCounts() {
+        UUID review = newImport("REVIEW");
+        UUID row = newRow(review, 60, newChildCategory());
+        UUID other = newRow(review, 60, null);
+        UUID category = newChildCategory();
+
+        ImportReviewActionResponse response = reviewService.updateCategory(userId, review, edit(category, row), IP);
+
+        assertThat(response.status()).isEqualTo("REVIEW");
+        assertThat(response.affectedTransactions()).isEqualTo(1);
+        assertReviewedByUser(row, category);
+        assertUntouched(other, null);
+        assertThat(auditOf(TransactionImportReviewService.AUDIT_CATEGORY_CHANGED)).singleElement().asString()
+            .contains(review.toString()).contains("\"changed_transactions\":1")
+            .contains("\"future_installments_changed\":0").doesNotContain(category.toString());
+    }
+
+    @Test
+    void savingTheSameCategoryCountsAsReviewed() {
+        UUID review = newImport("REVIEW");
+        UUID category = newChildCategory();
+        UUID row = newRow(review, 60, category);
+
+        reviewService.updateCategory(userId, review, edit(category, row), IP);
+
+        assertReviewedByUser(row, category);
+    }
+
+    @Test
+    void bulkEditChangesEveryRowAndARepeatedIdCountsOnce() {
+        UUID review = newImport("REVIEW");
+        UUID first = newRow(review, 60, null);
+        UUID second = newRow(review, 30, null);
+        UUID category = newChildCategory();
+
+        ImportReviewActionResponse response = reviewService.updateCategory(userId, review,
+            edit(category, first, second, first), IP);
+
+        assertThat(response.affectedTransactions()).isEqualTo(2);
+        assertReviewedByUser(first, category);
+        assertReviewedByUser(second, category);
+    }
+
+    @Test
+    void bulkEditWithARowOutOfTheReviewIs404AndWritesNothing() {
+        UUID review = newImport("REVIEW");
+        UUID valid = newRow(review, 60, null);
+        UUID fromOtherImport = newRow(newImport("REVIEW"), 60, null);
+        UUID future = newFuture(review, UUID.randomUUID(), null);
+        UUID cardPayment = newRow(review, null, null);
+        jdbc.update("UPDATE transactions SET kind = 'CARD_PAYMENT' WHERE id = ?", cardPayment);
+        UUID removed = newRow(review, 60, null);
+        jdbc.update("UPDATE transactions SET deleted_at = NOW() WHERE id = ?", removed);
+        UUID category = newChildCategory();
+
+        for (UUID invalid : List.of(fromOtherImport, future, cardPayment, removed, UUID.randomUUID())) {
+            assertThatThrownBy(() -> reviewService.updateCategory(userId, review, edit(category, valid, invalid), IP))
+                .isInstanceOf(ResourceNotFoundException.class);
+        }
+
+        assertUntouched(valid, null);
+        assertThat(auditOf(TransactionImportReviewService.AUDIT_CATEGORY_CHANGED)).isEmpty();
+    }
+
+    @Test
+    void editingAnInstallmentGoesToTheFuturesOfTheSamePurchaseAndImport() {
+        UUID review = newImport("REVIEW");
+        UUID group = UUID.randomUUID();
+        UUID row = newRow(review, 60, null);
+        asInstallment(row, group);
+        List<UUID> futures = new ArrayList<>();
+        for (int i = 0; i < 7; i++) {
+            futures.add(newFuture(review, group, null));
+        }
+        UUID otherPurchase = newFuture(review, UUID.randomUUID(), null);
+        UUID otherImport = newFuture(newImport("REVIEW"), group, null);
+        UUID category = newChildCategory();
+
+        reviewService.updateCategory(userId, review, edit(category, row), IP);
+
+        assertReviewedByUser(row, category);
+        for (UUID future : futures) {
+            assertThat(rowOf(future)).containsEntry("category_id", category)
+                .containsEntry("classification_source", "USER").containsEntry("classification_confidence", 100)
+                .containsEntry("review_status", "PENDING");
+        }
+        assertUntouched(otherPurchase, null);
+        assertUntouched(otherImport, null);
+        assertThat(auditOf(TransactionImportReviewService.AUDIT_CATEGORY_CHANGED)).singleElement().asString()
+            .contains("\"future_installments_changed\":7");
+    }
+
+    @Test
+    void editingOutsideReviewIs409() {
+        UUID category = newChildCategory();
+        for (String status : List.of("COMPLETED", "DISCARDED", "PROCESSING", "FAILED")) {
+            UUID closed = newImport(status);
+            UUID row = newRow(closed, 60, null);
+
+            assertThatThrownBy(() -> reviewService.updateCategory(userId, closed, edit(category, row), IP))
+                .isInstanceOf(ConflictException.class);
+
+            assertUntouched(row, null);
+        }
+    }
+
+    @Test
+    void aGroupIs400AndARemovedOrForeignCategoryIs404() {
+        UUID review = newImport("REVIEW");
+        UUID row = newRow(review, 60, null);
+        UUID group = newCategory("Moradia", null);
+        UUID removed = newChildCategory();
+        jdbc.update("UPDATE categories SET deleted_at = NOW() WHERE id = ?", removed);
+        UUID me = userId;
+        userId = newUser();
+        UUID foreign = newChildCategory();
+        userId = me;
+
+        assertThatThrownBy(() -> reviewService.updateCategory(userId, review, edit(group, row), IP))
+            .isInstanceOf(BadRequestException.class);
+        assertThatThrownBy(() -> reviewService.updateCategory(userId, review, edit(removed, row), IP))
+            .isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> reviewService.updateCategory(userId, review, edit(foreign, row), IP))
+            .isInstanceOf(ResourceNotFoundException.class);
+        assertUntouched(row, null);
+    }
+
+    @Test
+    void editingAnImportOfAnotherUserIs404() {
+        UUID review = newImport("REVIEW");
+        UUID row = newRow(review, 60, null);
+        UUID category = newChildCategory();
+
+        assertThatThrownBy(() -> reviewService.updateCategory(newUser(), review, edit(category, row), IP))
+            .isInstanceOf(ResourceNotFoundException.class);
+
+        assertUntouched(row, null);
+    }
+
+    // ---- Story 5.10: finishing an import ----
+
+    private UUID newAccount(String balance) {
+        UUID id = UUID.randomUUID();
+        jdbc.update("INSERT INTO accounts (id, user_id, account_name, account_type, initial_balance, current_balance) "
+            + "VALUES (?, ?, 'Nubank', 'CHECKING', ?, ?)", id, userId, new BigDecimal(balance), new BigDecimal(balance));
+        return id;
+    }
+
+    /** An account with an initial snapshot at the instant {@code snapshotAt}. */
+    private UUID newAccount(String balance, String snapshotAt) {
+        UUID id = newAccount(balance);
+        newSnapshot(id, "initial", balance, snapshotAt);
+        return id;
+    }
+
+    private void newSnapshot(UUID accountId, String event, String balance, String at) {
+        jdbc.update("INSERT INTO account_balance_history (account_id, user_id, balance_snapshot, snapshot_date, "
+            + "created_by_event) VALUES (?, ?, ?, ?::timestamptz, ?)", accountId, userId, new BigDecimal(balance), at, event);
+    }
+
+    private UUID newAccountImport(UUID accountId, String status) {
+        UUID id = UUID.randomUUID();
+        jdbc.update("INSERT INTO transaction_imports (id, user_id, account_id, file_name, file_type, file_size_kb, status) "
+            + "VALUES (?, ?, ?, 'x.ofx', 'OFX', 1, ?)", id, userId, accountId, status);
+        return id;
+    }
+
+    /** A pending REGULAR row of an account. */
+    private UUID newAccountRow(UUID importId, UUID accountId, String date, String type, String amount) {
+        UUID id = UUID.randomUUID();
+        jdbc.update("INSERT INTO transactions (id, user_id, account_id, import_id, external_id, transaction_date, "
+            + "description, original_description, amount, transaction_type) VALUES (?, ?, ?, ?, ?, ?::date, 'LOJA', "
+            + "'LOJA', ?, ?)", id, userId, accountId, importId, "fit-" + id, date, new BigDecimal(amount), type);
+        return id;
+    }
+
+    private BigDecimal balanceOf(UUID accountId) {
+        return jdbc.queryForObject("SELECT current_balance FROM accounts WHERE id = ?", BigDecimal.class, accountId);
+    }
+
+    private List<Map<String, Object>> transactionSnapshots(UUID accountId) {
+        return jdbc.queryForList("SELECT * FROM account_balance_history WHERE account_id = ? "
+            + "AND created_by_event = 'transaction'", accountId);
+    }
+
+    private boolean affectsBalance(UUID row) {
+        return (boolean) rowOf(row).get("affects_balance");
+    }
+
+    @Test
+    void onlyRowsAfterTheReferenceDateChangeTheBalanceWithOneSnapshot() {
+        UUID account = newAccount("1000.00", "2026-11-03T15:00:00Z");
+        UUID review = newAccountImport(account, "REVIEW");
+        UUID before = newAccountRow(review, account, "2026-11-02", "DEBIT", "10.00");
+        UUID sameDay = newAccountRow(review, account, "2026-11-03", "DEBIT", "20.00");
+        UUID after = newAccountRow(review, account, "2026-11-04", "DEBIT", "30.00");
+        UUID credit = newAccountRow(review, account, "2026-11-05", "CREDIT", "5.50");
+
+        ImportReviewActionResponse response = reviewService.complete(userId, review, IP);
+
+        assertThat(response.status()).isEqualTo("COMPLETED");
+        assertThat(response.affectedTransactions()).isEqualTo(4);
+        assertThat(statusOf(review)).isEqualTo("COMPLETED");
+        assertThat(balanceOf(account)).isEqualByComparingTo("975.50");
+        assertThat(transactionSnapshots(account)).singleElement().satisfies(snapshot ->
+            assertThat((BigDecimal) snapshot.get("balance_snapshot")).isEqualByComparingTo("975.50"));
+        assertThat(affectsBalance(before)).isFalse();
+        assertThat(affectsBalance(sameDay)).isFalse();
+        assertThat(affectsBalance(after)).isTrue();
+        assertThat(affectsBalance(credit)).isTrue();
+        for (UUID row : List.of(before, sameDay, after, credit)) {
+            assertThat(rowOf(row)).containsEntry("review_status", "CONFIRMED");
+        }
+        assertThat(auditOf(TransactionImportReviewService.AUDIT_COMPLETED)).singleElement().asString()
+            .contains(review.toString()).contains("\"confirmed_transactions\":4").contains("\"balance_transactions\":2")
+            .doesNotContain("975");
+    }
+
+    @Test
+    void theReferenceInstantIsReadInSaoPaulo() {
+        // 01:00 UTC of 04/11 is still 22:00 of 03/11 in São Paulo
+        UUID account = newAccount("100.00", "2026-11-04T01:00:00Z");
+        UUID review = newAccountImport(account, "REVIEW");
+        UUID sameDay = newAccountRow(review, account, "2026-11-03", "DEBIT", "1.00");
+        UUID after = newAccountRow(review, account, "2026-11-04", "DEBIT", "2.00");
+
+        reviewService.complete(userId, review, IP);
+
+        assertThat(affectsBalance(sameDay)).isFalse();
+        assertThat(affectsBalance(after)).isTrue();
+        assertThat(balanceOf(account)).isEqualByComparingTo("98.00");
+    }
+
+    @Test
+    void theReferenceIsTheLastOfEditReconciliationAndInitialSnapshotsButNotOfTransfers() {
+        UUID account = newAccount("100.00", "2026-11-01T15:00:00Z");
+        newSnapshot(account, "edit", "100.00", "2026-11-02T15:00:00Z");
+        newSnapshot(account, "reconciliation", "100.00", "2026-11-03T15:00:00Z");
+        newSnapshot(account, "transfer", "100.00", "2026-11-05T15:00:00Z");
+        newSnapshot(account, "transaction", "100.00", "2026-11-05T15:00:00Z");
+        UUID review = newAccountImport(account, "REVIEW");
+        UUID sameDay = newAccountRow(review, account, "2026-11-03", "DEBIT", "1.00");
+        UUID after = newAccountRow(review, account, "2026-11-04", "DEBIT", "2.00");
+
+        reviewService.complete(userId, review, IP);
+
+        assertThat(affectsBalance(sameDay)).isFalse();
+        assertThat(affectsBalance(after)).isTrue();
+    }
+
+    @Test
+    void aReconciliationWithoutDifferenceMovesTheReferenceWithoutASnapshot() {
+        UUID account = newAccount("100.00", "2026-11-01T15:00:00Z");
+        jdbc.update("UPDATE accounts SET last_reconciliation_date = '2026-11-05T15:00:00Z'::timestamptz WHERE id = ?",
+            account);
+        UUID review = newAccountImport(account, "REVIEW");
+        UUID sameDay = newAccountRow(review, account, "2026-11-05", "DEBIT", "1.00");
+        UUID after = newAccountRow(review, account, "2026-11-06", "DEBIT", "2.00");
+
+        reviewService.complete(userId, review, IP);
+
+        assertThat(affectsBalance(sameDay)).isFalse();
+        assertThat(affectsBalance(after)).isTrue();
+        assertThat(balanceOf(account)).isEqualByComparingTo("98.00");
+    }
+
+    @Test
+    void anEditSnapshotMovesTheReference() {
+        UUID account = newAccount("100.00", "2026-11-01T15:00:00Z");
+        newSnapshot(account, "edit", "100.00", "2026-11-05T15:00:00Z");
+        UUID review = newAccountImport(account, "REVIEW");
+        UUID sameDay = newAccountRow(review, account, "2026-11-05", "DEBIT", "1.00");
+        UUID after = newAccountRow(review, account, "2026-11-06", "DEBIT", "2.00");
+
+        reviewService.complete(userId, review, IP);
+
+        assertThat(affectsBalance(sameDay)).isFalse();
+        assertThat(affectsBalance(after)).isTrue();
+    }
+
+    @Test
+    void anOlderReconciliationDoesNotMoveTheReferenceBack() {
+        UUID account = newAccount("100.00", "2026-11-01T15:00:00Z");
+        newSnapshot(account, "edit", "100.00", "2026-11-10T15:00:00Z");
+        jdbc.update("UPDATE accounts SET last_reconciliation_date = '2026-11-05T15:00:00Z'::timestamptz WHERE id = ?",
+            account);
+        UUID review = newAccountImport(account, "REVIEW");
+        UUID sameDay = newAccountRow(review, account, "2026-11-10", "DEBIT", "1.00");
+        UUID after = newAccountRow(review, account, "2026-11-11", "DEBIT", "2.00");
+
+        reviewService.complete(userId, review, IP);
+
+        assertThat(affectsBalance(sameDay)).isFalse();
+        assertThat(affectsBalance(after)).isTrue();
+    }
+
+    @Test
+    void aZeroSumMarksTheRowsWithoutASnapshot() {
+        UUID account = newAccount("100.00", "2026-11-03T15:00:00Z");
+        UUID review = newAccountImport(account, "REVIEW");
+        UUID debit = newAccountRow(review, account, "2026-11-04", "DEBIT", "100.00");
+        UUID credit = newAccountRow(review, account, "2026-11-04", "CREDIT", "100.00");
+
+        reviewService.complete(userId, review, IP);
+
+        assertThat(affectsBalance(debit)).isTrue();
+        assertThat(affectsBalance(credit)).isTrue();
+        assertThat(balanceOf(account)).isEqualByComparingTo("100.00");
+        assertThat(transactionSnapshots(account)).isEmpty();
+    }
+
+    @Test
+    void aCardPaymentChangesTheBalanceOfTheAccount() {
+        UUID account = newAccount("100.00", "2026-11-03T15:00:00Z");
+        UUID review = newAccountImport(account, "REVIEW");
+        UUID payment = newAccountRow(review, account, "2026-11-04", "DEBIT", "40.00");
+        jdbc.update("UPDATE transactions SET kind = 'CARD_PAYMENT' WHERE id = ?", payment);
+
+        reviewService.complete(userId, review, IP);
+
+        assertThat(affectsBalance(payment)).isTrue();
+        assertThat(balanceOf(account)).isEqualByComparingTo("60.00");
+    }
+
+    @Test
+    void finishingACardImportConfirmsEveryRowIncludingFuturesAndTouchesNoBalance() {
+        UUID account = newAccount("100.00", "2026-11-01T15:00:00Z");
+        UUID review = newImport("REVIEW");
+        UUID row = newRow(review, 92, null);
+        UUID future = newFuture(review, UUID.randomUUID(), null);
+
+        ImportReviewActionResponse response = reviewService.complete(userId, review, IP);
+
+        assertThat(response.affectedTransactions()).isEqualTo(2);
+        assertThat(rowOf(row)).containsEntry("review_status", "CONFIRMED").containsEntry("affects_balance", false)
+            .containsEntry("category_id", null);
+        assertThat(rowOf(future)).containsEntry("review_status", "CONFIRMED").containsEntry("affects_balance", false);
+        assertThat(balanceOf(account)).isEqualByComparingTo("100.00");
+        assertThat(transactionSnapshots(account)).isEmpty();
+    }
+
+    @Test
+    void finishingTwiceAnswersOkAndChangesNothing() {
+        UUID account = newAccount("100.00", "2026-11-03T15:00:00Z");
+        UUID review = newAccountImport(account, "REVIEW");
+        newAccountRow(review, account, "2026-11-04", "DEBIT", "10.00");
+        reviewService.complete(userId, review, IP);
+
+        ImportReviewActionResponse second = reviewService.complete(userId, review, IP);
+
+        assertThat(second.status()).isEqualTo("COMPLETED");
+        assertThat(second.affectedTransactions()).isZero();
+        assertThat(balanceOf(account)).isEqualByComparingTo("90.00");
+        assertThat(transactionSnapshots(account)).hasSize(1);
+        assertThat(auditOf(TransactionImportReviewService.AUDIT_COMPLETED)).hasSize(1);
+    }
+
+    @Test
+    void finishingAtTheSameTimeChangesTheBalanceOnce() throws Exception {
+        UUID account = newAccount("100.00", "2026-11-03T15:00:00Z");
+        UUID review = newAccountImport(account, "REVIEW");
+        newAccountRow(review, account, "2026-11-04", "DEBIT", "10.00");
+        CountDownLatch start = new CountDownLatch(1);
+        Callable<ImportReviewActionResponse> finish = () -> {
+            start.await();
+            return reviewService.complete(userId, review, IP);
+        };
+        ExecutorService executor = Executors.newFixedThreadPool(4);
+        try {
+            List<Future<ImportReviewActionResponse>> calls = new ArrayList<>();
+            for (int i = 0; i < 4; i++) {
+                calls.add(executor.submit(finish));
+            }
+            start.countDown();
+            for (Future<ImportReviewActionResponse> call : calls) {
+                assertThat(call.get(30, TimeUnit.SECONDS).status()).isEqualTo("COMPLETED");
+            }
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertThat(balanceOf(account)).isEqualByComparingTo("90.00");
+        assertThat(transactionSnapshots(account)).hasSize(1);
+        assertThat(auditOf(TransactionImportReviewService.AUDIT_COMPLETED)).hasSize(1);
+    }
+
+    @Test
+    void finishingInAnyOtherStatusIs409() {
+        for (String status : List.of("DISCARDED", "PROCESSING", "FAILED")) {
+            UUID closed = newImport(status);
+            UUID row = newRow(closed, 92, null);
+
+            assertThatThrownBy(() -> reviewService.complete(userId, closed, IP)).isInstanceOf(ConflictException.class);
+
+            assertThat(statusOf(closed)).isEqualTo(status);
+            assertThat(rowOf(row)).containsEntry("review_status", "PENDING");
+        }
+        assertThat(auditOf(TransactionImportReviewService.AUDIT_COMPLETED)).isEmpty();
+    }
+
+    @Test
+    void finishingAnImportOfAnotherUserIs404() {
+        UUID review = newImport("REVIEW");
+
+        assertThatThrownBy(() -> reviewService.complete(newUser(), review, IP))
+            .isInstanceOf(ResourceNotFoundException.class);
+
+        assertThat(statusOf(review)).isEqualTo("REVIEW");
+    }
+
+    @Test
+    void aBalanceOutOfRangeIs400AndTheImportStaysInReview() {
+        UUID account = newAccount("9999999999999.00", "2026-11-03T15:00:00Z");
+        UUID review = newAccountImport(account, "REVIEW");
+        UUID row = newAccountRow(review, account, "2026-11-04", "CREDIT", "1.00");
+
+        assertThatThrownBy(() -> reviewService.complete(userId, review, IP))
+            .isInstanceOf(BadRequestException.class)
+            .hasMessage(TransactionImportReviewService.BALANCE_OUT_OF_RANGE_MESSAGE);
+
+        assertThat(statusOf(review)).isEqualTo("REVIEW");
+        assertThat(rowOf(row)).containsEntry("review_status", "PENDING").containsEntry("affects_balance", false);
+        assertThat(balanceOf(account)).isEqualByComparingTo("9999999999999.00");
+        assertThat(transactionSnapshots(account)).isEmpty();
+        assertThat(auditOf(TransactionImportReviewService.AUDIT_COMPLETED)).isEmpty();
+    }
+
+    @Test
+    void aRemovedAccountIs409AndNothingChanges() {
+        UUID account = newAccount("100.00", "2026-11-03T15:00:00Z");
+        UUID review = newAccountImport(account, "REVIEW");
+        UUID row = newAccountRow(review, account, "2026-11-04", "DEBIT", "10.00");
+        jdbc.update("UPDATE accounts SET deleted_at = NOW() WHERE id = ?", account);
+
+        assertThatThrownBy(() -> reviewService.complete(userId, review, IP))
+            .isInstanceOf(ConflictException.class).hasMessageContaining("restaure ou descarte a importação");
+
+        assertThat(statusOf(review)).isEqualTo("REVIEW");
+        assertThat(rowOf(row)).containsEntry("review_status", "PENDING");
+        assertThat(balanceOf(account)).isEqualByComparingTo("100.00");
+    }
+
+    @Test
+    void aRemovedCardIs409AndNothingChanges() {
+        UUID review = newImport("REVIEW");
+        UUID row = newRow(review, 92, null);
+        jdbc.update("UPDATE credit_cards SET deleted_at = NOW() WHERE id = ?", cardId);
+
+        assertThatThrownBy(() -> reviewService.complete(userId, review, IP))
+            .isInstanceOf(ConflictException.class).hasMessageContaining("restaure ou descarte a importação");
+
+        assertThat(statusOf(review)).isEqualTo("REVIEW");
+        assertThat(rowOf(row)).containsEntry("review_status", "PENDING");
+    }
+
+    @Test
+    void anAlreadyCompletedImportOfARemovedTargetStillAnswersOk() {
+        UUID account = newAccount("100.00", "2026-11-03T15:00:00Z");
+        UUID done = newAccountImport(account, "COMPLETED");
+        jdbc.update("UPDATE accounts SET deleted_at = NOW() WHERE id = ?", account);
+
+        assertThat(reviewService.complete(userId, done, IP).status()).isEqualTo("COMPLETED");
+    }
+
+    @Test
+    void discardingTheCreatorAfterTheConfirmerFinishedLeavesTheRowConfirmed() {
+        UUID creator = newImport("REVIEW");
+        UUID confirmer = newImport("REVIEW");
+        UUID confirmed = newRow(creator, 92, null);
+        jdbc.update("UPDATE transactions SET confirmed_by_import_id = ? WHERE id = ?", confirmer, confirmed);
+
+        reviewService.complete(userId, confirmer, IP);
+        reviewService.discard(userId, creator, IP);
+
+        assertThat(rowOf(confirmed)).containsEntry("import_id", confirmer).containsEntry("review_status", "CONFIRMED");
     }
 }

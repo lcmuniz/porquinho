@@ -23,6 +23,7 @@ import java.util.UUID;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -300,7 +301,7 @@ class OnboardingControllerTest {
 
     @Test
     void postImportWithoutBodyReturnsStepSeven() throws Exception {
-        when(onboardingService.completeImport(eq(userId), anyString()))
+        when(onboardingService.completeImport(eq(userId), isNull(), anyString()))
             .thenReturn(progress(7, "tutorial_viewed", "accounts_added", "cards_added", "categories_suggested",
                 "categories_customized", "import_skipped"));
 
@@ -309,16 +310,36 @@ class OnboardingControllerTest {
             .andExpect(jsonPath("$.currentStep").value(7))
             .andExpect(jsonPath("$.stepsCompleted[5]").value("import_skipped"));
 
-        verify(onboardingService).completeImport(eq(userId), anyString());
+        verify(onboardingService).completeImport(eq(userId), isNull(), anyString());
     }
 
     @Test
     void postImportBeforeStepSixIs409() throws Exception {
-        when(onboardingService.completeImport(eq(userId), anyString()))
+        when(onboardingService.completeImport(eq(userId), isNull(), anyString()))
             .thenThrow(new ConflictException("Conclua os passos anteriores antes de importar suas transações."));
 
         mockMvc.perform(post("/api/v1/onboarding/me/import").with(authentication(authToken)))
             .andExpect(status().isConflict());
+    }
+
+    @Test
+    void postImportWithAnImportIdPassesItToTheService() throws Exception {
+        UUID importId = UUID.randomUUID();
+        when(onboardingService.completeImport(eq(userId), eq(importId), anyString()))
+            .thenReturn(progress(7, "tutorial_viewed", "accounts_added", "cards_added", "categories_suggested",
+                "categories_customized", "first_import_completed"));
+
+        mockMvc.perform(post("/api/v1/onboarding/me/import").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"importId\":\"" + importId + "\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.stepsCompleted[5]").value("first_import_completed"));
+    }
+
+    @Test
+    void postImportWithAnInvalidImportIdIs400() throws Exception {
+        mockMvc.perform(post("/api/v1/onboarding/me/import").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"importId\":\"x\"}"))
+            .andExpect(status().isBadRequest());
     }
 
     // ---- Story 3.7: step 7, Dashboard GPS tour ----

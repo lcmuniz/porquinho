@@ -7,6 +7,7 @@ import com.porquinho.dto.CreateCreditCardRequest;
 import com.porquinho.dto.TransactionImportResponse;
 import com.porquinho.entity.TransactionImport;
 import com.porquinho.exception.BadRequestException;
+import com.porquinho.dto.UpdateImportCategoryRequest;
 import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AiClassificationHistoryRepository;
@@ -1575,6 +1576,60 @@ class TransactionImportIntegrationTest {
             release.countDown();
             assertThatThrownBy(() -> approval.get(10, TimeUnit.SECONDS)).hasCauseInstanceOf(ConflictException.class);
             holder.get(10, TimeUnit.SECONDS);
+        } finally {
+            release.countDown();
+        }
+    }
+
+    /** Story 5.10: a file of the same target being saved holds the advisory lock, and the conclusion waits for it. */
+    @Test
+    void completeWaitsForTheAdvisoryLockOfTheTarget() throws Exception {
+        UUID nubank = account(userId, "Nubank");
+        UUID id = transactionImportService.create(userId, nubank, null, sample("nubank-conta.ofx"), "127.0.0.1").id();
+        assertThat(awaitDone(id).get("status")).isEqualTo("REVIEW");
+        CountDownLatch release = new CountDownLatch(1);
+        try {
+            CompletableFuture<Void> holder = holding(
+                () -> transactionImportRepository.lockTarget(TransactionImportProcessor.lockKey(nubank)), release, () -> { });
+
+            CompletableFuture<Void> complete = CompletableFuture.runAsync(() -> reviewService.complete(userId, id, "127.0.0.1"));
+
+            assertThatThrownBy(() -> complete.get(500, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+            assertThat(row(id).get("status")).isEqualTo("REVIEW");
+            release.countDown();
+            complete.get(10, TimeUnit.SECONDS);
+            holder.get(10, TimeUnit.SECONDS);
+            assertThat(row(id).get("status")).isEqualTo("COMPLETED");
+        } finally {
+            release.countDown();
+        }
+    }
+
+    /** Story 5.10: the category change waits for the import row and reads the status left there, here a discard: 409. */
+    @Test
+    void categoryChangeWaitsForTheImportRowAndSeesTheStatusLeftThere() throws Exception {
+        UUID nubank = account(userId, "Nubank");
+        UUID id = transactionImportService.create(userId, nubank, null, sample("nubank-conta.ofx"), "127.0.0.1").id();
+        assertThat(awaitDone(id).get("status")).isEqualTo("REVIEW");
+        UUID transaction = jdbc.queryForObject("SELECT id FROM transactions WHERE import_id = ? AND kind = 'REGULAR' "
+            + "LIMIT 1", UUID.class, id);
+        UpdateImportCategoryRequest request = new UpdateImportCategoryRequest(List.of(transaction),
+            childCategory(userId, "Mercado"));
+        CountDownLatch release = new CountDownLatch(1);
+        try {
+            CompletableFuture<Void> holder = holding(
+                () -> jdbc.queryForList("SELECT id FROM transaction_imports WHERE id = ? FOR UPDATE", id), release,
+                () -> jdbc.update("UPDATE transaction_imports SET status = 'DISCARDED' WHERE id = ?", id));
+
+            CompletableFuture<Void> change = CompletableFuture.runAsync(
+                () -> reviewService.updateCategory(userId, id, request, "127.0.0.1"));
+
+            assertThatThrownBy(() -> change.get(500, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+            release.countDown();
+            assertThatThrownBy(() -> change.get(10, TimeUnit.SECONDS)).hasCauseInstanceOf(ConflictException.class);
+            holder.get(10, TimeUnit.SECONDS);
+            assertThat(jdbc.queryForObject("SELECT classification_source FROM transactions WHERE id = ?", String.class,
+                transaction)).isNotEqualTo("USER");
         } finally {
             release.countDown();
         }

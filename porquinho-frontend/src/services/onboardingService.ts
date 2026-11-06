@@ -57,11 +57,14 @@ export async function completeCustomization(skipped: boolean): Promise<Onboardin
 }
 
 /**
- * Story 3.6 (versão sem upload): "Importar depois" conclui o passo 6 e avança para o passo 7.
- * Sem corpo; o backend grava `import_skipped`. Idempotente a partir do passo 7.
+ * Conclui o passo 6 e avança para o passo 7. Sem `importId`, "Importar depois": o backend grava `import_skipped` (Story
+ * 3.6). Com ele, a importação concluída grava `first_import_completed` (Story 5.10): 404 se não for do usuário; 409 em
+ * outro status. Idempotente a partir do passo 7.
  */
-export async function completeImport(): Promise<OnboardingProgress> {
-  const response = await api.post<OnboardingProgress>('/api/v1/onboarding/me/import')
+export async function completeImport(importId?: string): Promise<OnboardingProgress> {
+  const response = importId
+    ? await api.post<OnboardingProgress>('/api/v1/onboarding/me/import', { importId })
+    : await api.post<OnboardingProgress>('/api/v1/onboarding/me/import')
   return response.data
 }
 
