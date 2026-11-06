@@ -38,8 +38,10 @@ import java.util.UUID;
  * message and nothing is saved. Before saving, entries already in the target (duplicates) or matching an already
  * registered transfer are dropped and counted ({@link DuplicateDetector}, Story 5.5); when nothing is left the import
  * goes straight to COMPLETED (decision 1A of Story 5.5). Each saved entry is checked for Pix ({@link PixDetector},
- * Story 5.6). Imports left PROCESSING with no processing running (backend restarted, upload interrupted) are failed at
- * startup and every 5 minutes. Logs carry only the import id, positions and reasons, never file content.
+ * Story 5.6). On a card, purchases with an installment marker join their purchase's group and create the future
+ * installments, or confirm a future one saved before ({@link InstallmentPlanner}, Story 5.7). Imports left
+ * PROCESSING with no processing running (backend restarted, upload interrupted) are failed at startup and every
+ * 5 minutes. Logs carry only the import id, positions and reasons, never file content.
  *
  * <p>A separate bean so that {@code @Async} goes through the Spring proxy (a self-call would run synchronously).
  */
@@ -159,41 +161,64 @@ public class TransactionImportProcessor {
             return;
         }
         int skipped = result.skippedRows().size();
-        DuplicateDetector.Result checked = transactionTemplate.execute(status -> {
+        Outcome checked = transactionTemplate.execute(status -> {
             // Story 5.5: imports into the same target run one at a time from here to the commit, so each sees the rows
             // the other saved
             UUID targetId = creditCard ? transactionImport.getCreditCardId() : transactionImport.getAccountId();
             transactionImportRepository.lockTarget(lockKey(targetId));
             DuplicateDetector.Result detection = detect(transactionImport, fileType, result.entries());
+            List<Transaction> rows = detection.toSave().stream()
+                .map(entry -> toTransaction(transactionImport, entry))
+                .toList();
+            // Story 5.7: card purchases become installments; a future one already saved is confirmed and counted as
+            // a duplicate (decision 2A), so the counters still add up to the total
+            InstallmentPlanner.Plan plan = creditCard
+                ? InstallmentPlanner.plan(rows, transactionRepository.findActiveInstallmentsByCreditCard(
+                    transactionImport.getUserId(), transactionImport.getCreditCardId()))
+                : new InstallmentPlanner.Plan(rows, List.of(), 0, 0);
+            int imported = rows.size() - plan.confirmed().size();
+            int duplicates = detection.duplicates() + plan.confirmed().size();
             int total = result.totalRows();
             OffsetDateTime now = OffsetDateTime.now(clock);
             // the guarded update first: if the import already left PROCESSING nothing is written
-            int updated = detection.toSave().isEmpty()
-                ? transactionImportRepository.markCompletedWithNothingNew(importId, total, detection.duplicates(),
+            int updated = imported == 0
+                ? transactionImportRepository.markCompletedWithNothingNew(importId, total, duplicates,
                     detection.transfers(), skipped, now)
-                : transactionImportRepository.markReadyForReview(importId, total, detection.toSave().size(),
-                    detection.duplicates(), detection.transfers(), skipped, now);
+                : transactionImportRepository.markReadyForReview(importId, total, imported, duplicates,
+                    detection.transfers(), skipped, now);
             if (updated == 0) {
+                // the planner already changed the confirmed futures (managed entities): the guarded update flushed
+                // them, so the transaction has to be rolled back
+                status.setRollbackOnly();
                 return null;
             }
-            if (!detection.toSave().isEmpty()) {
-                transactionRepository.saveAll(detection.toSave().stream()
-                    .map(entry -> toTransaction(transactionImport, entry))
-                    .toList());
+            if (!plan.confirmed().isEmpty()) {
+                transactionRepository.saveAll(plan.confirmed());
             }
+            if (!plan.toInsert().isEmpty()) {
+                transactionRepository.saveAll(plan.toInsert());
+            }
+            Outcome outcome = new Outcome(imported, duplicates, detection.transfers(), plan);
             auditLogService.log(AUDIT_DUPLICATES_CHECKED, transactionImport.getUserId(), null,
-                auditMetadata(importId, total, skipped, detection));
-            return detection;
+                auditMetadata(importId, total, skipped, outcome));
+            return outcome;
         });
         if (checked == null) {
             log.info("Import {} parsed but no longer processing: nothing saved", importId);
-        } else if (checked.toSave().isEmpty()) {
-            log.info("Import {} completed with nothing new: {} duplicate(s), {} transfer(s), {} skipped row(s)",
-                importId, checked.duplicates(), checked.transfers(), skipped);
+        } else if (checked.imported() == 0) {
+            log.info("Import {} completed with nothing new: {} duplicate(s), {} transfer(s), {} skipped row(s), "
+                + "{} installment(s) confirmed", importId, checked.duplicates(), checked.transfers(), skipped,
+                checked.plan().confirmed().size());
         } else {
-            log.info("Import {} ready for review: {} transaction(s), {} duplicate(s), {} transfer(s), {} skipped row(s)",
-                importId, checked.toSave().size(), checked.duplicates(), checked.transfers(), skipped);
+            log.info("Import {} ready for review: {} transaction(s), {} duplicate(s), {} transfer(s), "
+                + "{} skipped row(s), {} installment(s), {} future installment(s), {} confirmed", importId,
+                checked.imported(), checked.duplicates(), checked.transfers(), skipped, checked.plan().installments(),
+                checked.plan().futuresCreated(), checked.plan().confirmed().size());
         }
+    }
+
+    /** What an import saved: the counters of the import row and the installment plan (Stories 5.5 and 5.7). */
+    record Outcome(int imported, int duplicates, int transfers, InstallmentPlanner.Plan plan) {
     }
 
     /**
@@ -227,6 +252,8 @@ public class TransactionImportProcessor {
             existing = transactionRepository.findActiveByCreditCardBetween(userId,
                 transactionImport.getCreditCardId(), from, to);
             transfers = List.of();
+            // Story 5.7: a future installment is confirmed by the installment planner, never dropped as a duplicate
+            existing = existing.stream().filter(transaction -> !transaction.isFutureInstallment()).toList();
         }
         Set<UUID> importIds = new HashSet<>();
         for (Transaction transaction : existing) {
@@ -249,12 +276,15 @@ public class TransactionImportProcessor {
     }
 
     /** Only the import id and the counts: never descriptions nor file content. */
-    static String auditMetadata(UUID importId, int total, int skipped, DuplicateDetector.Result detection) {
+    static String auditMetadata(UUID importId, int total, int skipped, Outcome outcome) {
         return "{\"import_id\":\"" + importId + "\",\"total_transactions\":" + total
-            + ",\"imported_transactions\":" + detection.toSave().size()
-            + ",\"duplicates_found\":" + detection.duplicates()
-            + ",\"transfers_found\":" + detection.transfers()
-            + ",\"skipped_rows\":" + skipped + "}";
+            + ",\"imported_transactions\":" + outcome.imported()
+            + ",\"duplicates_found\":" + outcome.duplicates()
+            + ",\"transfers_found\":" + outcome.transfers()
+            + ",\"skipped_rows\":" + skipped
+            + ",\"installments_found\":" + outcome.plan().installments()
+            + ",\"future_installments_created\":" + outcome.plan().futuresCreated()
+            + ",\"installments_confirmed\":" + outcome.plan().confirmed().size() + "}";
     }
 
     private static Transaction toTransaction(TransactionImport transactionImport, OfxTransactionParser.Entry entry) {
@@ -277,6 +307,7 @@ public class TransactionImportProcessor {
         Optional<String> pixDetails = PixDetector.detect(entry.description(), entry.type());
         transaction.setPix(pixDetails.isPresent());
         transaction.setPixDetails(pixDetails.orElse(null));
+        // Story 5.7: InstallmentPlanner fills the installment fields of card purchases
         transaction.setInstallment(false);
         transaction.setFutureInstallment(false);
         return transaction;

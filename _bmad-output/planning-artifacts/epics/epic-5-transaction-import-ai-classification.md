@@ -174,14 +174,18 @@ So that users' monthly budgets reflect accurate installment payments.
 
 **Given** Card transactions have been parsed (Stories 5.4–5.6)
 **When** Installment detection runs
-**Then** Installment indicators are recognized ("Parcela 3/10", "PARC 03/10", trailing "03/10"/"07/12" in card descriptions), without mistaking dates such as "05/10" in account descriptions (detection only runs on card transactions)
+**Then** Installment indicators are recognized ("Parcela 3/10", "PARC 03/10", trailing "03/10"/"07/12" after a space in card descriptions), without mistaking dates such as "05/10" in account descriptions (detection only runs on card imports, on purchases: DEBIT with kind REGULAR)
+**And** An indicator is valid only when 1 ≤ number ≤ total and 2 ≤ total ≤ 48
 **And** If installment is detected: is_installment=true, installment_number and installment_total are extracted
-**And** Future installments are created for the remaining months (installment 3/10 → 7 future ones): same amount and description, date = transaction date + N months, is_future_installment=true, review_status follows the import
+**And** Future installments are created for the remaining months (installment 3/10 → 7 future ones): same amount, description with the number replaced keeping the bank's digits ("03/10" → "04/10"), date = transaction date + N months, is_future_installment=true, external_id null, review_status follows the import, import_id of the import that created them
 **And** All installments of a purchase share installment_group_id
-**And** When a later import brings an installment that matches a future one already created (same card, group description, number and amount), it confirms that future installment (is_future_installment=false, external_id filled) instead of inserting another (D7)
-**And** User sees: "Compra parcelada: 3/10 — restam 7 parcelas"
+**And** An installment joins an existing group of the same card with the same total, an amount at most the highest of R$ 0,05 and R$ 0,01 × (total − 1) apart, inclusive (rounding cents, decision 3A of Story 5.7), a similar base description (original description without the marker) and a date at most 20 days from the date expected for its number (decision 4A of Story 5.7: a repeated purchase, such as next year's annual fee, opens its own group), whose number is free or still future; the future installments created are those after its number up to the total that the group does not have yet (an older month imported later creates none)
+**And** When a later import brings an installment that matches a future one already created, it confirms that future installment (is_future_installment=false; external_id, date, amount, description, original description, is_pix and pix_details from the file) instead of inserting another (D7); the confirmed row keeps its original import and counts as a duplicate of the new import (decision 2A of Story 5.7)
+**And** Future installments are not candidates of the duplicate check (Story 5.5)
+**And** The text "Compra parcelada: 3/10 — restam 7 parcelas" is not part of this story (decision 1A of Story 5.7): it moved to Stories 5.9 and 5.12
 **And** Future installments are not counted as spending of the current month (projections are Epic 7)
-**And** Installment detection completes within overall parsing time budget (NFR6)
+**And** This story does not detect refunds, early payoff or a deleted card (decision 5A of Story 5.7): Epics 6 and 7 ignore the future installments of a deleted card, which count again if the card is restored, and Story 5.12 lets the user remove the future installments of a purchase
+**And** Installment detection completes within overall parsing time budget (NFR6): precompiled patterns, one query for the card's installments
 
 ---
 
@@ -222,6 +226,7 @@ So that I can review and confirm the categorizations.
 **When** I open the review screen (`/importar/:id/revisao`, or the result of onboarding step 6)
 **Then** For each transaction, display: date, description, amount (BRL), suggested category, confidence indicator (High 80%+, Medium 50–79%, Low <50%), Pix and installment markers, edit button
 **And** Transactions with is_pix=true show a Pix icon (with text alternative, never icon alone); the API exposes `isPix` and `pixDetails` (moved from Story 5.6, decision 1A)
+**And** Installments show "Compra parcelada: 3/10 — restam 7 parcelas"; the API exposes `isInstallment`, `installmentNumber`, `installmentTotal` and `isFutureInstallment` (moved from Story 5.7, decision 1A)
 **And** Transactions are grouped by confidence: High first, Low last; CARD_PAYMENT shown apart as "Pagamento de fatura"
 **And** Visual indicators: green check (High), yellow warning (Medium), red flag (Low, needs review); never color alone (WCAG)
 **And** "Aprovar todas de alta confiança" confirms all 80%+ transactions at once
@@ -295,6 +300,11 @@ So that I can correct errors or update transaction details.
 **When** The transaction list is displayed
 **Then** Transactions with is_pix=true show a Pix icon (with text alternative, never icon alone)
 **And** The API exposes `isPix` and `pixDetails` (moved from Story 5.6, decision 1A)
+**And** Installments show "Compra parcelada: 3/10 — restam 7 parcelas"; the API exposes `isInstallment`, `installmentNumber`, `installmentTotal` and `isFutureInstallment` (moved from Story 5.7, decision 1A)
+
+**Given** A purchase has future installments (is_future_installment=true)
+**When** I use the action "Remover parcelas futuras desta compra" on any installment of that purchase
+**Then** The future installments of its installment_group_id are removed (soft delete) and the confirmed installments stay as they are, so I can handle a refund or an early payoff (decision 5A of Story 5.7)
 
 ---
 

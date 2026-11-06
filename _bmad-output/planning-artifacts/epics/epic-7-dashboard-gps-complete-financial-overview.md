@@ -79,8 +79,8 @@ So that I can understand "Onde estou? Para onde vou? Preciso ajustar?" in 30 sec
   1. **Total Available Balance** (FR53): Sum of all account balances
   2. **Category Status Visual** (FR54): Grid or list showing categories with color-coded status (🟢🟡🔴)
   3. **Main Goal Progress** (FR55): Emergency Fund goal with progress bar and percentage
-  4. **Month Spending vs Planned** (FR56): Current month spending vs total budget allocated
-  5. **End-of-Month Projection** (FR57): Projected balance at month end based on current spending rate
+  4. **Month Spending vs Planned** (FR56): Current month spending vs total budget allocated (future installments, is_future_installment=true from Story 5.7, are not spending; they feed projections)
+  5. **End-of-Month Projection** (FR57): Projected balance at month end based on current spending rate, plus the future installments dated from the first day of the current month on (an installment of the current month not imported yet is still a commitment; one of a closed month, never confirmed by an import, is not), ignoring those of a deleted card, which count again if the card is restored (decision 5A of Story 5.7)
 **And** Answers the 3 GPS questions visually (FR58):
   - **"Onde estou?"** → Total balance + Category status
   - **"Para onde vou?"** → Goal progress + Projection

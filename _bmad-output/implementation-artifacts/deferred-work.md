@@ -148,3 +148,22 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-5-detect-and-flag-duplicate-transactions.md`
   summary: Na Story 5.13 (transação manual), tomar o mesmo advisory lock por destino da importação, para a detecção de duplicatas ver a gravação concorrente.
   evidence: `lockTarget` só é chamado pela importação.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-7-detect-installment-purchases-and-split-across-months.md`
+  summary: O descarte de importação da 5.10 precisa tratar as parcelas confirmadas por outra importação (decisão 2A da 5.7), sem apagar a parcela real nem deixar a confirmação de um arquivo descartado.
+  evidence: A futura confirmada fica com o import_id da importação que a criou; um descarte por import_id apagaria a parcela trazida pelo arquivo seguinte, e descartar a importação nova não volta a linha a futura.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-7-detect-installment-purchases-and-split-across-months.md`
+  summary: Conferir com extratos reais se algum banco usa marcadores "PARCELA 03 DE 10" / "03 DE 10" ou "3/10" de um dígito no fim da descrição do cartão.
+  evidence: Não verificado (sem arquivo real, D6). Se usarem, as compras entram como lançamento comum, sem futuras (medium). Resolve com um export real de fatura de cada banco.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-7-detect-installment-purchases-and-split-across-months.md`
+  summary: Conferir com extratos reais se a data de cada parcela no arquivo é a data da cobrança ou a da compra original.
+  evidence: Não verificado (D6). Se for a da compra, a confirmação leva a parcela para o mês errado e as futuras saem com datas erradas (medium). Resolve com uma fatura real com parcela de cada banco.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-7-detect-installment-purchases-and-split-across-months.md`
+  summary: Se um banco repetir a data da compra em todas as parcelas, a janela de 20 dias (4A) abre um grupo novo por mês, com futuras repetidas; no CSV sem id, a 5.5 descarta a parcela como duplicata.
+  evidence: Medium ou high, não verificado (D6). Atualiza o impacto da entrada anterior sobre a data da parcela. Resolve com uma fatura real com parcela de cada banco.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-7-detect-installment-purchases-and-split-across-months.md`
+  summary: `InstallmentPlanner.clip()` não tem teste; a descrição de 501 caracteres estouraria a coluna e a importação cairia em FAILED.
+  evidence: Só ocorre com descrição de cerca de 500 caracteres e marcador de um dígito; improvável nos formatos atuais.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-7-detect-installment-purchases-and-split-across-months.md`
+  summary: A ação "remover parcelas futuras desta compra" da 5.12 precisa durar; hoje uma parcela anterior importada depois recria os números removidos.
+  evidence: `InstallmentPlanner.plan` só recebe parcelas ativas e cria todo número ausente depois da linha inserida. A remoção ainda não existe no código, então o caso só aparece com a 5.12.
