@@ -1,6 +1,7 @@
 /**
  * Status de uma importação de extrato (Story 5.1). PROCESSING enquanto o processamento roda (o banco aparece no meio,
- * Story 5.3); REVIEW quando as transações foram lidas e gravadas (Story 5.4, decisão 1A); COMPLETED direto quando
+ * Story 5.3, e a classificação pela IA, Story 5.8); REVIEW quando as transações foram gravadas e classificadas (Story
+ * 5.4, decisão 1A); COMPLETED direto quando
  * todos os lançamentos eram duplicatas ou transferências já registradas (Story 5.5, decisão 1A); FAILED com `errorMessage`
  * quando o arquivo está incompleto, não tem transações ou o processamento cai.
  */
@@ -29,6 +30,10 @@ export interface TransactionImport {
   transfersFound: number
   /** Lançamentos que não puderam ser lidos (Story 5.4). */
   skippedRows: number
+  /** Linhas enviadas à IA: o Y de "X de Y" (Story 5.8). */
+  classificationTotal: number
+  /** Linhas dos lotes concluídos, com sucesso ou não: o X de "X de Y" (Story 5.8). */
+  classifiedCount: number
   errorMessage: string | null
   createdAt: string
 }

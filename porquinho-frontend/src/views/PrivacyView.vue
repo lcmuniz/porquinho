@@ -57,6 +57,10 @@
           </p>
           <ul class="mt-2 ml-6 list-disc text-gray-700">
             <li>Provedores de serviços essenciais (Google OAuth, hospedagem)</li>
+            <li>
+              Anthropic, operadora de inteligência artificial que classifica as transações importadas: recebe as
+              descrições das transações, com CPF e CNPJ mascarados, além do valor, do tipo e das suas categorias
+            </li>
             <li>Autoridades governamentais quando exigido por lei</li>
           </ul>
         </section>

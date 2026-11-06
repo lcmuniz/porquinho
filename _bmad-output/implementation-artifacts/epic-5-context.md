@@ -56,8 +56,10 @@ Permitir que o usuário importe extratos OFX/CSV dos 5 principais bancos brasile
 - **Story 5.7 – 3A (Luiz, 2026-11-05, revista no loop 3):** a parcela entra no grupo com valor diferente até o maior entre R$ 0,05 e R$ 0,01 × (total − 1), inclusive (centavos de arredondamento); a confirmação grava o valor do arquivo.
 - **Story 5.7 – 4A (Luiz, 2026-11-05):** a parcela só entra num grupo se a data estiver a até 20 dias da esperada para o número. Compra repetida (anuidade do ano seguinte) abre outro grupo.
 - **Story 5.7 – 5A (Luiz, 2026-11-05):** a 5.7 não detecta estorno, antecipação nem cartão apagado. As Epics 6 e 7 ignoram futuras de cartão apagado, que voltam a contar se o cartão for restaurado. A 5.12 ganha a ação "remover parcelas futuras desta compra", para o usuário tratar estorno e antecipação.
-- **Parcelas futuras na 5.8/5.9 (pendente):** as futuras da 5.7 têm o `import_id` da importação e `review_status = PENDING`. A 5.8 precisa decidir se a IA as classifica (custo de uma por linha) ou se herdam a categoria da parcela de origem; a 5.9, se aparecem na lista de revisão e no "Aprovar todas". A decisão vale também para a futura confirmada, que mantém categoria e status (2A) e não volta à classificação nem à revisão pela importação que a confirmou. A 5.10 precisa tratar no descarte a parcela confirmada por outra importação (ver deferred-work).
-- Pipeline em segundo plano, fora da thread da requisição: detecção, parsing, duplicatas, Pix, parcelas, classificação e, por fim, status `REVIEW`. Status da importação: `PROCESSING`/`REVIEW`/`COMPLETED`/`FAILED`/`DISCARDED` (`COMPLETED` também quando nada novo foi gravado, 5.5 – 1A). Importações presas em `PROCESSING` são marcadas `FAILED` na subida do backend e por uma varredura periódica.
+- **Story 5.8 – 1A (Luiz, 2026-11-06):** as parcelas futuras criadas pela importação herdam categoria, origem e confiança da parcela do arquivo no mesmo grupo e na mesma importação. Não vão para a IA, não contam em Y e não geram histórico. A futura confirmada por outra importação continua com a importação que a criou (5.7 – 2A) e não volta à classificação.
+- **Story 5.8 – 2A (Luiz, 2026-11-06):** a 5.8 entrega lotes sequenciais de até 100, sem teste de tempo real. O NFR7 fica pendente até haver `ANTHROPIC_API_KEY` (ver deferred-work).
+- **Parcelas futuras na 5.9 (pendente):** as futuras da 5.7 têm o `import_id` da importação e `review_status = PENDING`. A 5.9 precisa decidir se aparecem na lista de revisão e no "Aprovar todas". A 5.10 precisa tratar no descarte a parcela confirmada por outra importação (ver deferred-work).
+- Pipeline em segundo plano, fora da thread da requisição: detecção, parsing, duplicatas, Pix, parcelas, classificação e, por fim, status `REVIEW`. Status da importação: `PROCESSING`/`REVIEW`/`COMPLETED`/`FAILED`/`DISCARDED` (`COMPLETED` também quando nada novo foi gravado, 5.5 – 1A). Importações presas em `PROCESSING` (sem mudança em `updated_at`) são tratadas na subida do backend e por uma varredura periódica: com linhas gravadas vão para `REVIEW`, sem linhas para `FAILED` (5.8).
 - Valores sempre positivos (`DECIMAL(15,2)`), com o sentido em `transaction_type` (DEBIT/CREDIT). No cartão, compras são DEBIT e pagamentos/estornos são CREDIT.
 - Tabelas novas do épico: `transaction_imports`, `transactions`, `ai_classification_history`, `user_classification_patterns`. Convenções: PK UUID `id`, `user_id` indexado, `created_at`/`updated_at`/`deleted_at`, soft delete, migrations na próxima versão livre do Flyway (V25 em diante).
 - API REST em `/api/v1/imports` e `/api/v1/transactions` (recursos no plural, JSON em camelCase), erros em RFC 7807 com mensagens em português.
@@ -72,17 +74,17 @@ Permitir que o usuário importe extratos OFX/CSV dos 5 principais bancos brasile
 ## Cross-Story Dependencies
 
 - Ordem do pipeline: 5.1 → 5.3 → 5.4 → 5.5 → 5.6 → 5.7 → 5.8 → 5.9 → 5.10. A 5.2 (CSV) entra depois da 5.3/5.4: layout e destino verificados no envio (2A), banco e leitura das linhas no mesmo processamento em segundo plano; sem escolha manual do banco (1A).
-- A 5.8 aplica primeiro os padrões da 5.11. A 5.10 e a 5.12 alimentam a 5.11.
+- A 5.11 passa a aplicar os padrões do usuário antes da chamada à IA da 5.8 (`user_classification_patterns` não existia na 5.8). A 5.10 e a 5.12 alimentam a 5.11.
 - A 5.10 conclui o onboarding: registra `first_import_completed` via `POST /api/v1/onboarding/me/import` (adiado da Story 3.6).
 - Depende do que já existe: categorias (Story 3.4), contas, cartões, transferências e histórico de saldo (Epic 4), export e purge LGPD (Stories 1.6/1.7) e auditoria.
 
 ## Regras do projeto que valem para todas as stories
 
-- Migration aplicada nunca é editada; mudança de schema sempre em nova versão do Flyway (V27 é a última em 2026-11-05).
+- Migration aplicada nunca é editada; mudança de schema sempre em nova versão do Flyway (V28 é a última em 2026-11-06).
 - Backend em camadas `com.porquinho.controller/service/repository/entity/dto`; erros em `ProblemDetail` (RFC 7807) com mensagem em pt-BR.
 - Rotas novas ficam atrás do `SubscriptionAccessFilter` (402 sem assinatura).
 - Toda tabela ou coluna nova com dado do usuário entra no export (`DataExportService`) e no purge (`AccountDeletionService`) na ordem das FKs, e o teste confere o conjunto de chaves do export (lição F3 da retro do Epic 2).
 - Amostras de teste são fictícias e geradas por `porquinho-backend/scripts/gerar-amostras-extrato.py`; nunca commitar extrato real.
 - IA (5.8): consultar a skill `claude-api` (SDK Java, structured outputs) antes de escrever o cliente.
 - Datas do OFX são sempre AAAAMMDD; formatos alternativos de data só valem para o CSV (5.2).
-- A varredura de órfãs usa `created_at` (15 min). Quando a 5.8 tornar o processamento longo (IA em lotes), trocar o critério por `updated_at` atualizado a cada lote, senão importações grandes viram `FAILED` no meio.
+- A varredura de órfãs usa `updated_at` (15 min), atualizado a cada lote da classificação (5.8). Quem acrescentar etapa longa ao pipeline precisa manter `updated_at` em dia.

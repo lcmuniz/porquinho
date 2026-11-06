@@ -1,6 +1,7 @@
 package com.porquinho.entity;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.GenericGenerator;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -18,6 +19,7 @@ import java.util.UUID;
  */
 @Entity
 @Table(name = "transactions")
+@DynamicUpdate
 public class Transaction {
 
     public enum Type { DEBIT, CREDIT }

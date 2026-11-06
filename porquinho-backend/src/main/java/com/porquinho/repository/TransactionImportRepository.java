@@ -66,18 +66,44 @@ public interface TransactionImportRepository extends JpaRepository<TransactionIm
 
     /**
      * Ends the parsing (Story 5.4, decision 1A): records the counters ({@code imported} = transactions saved,
-     * {@code duplicates} and {@code transfers} = entries not saved, Story 5.5) and moves a PROCESSING import to REVIEW.
-     * Returns 0 when the import is gone or already left PROCESSING (e.g. failed as orphan); the caller then rolls back.
+     * {@code duplicates} and {@code transfers} = entries not saved, Story 5.5). The import stays PROCESSING for the
+     * classification (Story 5.8). Returns 0 when the import is gone or already left PROCESSING (e.g. failed as orphan);
+     * the caller then rolls back.
      */
     @Transactional
     @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query("UPDATE TransactionImport i SET i.status = com.porquinho.entity.TransactionImport.Status.REVIEW, "
+    @Query("UPDATE TransactionImport i SET "
         + "i.totalTransactions = :total, i.importedTransactions = :imported, i.duplicatesFound = :duplicates, "
         + "i.transfersFound = :transfers, i.skippedRows = :skipped, i.updatedAt = :now "
         + "WHERE i.id = :id AND i.status = com.porquinho.entity.TransactionImport.Status.PROCESSING")
-    int markReadyForReview(@Param("id") UUID id, @Param("total") int total, @Param("imported") int imported,
-                           @Param("duplicates") int duplicates, @Param("transfers") int transfers,
-                           @Param("skipped") int skipped, @Param("now") OffsetDateTime now);
+    int recordParsed(@Param("id") UUID id, @Param("total") int total, @Param("imported") int imported,
+                     @Param("duplicates") int duplicates, @Param("transfers") int transfers,
+                     @Param("skipped") int skipped, @Param("now") OffsetDateTime now);
+
+    /** Records how many rows go to the AI (Story 5.8). Returns 0 when the import already left PROCESSING. */
+    @Transactional
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE TransactionImport i SET i.classificationTotal = :total, i.updatedAt = :now "
+        + "WHERE i.id = :id AND i.status = com.porquinho.entity.TransactionImport.Status.PROCESSING")
+    int startClassification(@Param("id") UUID id, @Param("total") int total, @Param("now") OffsetDateTime now);
+
+    /**
+     * Adds the {@code count} rows of a finished batch to the progress and renews {@code updated_at}, which keeps the
+     * orphan sweep away (Story 5.8). Returns 0 when the import already left PROCESSING.
+     */
+    @Transactional
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE TransactionImport i SET i.classifiedCount = i.classifiedCount + :count, i.updatedAt = :now "
+        + "WHERE i.id = :id AND i.status = com.porquinho.entity.TransactionImport.Status.PROCESSING")
+    int addClassified(@Param("id") UUID id, @Param("count") int count, @Param("now") OffsetDateTime now);
+
+    /** Ends the pipeline: a PROCESSING import goes to REVIEW (Story 5.8). Returns 0 when it already left PROCESSING. */
+    @Transactional
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE TransactionImport i SET i.status = com.porquinho.entity.TransactionImport.Status.REVIEW, "
+        + "i.updatedAt = :now "
+        + "WHERE i.id = :id AND i.status = com.porquinho.entity.TransactionImport.Status.PROCESSING")
+    int markReadyForReview(@Param("id") UUID id, @Param("now") OffsetDateTime now);
 
     /**
      * Story 5.5, decision 1A: every entry was a duplicate or an already registered transfer, so nothing is saved and
@@ -105,16 +131,29 @@ public interface TransactionImportRepository extends JpaRepository<TransactionIm
     Integer lockTarget(@Param("key") long key);
 
     /**
-     * Marks as FAILED every PROCESSING import created before {@code createdBefore}, whatever the user and whether its
-     * bank was detected: PROCESSING means processing is running (Story 5.4, decision 1A), so an old one has none
-     * running anymore (backend restarted, upload interrupted, processing stuck). Stories 5.3 and 5.4.
+     * Moves to REVIEW every PROCESSING orphan (no change since {@code updatedBefore}) whose rows were already saved
+     * (Story 5.8): as FAILED, the rows would stay active and a new upload of the file would see them as duplicates. The
+     * rows not reached by the classification stay "Não classificado".
+     */
+    @Transactional
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE TransactionImport i SET i.status = com.porquinho.entity.TransactionImport.Status.REVIEW, "
+        + "i.updatedAt = :now "
+        + "WHERE i.status = com.porquinho.entity.TransactionImport.Status.PROCESSING "
+        + "AND i.updatedAt < :updatedBefore AND i.importedTransactions > 0")
+    int reviewOrphansWithRows(@Param("updatedBefore") OffsetDateTime updatedBefore, @Param("now") OffsetDateTime now);
+
+    /**
+     * Marks as FAILED every PROCESSING orphan (no change since {@code updatedBefore}) with no rows saved, whatever the
+     * user and whether its bank was detected: PROCESSING means processing is running (Story 5.4, decision 1A), so an
+     * old one has none running anymore (backend restarted, upload interrupted, processing stuck). Stories 5.3, 5.4, 5.8.
      */
     @Transactional
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE TransactionImport i SET i.status = com.porquinho.entity.TransactionImport.Status.FAILED, "
         + "i.errorMessage = :message, i.updatedAt = :now "
         + "WHERE i.status = com.porquinho.entity.TransactionImport.Status.PROCESSING "
-        + "AND i.createdAt < :createdBefore")
-    int failProcessingCreatedBefore(@Param("createdBefore") OffsetDateTime createdBefore,
-                                    @Param("message") String message, @Param("now") OffsetDateTime now);
+        + "AND i.updatedAt < :updatedBefore AND i.importedTransactions = 0")
+    int failOrphansWithoutRows(@Param("updatedBefore") OffsetDateTime updatedBefore,
+                               @Param("message") String message, @Param("now") OffsetDateTime now);
 }

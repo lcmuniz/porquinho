@@ -66,6 +66,8 @@ function imported(overrides: Partial<TransactionImport> = {}): TransactionImport
     duplicatesFound: 0,
     transfersFound: 0,
     skippedRows: 0,
+    classificationTotal: 0,
+    classifiedCount: 0,
     errorMessage: null,
     createdAt: '2026-11-04T15:00:00Z',
     ...overrides,
@@ -397,6 +399,40 @@ describe('ImportView', () => {
       await tick()
       await tick()
       expect(mockGetImport).toHaveBeenCalledTimes(3)
+    })
+
+    it('mostra o progresso da classificação a cada consulta até a revisão', async () => {
+      const classifying = { bankName: 'NUBANK' as const, importedTransactions: 250, classificationTotal: 250 }
+      mockListImports.mockResolvedValue([imported({ ...classifying })])
+      mockGetImport
+        .mockResolvedValueOnce(imported({ ...classifying, classifiedCount: 100 }))
+        .mockResolvedValueOnce(imported({ ...classifying, classifiedCount: 250 }))
+        .mockResolvedValueOnce(
+          imported({ ...classifying, classifiedCount: 250, status: 'REVIEW', totalTransactions: 250 }),
+        )
+      const wrapper = await mountView()
+      const label = () => wrapper.get('[data-testid="import-i1"] [data-testid="import-status"]').text()
+
+      expect(label()).toBe('Classificando transações com IA... 0 de 250')
+      await tick()
+      expect(label()).toBe('Classificando transações com IA... 100 de 250')
+      await tick()
+      expect(label()).toBe('Classificando transações com IA... 250 de 250')
+      await tick()
+      expect(label()).toBe('Pronta para revisão: 250 transações — a tela de revisão chega numa próxima etapa')
+
+      await tick()
+      expect(mockGetImport).toHaveBeenCalledTimes(3)
+    })
+
+    it('sem linhas enviadas à IA o rótulo continua o da leitura', async () => {
+      mockListImports.mockResolvedValue([imported({ bankName: 'NUBANK', importedTransactions: 3 })])
+      mockGetImport.mockResolvedValue(imported({ bankName: 'NUBANK', importedTransactions: 3 }))
+      const wrapper = await mountView()
+
+      expect(wrapper.get('[data-testid="import-i1"] [data-testid="import-status"]').text()).toBe(
+        'Banco detectado: Nubank — lendo as transações...',
+      )
     })
 
     it('para de consultar quando a importação falha e mostra a mensagem', async () => {
