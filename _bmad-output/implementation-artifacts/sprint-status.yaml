@@ -101,7 +101,7 @@ development_status:
   epic-4-retrospective: done
 
   # Epic 5: Transaction Import & AI Classification
-  epic-5: in-progress
+  epic-5: done
   5-1-upload-ofx-files-from-5-brazilian-banks: done
   5-2-upload-csv-files-from-5-brazilian-banks: done
   5-3-auto-detect-file-format-and-bank: done
@@ -335,7 +335,7 @@ action_items:
     action: "Núcleo único de transação: alvo da trava, D3 em Java e validação de categoria
       (D1-D3, A1)"
     owner: "Claude (Luiz decide quando)"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-5-retro-2026-11-09.md"
   - id: "epic-5-retro-item-26-composables-de-importreviewview-e-transa"
     epic: 5

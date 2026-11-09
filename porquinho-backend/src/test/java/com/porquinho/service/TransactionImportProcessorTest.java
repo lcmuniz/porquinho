@@ -344,7 +344,7 @@ class TransactionImportProcessorTest {
 
         processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx"));
 
-        verify(repository).lockTarget(TransactionImportProcessor.lockKey(accountId));
+        verify(repository).lockTarget(TransactionCore.lockKey(accountId));
         verify(transferRepository).findActiveByAccountBetween(userId, accountId, LocalDate.of(2026, 9, 30),
             LocalDate.of(2026, 10, 28));
         verify(repository, never()).recordParsed(any(), anyInt(), anyInt(), anyInt(), anyInt(), anyInt(), any());
@@ -353,7 +353,7 @@ class TransactionImportProcessorTest {
             + "\",\"total_transactions\":10,\"imported_transactions\":0,\"duplicates_found\":10,\"transfers_found\":0,"
             + "\"skipped_rows\":0,\"installments_found\":0,\"future_installments_created\":0,\"installments_confirmed\":0}");
         InOrder order = inOrder(repository, transactionRepository);
-        order.verify(repository).lockTarget(TransactionImportProcessor.lockKey(accountId));
+        order.verify(repository).lockTarget(TransactionCore.lockKey(accountId));
         order.verify(transactionRepository).findDuplicateCandidatesByAccountBetween(any(), any(), any(), any());
         order.verify(repository).markCompletedWithNothingNew(importId, 10, 10, 0, 0, now);
         verify(classificationService, never()).classify(any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
@@ -389,7 +389,7 @@ class TransactionImportProcessorTest {
 
         verify(transferRepository, never()).findActiveByAccountBetween(any(), any(), any(), any());
         InOrder order = inOrder(repository, transactionRepository);
-        order.verify(repository).lockTarget(TransactionImportProcessor.lockKey(cardId));
+        order.verify(repository).lockTarget(TransactionCore.lockKey(cardId));
         order.verify(transactionRepository).findDuplicateCandidatesByCreditCardBetween(eq(userId), eq(cardId), any(), any());
         order.verify(transactionRepository).findActiveInstallmentsByCreditCard(userId, cardId);
         order.verify(repository).recordParsed(importId, 8, 8, 0, 0, 0, now);
@@ -515,7 +515,7 @@ class TransactionImportProcessorTest {
         processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx"));
 
         InOrder order = inOrder(repository, transactionManager, classificationService);
-        order.verify(repository).lockTarget(TransactionImportProcessor.lockKey(accountId));
+        order.verify(repository).lockTarget(TransactionCore.lockKey(accountId));
         order.verify(repository).recordParsed(importId, 10, 10, 0, 0, 0, now);
         order.verify(transactionManager).commit(any());
         order.verify(classificationService).classify(importId, userId, false);

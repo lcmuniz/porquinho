@@ -1,8 +1,5 @@
 package com.porquinho.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.porquinho.dto.ImportReviewActionResponse;
 import com.porquinho.dto.ImportTransactionResponse;
 import com.porquinho.dto.UpdateImportCategoryRequest;
@@ -15,7 +12,6 @@ import com.porquinho.exception.BadRequestException;
 import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountRepository;
-import com.porquinho.repository.CategoryRepository;
 import com.porquinho.repository.CreditCardRepository;
 import com.porquinho.repository.TransactionImportRepository;
 import com.porquinho.repository.TransactionRepository;
@@ -27,15 +23,12 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Function;
-import java.util.stream.Collectors;
+import java.util.function.Predicate;
 
 /**
  * Review of an import: lists its rows, approves the high-confidence ones and discards it (Story 5.9), changes
@@ -47,7 +40,6 @@ import java.util.stream.Collectors;
 public class TransactionImportReviewService {
 
     private static final Logger log = LoggerFactory.getLogger(TransactionImportReviewService.class);
-    private static final ObjectMapper JSON = new ObjectMapper();
 
     public static final String AUDIT_HIGH_CONFIDENCE_APPROVED = "import_high_confidence_approved";
     public static final String AUDIT_DISCARDED = "import_discarded";
@@ -56,7 +48,6 @@ public class TransactionImportReviewService {
 
     public static final String NOT_IN_REVIEW_MESSAGE = "Esta importação não está em revisão";
     public static final String TRANSACTION_NOT_FOUND_MESSAGE = "Transação não encontrada nesta revisão";
-    public static final String GROUP_NOT_ALLOWED_MESSAGE = "Escolha uma categoria, não um grupo";
     public static final String ACCOUNT_REMOVED_MESSAGE =
         "A conta desta importação foi removida: restaure ou descarte a importação";
     public static final String CARD_REMOVED_MESSAGE =
@@ -67,12 +58,9 @@ public class TransactionImportReviewService {
     /** From here on the review shows a row as high confidence. */
     static final int HIGH_CONFIDENCE = 80;
 
-    /** The confidence of a category chosen by the user. */
-    static final int USER_CONFIDENCE = 100;
-
     private final TransactionImportRepository transactionImportRepository;
     private final TransactionRepository transactionRepository;
-    private final CategoryRepository categoryRepository;
+    private final TransactionCore core;
     private final AccountRepository accountRepository;
     private final CreditCardRepository creditCardRepository;
     private final BalanceHistoryRecorder balanceHistoryRecorder;
@@ -81,14 +69,14 @@ public class TransactionImportReviewService {
 
     public TransactionImportReviewService(TransactionImportRepository transactionImportRepository,
                                           TransactionRepository transactionRepository,
-                                          CategoryRepository categoryRepository, AccountRepository accountRepository,
+                                          TransactionCore core, AccountRepository accountRepository,
                                           CreditCardRepository creditCardRepository,
                                           BalanceHistoryRecorder balanceHistoryRecorder,
                                           AuditLogService auditLogService,
                                           ClassificationPatternService patternService) {
         this.transactionImportRepository = transactionImportRepository;
         this.transactionRepository = transactionRepository;
-        this.categoryRepository = categoryRepository;
+        this.core = core;
         this.accountRepository = accountRepository;
         this.creditCardRepository = creditCardRepository;
         this.balanceHistoryRecorder = balanceHistoryRecorder;
@@ -101,7 +89,7 @@ public class TransactionImportReviewService {
     public List<ImportTransactionResponse> list(UUID userId, UUID importId) {
         transactionImportRepository.findByIdAndUserId(importId, userId).orElseThrow(TransactionImportReviewService::notFound);
         List<Transaction> rows = transactionRepository.findForReviewByImport(userId, importId);
-        Map<UUID, Category> categories = categoriesOf(categoryRepository, userId, rows);
+        Map<UUID, Category> categories = core.categoriesOf(userId, rows);
         return rows.stream().map(row -> toResponse(row, categories)).toList();
     }
 
@@ -138,11 +126,7 @@ public class TransactionImportReviewService {
         if (transactionImport.getStatus() != TransactionImport.Status.REVIEW) {
             throw new ConflictException(NOT_IN_REVIEW_MESSAGE);
         }
-        Category category = categoryRepository.findActiveByIdAndUserId(request.categoryId(), userId)
-            .orElseThrow(() -> new ResourceNotFoundException(CategoryService.NOT_FOUND_MESSAGE));
-        if (category.getParentCategoryId() == null) {
-            throw new BadRequestException(GROUP_NOT_ALLOWED_MESSAGE);
-        }
+        Category category = core.requireChildCategory(userId, request.categoryId());
         Set<UUID> ids = new HashSet<>(request.transactionIds());
         if (transactionRepository.countEditable(userId, importId, ids) != ids.size()) {
             throw new ResourceNotFoundException(TRANSACTION_NOT_FOUND_MESSAGE);
@@ -163,9 +147,10 @@ public class TransactionImportReviewService {
     /** The only place that writes a category chosen by the user, so the one Story 5.11 learns from. */
     private CategoryChange writeCategory(UUID userId, UUID importId, Set<UUID> ids, UUID categoryId) {
         OffsetDateTime now = OffsetDateTime.now();
-        int rows = transactionRepository.applyUserCategory(userId, importId, ids, categoryId, USER_CONFIDENCE, now);
-        int futures = transactionRepository.applyUserCategoryToFutures(userId, importId, ids, categoryId, USER_CONFIDENCE,
-            now);
+        int rows = transactionRepository.applyUserCategory(userId, importId, ids, categoryId,
+            TransactionCore.USER_CONFIDENCE, now);
+        int futures = transactionRepository.applyUserCategoryToFutures(userId, importId, ids, categoryId,
+            TransactionCore.USER_CONFIDENCE, now);
         patternService.learn(userId, ids, categoryId);
         return new CategoryChange(rows, futures);
     }
@@ -182,7 +167,7 @@ public class TransactionImportReviewService {
             .orElseThrow(TransactionImportReviewService::notFound);
         UUID accountId = transactionImport.getAccountId();
         UUID cardId = transactionImport.getCreditCardId();
-        transactionImportRepository.lockTarget(TransactionImportProcessor.lockKey(cardId != null ? cardId : accountId));
+        core.lockTargets(TransactionCore.target(cardId, accountId));
         OffsetDateTime now = OffsetDateTime.now();
         if (transactionImportRepository.markCompleted(importId, now) == 0) {
             if (transactionImportRepository.findStatusById(importId) == TransactionImport.Status.COMPLETED) {
@@ -212,8 +197,12 @@ public class TransactionImportReviewService {
     private int applyBalanceEffect(UUID userId, UUID importId, UUID accountId, OffsetDateTime now) {
         Account account = accountRepository.findActiveByIdForUpdate(accountId, userId)
             .orElseThrow(() -> new ConflictException(ACCOUNT_REMOVED_MESSAGE));
-        LocalDate reference = balanceHistoryRecorder.referenceDate(account);
-        BigDecimal effect = transactionRepository.sumBalanceEffect(userId, importId, reference);
+        Predicate<LocalDate> inBalance = core.inBalance(account);
+        List<Transaction> rows = transactionRepository.findBalanceCandidates(userId, importId).stream()
+            .filter(row -> inBalance.test(row.getTransactionDate()))
+            .toList();
+        BigDecimal effect = rows.stream().map(row -> TransactionCore.signed(row.getTransactionType(), row.getAmount()))
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
         if (effect.signum() != 0) {
             BigDecimal balance = account.getCurrentBalance().add(effect);
             if (!BalanceHistoryRecorder.fits(balance)) {
@@ -222,7 +211,10 @@ public class TransactionImportReviewService {
             account.setCurrentBalance(balance);
             balanceHistoryRecorder.record(accountRepository.save(account), AccountBalanceHistory.EVENT_TRANSACTION);
         }
-        return transactionRepository.markAffectsBalance(userId, importId, reference, now);
+        if (rows.isEmpty()) {
+            return 0;
+        }
+        return transactionRepository.markInBalance(userId, rows.stream().map(Transaction::getId).toList(), now);
     }
 
     /**
@@ -235,9 +227,7 @@ public class TransactionImportReviewService {
     public ImportReviewActionResponse discard(UUID userId, UUID importId, String ipAddress) {
         TransactionImport transactionImport = transactionImportRepository.findByIdAndUserId(importId, userId)
             .orElseThrow(TransactionImportReviewService::notFound);
-        UUID targetId = transactionImport.getCreditCardId() != null
-            ? transactionImport.getCreditCardId() : transactionImport.getAccountId();
-        transactionImportRepository.lockTarget(TransactionImportProcessor.lockKey(targetId));
+        core.lockTargets(TransactionCore.target(transactionImport.getCreditCardId(), transactionImport.getAccountId()));
         OffsetDateTime now = OffsetDateTime.now();
         if (transactionImportRepository.markDiscarded(importId, now) == 0) {
             throw new ConflictException(NOT_IN_REVIEW_MESSAGE);
@@ -261,54 +251,11 @@ public class TransactionImportReviewService {
         return new ResourceNotFoundException(TransactionImportService.NOT_FOUND_MESSAGE);
     }
 
-    /** The categories of {@code rows} and their parents, by id, removed ones included. */
-    static Map<UUID, Category> categoriesOf(CategoryRepository categoryRepository, UUID userId, List<Transaction> rows) {
-        Set<UUID> ids = rows.stream().map(Transaction::getCategoryId).filter(Objects::nonNull).collect(Collectors.toSet());
-        if (ids.isEmpty()) {
-            return Map.of();
-        }
-        Map<UUID, Category> categories = new HashMap<>(categoryRepository.findByUserIdAndIdIn(userId, ids).stream()
-            .collect(Collectors.toMap(Category::getId, Function.identity())));
-        Set<UUID> parents = new HashSet<>();
-        for (Category category : categories.values()) {
-            if (category.getParentCategoryId() != null && !categories.containsKey(category.getParentCategoryId())) {
-                parents.add(category.getParentCategoryId());
-            }
-        }
-        if (!parents.isEmpty()) {
-            categoryRepository.findByUserIdAndIdIn(userId, parents).forEach(parent -> categories.put(parent.getId(), parent));
-        }
-        return categories;
-    }
-
     private static ImportTransactionResponse toResponse(Transaction row, Map<UUID, Category> categories) {
         return new ImportTransactionResponse(row.getId(), row.getTransactionDate(), row.getDescription(), row.getAmount(),
-            row.getTransactionType().name(), row.getKind().name(), category(row.getCategoryId(), categories),
-            row.getClassificationSource().name(), row.getClassificationConfidence(), row.getReviewStatus().name(),
-            row.isPix(), pixDetails(row), row.isInstallment(), row.getInstallmentNumber(), row.getInstallmentTotal(),
-            row.isFutureInstallment());
-    }
-
-    static ImportTransactionResponse.Category category(UUID categoryId, Map<UUID, Category> categories) {
-        Category category = categoryId == null ? null : categories.get(categoryId);
-        if (category == null) {
-            return null;
-        }
-        Category parent = category.getParentCategoryId() == null ? null : categories.get(category.getParentCategoryId());
-        return new ImportTransactionResponse.Category(category.getId(), category.getCategoryName(),
-            parent == null ? null : parent.getCategoryName());
-    }
-
-    /** The stored JSON as an object; never expected to fail (the column is jsonb), and a marker is not worth a 500. */
-    static JsonNode pixDetails(Transaction row) {
-        if (row.getPixDetails() == null) {
-            return null;
-        }
-        try {
-            return JSON.readTree(row.getPixDetails());
-        } catch (JsonProcessingException e) {
-            log.warn("Transaction {} has unreadable pix_details", row.getId());
-            return null;
-        }
+            row.getTransactionType().name(), row.getKind().name(),
+            TransactionCore.category(row.getCategoryId(), categories), row.getClassificationSource().name(),
+            row.getClassificationConfidence(), row.getReviewStatus().name(), row.isPix(), TransactionCore.pixDetails(row),
+            row.isInstallment(), row.getInstallmentNumber(), row.getInstallmentTotal(), row.isFutureInstallment());
     }
 }
