@@ -97,6 +97,7 @@ public class AuthService {
             throw new IllegalArgumentException("User ID (JWT sub) is required to create a user");
         }
         UUID userUuid = UUID.fromString(userId);
+        rejectIfDeletionPending(userUuid);
 
         // Create new user with LGPD consent timestamp (NFR25), using the Supabase id
         java.time.LocalDateTime now = java.time.LocalDateTime.now();
@@ -174,6 +175,8 @@ public class AuthService {
             return new UserRegistrationResult(updatedUser, false);
         }
 
+        rejectIfDeletionPending(userUuid);
+
         // Create new user with LGPD consent timestamp (NFR25)
         // Use native query to insert with pre-defined ID (from Supabase)
         java.time.LocalDateTime now = java.time.LocalDateTime.now();
@@ -224,5 +227,15 @@ public class AuthService {
      */
     public User findUserByEmail(String email) {
         return userRepository.findByEmailAndDeletedAtIsNull(email).orElse(null);
+    }
+
+    static final String DELETION_PENDING_MESSAGE =
+        "Esta conta está em exclusão. Aguarde a conclusão para se cadastrar de novo.";
+
+    /** A soft-deleted row (waiting for the purge, Story 1.7) still holds the id: inserting it again would be a 500. */
+    private void rejectIfDeletionPending(UUID userId) {
+        if (userRepository.findByIdIncludingDeleted(userId).isPresent()) {
+            throw new ConflictException(DELETION_PENDING_MESSAGE);
+        }
     }
 }

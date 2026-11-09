@@ -53,7 +53,7 @@ public class EmailService {
      */
     public void sendDataExportReady(String email, String downloadUrl) {
         if (mailSender == null) {
-            log.warn("SMTP not configured - skipping data export notification email to {}", email);
+            log.warn("SMTP not configured - skipping data export notification email to {}", maskEmail(email));
             return;
         }
 
@@ -68,9 +68,9 @@ public class EmailService {
                 "Atenciosamente,\nEquipe Porquinho"
             );
             mailSender.send(message);
-            log.info("Data export notification email sent to {}", email);
+            log.info("Data export notification email sent to {}", maskEmail(email));
         } catch (Exception e) {
-            log.warn("Failed to send data export notification email to {}: {}", email, e.getMessage());
+            log.warn("Failed to send data export notification email to {}: {}", maskEmail(email), e.getClass().getSimpleName());
         }
     }
 
@@ -83,7 +83,7 @@ public class EmailService {
      */
     public void sendAccountDeletionConfirmation(String email, OffsetDateTime scheduledPurgeAt) {
         if (mailSender == null) {
-            log.warn("SMTP not configured - skipping account deletion confirmation email to {}", email);
+            log.warn("SMTP not configured - skipping account deletion confirmation email to {}", maskEmail(email));
             return;
         }
 
@@ -101,9 +101,9 @@ public class EmailService {
                 "Atenciosamente,\nEquipe Porquinho"
             );
             mailSender.send(message);
-            log.info("Account deletion confirmation email sent to {}", email);
+            log.info("Account deletion confirmation email sent to {}", maskEmail(email));
         } catch (Exception e) {
-            log.warn("Failed to send account deletion confirmation email to {}: {}", email, e.getMessage());
+            log.warn("Failed to send account deletion confirmation email to {}: {}", maskEmail(email), e.getClass().getSimpleName());
         }
     }
 
@@ -116,7 +116,7 @@ public class EmailService {
      */
     public void sendSubscriptionActivated(String email, OffsetDateTime nextBillingDate) {
         if (mailSender == null) {
-            log.warn("SMTP not configured - skipping subscription activated email to {}", email);
+            log.warn("SMTP not configured - skipping subscription activated email to {}", maskEmail(email));
             return;
         }
 
@@ -137,9 +137,9 @@ public class EmailService {
                 "Atenciosamente,\nEquipe Porquinho"
             );
             mailSender.send(message);
-            log.info("Subscription activated email sent to {}", email);
+            log.info("Subscription activated email sent to {}", maskEmail(email));
         } catch (Exception e) {
-            log.warn("Failed to send subscription activated email to {}: {}", email, e.getMessage());
+            log.warn("Failed to send subscription activated email to {}: {}", maskEmail(email), e.getClass().getSimpleName());
         }
     }
 
@@ -153,7 +153,7 @@ public class EmailService {
      */
     public void sendSubscriptionReactivated(String email, OffsetDateTime nextBillingDate) {
         if (mailSender == null) {
-            log.warn("SMTP not configured - skipping subscription reactivated email to {}", email);
+            log.warn("SMTP not configured - skipping subscription reactivated email to {}", maskEmail(email));
             return;
         }
 
@@ -174,9 +174,9 @@ public class EmailService {
                 "Atenciosamente,\nEquipe Porquinho"
             );
             mailSender.send(message);
-            log.info("Subscription reactivated email sent to {}", email);
+            log.info("Subscription reactivated email sent to {}", maskEmail(email));
         } catch (Exception e) {
-            log.warn("Failed to send subscription reactivated email to {}: {}", email, e.getMessage());
+            log.warn("Failed to send subscription reactivated email to {}: {}", maskEmail(email), e.getClass().getSimpleName());
         }
     }
 
@@ -193,7 +193,7 @@ public class EmailService {
      */
     public void sendTrialReminder(String email, long daysLeft, OffsetDateTime trialEndDate, String subscribeUrl) {
         if (mailSender == null) {
-            log.warn("SMTP not configured - skipping trial reminder email to {}", email);
+            log.warn("SMTP not configured - skipping trial reminder email to {}", maskEmail(email));
             return;
         }
 
@@ -215,9 +215,9 @@ public class EmailService {
                 "Atenciosamente,\nEquipe Porquinho"
             );
             mailSender.send(message);
-            log.info("Trial reminder ({} days left) email sent to {}", daysLeft, email);
+            log.info("Trial reminder ({} days left) email sent to {}", daysLeft, maskEmail(email));
         } catch (Exception e) {
-            log.warn("Failed to send trial reminder email to {}: {}", email, e.getMessage());
+            log.warn("Failed to send trial reminder email to {}: {}", maskEmail(email), e.getClass().getSimpleName());
         }
     }
 
@@ -231,7 +231,7 @@ public class EmailService {
      */
     public void sendSubscriptionCancelled(String email, OffsetDateTime accessUntil) {
         if (mailSender == null) {
-            log.warn("SMTP not configured - skipping subscription cancelled email to {}", email);
+            log.warn("SMTP not configured - skipping subscription cancelled email to {}", maskEmail(email));
             return;
         }
 
@@ -252,9 +252,9 @@ public class EmailService {
                 "Atenciosamente,\nEquipe Porquinho"
             );
             mailSender.send(message);
-            log.info("Subscription cancelled email sent to {}", email);
+            log.info("Subscription cancelled email sent to {}", maskEmail(email));
         } catch (Exception e) {
-            log.warn("Failed to send subscription cancelled email to {}: {}", email, e.getMessage());
+            log.warn("Failed to send subscription cancelled email to {}: {}", maskEmail(email), e.getClass().getSimpleName());
         }
     }
 
@@ -267,7 +267,7 @@ public class EmailService {
      */
     public void sendSubscriptionCancelledImmediately(String email) {
         if (mailSender == null) {
-            log.warn("SMTP not configured - skipping subscription cancelled email to {}", email);
+            log.warn("SMTP not configured - skipping subscription cancelled email to {}", maskEmail(email));
             return;
         }
 
@@ -281,9 +281,9 @@ public class EmailService {
                 "Atenciosamente,\nEquipe Porquinho"
             );
             mailSender.send(message);
-            log.info("Subscription cancelled (immediate) email sent to {}", email);
+            log.info("Subscription cancelled (immediate) email sent to {}", maskEmail(email));
         } catch (Exception e) {
-            log.warn("Failed to send subscription cancelled email to {}: {}", email, e.getMessage());
+            log.warn("Failed to send subscription cancelled email to {}: {}", maskEmail(email), e.getClass().getSimpleName());
         }
     }
 
@@ -300,7 +300,7 @@ public class EmailService {
     public void sendPaymentReceipt(String email, BigDecimal amount, OffsetDateTime paidAt,
                                    OffsetDateTime nextBillingDate) {
         if (mailSender == null) {
-            log.warn("SMTP not configured - skipping payment receipt email to {}", email);
+            log.warn("SMTP not configured - skipping payment receipt email to {}", maskEmail(email));
             return;
         }
 
@@ -321,9 +321,9 @@ public class EmailService {
                 "Atenciosamente,\nEquipe Porquinho"
             );
             mailSender.send(message);
-            log.info("Payment receipt email sent to {}", email);
+            log.info("Payment receipt email sent to {}", maskEmail(email));
         } catch (Exception e) {
-            log.warn("Failed to send payment receipt email to {}: {}", email, e.getMessage());
+            log.warn("Failed to send payment receipt email to {}: {}", maskEmail(email), e.getClass().getSimpleName());
         }
     }
 
@@ -341,7 +341,7 @@ public class EmailService {
      */
     public void sendPaymentFailed(String email, String payUrl, boolean willRetry) {
         if (mailSender == null) {
-            log.warn("SMTP not configured - skipping payment failed email to {}", email);
+            log.warn("SMTP not configured - skipping payment failed email to {}", maskEmail(email));
             return;
         }
 
@@ -365,9 +365,9 @@ public class EmailService {
                 "Atenciosamente,\nEquipe Porquinho"
             );
             mailSender.send(message);
-            log.info("Payment failed email sent to {}", email);
+            log.info("Payment failed email sent to {}", maskEmail(email));
         } catch (Exception e) {
-            log.warn("Failed to send payment failed email to {}: {}", email, e.getMessage());
+            log.warn("Failed to send payment failed email to {}: {}", maskEmail(email), e.getClass().getSimpleName());
         }
     }
 
@@ -380,7 +380,7 @@ public class EmailService {
      */
     public void sendSubscriptionSuspended(String email, String reactivateUrl) {
         if (mailSender == null) {
-            log.warn("SMTP not configured - skipping subscription suspended email to {}", email);
+            log.warn("SMTP not configured - skipping subscription suspended email to {}", maskEmail(email));
             return;
         }
 
@@ -395,10 +395,19 @@ public class EmailService {
                 "Atenciosamente,\nEquipe Porquinho"
             );
             mailSender.send(message);
-            log.info("Subscription suspended email sent to {}", email);
+            log.info("Subscription suspended email sent to {}", maskEmail(email));
         } catch (Exception e) {
-            log.warn("Failed to send subscription suspended email to {}: {}", email, e.getMessage());
+            log.warn("Failed to send subscription suspended email to {}: {}", maskEmail(email), e.getClass().getSimpleName());
         }
+    }
+
+    // LGPD: logs carry "l***@gmail.com", never the full address
+    static String maskEmail(String email) {
+        if (email == null) {
+            return null;
+        }
+        int at = email.indexOf('@');
+        return at <= 0 ? "***" : email.charAt(0) + "***" + email.substring(at);
     }
 
     // Brazil local date: a UTC instant between 00:00 and 03:00 is still the previous day here

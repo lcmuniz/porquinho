@@ -41,6 +41,8 @@ public class TransactionImportReviewService {
 
     private static final Logger log = LoggerFactory.getLogger(TransactionImportReviewService.class);
 
+    static final int MARK_IN_BALANCE_BATCH = 10_000;
+
     public static final String AUDIT_HIGH_CONFIDENCE_APPROVED = "import_high_confidence_approved";
     public static final String AUDIT_DISCARDED = "import_discarded";
     public static final String AUDIT_CATEGORY_CHANGED = "import_category_changed";
@@ -214,7 +216,14 @@ public class TransactionImportReviewService {
         if (rows.isEmpty()) {
             return 0;
         }
-        return transactionRepository.markInBalance(userId, rows.stream().map(Transaction::getId).toList(), now);
+        List<UUID> ids = rows.stream().map(Transaction::getId).toList();
+        int marked = 0;
+        // Postgres takes at most 32767 parameters per query; an upload is limited by size, not by rows
+        for (int from = 0; from < ids.size(); from += MARK_IN_BALANCE_BATCH) {
+            marked += transactionRepository.markInBalance(userId,
+                ids.subList(from, Math.min(from + MARK_IN_BALANCE_BATCH, ids.size())), now);
+        }
+        return marked;
     }
 
     /**

@@ -9,7 +9,10 @@ import com.porquinho.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -27,7 +30,7 @@ import java.util.UUID;
 /**
  * Trial-ending reminder e-mails (Story 2.3): "termina em 7 dias" and "termina amanhã".
  *
- * Daily at 09:00 Sao Paulo (decision 2026-10-31: Brazilian audience, no per-user timezone).
+ * Daily at 09:00 Sao Paulo (decision 2026-10-31: Brazilian audience, no per-user timezone), and once at startup.
  * Days left = calendar days between today and trial_end_date, both as Sao Paulo dates.
  * Tolerant to missed runs: 7d applies while 1 < days left <= 7, 1d while days left <= 1 and the
  * trial is still running. Only one of them is sent per run, and each at most once (sent_at columns).
@@ -80,6 +83,20 @@ public class TrialReminderService {
         this.clock = clock;
         this.subscribeUrl = stripTrailingSlash(frontendUrl) + "/assinatura";
         this.self = self;
+    }
+
+    /**
+     * At startup too: a backend down at 09:00 would otherwise lose the 1-day reminder. Safe to repeat (sent_at
+     * columns), so the reminder may go out at the hour the backend comes up. Async, so SMTP does not hold the readiness.
+     */
+    @Async
+    @EventListener(ApplicationReadyEvent.class)
+    public void sendMissedRemindersAtStartup() {
+        try {
+            sendTrialReminders();
+        } catch (RuntimeException e) {
+            log.warn("Trial reminder run at startup failed: {} - {}", e.getClass().getSimpleName(), e.getMessage());
+        }
     }
 
     /**

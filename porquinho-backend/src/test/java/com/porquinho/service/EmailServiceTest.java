@@ -238,6 +238,13 @@ class EmailServiceTest {
     }
 
     @Test
+    void maskEmailKeepsOnlyFirstLetterAndDomain() {
+        assertThat(EmailService.maskEmail("luiz@gmail.com")).isEqualTo("l***@gmail.com");
+        assertThat(EmailService.maskEmail("semarroba")).isEqualTo("***");
+        assertThat(EmailService.maskEmail(null)).isNull();
+    }
+
+    @Test
     void paymentReceiptWithoutSmtpOrWithFailureNeverThrows() {
         OffsetDateTime paidAt = OffsetDateTime.of(2026, 11, 1, 12, 0, 0, 0, ZoneOffset.UTC);
         serviceWith(null, "x@example.com").sendPaymentReceipt("user@example.com", new BigDecimal("19.90"), paidAt, null);
