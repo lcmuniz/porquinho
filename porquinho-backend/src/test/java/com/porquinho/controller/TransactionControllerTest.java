@@ -1,6 +1,7 @@
 package com.porquinho.controller;
 
 import com.porquinho.config.TestWebSecurityConfig;
+import com.porquinho.dto.TransactionCreateRequest;
 import com.porquinho.dto.TransactionResponse;
 import com.porquinho.dto.TransactionUpdateRequest;
 import com.porquinho.exception.ResourceNotFoundException;
@@ -38,7 +39,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Story 5.12: the HTTP side of /api/v1/transactions. */
+/** Stories 5.12 and 5.13: the HTTP side of /api/v1/transactions. */
 @WebMvcTest(TransactionController.class)
 @ActiveProfiles("test")
 @Import(TestWebSecurityConfig.class)
@@ -151,5 +152,42 @@ class TransactionControllerTest {
                 .with(authentication(authToken)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.removedInstallments").value(7));
+    }
+
+    private static String createBody(String amount, UUID categoryId) {
+        return createBody(amount, categoryId, "Feira");
+    }
+
+    private static String createBody(String amount, UUID categoryId, String description) {
+        return "{\"date\":\"2026-11-05\",\"description\":\"" + description + "\",\"amount\":" + amount
+            + ",\"type\":\"DEBIT\",\"categoryId\":" + (categoryId == null ? "null" : "\"" + categoryId + "\"")
+            + ",\"accountId\":\"" + UUID.randomUUID() + "\"}";
+    }
+
+    @Test
+    void createIs201WithTheNewTransaction() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(transactionService.create(eq(userId), any(TransactionCreateRequest.class), anyString()))
+            .thenReturn(response(id));
+
+        mockMvc.perform(post("/api/v1/transactions").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content(createBody("50.00", UUID.randomUUID(), "  Feira   livre ")))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.id").value(id.toString()));
+        verify(transactionService).create(eq(userId),
+            org.mockito.ArgumentMatchers.argThat(r -> r.description().equals("Feira livre")), anyString());
+    }
+
+    @Test
+    void createWithoutCategoryOrWithAZeroAmountIs400WithoutCallingTheService() throws Exception {
+        mockMvc.perform(post("/api/v1/transactions").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content(createBody("50.00", null)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.detail").value("Escolha uma categoria"));
+        mockMvc.perform(post("/api/v1/transactions").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content(createBody("0", UUID.randomUUID())))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errors.amount").exists());
+        verifyNoInteractions(transactionService);
     }
 }
