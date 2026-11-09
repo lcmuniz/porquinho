@@ -167,6 +167,37 @@ class CategoryControllerTest {
     }
 
     @Test
+    void createWithoutParentPassesANullParentToTheService() throws Exception {
+        when(categoryService.create(userId, "Casa", null, null, null))
+            .thenReturn(saved("Casa", null, "#3B82F6", CategoryOptions.DEFAULT_ICON));
+
+        mockMvc.perform(post("/api/v1/categories").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Casa\"}"))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.parentCategoryId").isEmpty())
+            .andExpect(jsonPath("$.iconName").value("folder"));
+    }
+
+    @Test
+    void patchWithOnlyParentIdMovesAndAMovedGroupIs400() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID group = UUID.randomUUID();
+        when(categoryService.update(userId, id, null, null, null, group))
+            .thenReturn(saved("Pets", group, "#3B82F6", "folder"))
+            .thenThrow(new BadRequestException(CategoryService.GROUP_CANNOT_MOVE_MESSAGE));
+        String body = "{\"parentId\":\"" + group + "\"}";
+
+        mockMvc.perform(patch("/api/v1/categories/" + id).with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.parentCategoryId").value(group.toString()));
+        mockMvc.perform(patch("/api/v1/categories/" + id).with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.detail").value("Grupos não podem ficar dentro de outro grupo"));
+    }
+
+    @Test
     void createWithInvalidFieldsIs400WithoutCallingTheService() throws Exception {
         String parent = UUID.randomUUID().toString();
         String[][] cases = {
@@ -180,8 +211,6 @@ class CategoryControllerTest {
                 CategoryService.COLOR_INVALID_MESSAGE},
             {"{\"name\":\"Pets\",\"colorHex\":\"#F59E0B\",\"iconName\":\"skull\",\"parentId\":\"" + parent + "\"}",
                 CategoryService.ICON_INVALID_MESSAGE},
-            {"{\"name\":\"Pets\",\"colorHex\":\"#F59E0B\",\"iconName\":\"gift\"}",
-                CategoryService.PARENT_REQUIRED_MESSAGE},
         };
         for (String[] c : cases) {
             mockMvc.perform(post("/api/v1/categories").with(authentication(authToken))
@@ -213,7 +242,7 @@ class CategoryControllerTest {
     @Test
     void patchPassesOnlyTheSentFieldsAndReturns200() throws Exception {
         UUID id = UUID.randomUUID();
-        when(categoryService.update(userId, id, "Diversão", null, null))
+        when(categoryService.update(userId, id, "Diversão", null, null, null))
             .thenReturn(saved("Diversão", UUID.randomUUID(), "#EC4899", "party-popper"));
 
         mockMvc.perform(patch("/api/v1/categories/" + id).with(authentication(authToken))
@@ -221,7 +250,7 @@ class CategoryControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.categoryName").value("Diversão"));
 
-        verify(categoryService).update(userId, id, "Diversão", null, null);
+        verify(categoryService).update(userId, id, "Diversão", null, null, null);
     }
 
     @Test
@@ -245,7 +274,7 @@ class CategoryControllerTest {
     @Test
     void patchOfAnotherUsersCategoryIs404AndARepeatedNameIs409() throws Exception {
         UUID id = UUID.randomUUID();
-        when(categoryService.update(eq(userId), eq(id), any(), isNull(), isNull()))
+        when(categoryService.update(eq(userId), eq(id), any(), isNull(), isNull(), isNull()))
             .thenThrow(new ResourceNotFoundException(CategoryService.NOT_FOUND_MESSAGE))
             .thenThrow(new ConflictException(CategoryService.DUPLICATE_NAME_MESSAGE));
 

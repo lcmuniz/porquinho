@@ -32,18 +32,19 @@ export interface CategoryOptions {
 
 /**
  * Story 3.5: corpo do POST /api/v1/categories (categoria nova dentro de um grupo). Story 6.1: cor e ícone
- * opcionais; sem eles o backend usa a cor do grupo e o ícone `folder`.
+ * opcionais; sem eles o backend usa a cor do grupo e o ícone `folder`. Story 6.2: sem `parentId` cria um grupo.
  */
 export interface CreateCategoryInput {
   name: string
   colorHex?: string
   iconName?: string
-  parentId: string
+  parentId?: string
 }
 
-/** Story 3.5: corpo do PATCH /api/v1/categories/{id}; só os campos enviados mudam. */
+/** Story 3.5: corpo do PATCH /api/v1/categories/{id}; só os campos enviados mudam. Story 6.2: `parentId` move. */
 export interface UpdateCategoryInput {
   name?: string
   colorHex?: string
   iconName?: string
+  parentId?: string
 }

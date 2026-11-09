@@ -6,9 +6,11 @@ import com.porquinho.service.CategoryService;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Size;
 
+import java.util.UUID;
+
 /**
- * PATCH /api/v1/categories/{id} (Story 3.5): any combination of name, color and icon; a null field is left
- * unchanged. The parent cannot be changed here. The name is stripped like in {@link CreateCategoryRequest}
+ * PATCH /api/v1/categories/{id} (Story 3.5): any combination of name, color, icon and parent (Story 6.2:
+ * parentId moves a child to another group); a null field is left unchanged. The name is stripped like in {@link CreateCategoryRequest}
  * and, when sent, cannot end up empty.
  */
 public record UpdateCategoryRequest(
@@ -17,7 +19,9 @@ public record UpdateCategoryRequest(
 
     String colorHex,
 
-    String iconName
+    String iconName,
+
+    UUID parentId
 ) {
     public UpdateCategoryRequest {
         name = CategoryService.cleanName(name);
@@ -46,6 +50,6 @@ public record UpdateCategoryRequest(
     @JsonIgnore
     @AssertTrue(message = CategoryService.NOTHING_TO_UPDATE_MESSAGE)
     public boolean isAnyField() {
-        return name != null || colorHex != null || iconName != null;
+        return name != null || colorHex != null || iconName != null || parentId != null;
     }
 }
