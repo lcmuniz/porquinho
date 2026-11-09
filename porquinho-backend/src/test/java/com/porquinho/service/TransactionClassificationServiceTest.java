@@ -25,6 +25,8 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -33,6 +35,8 @@ import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static com.porquinho.entity.Transaction.ClassificationSource.AI;
+import static com.porquinho.entity.Transaction.ClassificationSource.PATTERN;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
@@ -61,6 +65,8 @@ class TransactionClassificationServiceTest {
     @Mock
     private TransactionClassifier classifier;
     @Mock
+    private ClassificationPatternService patternService;
+    @Mock
     private PlatformTransactionManager transactionManager;
 
     private TransactionClassificationService service;
@@ -81,7 +87,7 @@ class TransactionClassificationServiceTest {
             category(UUID.randomUUID(), "Alimentação", null), category(lazer, "Lazer", null),
             category(mercado, "Mercado", null)));
         service = new TransactionClassificationService(transactionRepository, importRepository, categoryRepository,
-            historyRepository, classifier, transactionManager, Clock.fixed(NOW, ZoneOffset.UTC));
+            historyRepository, classifier, patternService, transactionManager, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     private void withGroupedCategories() {
@@ -127,7 +133,7 @@ class TransactionClassificationServiceTest {
     }
 
     private void assertNothingWrittenTo(Transaction row) {
-        verify(transactionRepository, never()).applyAiClassification(eq(row.getId()), any(), anyInt(), any());
+        verify(transactionRepository, never()).applyClassification(eq(row.getId()), any(), anyInt(), any(), any());
     }
 
     @Test
@@ -138,7 +144,7 @@ class TransactionClassificationServiceTest {
 
         service.classify(importId, userId, false);
 
-        verify(transactionRepository).applyAiClassification(row.getId(), mercado, 92, now);
+        verify(transactionRepository).applyClassification(row.getId(), mercado, 92, AI, now);
         assertThat(history()).singleElement().satisfies(h -> {
             assertThat(h.getUserId()).isEqualTo(userId);
             assertThat(h.getTransactionId()).isEqualTo(row.getId());
@@ -156,7 +162,7 @@ class TransactionClassificationServiceTest {
 
         service.classify(importId, userId, false);
 
-        verify(transactionRepository).applyAiClassification(row.getId(), lazer, 60, now);
+        verify(transactionRepository).applyClassification(row.getId(), lazer, 60, AI, now);
         assertThat(history()).singleElement().satisfies(h -> assertThat(h.getConfidence()).isEqualTo(60));
     }
 
@@ -198,7 +204,7 @@ class TransactionClassificationServiceTest {
 
         assertNothingWrittenTo(rows.get(0));
         assertNothingWrittenTo(rows.get(1));
-        verify(transactionRepository).applyAiClassification(rows.get(2).getId(), lazer, 100, now);
+        verify(transactionRepository).applyClassification(rows.get(2).getId(), lazer, 100, AI, now);
         assertThat(history()).hasSize(1);
     }
 
@@ -211,7 +217,7 @@ class TransactionClassificationServiceTest {
         service.classify(importId, userId, false);
 
         assertNothingWrittenTo(rows.get(0));
-        verify(transactionRepository).applyAiClassification(rows.get(1).getId(), mercado, 85, now);
+        verify(transactionRepository).applyClassification(rows.get(1).getId(), mercado, 85, AI, now);
         assertThat(history()).hasSize(1);
     }
 
@@ -226,7 +232,7 @@ class TransactionClassificationServiceTest {
         service.classify(importId, userId, false);
 
         assertNothingWrittenTo(rows.get(99));
-        verify(transactionRepository, times(99)).applyAiClassification(any(), eq(mercado), eq(90), eq(now));
+        verify(transactionRepository, times(99)).applyClassification(any(), eq(mercado), eq(90), eq(AI), eq(now));
         verify(importRepository).addClassified(importId, 100, now);
     }
 
@@ -264,9 +270,9 @@ class TransactionClassificationServiceTest {
 
         service.classify(importId, userId, false);
 
-        verify(transactionRepository).applyAiClassification(rows.get(0).getId(), mercado, 90, now);
+        verify(transactionRepository).applyClassification(rows.get(0).getId(), mercado, 90, AI, now);
         assertNothingWrittenTo(rows.get(100));
-        verify(transactionRepository).applyAiClassification(rows.get(200).getId(), lazer, 85, now);
+        verify(transactionRepository).applyClassification(rows.get(200).getId(), lazer, 85, AI, now);
         verify(importRepository, times(2)).addClassified(importId, 100, now);
         verify(importRepository).addClassified(importId, 50, now);
     }
@@ -284,9 +290,9 @@ class TransactionClassificationServiceTest {
         assertThatCode(() -> service.classify(importId, userId, false)).doesNotThrowAnyException();
 
         verify(classifier, times(10)).classify(any(), any());
-        verify(transactionRepository).applyAiClassification(rows.get(0).getId(), mercado, 90, now);
+        verify(transactionRepository).applyClassification(rows.get(0).getId(), mercado, 90, AI, now);
         assertNothingWrittenTo(rows.get(100));
-        verify(transactionRepository).applyAiClassification(rows.get(200).getId(), mercado, 90, now);
+        verify(transactionRepository).applyClassification(rows.get(200).getId(), mercado, 90, AI, now);
         verify(transactionManager).rollback(any());
         verify(transactionManager, times(2)).commit(any());
     }
@@ -325,10 +331,10 @@ class TransactionClassificationServiceTest {
 
         service.classify(importId, userId, false);
 
-        verify(transactionRepository).applyAiClassification(rows.get(0).getId(), mercado, 90, now);
+        verify(transactionRepository).applyClassification(rows.get(0).getId(), mercado, 90, AI, now);
         assertNothingWrittenTo(rows.get(25));
-        verify(transactionRepository).applyAiClassification(rows.get(50).getId(), mercado, 90, now);
-        verify(transactionRepository).applyAiClassification(rows.get(75).getId(), mercado, 90, now);
+        verify(transactionRepository).applyClassification(rows.get(50).getId(), mercado, 90, AI, now);
+        verify(transactionRepository).applyClassification(rows.get(75).getId(), mercado, 90, AI, now);
         verify(importRepository).addClassified(importId, 100, now);
     }
 
@@ -356,7 +362,7 @@ class TransactionClassificationServiceTest {
 
         verify(importRepository).startClassification(importId, 2, now);
         verify(importRepository).addClassified(importId, 2, now);
-        verify(transactionRepository, never()).applyAiClassification(any(), any(), anyInt(), any());
+        verify(transactionRepository, never()).applyClassification(any(), any(), anyInt(), any(), any());
         verify(historyRepository, never()).saveAll(any());
     }
 
@@ -412,7 +418,7 @@ class TransactionClassificationServiceTest {
 
         service.classify(importId, userId, true);
 
-        verify(transactionRepository).applyAiClassificationToFutures(importId, groupId, mercado, 88, now);
+        verify(transactionRepository).applyClassificationToFutures(importId, groupId, mercado, 88, AI, now);
         assertThat(history()).hasSize(1);
     }
 
@@ -426,7 +432,7 @@ class TransactionClassificationServiceTest {
 
         service.classify(importId, userId, true);
 
-        verify(transactionRepository, never()).applyAiClassificationToFutures(any(), any(), any(), anyInt(), any());
+        verify(transactionRepository, never()).applyClassificationToFutures(any(), any(), any(), anyInt(), any(), any());
     }
 
     @Test
@@ -439,7 +445,7 @@ class TransactionClassificationServiceTest {
 
         service.classify(importId, userId, true);
 
-        verify(transactionRepository, never()).applyAiClassificationToFutures(any(), any(), any(), anyInt(), any());
+        verify(transactionRepository, never()).applyClassificationToFutures(any(), any(), any(), anyInt(), any(), any());
     }
 
     @Test
@@ -452,7 +458,7 @@ class TransactionClassificationServiceTest {
         service.classify(importId, userId, false);
 
         verify(classifier, times(4)).classify(any(), any());
-        verify(transactionRepository, never()).applyAiClassification(any(), any(), anyInt(), any());
+        verify(transactionRepository, never()).applyClassification(any(), any(), anyInt(), any(), any());
     }
 
     @Test
@@ -472,5 +478,136 @@ class TransactionClassificationServiceTest {
             .thenThrow(new IllegalStateException("database down"));
 
         assertThatCode(() -> service.classify(importId, userId, false)).doesNotThrowAnyException();
+    }
+
+    // Story 5.11
+
+    @Test
+    void whenEveryRowMatchesAPatternTheAiIsNotCalledAndTheFuturesInherit() {
+        withGroupedCategories();
+        Transaction installment = row("UBER *TRIP 12/03 PARC 02/05");
+        installment.setInstallmentGroupId(groupId);
+        Transaction plain = row("Uber Trip 15/04");
+        when(transactionRepository.findClassifiableByImport(userId, importId)).thenReturn(List.of(installment, plain));
+        when(patternService.match(userId)).thenReturn(Map.of("uber trip", lazer));
+
+        service.classify(importId, userId, true);
+
+        verify(importRepository).addClassified(importId, 0, now);
+        verify(transactionRepository).applyClassification(installment.getId(), lazer, 100, PATTERN, now);
+        verify(transactionRepository).applyClassification(plain.getId(), lazer, 100, PATTERN, now);
+        verify(transactionRepository).applyClassificationToFutures(importId, groupId, lazer, 100, PATTERN, now);
+        verify(patternService).touch(userId, Set.of("uber trip"), now);
+        verifyNoInteractions(classifier);
+        verify(importRepository, never()).startClassification(any(), anyInt(), any());
+        assertThat(history()).isEmpty();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void onlyTheRowsWithoutAPatternGoToTheAiAndCountInTheTotal() {
+        withGroupedCategories();
+        Transaction uber = row("UBER TRIP");
+        Transaction other = row("PADARIA");
+        Transaction empty = row("123456");
+        when(transactionRepository.findClassifiableByImport(userId, importId)).thenReturn(List.of(uber, other, empty));
+        when(patternService.match(userId)).thenReturn(Map.of("uber trip", lazer, "", mercado));
+        when(classifier.classify(any(), any())).thenReturn(List.of(result(0, 2, 90), result(1, 2, 70)));
+
+        service.classify(importId, userId, false);
+
+        verify(transactionRepository).applyClassification(uber.getId(), lazer, 100, PATTERN, now);
+        verify(importRepository).startClassification(importId, 2, now);
+        ArgumentCaptor<List<TransactionClassifier.Item>> items = ArgumentCaptor.forClass(List.class);
+        verify(classifier).classify(items.capture(), any());
+        assertThat(items.getValue()).extracting(TransactionClassifier.Item::description)
+            .containsExactly("PADARIA", "123456");
+        verify(transactionRepository).applyClassification(other.getId(), mercado, 90, AI, now);
+        verify(transactionRepository).applyClassification(empty.getId(), mercado, 70, AI, now);
+        assertThat(history()).extracting(AiClassificationHistory::getTransactionId)
+            .containsExactly(other.getId(), empty.getId());
+    }
+
+    @Test
+    void withoutAUsablePatternEveryRowGoesToTheAi() {
+        // a removed category, one turned into a group or a pattern of another user never comes back from match
+        withGroupedCategories();
+        Transaction uber = row("UBER TRIP");
+        when(transactionRepository.findClassifiableByImport(userId, importId)).thenReturn(List.of(uber));
+        when(classifier.classify(any(), any())).thenReturn(List.of(result(0, 2, 90)));
+
+        service.classify(importId, userId, false);
+
+        verify(transactionRepository).applyClassification(uber.getId(), mercado, 90, AI, now);
+        verify(transactionRepository, never()).applyClassification(any(), any(), anyInt(), eq(PATTERN), any());
+        verify(importRepository, never()).addClassified(importId, 0, now);
+    }
+
+    @Test
+    void anImportThatLeftProcessingGetsNoPatternAndNoAi() {
+        withGroupedCategories();
+        Transaction uber = row("UBER TRIP");
+        when(transactionRepository.findClassifiableByImport(userId, importId)).thenReturn(List.of(uber, row("PADARIA")));
+        when(patternService.match(userId)).thenReturn(Map.of("uber trip", lazer));
+        when(importRepository.addClassified(eq(importId), eq(0), any())).thenReturn(0);
+
+        service.classify(importId, userId, false);
+
+        verify(transactionRepository, never()).applyClassification(any(), any(), anyInt(), any(), any());
+        verifyNoInteractions(classifier);
+    }
+
+    @Test
+    void genericTermsNeverMatchAndGoToTheAi() {
+        withGroupedCategories();
+        Transaction pix = row("PIX 98765");
+        when(transactionRepository.findClassifiableByImport(userId, importId)).thenReturn(List.of(pix));
+        when(patternService.match(userId)).thenReturn(Map.of("pix", lazer));
+        when(classifier.classify(any(), any())).thenReturn(List.of(result(0, 2, 90)));
+
+        service.classify(importId, userId, false);
+
+        verify(transactionRepository).applyClassification(pix.getId(), mercado, 90, AI, now);
+        verify(transactionRepository, never()).applyClassification(any(), any(), anyInt(), eq(PATTERN), any());
+    }
+
+    @Test
+    void whenSavingThePatternsFailsEveryRowGoesToTheAi() {
+        withGroupedCategories();
+        Transaction uber = row("UBER TRIP");
+        Transaction other = row("PADARIA");
+        when(transactionRepository.findClassifiableByImport(userId, importId)).thenReturn(List.of(uber, other));
+        when(patternService.match(userId)).thenReturn(Map.of("uber trip", lazer));
+        org.mockito.Mockito.doThrow(new IllegalStateException("boom")).when(patternService).touch(any(), any(), any());
+        when(classifier.classify(any(), any())).thenReturn(List.of(result(0, 2, 90), result(1, 2, 80)));
+
+        service.classify(importId, userId, false);
+
+        assertEverythingWentToTheAi(uber, other);
+    }
+
+    @Test
+    void whenReadingThePatternsFailsEveryRowGoesToTheAi() {
+        withGroupedCategories();
+        Transaction uber = row("UBER TRIP");
+        Transaction other = row("PADARIA");
+        when(transactionRepository.findClassifiableByImport(userId, importId)).thenReturn(List.of(uber, other));
+        when(patternService.match(userId)).thenThrow(new IllegalStateException("database down"));
+        when(classifier.classify(any(), any())).thenReturn(List.of(result(0, 2, 90), result(1, 2, 80)));
+
+        service.classify(importId, userId, false);
+
+        assertEverythingWentToTheAi(uber, other);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void assertEverythingWentToTheAi(Transaction first, Transaction second) {
+        ArgumentCaptor<List<TransactionClassifier.Item>> items = ArgumentCaptor.forClass(List.class);
+        verify(classifier).classify(items.capture(), any());
+        assertThat(items.getValue()).extracting(TransactionClassifier.Item::description)
+            .containsExactly(first.getDescription(), second.getDescription());
+        verify(importRepository).startClassification(importId, 2, now);
+        verify(transactionRepository).applyClassification(first.getId(), mercado, 90, AI, now);
+        verify(transactionRepository).applyClassification(second.getId(), mercado, 80, AI, now);
     }
 }

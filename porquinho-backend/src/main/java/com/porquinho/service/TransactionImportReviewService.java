@@ -86,6 +86,7 @@ public class TransactionImportReviewService {
     private final AccountBalanceHistoryRepository balanceHistoryRepository;
     private final BalanceHistoryRecorder balanceHistoryRecorder;
     private final AuditLogService auditLogService;
+    private final ClassificationPatternService patternService;
 
     public TransactionImportReviewService(TransactionImportRepository transactionImportRepository,
                                           TransactionRepository transactionRepository,
@@ -93,7 +94,8 @@ public class TransactionImportReviewService {
                                           CreditCardRepository creditCardRepository,
                                           AccountBalanceHistoryRepository balanceHistoryRepository,
                                           BalanceHistoryRecorder balanceHistoryRecorder,
-                                          AuditLogService auditLogService) {
+                                          AuditLogService auditLogService,
+                                          ClassificationPatternService patternService) {
         this.transactionImportRepository = transactionImportRepository;
         this.transactionRepository = transactionRepository;
         this.categoryRepository = categoryRepository;
@@ -102,6 +104,7 @@ public class TransactionImportReviewService {
         this.balanceHistoryRepository = balanceHistoryRepository;
         this.balanceHistoryRecorder = balanceHistoryRecorder;
         this.auditLogService = auditLogService;
+        this.patternService = patternService;
     }
 
     /** The rows of the import without the future installments (decision 2A), with their categories resolved. */
@@ -168,12 +171,13 @@ public class TransactionImportReviewService {
         return new ImportReviewActionResponse(importId, TransactionImport.Status.REVIEW.name(), change.rows());
     }
 
-    /** The only place that writes a category chosen by the user: Story 5.11 learns from here. */
+    /** The only place that writes a category chosen by the user, so the one Story 5.11 learns from. */
     private CategoryChange writeCategory(UUID userId, UUID importId, Set<UUID> ids, UUID categoryId) {
         OffsetDateTime now = OffsetDateTime.now();
         int rows = transactionRepository.applyUserCategory(userId, importId, ids, categoryId, USER_CONFIDENCE, now);
         int futures = transactionRepository.applyUserCategoryToFutures(userId, importId, ids, categoryId, USER_CONFIDENCE,
             now);
+        patternService.learn(userId, ids, categoryId);
         return new CategoryChange(rows, futures);
     }
 

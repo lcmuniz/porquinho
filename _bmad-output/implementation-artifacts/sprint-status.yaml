@@ -1,5 +1,5 @@
 # generated: 2026-03-13
-# last_updated: 2026-11-06
+# last_updated: 2026-11-09
 # project: porquinho
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-13
-last_updated: 2026-11-06
+last_updated: 2026-11-09
 project: porquinho
 project_key: NOKEY
 tracking_system: file-system
@@ -111,8 +111,8 @@ development_status:
   5-7-detect-installment-purchases-and-split-across-months: done
   5-8-auto-classify-transactions-using-ai: done
   5-9-present-classified-transactions-for-user-review: done
-  5-10-review-and-adjust-ai-classifications: review
-  5-11-learn-from-user-corrections-to-improve-ai: backlog
+  5-10-review-and-adjust-ai-classifications: done
+  5-11-learn-from-user-corrections-to-improve-ai: review
   5-12-manually-edit-any-transaction: backlog
   5-13-manually-add-transactions-cash-expenses: backlog
   epic-5-retrospective: optional

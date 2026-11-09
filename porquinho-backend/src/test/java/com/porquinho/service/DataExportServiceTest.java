@@ -1,6 +1,7 @@
 package com.porquinho.service;
 
 import com.porquinho.entity.AiClassificationHistory;
+import com.porquinho.entity.UserClassificationPattern;
 import com.porquinho.entity.Account;
 import com.porquinho.entity.AccountBalanceHistory;
 import com.porquinho.entity.Reconciliation;
@@ -22,6 +23,7 @@ import com.porquinho.entity.UserSession;
 import com.porquinho.exception.RateLimitExceededException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AiClassificationHistoryRepository;
+import com.porquinho.repository.UserClassificationPatternRepository;
 import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.ReconciliationRepository;
 import com.porquinho.repository.TransactionImportRepository;
@@ -122,6 +124,9 @@ class DataExportServiceTest {
     private TransactionRepository transactionRepository;
     @Mock
     private AiClassificationHistoryRepository aiClassificationHistoryRepository;
+
+    @Mock
+    private UserClassificationPatternRepository userClassificationPatternRepository;
 
     @InjectMocks
     private DataExportService dataExportService;
@@ -900,6 +905,38 @@ class DataExportServiceTest {
         assertEquals(corrected.toString(), first.get("corrected_category_id"));
         assertEquals("2026-11-06T12:00Z", first.get("created_at"));
         assertEquals(null, rows.get(1).get("predicted_category_id"));
+    }
+
+    @Test
+    void collectUserDataShouldExportTheClassificationPatterns() {
+        // Story 5.11: every stored column
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        UUID category = UUID.randomUUID();
+        UserClassificationPattern pattern = new UserClassificationPattern();
+        pattern.setId(UUID.randomUUID());
+        pattern.setUserId(userId);
+        pattern.setDescriptionPattern("uber trip");
+        pattern.setPreferredCategoryId(category);
+        pattern.setUsageCount(3);
+        pattern.setLastUsedAt(OffsetDateTime.parse("2026-11-09T12:00:00Z"));
+        pattern.setCreatedAt(OffsetDateTime.parse("2026-11-02T12:00:00Z"));
+        when(userClassificationPatternRepository.findByUserIdOrdered(userId)).thenReturn(List.of(pattern));
+
+        Map<String, Object> data = dataExportService.collectUserData(userId);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
+        assertTrue(((List<?>) metadata.get("exported_tables")).contains("user_classification_patterns"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("user_classification_patterns");
+        Map<String, Object> first = rows.get(0);
+        assertExportsEveryColumn(UserClassificationPattern.class, first);
+        assertEquals(Set.of("id", "user_id", "description_pattern", "preferred_category_id", "usage_count", "last_used_at",
+            "created_at"), first.keySet());
+        assertEquals("uber trip", first.get("description_pattern"));
+        assertEquals(category.toString(), first.get("preferred_category_id"));
+        assertEquals(3, first.get("usage_count"));
+        assertEquals("2026-11-09T12:00Z", first.get("last_used_at"));
     }
 
     private static void assertExportsEveryColumn(Class<?> entity, Map<String, Object> exported) {

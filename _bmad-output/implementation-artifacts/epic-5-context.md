@@ -66,6 +66,10 @@ Permitir que o usuário importe extratos OFX/CSV dos 5 principais bancos brasile
 - **Story 5.10 – 1A (Luiz, 2026-11-06):** a linha com origem `USER` vai para o novo grupo "Revisadas por você", depois de Baixa, com ícone e cor próprios. Não conta em X nem em Y.
 - **Story 5.10 – 2A (Luiz, 2026-11-06):** salvar a mesma categoria conta como revisada: `APPROVED`, `USER`, 100. A 5.11 distingue correção por `was_corrected`, que compara as categorias.
 - **Story 5.10 (data de referência da D3):** a maior entre o último snapshot `initial`/`edit`/`reconciliation` e `last_reconciliation_date` (reconciliação sem diferença não gera snapshot), convertida para a data de São Paulo. Transação no próprio dia da referência não altera o saldo. A conclusão toma advisory lock do destino → update com guarda `REVIEW → COMPLETED` → lock da conta, a mesma ordem do descarte. Concluir de novo responde 200 sem mudar nada; destino removido responde 409 ("restaure ou descarte a importação"); `first_import_completed` fica no `POST /onboarding/me/import` com `{importId}`, e não na conclusão, para a importação não falhar por causa do onboarding.
+- **Story 5.11 – Q1 (Luiz, 2026-11-09):** a linha classificada por padrão (`PATTERN`) recebe confiança 100 e cai em Alta. As futuras do grupo herdam; não vai para a IA, não conta em Y e não gera histórico.
+- **Story 5.11 – Q2 (Luiz, 2026-11-09):** toda categoria salva pelo usuário ensina: correção, confirmação ou linha sem histórico. Mesma categoria do padrão soma 1 em `usage_count`; padrão novo ou com outra categoria grava a nova com contador 1. Padrão = descrição sem marcador de parcela, minúscula, sem acentos, só letras; casamento exato; padrão vazio não aprende nem casa.
+- **Story 5.11 – Q3 (Luiz, 2026-11-09):** o aprendizado acontece ao salvar a categoria; descartar a importação não desfaz o padrão.
+- **Story 5.11 – Q4 (Luiz, 2026-11-09):** um padrão formado só por termos bancários genéricos (pix, ted, doc, transf, pagamento, boleto, compra, débito, crédito, enviado, recebido, tarifa, saque, depósito…) não aprende nem casa, e a linha vai para a IA. "PIX TRANSF JOAO SILVA" continua sendo um padrão.
 - Pipeline em segundo plano, fora da thread da requisição: detecção, parsing, duplicatas, Pix, parcelas, classificação e, por fim, status `REVIEW`. Status da importação: `PROCESSING`/`REVIEW`/`COMPLETED`/`FAILED`/`DISCARDED` (`COMPLETED` também quando nada novo foi gravado, 5.5 – 1A). Importações presas em `PROCESSING` (sem mudança em `updated_at`) são tratadas na subida do backend e por uma varredura periódica: com linhas gravadas vão para `REVIEW`, sem linhas para `FAILED` (5.8).
 - Valores sempre positivos (`DECIMAL(15,2)`), com o sentido em `transaction_type` (DEBIT/CREDIT). No cartão, compras são DEBIT e pagamentos/estornos são CREDIT.
 - Tabelas novas do épico: `transaction_imports`, `transactions`, `ai_classification_history`, `user_classification_patterns`. Convenções: PK UUID `id`, `user_id` indexado, `created_at`/`updated_at`/`deleted_at`, soft delete, migrations na próxima versão livre do Flyway (V25 em diante).
@@ -87,7 +91,7 @@ Permitir que o usuário importe extratos OFX/CSV dos 5 principais bancos brasile
 
 ## Regras do projeto que valem para todas as stories
 
-- Migration aplicada nunca é editada; mudança de schema sempre em nova versão do Flyway (V29 é a última em 2026-11-06).
+- Migration aplicada nunca é editada; mudança de schema sempre em nova versão do Flyway (V30 é a última em 2026-11-09).
 - Backend em camadas `com.porquinho.controller/service/repository/entity/dto`; erros em `ProblemDetail` (RFC 7807) com mensagem em pt-BR.
 - Rotas novas ficam atrás do `SubscriptionAccessFilter` (402 sem assinatura).
 - Toda tabela ou coluna nova com dado do usuário entra no export (`DataExportService`) e no purge (`AccountDeletionService`) na ordem das FKs, e o teste confere o conjunto de chaves do export (lição F3 da retro do Epic 2).
