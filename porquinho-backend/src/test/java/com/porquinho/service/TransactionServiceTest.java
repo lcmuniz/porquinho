@@ -7,6 +7,7 @@ import com.porquinho.dto.TransactionUpdateRequest;
 import com.porquinho.dto.UpdateAccountRequest;
 import com.porquinho.exception.BadRequestException;
 import com.porquinho.exception.ResourceNotFoundException;
+import com.porquinho.repository.TransactionImportRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -15,6 +16,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -22,6 +24,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -44,6 +50,10 @@ class TransactionServiceTest {
     private ReconciliationService reconciliationService;
     @Autowired
     private AccountService accountService;
+    @Autowired
+    private TransactionImportRepository transactionImportRepository;
+    @Autowired
+    private TransactionTemplate transactionTemplate;
     /** Never the real client: nothing here goes to the AI. */
     @MockitoBean
     private TransactionClassifier classifier;
@@ -700,5 +710,69 @@ class TransactionServiceTest {
             IP)).isInstanceOf(BadRequestException.class);
         assertThat(balanceOf(account)).isEqualByComparingTo("-9999999999999.00");
         assertThat(rowsOfUser()).isZero();
+    }
+
+    // Retro Epic 5, item 25: writes by hand take the advisory lock of their target, like an import of it
+
+    /** Holds the advisory lock of {@code target} in another transaction until {@code release}. */
+    private CompletableFuture<Void> holdingLockOf(UUID target, CountDownLatch release) throws InterruptedException {
+        CountDownLatch held = new CountDownLatch(1);
+        CompletableFuture<Void> holder = CompletableFuture.runAsync(() -> transactionTemplate.executeWithoutResult(status -> {
+            transactionImportRepository.lockTarget(TransactionCore.lockKey(target));
+            held.countDown();
+            try {
+                release.await(30, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }));
+        assertThat(held.await(10, TimeUnit.SECONDS)).isTrue();
+        return holder;
+    }
+
+    @Test
+    void createOnACardWaitsForTheAdvisoryLockOfTheCard() throws Exception {
+        UUID card = newCard();
+        UUID category = newCategory("Feira", newCategory("Alimentação", null));
+        CountDownLatch release = new CountDownLatch(1);
+        try {
+            CompletableFuture<Void> holder = holdingLockOf(card, release);
+
+            CompletableFuture<TransactionResponse> create = CompletableFuture.supplyAsync(
+                () -> service.create(userId, add("2026-11-05", "DEBIT", "30.00", category, null, card), IP));
+
+            assertThatThrownBy(() -> create.get(500, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+            assertThat(rowsOfUser()).isZero();
+            release.countDown();
+            create.get(10, TimeUnit.SECONDS);
+            holder.get(10, TimeUnit.SECONDS);
+            assertThat(rowsOfUser()).isEqualTo(1);
+        } finally {
+            release.countDown();
+        }
+    }
+
+    @Test
+    void movingToACardWaitsForTheAdvisoryLockOfTheCard() throws Exception {
+        UUID account = newAccount("1000.00");
+        UUID card = newCard();
+        UUID row = newRow(account, "2026-11-05", "DEBIT", "100.00", true);
+        CountDownLatch release = new CountDownLatch(1);
+        try {
+            CompletableFuture<Void> holder = holdingLockOf(card, release);
+
+            CompletableFuture<TransactionResponse> update = CompletableFuture.supplyAsync(
+                () -> service.update(userId, row, edit("2026-11-05", "DEBIT", "100.00", null, null, card), IP));
+
+            assertThatThrownBy(() -> update.get(500, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+            assertThat(rowOf(row).get("account_id")).isEqualTo(account);
+            release.countDown();
+            update.get(10, TimeUnit.SECONDS);
+            holder.get(10, TimeUnit.SECONDS);
+            assertThat(rowOf(row).get("credit_card_id")).isEqualTo(card);
+            assertThat(balanceOf(account)).isEqualByComparingTo("1100.00");
+        } finally {
+            release.countDown();
+        }
     }
 }

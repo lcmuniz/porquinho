@@ -1562,7 +1562,7 @@ class TransactionImportIntegrationTest {
         CountDownLatch release = new CountDownLatch(1);
         try {
             CompletableFuture<Void> holder = holding(
-                () -> transactionImportRepository.lockTarget(TransactionImportProcessor.lockKey(nubank)), release, () -> { });
+                () -> transactionImportRepository.lockTarget(TransactionCore.lockKey(nubank)), release, () -> { });
 
             CompletableFuture<Void> discard = CompletableFuture.runAsync(() -> reviewService.discard(userId, id, "127.0.0.1"));
 
@@ -1610,7 +1610,7 @@ class TransactionImportIntegrationTest {
         CountDownLatch release = new CountDownLatch(1);
         try {
             CompletableFuture<Void> holder = holding(
-                () -> transactionImportRepository.lockTarget(TransactionImportProcessor.lockKey(nubank)), release, () -> { });
+                () -> transactionImportRepository.lockTarget(TransactionCore.lockKey(nubank)), release, () -> { });
 
             CompletableFuture<Void> complete = CompletableFuture.runAsync(() -> reviewService.complete(userId, id, "127.0.0.1"));
 

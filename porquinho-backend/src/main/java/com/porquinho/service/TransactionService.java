@@ -11,9 +11,7 @@ import com.porquinho.exception.BadRequestException;
 import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountRepository;
-import com.porquinho.repository.CategoryRepository;
 import com.porquinho.repository.CreditCardRepository;
-import com.porquinho.repository.TransactionImportRepository;
 import com.porquinho.repository.TransactionRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,7 +28,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.TreeSet;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -68,26 +65,24 @@ public class TransactionService {
     private static final ZoneId SAO_PAULO = ZoneId.of("America/Sao_Paulo");
 
     private final TransactionRepository transactionRepository;
-    private final TransactionImportRepository transactionImportRepository;
+    private final TransactionCore core;
     private final AccountRepository accountRepository;
     private final CreditCardRepository creditCardRepository;
-    private final CategoryRepository categoryRepository;
     private final BalanceHistoryRecorder balanceHistoryRecorder;
     private final ClassificationPatternService patternService;
     private final AuditLogService auditLogService;
     private final Clock clock;
 
     public TransactionService(TransactionRepository transactionRepository,
-                              TransactionImportRepository transactionImportRepository,
+                              TransactionCore core,
                               AccountRepository accountRepository, CreditCardRepository creditCardRepository,
-                              CategoryRepository categoryRepository, BalanceHistoryRecorder balanceHistoryRecorder,
+                              BalanceHistoryRecorder balanceHistoryRecorder,
                               ClassificationPatternService patternService, AuditLogService auditLogService,
                               Clock clock) {
         this.transactionRepository = transactionRepository;
-        this.transactionImportRepository = transactionImportRepository;
+        this.core = core;
         this.accountRepository = accountRepository;
         this.creditCardRepository = creditCardRepository;
-        this.categoryRepository = categoryRepository;
         this.balanceHistoryRecorder = balanceHistoryRecorder;
         this.patternService = patternService;
         this.auditLogService = auditLogService;
@@ -128,22 +123,21 @@ public class TransactionService {
             throw new BadRequestException(AMOUNT_OUT_OF_RANGE_MESSAGE);
         }
         Transaction.Type type = Transaction.Type.valueOf(request.type());
-        UUID target = request.creditCardId() != null ? request.creditCardId() : request.accountId();
-        transactionImportRepository.lockTarget(TransactionImportProcessor.lockKey(target));
+        core.lockTargets(TransactionCore.target(request.creditCardId(), request.accountId()));
         if (request.creditCardId() != null) {
             creditCardRepository.findActiveByIdForUpdate(request.creditCardId(), userId)
                 .orElseThrow(() -> new ResourceNotFoundException(CreditCardService.NOT_FOUND_MESSAGE));
         }
-        requireChildCategory(userId, request.categoryId());
+        core.requireChildCategory(userId, request.categoryId());
 
         Map<UUID, Account> accounts = lockAccounts(userId, request.accountId());
         if (request.accountId() != null && !accounts.containsKey(request.accountId())) {
             throw new ResourceNotFoundException(AccountService.NOT_FOUND_MESSAGE);
         }
         Account account = request.accountId() == null ? null : accounts.get(request.accountId());
-        boolean affects = account != null && request.date().isAfter(balanceHistoryRecorder.referenceDate(account));
+        boolean affects = core.inBalance(account, request.date());
         if (affects) {
-            applyDeltas(accounts, Map.of(account.getId(), signed(type, request.amount())));
+            applyDeltas(accounts, Map.of(account.getId(), TransactionCore.signed(type, request.amount())));
         }
 
         Transaction row = new Transaction();
@@ -158,7 +152,7 @@ public class TransactionService {
         row.setKind(Transaction.Kind.REGULAR);
         row.setCategoryId(request.categoryId());
         row.setClassificationSource(Transaction.ClassificationSource.USER);
-        row.setClassificationConfidence(TransactionImportReviewService.USER_CONFIDENCE);
+        row.setClassificationConfidence(TransactionCore.USER_CONFIDENCE);
         row.setReviewStatus(Transaction.ReviewStatus.CONFIRMED);
         row.setAffectsBalance(affects);
         row.setPix(false);
@@ -185,7 +179,7 @@ public class TransactionService {
         if (!BalanceHistoryRecorder.fits(request.amount())) {
             throw new BadRequestException(AMOUNT_OUT_OF_RANGE_MESSAGE);
         }
-        UUID newTarget = request.creditCardId() != null ? request.creditCardId() : request.accountId();
+        UUID newTarget = TransactionCore.target(request.creditCardId(), request.accountId());
         Transaction row = lockRow(userId, id, newTarget);
         Transaction.Type newType = Transaction.Type.valueOf(request.type());
         if (row.isInstallment() && (row.getTransactionType() != newType
@@ -200,7 +194,7 @@ public class TransactionService {
         }
         boolean categoryChanged = !Objects.equals(row.getCategoryId(), request.categoryId());
         if (categoryChanged && request.categoryId() != null) {
-            requireChildCategory(userId, request.categoryId());
+            core.requireChildCategory(userId, request.categoryId());
         }
 
         Map<UUID, Account> accounts = lockAccounts(userId, row.getAccountId(), request.accountId());
@@ -213,9 +207,8 @@ public class TransactionService {
         undoOldEffect(row, accounts, deltas);
         Account newAccount = request.accountId() == null ? null : accounts.get(request.accountId());
         boolean affects = false;
-        if (newAccount != null && !absorbed(row, newAccount)
-            && request.date().isAfter(balanceHistoryRecorder.referenceDate(newAccount))) {
-            deltas.merge(newAccount.getId(), signed(newType, request.amount()), BigDecimal::add);
+        if (core.inBalance(newAccount, request.date()) && !absorbed(row, newAccount)) {
+            deltas.merge(newAccount.getId(), TransactionCore.signed(newType, request.amount()), BigDecimal::add);
             affects = true;
         }
         int accountsChanged = applyDeltas(accounts, deltas);
@@ -237,7 +230,7 @@ public class TransactionService {
             row.setClassificationSource(request.categoryId() == null ? Transaction.ClassificationSource.NONE
                 : Transaction.ClassificationSource.USER);
             row.setClassificationConfidence(request.categoryId() == null ? 0
-                : TransactionImportReviewService.USER_CONFIDENCE);
+                : TransactionCore.USER_CONFIDENCE);
         }
         transactionRepository.saveAndFlush(row);
         auditLogService.log(AUDIT_EDITED, userId, ipAddress, "{\"transaction_id\":\"" + id
@@ -300,27 +293,12 @@ public class TransactionService {
      */
     private Transaction lockRow(UUID userId, UUID id, UUID newTarget) {
         UUID oldTarget = transactionRepository.findEditableTarget(id, userId).orElseThrow(TransactionService::notFound);
-        Set<Long> keys = new TreeSet<>();
-        keys.add(TransactionImportProcessor.lockKey(oldTarget));
-        if (newTarget != null) {
-            keys.add(TransactionImportProcessor.lockKey(newTarget));
-        }
-        keys.forEach(transactionImportRepository::lockTarget);
+        core.lockTargets(oldTarget, newTarget);
         Transaction row = transactionRepository.findEditableForUpdate(id, userId).orElseThrow(TransactionService::notFound);
-        UUID target = row.getCreditCardId() != null ? row.getCreditCardId() : row.getAccountId();
-        if (!oldTarget.equals(target)) {
+        if (!oldTarget.equals(TransactionCore.target(row.getCreditCardId(), row.getAccountId()))) {
             throw new ConflictException(CHANGED_MESSAGE);
         }
         return row;
-    }
-
-    /** A category of the user, active and not a group: 404 when not available, 400 for a group. */
-    private void requireChildCategory(UUID userId, UUID categoryId) {
-        Category category = categoryRepository.findActiveByIdAndUserId(categoryId, userId)
-            .orElseThrow(() -> new ResourceNotFoundException(CategoryService.NOT_FOUND_MESSAGE));
-        if (category.getParentCategoryId() == null) {
-            throw new BadRequestException(TransactionImportReviewService.GROUP_NOT_ALLOWED_MESSAGE);
-        }
     }
 
     /** The user's active accounts among {@code ids} (nulls ignored), row-locked in id order. */
@@ -339,9 +317,9 @@ public class TransactionService {
      */
     private void undoOldEffect(Transaction row, Map<UUID, Account> accounts, Map<UUID, BigDecimal> deltas) {
         Account old = row.getAccountId() == null ? null : accounts.get(row.getAccountId());
-        if (row.isAffectsBalance() && old != null
-            && row.getTransactionDate().isAfter(balanceHistoryRecorder.referenceDate(old))) {
-            deltas.merge(old.getId(), signed(row.getTransactionType(), row.getAmount()).negate(), BigDecimal::add);
+        if (row.isAffectsBalance() && core.inBalance(old, row.getTransactionDate())) {
+            deltas.merge(old.getId(), TransactionCore.signed(row.getTransactionType(), row.getAmount()).negate(),
+                BigDecimal::add);
         }
     }
 
@@ -351,7 +329,7 @@ public class TransactionService {
      */
     private boolean absorbed(Transaction row, Account account) {
         return !row.isAffectsBalance() && account.getId().equals(row.getAccountId())
-            && row.getTransactionDate().isAfter(balanceHistoryRecorder.referenceDate(account));
+            && core.inBalance(account, row.getTransactionDate());
     }
 
     /** Applies every non-zero delta, all checked before any is written. Returns how many accounts changed. */
@@ -374,12 +352,8 @@ public class TransactionService {
         return balances.size();
     }
 
-    private static BigDecimal signed(Transaction.Type type, BigDecimal amount) {
-        return type == Transaction.Type.CREDIT ? amount : amount.negate();
-    }
-
     private List<TransactionResponse> toResponses(UUID userId, List<Transaction> rows) {
-        Map<UUID, Category> categories = TransactionImportReviewService.categoriesOf(categoryRepository, userId, rows);
+        Map<UUID, Category> categories = core.categoriesOf(userId, rows);
         Set<UUID> groups = rows.stream().map(Transaction::getInstallmentGroupId).filter(Objects::nonNull)
             .collect(Collectors.toSet());
         Map<UUID, int[]> counts = new HashMap<>();
@@ -392,9 +366,9 @@ public class TransactionService {
             int[] count = counts.getOrDefault(row.getInstallmentGroupId(), new int[2]);
             return new TransactionResponse(row.getId(), row.getTransactionDate(),
                 row.getDescription(), row.getAmount(), row.getTransactionType().name(), row.getKind().name(),
-                TransactionImportReviewService.category(row.getCategoryId(), categories),
+                TransactionCore.category(row.getCategoryId(), categories),
                 row.getClassificationSource().name(), row.getClassificationConfidence(), row.getReviewStatus().name(),
-                row.isPix(), TransactionImportReviewService.pixDetails(row), row.isInstallment(),
+                row.isPix(), TransactionCore.pixDetails(row), row.isInstallment(),
                 row.getInstallmentNumber(), row.getInstallmentTotal(), row.isFutureInstallment(), row.getAccountId(),
                 row.getCreditCardId(), row.getInstallmentGroupId(), count[0], count[1]);
         }).toList();

@@ -9,7 +9,6 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.Collection;
@@ -159,23 +158,19 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
                                    @Param("confidence") int confidence, @Param("now") OffsetDateTime now);
 
     /**
-     * Decision D3 (Story 5.10): what the rows of import {@code importId} dated after {@code reference} add to the
-     * balance, credits minus debits. Same rows as {@link #markAffectsBalance}.
+     * Decision D3 (Story 5.10): the rows of import {@code importId} that may enter the balance when it is finished, its
+     * active rows other than future installments. Which of them do is decided by {@code TransactionCore#inBalance}.
      */
-    @Query("SELECT COALESCE(SUM(CASE WHEN t.transactionType = com.porquinho.entity.Transaction.Type.CREDIT "
-        + "THEN t.amount ELSE -t.amount END), 0) FROM Transaction t WHERE t.userId = :userId "
-        + "AND t.importId = :importId AND t.transactionDate > :reference AND t.futureInstallment = false "
-        + "AND t.deletedAt IS NULL")
-    BigDecimal sumBalanceEffect(@Param("userId") UUID userId, @Param("importId") UUID importId,
-                                @Param("reference") LocalDate reference);
+    @Query("SELECT t FROM Transaction t WHERE t.userId = :userId AND t.importId = :importId "
+        + "AND t.futureInstallment = false AND t.deletedAt IS NULL")
+    List<Transaction> findBalanceCandidates(@Param("userId") UUID userId, @Param("importId") UUID importId);
 
-    /** Decision D3 (Story 5.10): marks the rows that {@link #sumBalanceEffect} added to the balance. */
+    /** Decision D3 (Story 5.10): marks the rows that entered the balance when their import was finished. */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE Transaction t SET t.affectsBalance = true, t.updatedAt = :now WHERE t.userId = :userId "
-        + "AND t.importId = :importId AND t.transactionDate > :reference AND t.futureInstallment = false "
-        + "AND t.deletedAt IS NULL")
-    int markAffectsBalance(@Param("userId") UUID userId, @Param("importId") UUID importId,
-                           @Param("reference") LocalDate reference, @Param("now") OffsetDateTime now);
+        + "AND t.id IN :ids")
+    int markInBalance(@Param("userId") UUID userId, @Param("ids") Collection<UUID> ids,
+                           @Param("now") OffsetDateTime now);
 
     /** The import is finished (Story 5.10): every active row is CONFIRMED, future installments included (5.9, 2A). */
     @Modifying(clearAutomatically = true, flushAutomatically = true)

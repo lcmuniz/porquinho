@@ -9,6 +9,7 @@ import com.porquinho.dto.UpdateImportCategoryRequest;
 import com.porquinho.exception.BadRequestException;
 import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
+import com.porquinho.service.TransactionCore;
 import com.porquinho.service.TransactionImportReviewService;
 import com.porquinho.service.TransactionImportService;
 import org.junit.jupiter.api.BeforeEach;
@@ -334,7 +335,7 @@ class TransactionImportControllerTest {
         UUID id = UUID.randomUUID();
         when(transactionImportReviewService.updateCategory(eq(userId), eq(id), any(), anyString()))
             .thenThrow(new ConflictException(TransactionImportReviewService.NOT_IN_REVIEW_MESSAGE))
-            .thenThrow(new BadRequestException(TransactionImportReviewService.GROUP_NOT_ALLOWED_MESSAGE))
+            .thenThrow(new BadRequestException(TransactionCore.GROUP_NOT_ALLOWED_MESSAGE))
             .thenThrow(new ResourceNotFoundException(TransactionImportReviewService.TRANSACTION_NOT_FOUND_MESSAGE));
         String url = "/api/v1/imports/" + id + "/transactions/category";
         String body = categoryBody(UUID.randomUUID(), UUID.randomUUID());

@@ -169,8 +169,9 @@ public class TransactionImportProcessor {
         Outcome checked = transactionTemplate.execute(status -> {
             // Story 5.5: imports into the same target run one at a time from here to the commit, so each sees the rows
             // the other saved
-            UUID targetId = creditCard ? transactionImport.getCreditCardId() : transactionImport.getAccountId();
-            transactionImportRepository.lockTarget(lockKey(targetId));
+            UUID targetId = TransactionCore.target(transactionImport.getCreditCardId(), transactionImport.getAccountId());
+            // not core.lockTargets on purpose: one target, and the constructor stays as it is
+            transactionImportRepository.lockTarget(TransactionCore.lockKey(targetId));
             DuplicateDetector.Result detection = detect(transactionImport, fileType, result.entries());
             List<Transaction> rows = detection.toSave().stream()
                 .map(entry -> toTransaction(transactionImport, entry))
@@ -291,11 +292,6 @@ public class TransactionImportProcessor {
             }
         }
         return DuplicateDetector.detect(entries, fileType, existing, importFileTypes, transfers, accountId);
-    }
-
-    /** Advisory lock key of a target (account or card id). A collision only serializes two unrelated imports. */
-    static long lockKey(UUID targetId) {
-        return targetId.getMostSignificantBits() ^ targetId.getLeastSignificantBits();
     }
 
     /** Only the import id and the counts: never descriptions nor file content. */
