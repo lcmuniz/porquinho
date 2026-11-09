@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-13
-last_updated: 2026-11-09
+last_updated: 11-09-2026 10:22
 project: porquinho
 project_key: NOKEY
 tracking_system: file-system
@@ -115,7 +115,7 @@ development_status:
   5-11-learn-from-user-corrections-to-improve-ai: done
   5-12-manually-edit-any-transaction: done
   5-13-manually-add-transactions-cash-expenses: done
-  epic-5-retrospective: optional
+  epic-5-retrospective: done
 
   # Epic 6: Budget & Category System (Envelope Method)
   epic-6: backlog
@@ -302,3 +302,52 @@ action_items:
     owner: "Luiz"
     status: done
     ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-11-04.md"
+  - id: "epic-5-retro-item-21-linha-removida-pelo-usuário-continua-can"
+    epic: 5
+    action: "Linha removida pelo usuário continua candidata do detector de duplicatas:
+      não volta em extrato sobreposto (X1)"
+    owner: "Claude"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-5-retro-2026-11-09.md"
+  - id: "epic-5-retro-item-22-conciliar-ou-editar-saldo-marca-affects_"
+    epic: 5
+    action: "Conciliar ou editar saldo marca affects_balance=false nas linhas da conta
+      que estavam no saldo (X2)"
+    owner: "Claude"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-5-retro-2026-11-09.md"
+  - id: "epic-5-retro-item-23-reconciliar-texto-do-epic-5-com-o-constr"
+    epic: 5
+    action: "Reconciliar texto do Epic 5 com o construído (S1, S2, S5, S6)"
+    owner: "Luiz / Claude"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-5-retro-2026-11-09.md"
+  - id: "epic-5-retro-item-24-checklist-pré-produção-do-epic-5-transfe"
+    epic: 5
+    action: "Checklist pré-produção do Epic 5: transferência x transação importada,
+      FITID reutilizado, extratos reais, política jurídica, validar anthropic.api-key
+      (X3, W1-W5)"
+    owner: "Luiz"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-5-retro-2026-11-09.md"
+  - id: "epic-5-retro-item-25-núcleo-único-de-transação-alvo-da-trava"
+    epic: 5
+    action: "Núcleo único de transação: alvo da trava, D3 em Java e validação de categoria
+      (D1-D3, A1)"
+    owner: "Claude (Luiz decide quando)"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-5-retro-2026-11-09.md"
+  - id: "epic-5-retro-item-26-composables-de-importreviewview-e-transa"
+    epic: 5
+    action: "Composables de ImportReviewView e TransactionsView e helpers compartilhados
+      (G1, G2, D5)"
+    owner: "Claude (Luiz decide quando)"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-5-retro-2026-11-09.md"
+  - id: "epic-5-retro-item-27-specs-de-story-que-cria-muda-ou-remove-t"
+    epic: 5
+    action: "Specs de story que cria, muda ou remove transações listam as regras de
+      stories anteriores que tocam, com um teste por regra"
+    owner: "Bob (SM)"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-5-retro-2026-11-09.md"
