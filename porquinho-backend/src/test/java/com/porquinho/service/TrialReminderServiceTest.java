@@ -230,4 +230,14 @@ class TrialReminderServiceTest {
         assertThat(ok.getTrialReminder7dSentAt()).isEqualTo(NOW);
         verify(emailService, times(1)).sendTrialReminder(anyString(), anyLong(), any(), anyString());
     }
+
+    @Test
+    void startupRunNeverStopsTheBackendWhenTheQueryFails() {
+        when(subscriptionRepository.findTrialReminderCandidates(any(), any(), any()))
+            .thenThrow(new IllegalStateException("db down"));
+
+        service.sendMissedRemindersAtStartup();
+
+        verifyNoInteractions(emailService);
+    }
 }

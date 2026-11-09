@@ -340,4 +340,21 @@ class AuthServiceTest {
         verify(userRepository, never()).insertWithId(any(), any(), any(), any(), any(), any(), any());
         verify(subscriptionService, never()).startTrial(any(), any());
     }
+
+    @Test
+    void reRegisteringAnAccountWaitingForPurgeIs409NotA500() {
+        UUID userId = UUID.randomUUID();
+        User deleted = new User("gone@example.com", User.AuthProvider.EMAIL, null);
+        deleted.setId(userId);
+        when(userRepository.findByIdIncludingDeleted(userId)).thenReturn(Optional.of(deleted));
+
+        assertThatThrownBy(() -> authService.registerOrGetUserFromEmail(userId.toString(),
+                new RegisterEmailRequest("gone@example.com", "Gone"), "1.1.1.1"))
+            .isInstanceOf(ConflictException.class)
+            .hasMessage(AuthService.DELETION_PENDING_MESSAGE);
+        assertThatThrownBy(() -> authService.registerOrGetUserFromGoogle(userId.toString(), "gone@example.com",
+                "google-gone", "1.1.1.1"))
+            .isInstanceOf(ConflictException.class);
+        verify(userRepository, never()).insertWithId(any(), any(), any(), any(), any(), any(), any());
+    }
 }

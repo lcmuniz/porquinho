@@ -408,12 +408,8 @@ public class AuthController {
         return name;
     }
 
+    /** Client IP: server.forward-headers-strategy=native already resolves X-Forwarded-For from the trusted proxy. */
     private String getClientIpAddress(HttpServletRequest request) {
-        String xForwardedFor = request.getHeader("X-Forwarded-For");
-        if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
-            // X-Forwarded-For can contain multiple IPs, use the first one
-            return xForwardedFor.split(",")[0].trim();
-        }
         return request.getRemoteAddr();
     }
 }

@@ -83,6 +83,9 @@ supabase:
   service-role-key: ${SUPABASE_SERVICE_ROLE_KEY:}
 server:
   port: 8080
+  # O nginx (IP privado da rede Docker) manda X-Forwarded-For; o Tomcat confia só em proxies internos, então
+  # getRemoteAddr() devolve o IP do cliente e um cabeçalho forjado pelo cliente é ignorado.
+  forward-headers-strategy: native
 management:
   endpoints:
     web:

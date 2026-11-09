@@ -14,12 +14,14 @@
 - source_spec: `_bmad-output/implementation-artifacts/2-1-automatically-activate-30-day-free-trial.md`
   summary: Frontend não trata 402 (interceptor em `services/api.ts` só trata 401) nem oferece CTA no badge "Trial expirado".
   evidence: Natural na Story 2.2 (tela de assinatura); hoje nenhuma rota retorna 402.
+  status: resolvido (interceptor de `services/api.ts` leva o 402 para a tela de assinatura).
 - source_spec: `_bmad-output/implementation-artifacts/2-1-automatically-activate-30-day-free-trial.md`
   summary: Login Google de usuário que já existe por email com id diferente do sub Google mantém o id do usuário email.
   evidence: maybe-false — se o Supabase vincula identidades do mesmo email no mesmo auth user, o sub é igual e não há problema. Verificar configuração de identity linking no projeto Supabase.
 - source_spec: `_bmad-output/implementation-artifacts/2-1-automatically-activate-30-day-free-trial.md`
   summary: Usuário soft-deletado (aguardando purge) que re-registra com o mesmo sub recebe 500 (violação de PK em `insertWithId`) em vez de erro claro.
   evidence: Pré-existente no caminho email; `findById` filtra `deleted_at` via `@Where`. Retornar 409/410 usando `findByIdIncludingDeleted`.
+  status: resolvido em `spec-deferred-quick-fixes.md` (2026-11-09): 409 com mensagem de conta em exclusão antes do `insertWithId`.
 - source_spec: `_bmad-output/implementation-artifacts/2-1-automatically-activate-30-day-free-trial.md`
   summary: [RESOLVIDO 2026-10-31] `/login` e `/password-reset/completed` ainda usam `@AuthenticationPrincipal String`, que resolve null com `JwtAuthenticationToken`.
   evidence: Em produção o audit `password_reset_completed` é silenciosamente pulado. Trocar por `Authentication.getName()` como feito nos endpoints de registro.
@@ -44,12 +46,14 @@
 - source_spec: `_bmad-output/implementation-artifacts/2-3-send-trial-expiration-reminders.md`
   summary: Job de lembretes sem execução de recuperação no startup; backend fora às 9h pode perder o lembrete de 1 dia.
   evidence: Só cron 09:00 SP; query exige trial_end > now. Opção: rodar também em ApplicationReadyEvent (idempotente).
+  status: resolvido em `spec-deferred-quick-fixes.md` (2026-11-09): o job roda também no startup, assíncrono.
 - source_spec: `_bmad-output/implementation-artifacts/2-3-send-trial-expiration-reminders.md`
   summary: Nenhum job vira status TRIAL→EXPIRED após o fim do trial.
   evidence: Funcionalmente ok (hasAccess calcula na leitura); relevante para relatórios/2.6–2.7.
 - source_spec: `_bmad-output/implementation-artifacts/2-3-send-trial-expiration-reminders.md`
   summary: EmailService loga e-mail completo do destinatário (dado pessoal, LGPD).
   evidence: Padrão em todos os métodos de envio; trocar por userId ou e-mail mascarado.
+  status: resolvido em `spec-deferred-quick-fixes.md` (2026-11-09): `maskEmail` nos logs, e a falha de envio loga só a classe da exceção.
 
 ## Deferred from: code review of 2-4-self-service-subscription-cancellation (2026-10-31)
 
@@ -62,6 +66,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/2-4-self-service-subscription-cancellation.md`
   summary: IP do audit atrás de proxy (usar X-Forwarded-For como AuthController) em SubscriptionController e DataExportController.
   evidence: `getRemoteAddr` grava o IP do proxy em produção.
+  status: resolvido em `spec-deferred-quick-fixes.md` (2026-11-09): `server.forward-headers-strategy: native` corrige todos os controllers, e o backend só publica a porta em 127.0.0.1.
 - source_spec: `_bmad-output/implementation-artifacts/2-4-self-service-subscription-cancellation.md`
   summary: Endpoint de webhook de produção no painel Stripe deve assinar `checkout.session.completed` e `customer.subscription.deleted`.
   evidence: Sem isso nenhuma linha vira EXPIRED (acesso termina pelo hasAccess mesmo assim).
@@ -124,6 +129,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-4-5-record-internal-transfers-between-own-accounts.md`
   summary: Injetar `Clock` em `NotPastInSaoPaulo` e `NotFutureInSaoPaulo` e testar a virada do dia em São Paulo × UTC; corrigir `formatDateBR` (`lib/date.ts`), que mostra datas AAAA-MM-DD um dia antes no fuso de São Paulo.
   evidence: Revisão da 4.5 (Verification Gap) e relato do implementador da 4.5.
+  status: resolvido em `spec-deferred-quick-fixes.md` (2026-11-09): a parte do `formatDateBR` não pede código, porque todos os chamadores passam instante com fuso e as datas sem hora usam `formatLocalDateBR`. O `Clock` nos validadores continua aberto.
 
 ## Story 4.6 → Epic 5
 
@@ -136,6 +142,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-4-parse-transactions-with-robust-error-handling.md`
   summary: A varredura de órfãs marca FAILED toda importação PROCESSING criada há mais de 15 min, sem heartbeat; quando a 5.8 (IA em lotes) alongar o processamento, importações grandes ainda rodando serão derrubadas.
   evidence: `failProcessingCreatedBefore` usa `createdAt`; hoje a leitura de 1 ano leva < 2 s, então só vira problema com a IA (5.8). Trocar por `updated_at` atualizado a cada lote.
+  status: resolvido (`reviewOrphansWithRows` e `failOrphansWithoutRows` filtram por `updatedAt`).
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-5-detect-and-flag-duplicate-transactions.md`
   summary: O teste de importações simultâneas (Story 5.5) não força a sobreposição das duas transações; uma regressão no advisory lock passaria verde.
   evidence: `twoImportsOfTheSameFileAtOnceSaveItOnlyOnce` não sincroniza as threads; fechar exige um repositório espião que segure a 1ª importação entre a consulta e o saveAll.
@@ -148,6 +155,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-5-detect-and-flag-duplicate-transactions.md`
   summary: Na Story 5.13 (transação manual), tomar o mesmo advisory lock por destino da importação, para a detecção de duplicatas ver a gravação concorrente.
   evidence: `lockTarget` só é chamado pela importação.
+  status: resolvido (`TransactionService` trava o destino via `TransactionCore.lockTargets`, item 25).
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-7-detect-installment-purchases-and-split-across-months.md`
   summary: O descarte de importação da 5.9 precisa tratar as parcelas confirmadas por outra importação (decisão 2A da 5.7), sem apagar a parcela real nem deixar a confirmação de um arquivo descartado.
   evidence: A futura confirmada fica com o import_id da importação que a criou; um descarte por import_id apagaria a parcela trazida pelo arquivo seguinte, e descartar a importação nova não volta a linha a futura.
@@ -221,3 +229,8 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-e5-retro-25-nucleo-unico-transacao.md`
   summary: Concluir uma importação de conta com mais de ~32 mil linhas no saldo falha no limite de parâmetros do Postgres (`TransactionRepository.markInBalance` usa `IN :ids`).
   evidence: O limite do protocolo do Postgres é 32767 parâmetros por query; o upload limita só o tamanho (10 MB), não as linhas. A query antiga (`markAffectsBalance` por importId e data) não tinha esse limite. Correção possível: marcar em lotes de ids. Raro na prática (extrato mensal tem centenas de linhas).
+  status: resolvido em `spec-deferred-quick-fixes.md` (2026-11-09): `markInBalance` em lotes de 10 mil ids.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-deferred-quick-fixes.md`
+  summary: O frontend engole o 409 "conta em exclusão" do registro (`RegisterView.vue`, lazy sync do `LoginView.vue`) e o `AuthCallbackView.vue` mostra a mensagem do axios; quem tem conta em exclusão entra no app sem registro no backend.
+  evidence: Revisão da spec (Blind Hunter). Pré-existente: antes o mesmo caminho dava 500, também engolido. Corrigir mostrando o `detail` do 409 e encerrando a sessão.

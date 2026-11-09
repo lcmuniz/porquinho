@@ -16,7 +16,8 @@ services:
     build:
       context: ./porquinho-backend
     ports:
-      - "8080:8080"
+      # Só localhost: de fora, o backend é alcançado pelo nginx, e o X-Forwarded-For vindo da rede Docker é confiável
+      - "127.0.0.1:8080:8080"
     environment:
       SPRING_PROFILES_ACTIVE: prod
       SUPABASE_DB_URL: ${SUPABASE_DB_URL}

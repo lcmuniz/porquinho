@@ -59,27 +59,11 @@ public class AccountDeletionController {
     }
 
     /**
-     * Extract client IP from headers/socket and bound it to MAX_IP_LENGTH.
-     *
-     * Reads X-Forwarded-For (first hop) when present, falling back to remote addr. Truncates
-     * the result to MAX_IP_LENGTH so a malicious client cannot trigger a DataException by
-     * sending a 1000-character header (the audit_logs.ip_address and account_deletions.requested_ip
-     * columns are VARCHAR(45)).
-     *
-     * NOTE on trust: this method does NOT validate that the request came through a trusted
-     * proxy. If the deployment puts the app directly on the public internet, X-Forwarded-For
-     * is client-controlled and IP values logged here may be spoofed. For production, configure
-     * server.forward-headers-strategy=native (or framework) and only honor the header when
-     * the request originates from a trusted proxy.
+     * Client IP bounded to MAX_IP_LENGTH (audit_logs.ip_address and account_deletions.requested_ip are VARCHAR(45)).
+     * server.forward-headers-strategy=native already resolves X-Forwarded-For from the trusted proxy.
      */
     private String getClientIpAddress(HttpServletRequest request) {
-        String raw;
-        String xForwardedFor = request.getHeader("X-Forwarded-For");
-        if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
-            raw = xForwardedFor.split(",")[0].trim();
-        } else {
-            raw = request.getRemoteAddr();
-        }
+        String raw = request.getRemoteAddr();
         if (raw == null) {
             return null;
         }
