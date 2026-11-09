@@ -269,10 +269,10 @@ public class TransactionImportProcessor {
         List<Transaction> existing;
         List<Transfer> transfers;
         if (accountId != null) {
-            existing = transactionRepository.findActiveByAccountBetween(userId, accountId, from, to);
+            existing = transactionRepository.findDuplicateCandidatesByAccountBetween(userId, accountId, from, to);
             transfers = transferRepository.findActiveByAccountBetween(userId, accountId, from, to);
         } else {
-            existing = transactionRepository.findActiveByCreditCardBetween(userId,
+            existing = transactionRepository.findDuplicateCandidatesByCreditCardBetween(userId,
                 transactionImport.getCreditCardId(), from, to);
             transfers = List.of();
             // Story 5.7: a future installment is confirmed by the installment planner, never dropped as a duplicate

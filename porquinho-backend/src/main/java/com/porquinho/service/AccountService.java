@@ -11,6 +11,7 @@ import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.exception.StaleDataMessages;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.OnboardingProgressRepository;
+import com.porquinho.repository.TransactionRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,13 +42,16 @@ public class AccountService {
     public static final String AUDIT_RESTORED = "account_restored";
 
     private final AccountRepository accountRepository;
+    private final TransactionRepository transactionRepository;
     private final BalanceHistoryRecorder balanceHistoryRecorder;
     private final OnboardingProgressRepository onboardingProgressRepository;
     private final AuditLogService auditLogService;
 
-    public AccountService(AccountRepository accountRepository, BalanceHistoryRecorder balanceHistoryRecorder,
+    public AccountService(AccountRepository accountRepository, TransactionRepository transactionRepository,
+                          BalanceHistoryRecorder balanceHistoryRecorder,
                           OnboardingProgressRepository onboardingProgressRepository, AuditLogService auditLogService) {
         this.accountRepository = accountRepository;
+        this.transactionRepository = transactionRepository;
         this.balanceHistoryRecorder = balanceHistoryRecorder;
         this.onboardingProgressRepository = onboardingProgressRepository;
         this.auditLogService = auditLogService;
@@ -71,7 +75,7 @@ public class AccountService {
     /**
      * Edits name, bank, type and current balance (Story 4.3); the initial balance never changes. 404 when the
      * account does not exist, belongs to someone else or was removed. A changed balance (compared by value,
-     * so 100 and 100.00 are the same) writes one "edit" snapshot; an unchanged balance writes none. 409 when the
+     * so 100 and 100.00 are the same) writes one "edit" snapshot and absorbs the rows that were in the balance (retro Epic 5, X2); an unchanged balance writes none. 409 when the
      * version sent is not the current one (a transfer, reconciliation or edit happened after the form opened):
      * checked after the row lock, so nothing is written.
      */
@@ -91,6 +95,7 @@ public class AccountService {
         Account saved = accountRepository.save(account);
         if (balanceChanged) {
             balanceHistoryRecorder.record(saved, AccountBalanceHistory.EVENT_EDIT);
+            transactionRepository.absorbIntoBalance(userId, accountId, balanceHistoryRecorder.now());
         }
         return saved;
     }

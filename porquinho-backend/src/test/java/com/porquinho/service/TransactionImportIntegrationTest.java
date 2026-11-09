@@ -823,6 +823,24 @@ class TransactionImportIntegrationTest {
         assertThat(awaitDone(elsewhere).get("duplicates_found")).isEqualTo(0);
     }
 
+    /** Retro Epic 5, X1: a confirmed row the user removed is still a candidate, so it does not come back. */
+    @Test
+    void confirmedRowRemovedByTheUserIsStillADuplicate() throws Exception {
+        UUID nubank = account(userId, "Nubank");
+        UUID first = transactionImportService.create(userId, nubank, null, sample("nubank-conta.ofx"), "127.0.0.1").id();
+        awaitDone(first);
+        jdbc.update("UPDATE transactions SET review_status = 'CONFIRMED' WHERE import_id = ?", first);
+        jdbc.update("UPDATE transactions SET deleted_at = now() WHERE import_id = ? AND transaction_date = DATE '2026-10-01'",
+            first);
+
+        UUID again = transactionImportService.create(userId, nubank, null, sample("nubank-conta.ofx"), "127.0.0.1").id();
+
+        Map<String, Object> row = awaitDone(again);
+        assertThat(row.get("duplicates_found")).isEqualTo(10);
+        assertThat(row.get("imported_transactions")).isEqualTo(0);
+        assertThat(transactionsOf(again)).isEmpty();
+    }
+
     @Test
     void sameCardFileTwiceIsAllDuplicatesButAnotherCardIsNot() throws Exception {
         UUID itau = card(userId, "Itaú");

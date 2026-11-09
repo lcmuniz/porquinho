@@ -32,7 +32,8 @@ import java.util.regex.Pattern;
  *   <li>account only (decision D4): an active transfer of the same amount, date within ±1 day, from the account with a
  *       DEBIT entry or to the account with a CREDIT entry → already registered transfer.</li>
  * </ol>
- * The caller passes only the target's active transactions and transfers (the scope and the date window are queries).
+ * The caller passes the target's candidate transactions (active, plus confirmed rows the user removed) and active
+ * transfers (the scope and the date window are queries).
  */
 public final class DuplicateDetector {
 
@@ -56,7 +57,7 @@ public final class DuplicateDetector {
     /**
      * @param entries         the entries read from the file
      * @param fileType        the format of the file being imported
-     * @param existing        the target's active transactions (any review status) around the file dates
+     * @param existing        the target's candidate transactions around the file dates
      * @param importFileTypes the format of the imports the existing transactions came from, by import id (a
      *                        transaction without import, or whose import is missing here, counts as no format)
      * @param transfers the user's active transfers from or to the account around the file dates (ignored for a card)

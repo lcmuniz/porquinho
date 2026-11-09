@@ -10,6 +10,7 @@ import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.OnboardingProgressRepository;
+import com.porquinho.repository.TransactionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -38,6 +39,9 @@ class AccountServiceTest {
     private AccountBalanceHistoryRepository balanceHistoryRepository;
 
     @Mock
+    private TransactionRepository transactionRepository;
+
+    @Mock
     private OnboardingProgressRepository onboardingProgressRepository;
 
     @Mock
@@ -48,7 +52,7 @@ class AccountServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new AccountService(accountRepository, new BalanceHistoryRecorder(balanceHistoryRepository, java.time.Clock.systemUTC()),
+        service = new AccountService(accountRepository, transactionRepository, new BalanceHistoryRecorder(balanceHistoryRepository, java.time.Clock.systemUTC()),
             onboardingProgressRepository, auditLogService);
         userId = UUID.randomUUID();
     }

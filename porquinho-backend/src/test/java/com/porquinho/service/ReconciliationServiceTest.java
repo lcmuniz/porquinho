@@ -10,6 +10,7 @@ import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.ReconciliationRepository;
+import com.porquinho.repository.TransactionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,6 +42,9 @@ class ReconciliationServiceTest {
     private AccountRepository accountRepository;
 
     @Mock
+    private TransactionRepository transactionRepository;
+
+    @Mock
     private AccountBalanceHistoryRepository balanceHistoryRepository;
 
     @Mock
@@ -52,7 +56,7 @@ class ReconciliationServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ReconciliationService(reconciliationRepository, accountRepository, new BalanceHistoryRecorder(balanceHistoryRepository, java.time.Clock.systemUTC()),
+        service = new ReconciliationService(reconciliationRepository, accountRepository, transactionRepository, new BalanceHistoryRecorder(balanceHistoryRepository, java.time.Clock.systemUTC()),
             auditLogService);
         userId = UUID.randomUUID();
         nubank = new Account(userId, "Nubank", null, Account.AccountType.CHECKING, new BigDecimal("1000.00"));

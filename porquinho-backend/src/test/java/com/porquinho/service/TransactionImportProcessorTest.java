@@ -338,7 +338,7 @@ class TransactionImportProcessorTest {
         processingImport(accountId, null);
         List<Transaction> inDb = OfxTransactionParser.parse(sample("nubank-conta.ofx"), false).entries().stream()
             .map(TransactionImportProcessorTest::existing).toList();
-        when(transactionRepository.findActiveByAccountBetween(userId, accountId, LocalDate.of(2026, 9, 30),
+        when(transactionRepository.findDuplicateCandidatesByAccountBetween(userId, accountId, LocalDate.of(2026, 9, 30),
             LocalDate.of(2026, 10, 28))).thenReturn(inDb);
         when(repository.markCompletedWithNothingNew(importId, 10, 10, 0, 0, now)).thenReturn(1);
 
@@ -354,7 +354,7 @@ class TransactionImportProcessorTest {
             + "\"skipped_rows\":0,\"installments_found\":0,\"future_installments_created\":0,\"installments_confirmed\":0}");
         InOrder order = inOrder(repository, transactionRepository);
         order.verify(repository).lockTarget(TransactionImportProcessor.lockKey(accountId));
-        order.verify(transactionRepository).findActiveByAccountBetween(any(), any(), any(), any());
+        order.verify(transactionRepository).findDuplicateCandidatesByAccountBetween(any(), any(), any(), any());
         order.verify(repository).markCompletedWithNothingNew(importId, 10, 10, 0, 0, now);
         verify(classificationService, never()).classify(any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
     }
@@ -363,7 +363,7 @@ class TransactionImportProcessorTest {
     void partialDuplicatesAndTransferAreCountedAndTheRestSaved() throws IOException {
         processingImport(accountId, null);
         List<OfxTransactionParser.Entry> entries = OfxTransactionParser.parse(sample("nubank-conta.ofx"), false).entries();
-        when(transactionRepository.findActiveByAccountBetween(any(), any(), any(), any()))
+        when(transactionRepository.findDuplicateCandidatesByAccountBetween(any(), any(), any(), any()))
             .thenReturn(List.of(existing(entries.get(1)), existing(entries.get(2))));
         com.porquinho.entity.Transfer transfer = new com.porquinho.entity.Transfer(UUID.randomUUID(), userId,
             UUID.randomUUID(), accountId, new BigDecimal("2000.00"), LocalDate.of(2026, 10, 1), null);
@@ -390,7 +390,7 @@ class TransactionImportProcessorTest {
         verify(transferRepository, never()).findActiveByAccountBetween(any(), any(), any(), any());
         InOrder order = inOrder(repository, transactionRepository);
         order.verify(repository).lockTarget(TransactionImportProcessor.lockKey(cardId));
-        order.verify(transactionRepository).findActiveByCreditCardBetween(eq(userId), eq(cardId), any(), any());
+        order.verify(transactionRepository).findDuplicateCandidatesByCreditCardBetween(eq(userId), eq(cardId), any(), any());
         order.verify(transactionRepository).findActiveInstallmentsByCreditCard(userId, cardId);
         order.verify(repository).recordParsed(importId, 8, 8, 0, 0, 0, now);
         order.verify(transactionRepository).saveAll(any());
@@ -423,7 +423,7 @@ class TransactionImportProcessorTest {
         processingImport(accountId, null);
         List<Transaction> inDb = OfxTransactionParser.parse(sample("nubank-conta.ofx"), false).entries().stream()
             .map(TransactionImportProcessorTest::existing).toList();
-        when(transactionRepository.findActiveByAccountBetween(userId, accountId, LocalDate.of(2026, 9, 30),
+        when(transactionRepository.findDuplicateCandidatesByAccountBetween(userId, accountId, LocalDate.of(2026, 9, 30),
             LocalDate.of(2026, 10, 28))).thenReturn(inDb);
         when(repository.markCompletedWithNothingNew(importId, 10, 10, 0, 0, now)).thenReturn(1);
 
@@ -451,7 +451,7 @@ class TransactionImportProcessorTest {
         processingImport(accountId, null);
         List<Transaction> inDb = OfxTransactionParser.parse(sample("nubank-conta.ofx"), false).entries().stream()
             .map(TransactionImportProcessorTest::existing).toList();
-        when(transactionRepository.findActiveByAccountBetween(any(), any(), any(), any())).thenReturn(inDb);
+        when(transactionRepository.findDuplicateCandidatesByAccountBetween(any(), any(), any(), any())).thenReturn(inDb);
         when(repository.markCompletedWithNothingNew(importId, 10, 10, 0, 0, now)).thenReturn(0);
 
         processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx"));
@@ -476,7 +476,7 @@ class TransactionImportProcessorTest {
                 transaction.setImportId(csvImport);
                 return transaction;
             }).toList();
-        when(transactionRepository.findActiveByAccountBetween(any(), any(), any(), any())).thenReturn(inDb);
+        when(transactionRepository.findDuplicateCandidatesByAccountBetween(any(), any(), any(), any())).thenReturn(inDb);
         when(repository.findByUserIdAndIdIn(userId, java.util.Set.of(csvImport))).thenReturn(List.of(csvOrigin));
         when(repository.markCompletedWithNothingNew(importId, 10, 10, 0, 0, now)).thenReturn(1);
 
@@ -544,7 +544,7 @@ class TransactionImportProcessorTest {
     @Test
     void importThatLeftProcessingAfterTheParsingIsNotClassified() throws IOException {
         processingImport(accountId, null);
-        when(transactionRepository.findActiveByAccountBetween(any(), any(), any(), any()))
+        when(transactionRepository.findDuplicateCandidatesByAccountBetween(any(), any(), any(), any()))
             .thenReturn(java.util.Collections.emptyList());
         when(repository.recordParsed(importId, 10, 10, 0, 0, 0, now)).thenReturn(0);
 
