@@ -113,7 +113,7 @@ development_status:
   5-9-present-classified-transactions-for-user-review: done
   5-10-review-and-adjust-ai-classifications: done
   5-11-learn-from-user-corrections-to-improve-ai: done
-  5-12-manually-edit-any-transaction: review
+  5-12-manually-edit-any-transaction: done
   5-13-manually-add-transactions-cash-expenses: backlog
   epic-5-retrospective: optional
 
