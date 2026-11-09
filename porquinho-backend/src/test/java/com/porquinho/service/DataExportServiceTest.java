@@ -825,6 +825,22 @@ class DataExportServiceTest {
     }
 
     @Test
+    void collectUserDataShouldExportWhenTheFutureInstallmentsWereRemoved() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        OffsetDateTime removedAt = OffsetDateTime.parse("2026-11-09T12:00:00Z");
+        Transaction transaction = new Transaction();
+        transaction.setId(UUID.randomUUID());
+        transaction.setUserId(userId);
+        transaction.setInstallmentFuturesRemovedAt(removedAt);
+        when(transactionRepository.findByUserIdOrdered(userId)).thenReturn(List.of(transaction));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) dataExportService.collectUserData(userId)
+            .get("transactions");
+        assertEquals(removedAt.toString(), rows.get(0).get("installment_futures_removed_at"));
+    }
+
+    @Test
     void collectUserDataShouldKeepInvalidPixDetailsAsText() {
         when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
         Transaction transaction = new Transaction();

@@ -208,3 +208,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-10-review-and-adjust-ai-classifications.md`
   summary: Uma transferência registrada depois do upload e antes de concluir a importação entra em dobro no saldo.
   evidence: A D4 só procura transferências no processamento do arquivo, e `REFERENCE_EVENTS` exclui `transfer`, então `sumBalanceEffect` soma de novo a linha do extrato. Luiz adiou em 2026-11-06; a reconciliação corrige o saldo. Possível correção: repetir a checagem da D4 ao concluir.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-12-manually-edit-any-transaction.md`
+  summary: Testar o 409 de `TransactionService.lockRow` (linha movida por edição concorrente entre a leitura do destino e a trava).
+  evidence: Nenhum teste de backend produz o `ConflictException(CHANGED_MESSAGE)`; remover a checagem não quebra nada. Exige duas transações coordenadas.

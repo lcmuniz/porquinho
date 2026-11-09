@@ -115,6 +115,10 @@ public class Transaction {
     @Column(name = "confirmed_by_import_id")
     private UUID confirmedByImportId;
 
+    /** When the user removed the future installments of this purchase (Story 5.12, decision Q2); null otherwise. */
+    @Column(name = "installment_futures_removed_at")
+    private OffsetDateTime installmentFuturesRemovedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -213,6 +217,9 @@ public class Transaction {
 
     public UUID getConfirmedByImportId() { return confirmedByImportId; }
     public void setConfirmedByImportId(UUID confirmedByImportId) { this.confirmedByImportId = confirmedByImportId; }
+
+    public OffsetDateTime getInstallmentFuturesRemovedAt() { return installmentFuturesRemovedAt; }
+    public void setInstallmentFuturesRemovedAt(OffsetDateTime installmentFuturesRemovedAt) { this.installmentFuturesRemovedAt = installmentFuturesRemovedAt; }
 
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }

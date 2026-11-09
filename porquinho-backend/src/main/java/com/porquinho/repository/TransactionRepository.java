@@ -1,7 +1,9 @@
 package com.porquinho.repository;
 
 import com.porquinho.entity.Transaction;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -12,6 +14,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /** Repository for Transaction (Story 5.4). */
@@ -201,6 +204,66 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
     @Query("UPDATE Transaction t SET t.deletedAt = :now, t.updatedAt = :now "
         + "WHERE t.userId = :userId AND t.importId = :importId AND t.deletedAt IS NULL")
     int softDeleteByImport(@Param("userId") UUID userId, @Param("importId") UUID importId,
+                           @Param("now") OffsetDateTime now);
+
+    /**
+     * The user's confirmed transactions dated within [{@code from}, {@code to}], newest first, future installments left
+     * out (Story 5.12, decision Q1).
+     */
+    @Query("SELECT t FROM Transaction t WHERE t.userId = :userId "
+        + "AND t.reviewStatus = com.porquinho.entity.Transaction.ReviewStatus.CONFIRMED AND t.futureInstallment = false "
+        + "AND t.deletedAt IS NULL AND t.transactionDate BETWEEN :from AND :to "
+        + "ORDER BY t.transactionDate DESC, t.createdAt DESC, t.id DESC")
+    List<Transaction> findConfirmedBetween(@Param("userId") UUID userId, @Param("from") LocalDate from,
+                                           @Param("to") LocalDate to);
+
+    /** The user's confirmed transaction the user can edit or remove (Story 5.12), row-locked. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT t FROM Transaction t WHERE t.id = :id AND t.userId = :userId "
+        + "AND t.reviewStatus = com.porquinho.entity.Transaction.ReviewStatus.CONFIRMED AND t.futureInstallment = false "
+        + "AND t.deletedAt IS NULL")
+    Optional<Transaction> findEditableForUpdate(@Param("id") UUID id, @Param("userId") UUID userId);
+
+    /** Where the user's editable transaction is: account or card id, null if there is no such row (Story 5.12). */
+    @Query("SELECT COALESCE(t.creditCardId, t.accountId) FROM Transaction t WHERE t.id = :id AND t.userId = :userId "
+        + "AND t.reviewStatus = com.porquinho.entity.Transaction.ReviewStatus.CONFIRMED AND t.futureInstallment = false "
+        + "AND t.deletedAt IS NULL")
+    Optional<UUID> findEditableTarget(@Param("id") UUID id, @Param("userId") UUID userId);
+
+    /**
+     * Each of the user's groups {@code groupIds}: [group id, active future installments, active confirmed installments]
+     * (Story 5.12).
+     */
+    @Query("SELECT t.installmentGroupId, "
+        + "SUM(CASE WHEN t.futureInstallment = true THEN 1 ELSE 0 END), "
+        + "SUM(CASE WHEN t.futureInstallment = false "
+        + "AND t.reviewStatus = com.porquinho.entity.Transaction.ReviewStatus.CONFIRMED THEN 1 ELSE 0 END) "
+        + "FROM Transaction t WHERE t.userId = :userId AND t.installmentGroupId IN :groupIds AND t.deletedAt IS NULL "
+        + "GROUP BY t.installmentGroupId")
+    List<Object[]> countActiveByGroup(@Param("userId") UUID userId, @Param("groupIds") Collection<UUID> groupIds);
+
+    /** The active confirmed installments of the user's group {@code groupId} other than {@code id} (Story 5.12, Q3). */
+    @Query("SELECT COUNT(t) FROM Transaction t WHERE t.userId = :userId AND t.installmentGroupId = :groupId "
+        + "AND t.id <> :id AND t.futureInstallment = false AND t.deletedAt IS NULL "
+        + "AND t.reviewStatus = com.porquinho.entity.Transaction.ReviewStatus.CONFIRMED")
+    long countOtherConfirmedInGroup(@Param("userId") UUID userId, @Param("groupId") UUID groupId,
+                                    @Param("id") UUID id);
+
+    /** Soft delete of the active future installments of the user's group {@code groupId} (Story 5.12). */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE Transaction t SET t.deletedAt = :now, t.updatedAt = :now WHERE t.userId = :userId "
+        + "AND t.installmentGroupId = :groupId AND t.futureInstallment = true AND t.deletedAt IS NULL")
+    int softDeleteFutures(@Param("userId") UUID userId, @Param("groupId") UUID groupId,
+                          @Param("now") OffsetDateTime now);
+
+    /**
+     * Story 5.12, decision Q2: the active rows of the user's group {@code groupId} remember that its futures were
+     * removed, so the next import of the card creates none.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE Transaction t SET t.installmentFuturesRemovedAt = :now, t.updatedAt = :now WHERE t.userId = :userId "
+        + "AND t.installmentGroupId = :groupId AND t.deletedAt IS NULL")
+    int markFuturesRemoved(@Param("userId") UUID userId, @Param("groupId") UUID groupId,
                            @Param("now") OffsetDateTime now);
 
     /**
