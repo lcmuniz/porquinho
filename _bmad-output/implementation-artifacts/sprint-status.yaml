@@ -307,14 +307,14 @@ action_items:
     action: "Linha removida pelo usuário continua candidata do detector de duplicatas:
       não volta em extrato sobreposto (X1)"
     owner: "Claude"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-5-retro-2026-11-09.md"
   - id: "epic-5-retro-item-22-conciliar-ou-editar-saldo-marca-affects_"
     epic: 5
     action: "Conciliar ou editar saldo marca affects_balance=false nas linhas da conta
       que estavam no saldo (X2)"
     owner: "Claude"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-5-retro-2026-11-09.md"
   - id: "epic-5-retro-item-23-reconciliar-texto-do-epic-5-com-o-constr"
     epic: 5

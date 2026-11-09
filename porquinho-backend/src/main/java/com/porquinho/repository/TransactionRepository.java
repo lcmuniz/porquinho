@@ -26,20 +26,22 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
     List<Transaction> findByUserIdOrdered(@Param("userId") UUID userId);
 
     /**
-     * The user's active transactions of account {@code accountId} dated within [{@code from}, {@code to}], any review
-     * status, in a fixed order: the candidates for the duplicate check of an import (Story 5.5). Served by idx_transactions_account_date.
+     * The user's transactions of account {@code accountId} dated within [{@code from}, {@code to}], in a fixed order: the
+     * candidates for the duplicate check of an import (Story 5.5). Active rows of any review status, plus confirmed rows
+     * the user removed (retro Epic 5, X1), so that a removed row does not come back with an overlapping statement. A
+     * discarded import never has confirmed rows, so its rows stay out. Served by idx_transactions_account_date.
      */
     @Query("SELECT t FROM Transaction t WHERE t.userId = :userId AND t.accountId = :accountId "
-        + "AND t.deletedAt IS NULL AND t.transactionDate BETWEEN :from AND :to "
-        + "ORDER BY t.transactionDate ASC, t.createdAt ASC, t.id ASC")
-    List<Transaction> findActiveByAccountBetween(@Param("userId") UUID userId, @Param("accountId") UUID accountId,
+        + "AND (t.deletedAt IS NULL OR t.reviewStatus = com.porquinho.entity.Transaction.ReviewStatus.CONFIRMED) "
+        + "AND t.transactionDate BETWEEN :from AND :to ORDER BY t.transactionDate ASC, t.createdAt ASC, t.id ASC")
+    List<Transaction> findDuplicateCandidatesByAccountBetween(@Param("userId") UUID userId, @Param("accountId") UUID accountId,
                                                  @Param("from") LocalDate from, @Param("to") LocalDate to);
 
-    /** Same as {@link #findActiveByAccountBetween} for credit card {@code creditCardId} (Story 5.5). */
+    /** Same as {@link #findDuplicateCandidatesByAccountBetween} for credit card {@code creditCardId} (Story 5.5). */
     @Query("SELECT t FROM Transaction t WHERE t.userId = :userId AND t.creditCardId = :creditCardId "
-        + "AND t.deletedAt IS NULL AND t.transactionDate BETWEEN :from AND :to "
-        + "ORDER BY t.transactionDate ASC, t.createdAt ASC, t.id ASC")
-    List<Transaction> findActiveByCreditCardBetween(@Param("userId") UUID userId,
+        + "AND (t.deletedAt IS NULL OR t.reviewStatus = com.porquinho.entity.Transaction.ReviewStatus.CONFIRMED) "
+        + "AND t.transactionDate BETWEEN :from AND :to ORDER BY t.transactionDate ASC, t.createdAt ASC, t.id ASC")
+    List<Transaction> findDuplicateCandidatesByCreditCardBetween(@Param("userId") UUID userId,
                                                     @Param("creditCardId") UUID creditCardId,
                                                     @Param("from") LocalDate from, @Param("to") LocalDate to);
 
@@ -60,6 +62,16 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
         + "AND t.kind = com.porquinho.entity.Transaction.Kind.REGULAR AND t.futureInstallment = false "
         + "AND t.deletedAt IS NULL ORDER BY t.transactionDate ASC, t.createdAt ASC, t.id ASC")
     List<Transaction> findClassifiableByImport(@Param("userId") UUID userId, @Param("importId") UUID importId);
+
+    /**
+     * Retro Epic 5, X2: the balance of account {@code accountId} was just set by hand (edit or reconciliation), so the
+     * rows that were in it are absorbed: removing or editing one later must not change the balance the user set.
+     */
+    @Modifying(flushAutomatically = true)
+    @Query("UPDATE Transaction t SET t.affectsBalance = false, t.updatedAt = :now WHERE t.userId = :userId "
+        + "AND t.accountId = :accountId AND t.affectsBalance = true")
+    int absorbIntoBalance(@Param("userId") UUID userId, @Param("accountId") UUID accountId,
+                          @Param("now") OffsetDateTime now);
 
     /**
      * Writes the classification of one row, by the AI (Story 5.8) or by a pattern of the user (Story 5.11). Only these

@@ -9,6 +9,7 @@ import com.porquinho.exception.BadRequestException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.ReconciliationRepository;
+import com.porquinho.repository.TransactionRepository;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,7 +25,7 @@ import java.util.UUID;
  * the difference (bank balance - current balance) is computed here, never trusted from the client; the current
  * balance becomes the bank balance; last_reconciliation_date is set; the event goes to reconciliation_history; a
  * "reconciliation" snapshot goes to account_balance_history only when the balance changed; and the
- * "account_reconciled" audit is logged. A zero difference is accepted (the user checked and it matched).
+ * "account_reconciled" audit is logged. The rows that were in the balance are absorbed (retro Epic 5, X2). A zero difference is accepted (the user checked and it matched).
  * Decision A: no adjustment transaction; the event is the record of the adjustment.
  * The user id always comes from the JWT; another user's or a removed account behaves as if it did not exist.
  */
@@ -43,14 +44,17 @@ public class ReconciliationService {
 
     private final ReconciliationRepository reconciliationRepository;
     private final AccountRepository accountRepository;
+    private final TransactionRepository transactionRepository;
     private final BalanceHistoryRecorder balanceHistoryRecorder;
     private final AuditLogService auditLogService;
 
     public ReconciliationService(ReconciliationRepository reconciliationRepository, AccountRepository accountRepository,
+                                 TransactionRepository transactionRepository,
                                  BalanceHistoryRecorder balanceHistoryRecorder,
                                  AuditLogService auditLogService) {
         this.reconciliationRepository = reconciliationRepository;
         this.accountRepository = accountRepository;
+        this.transactionRepository = transactionRepository;
         this.balanceHistoryRecorder = balanceHistoryRecorder;
         this.auditLogService = auditLogService;
     }
@@ -83,6 +87,7 @@ public class ReconciliationService {
         if (difference.signum() != 0) {
             balanceHistoryRecorder.record(saved, AccountBalanceHistory.EVENT_RECONCILIATION, now);
         }
+        transactionRepository.absorbIntoBalance(userId, accountId, now);
         auditLogService.log(AUDIT_RECONCILED, userId, ipAddress, auditMetadata(accountId, difference));
         return ReconciliationResponse.Created.of(saved, reconciliation);
     }

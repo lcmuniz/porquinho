@@ -1,8 +1,10 @@
 package com.porquinho.service;
 
+import com.porquinho.dto.CreateReconciliationRequest;
 import com.porquinho.dto.TransactionCreateRequest;
 import com.porquinho.dto.TransactionResponse;
 import com.porquinho.dto.TransactionUpdateRequest;
+import com.porquinho.dto.UpdateAccountRequest;
 import com.porquinho.exception.BadRequestException;
 import com.porquinho.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.AfterEach;
@@ -38,6 +40,10 @@ class TransactionServiceTest {
     private TransactionService service;
     @Autowired
     private JdbcTemplate jdbc;
+    @Autowired
+    private ReconciliationService reconciliationService;
+    @Autowired
+    private AccountService accountService;
     /** Never the real client: nothing here goes to the AI. */
     @MockitoBean
     private TransactionClassifier classifier;
@@ -215,6 +221,41 @@ class TransactionServiceTest {
 
         assertThat(balanceOf(account)).isEqualByComparingTo("1000.00");
         assertThat(transactionSnapshots(account)).isZero();
+    }
+
+    /** Retro Epic 5, X2: a future row already in the balance is absorbed when the user sets the balance by hand. */
+    @Test
+    void reconciliationAbsorbsFutureRowsSoRemovingOrEditingThemKeepsTheBankBalance() {
+        UUID account = newAccount("900.00");
+        UUID removed = newRow(account, "2027-06-01", "DEBIT", "100.00", true);
+        UUID edited = newRow(account, "2027-06-02", "DEBIT", "50.00", true);
+
+        reconciliationService.reconcile(userId, account, new CreateReconciliationRequest(new BigDecimal("700.00"), null),
+            IP);
+        assertThat(rowOf(removed).get("affects_balance")).isEqualTo(false);
+
+        service.delete(userId, removed, IP);
+        service.update(userId, edited, edit("2027-06-03", "DEBIT", "80.00", null, account, null), IP);
+
+        assertThat(balanceOf(account)).isEqualByComparingTo("700.00");
+        assertThat(rowOf(edited).get("affects_balance")).isEqualTo(false);
+        assertThat(transactionSnapshots(account)).isZero();
+    }
+
+    @Test
+    void balanceEditAbsorbsFutureRowsButAnotherAccountStillGetsTheEffect() {
+        UUID account = newAccount("900.00");
+        UUID other = newAccount("500.00");
+        UUID row = newRow(account, "2027-06-01", "DEBIT", "100.00", true);
+        Long version = jdbc.queryForObject("SELECT version FROM accounts WHERE id = ?", Long.class, account);
+
+        accountService.update(userId, account, new UpdateAccountRequest("Nubank", null, "CHECKING",
+            new BigDecimal("1000.00"), version));
+        service.update(userId, row, edit("2027-06-01", "DEBIT", "100.00", null, other, null), IP);
+
+        assertThat(balanceOf(account)).isEqualByComparingTo("1000.00");
+        assertThat(balanceOf(other)).isEqualByComparingTo("400.00");
+        assertThat(rowOf(row).get("affects_balance")).isEqualTo(true);
     }
 
     @Test

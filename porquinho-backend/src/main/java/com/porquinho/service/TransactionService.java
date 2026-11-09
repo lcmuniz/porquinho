@@ -213,7 +213,8 @@ public class TransactionService {
         undoOldEffect(row, accounts, deltas);
         Account newAccount = request.accountId() == null ? null : accounts.get(request.accountId());
         boolean affects = false;
-        if (newAccount != null && request.date().isAfter(balanceHistoryRecorder.referenceDate(newAccount))) {
+        if (newAccount != null && !absorbed(row, newAccount)
+            && request.date().isAfter(balanceHistoryRecorder.referenceDate(newAccount))) {
             deltas.merge(newAccount.getId(), signed(newType, request.amount()), BigDecimal::add);
             affects = true;
         }
@@ -342,6 +343,15 @@ public class TransactionService {
             && row.getTransactionDate().isAfter(balanceHistoryRecorder.referenceDate(old))) {
             deltas.merge(old.getId(), signed(row.getTransactionType(), row.getAmount()).negate(), BigDecimal::add);
         }
+    }
+
+    /**
+     * Retro Epic 5, X2: a row out of the balance but dated after the reference of its account was absorbed by a
+     * reconciliation or balance edit; edited on that same account, it stays out of the balance the user set.
+     */
+    private boolean absorbed(Transaction row, Account account) {
+        return !row.isAffectsBalance() && account.getId().equals(row.getAccountId())
+            && row.getTransactionDate().isAfter(balanceHistoryRecorder.referenceDate(account));
     }
 
     /** Applies every non-zero delta, all checked before any is written. Returns how many accounts changed. */
