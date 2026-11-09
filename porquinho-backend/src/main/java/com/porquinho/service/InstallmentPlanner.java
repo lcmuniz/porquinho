@@ -4,6 +4,7 @@ import com.porquinho.entity.Transaction;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -31,7 +32,8 @@ import java.util.UUID;
  *       (decision D7: nothing inserted, counted as duplicate by the caller, decision 2A); a future created by this same
  *       import is replaced by the row;</li>
  *   <li>otherwise the row is inserted and the futures of every number after it up to the total that the group does
- *       not have yet are created (so an older month imported later creates none).</li>
+ *       not have yet are created (so an older month imported later creates none), unless the user removed the futures
+ *       of the group (Story 5.12, decision Q2): then none is created and the row carries the mark.</li>
  * </ol>
  */
 final class InstallmentPlanner {
@@ -73,6 +75,9 @@ final class InstallmentPlanner {
             Group group = groups.computeIfAbsent(transaction.getInstallmentGroupId(), id -> new Group(id,
                 transaction.getInstallmentTotal(), transaction.getAmount(),
                 baseOf(transaction.getOriginalDescription())));
+            if (transaction.getInstallmentFuturesRemovedAt() != null) {
+                group.futuresRemovedAt = transaction.getInstallmentFuturesRemovedAt();
+            }
             // an already confirmed row wins over a future of the same number
             group.members.merge(transaction.getInstallmentNumber(), transaction,
                 (kept, other) -> kept.isFutureInstallment() ? other : kept);
@@ -115,6 +120,11 @@ final class InstallmentPlanner {
             row.setFutureInstallment(false);
             group.members.put(number, row);
             toInsert.add(row);
+            // Story 5.12, decision Q2: the user removed the futures of this purchase, so none comes back
+            if (group.futuresRemovedAt != null) {
+                row.setInstallmentFuturesRemovedAt(group.futuresRemovedAt);
+                continue;
+            }
             for (int next = number + 1; next <= installment.total(); next++) {
                 if (group.members.containsKey(next)) {
                     continue;
@@ -140,8 +150,7 @@ final class InstallmentPlanner {
     private static Group findGroup(Iterable<Group> groups, InstallmentDetector.Installment installment,
                                    Transaction row) {
         for (Group group : groups) {
-            if (group.total != installment.total()
-                || group.amount.subtract(row.getAmount()).abs().compareTo(amountTolerance(group.total)) > 0) {
+            if (group.total != installment.total() || !amountFits(group, row.getAmount())) {
                 continue;
             }
             Transaction member = group.members.get(installment.number());
@@ -154,6 +163,16 @@ final class InstallmentPlanner {
             }
         }
         return null;
+    }
+
+    /**
+     * Within {@link #amountTolerance} of the group's first amount or of any member: a member's amount may have been
+     * edited by the user (Story 5.12), while its futures keep the original one.
+     */
+    private static boolean amountFits(Group group, BigDecimal amount) {
+        BigDecimal tolerance = amountTolerance(group.total);
+        return group.amount.subtract(amount).abs().compareTo(tolerance) <= 0 || group.members.values().stream()
+            .anyMatch(member -> member.getAmount().subtract(amount).abs().compareTo(tolerance) <= 0);
     }
 
     /**
@@ -234,6 +253,8 @@ final class InstallmentPlanner {
         private final BigDecimal amount;
         private final String baseDescription;
         private final Map<Integer, Transaction> members = new HashMap<>();
+        /** Story 5.12, decision Q2: when the user removed the futures of this purchase. */
+        private OffsetDateTime futuresRemovedAt;
 
         private Group(UUID id, int total, BigDecimal amount, String baseDescription) {
             this.id = id;

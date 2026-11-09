@@ -102,6 +102,13 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      // Story 5.12: transações confirmadas, com edição e remoção
+      path: '/transacoes',
+      name: 'transactions',
+      component: () => import('../views/TransactionsView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       // Story 2.2: plano mensal (Stripe Checkout). Retorno do Checkout: ?status=sucesso|cancelado
       path: '/assinatura',
       name: 'subscription',

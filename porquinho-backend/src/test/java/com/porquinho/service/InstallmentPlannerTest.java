@@ -448,4 +448,39 @@ class InstallmentPlannerTest {
         assertThat(none.installments()).isZero();
         assertThat(none.toInsert()).containsExactly(markerOnlyInTheDescription);
     }
+
+    /** Story 5.12, decision Q2: a group whose futures the user removed gets no new futures, and the new row the mark. */
+    @Test
+    void groupWithRemovedFuturesCreatesNoFutureAndPassesTheMarkOn() {
+        Transaction third = row("Magazine Luiza - Parcela 3/10", "189.90", LocalDate.of(2026, 10, 2), "a");
+        List<Transaction> existing = new ArrayList<>(List.of(InstallmentPlanner.plan(List.of(third), List.of()).toInsert().get(0)));
+        existing.get(0).setId(UUID.randomUUID());
+        java.time.OffsetDateTime removedAt = java.time.OffsetDateTime.parse("2026-10-20T12:00:00Z");
+        existing.get(0).setInstallmentFuturesRemovedAt(removedAt);
+
+        Transaction fourth = row("Magazine Luiza - Parcela 4/10", "189.90", LocalDate.of(2026, 11, 2), "b");
+        InstallmentPlanner.Plan plan = InstallmentPlanner.plan(List.of(fourth), existing);
+
+        assertThat(plan.toInsert()).containsExactly(fourth);
+        assertThat(plan.futuresCreated()).isZero();
+        assertThat(fourth.getInstallmentGroupId()).isEqualTo(third.getInstallmentGroupId());
+        assertThat(fourth.getInstallmentFuturesRemovedAt()).isEqualTo(removedAt);
+    }
+
+    /** Story 5.12: the oldest member's amount was edited by the user; its futures keep the original amount. */
+    @Test
+    void editedAmountOfTheOldestMemberStillMatchesTheGroupByItsFutures() {
+        Transaction third = row("Magazine Luiza - Parcela 3/10", "189.90", LocalDate.of(2026, 10, 2), "a");
+        List<Transaction> existing = new ArrayList<>(InstallmentPlanner.plan(List.of(third), List.of()).toInsert());
+        existing.forEach(t -> t.setId(UUID.randomUUID()));
+        third.setAmount(new BigDecimal("150.00"));
+
+        Transaction fourth = row("Magazine Luiza - Parcela 4/10", "189.90", LocalDate.of(2026, 11, 2), "b");
+        InstallmentPlanner.Plan plan = InstallmentPlanner.plan(List.of(fourth), existing);
+
+        assertThat(plan.toInsert()).isEmpty();
+        assertThat(plan.futuresCreated()).isZero();
+        assertThat(plan.confirmed()).singleElement()
+            .satisfies(t -> assertThat(t.getInstallmentGroupId()).isEqualTo(third.getInstallmentGroupId()));
+    }
 }

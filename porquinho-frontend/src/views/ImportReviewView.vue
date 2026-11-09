@@ -372,6 +372,7 @@ import {
 import { formatLocalDateBR } from '@/lib/date'
 import { formatSignedBRL } from '@/lib/money'
 import { plural } from '@/lib/plural'
+import { installmentLabel, pixLabel } from '@/lib/transactionLabels'
 import { listCategories } from '@/services/categoryService'
 import { completeImport as completeOnboardingImport, getMyOnboarding } from '@/services/onboardingService'
 import {
@@ -522,22 +523,6 @@ function indicator(row: ImportTransaction): { icon: Component; text: string; cla
   if (group === 'high') return { icon: CircleCheck, text, class: 'text-green-700' }
   if (group === 'medium') return { icon: TriangleAlert, text, class: 'text-yellow-700' }
   return { icon: Flag, text, class: 'text-red-700' }
-}
-
-function pixLabel(row: ImportTransaction): string {
-  const details = row.pixDetails
-  if (!details) return 'Pix'
-  const name = details.counterpart_name
-  if (details.direction === 'SENT') return name ? `Pix enviado para ${name}` : 'Pix enviado'
-  return name ? `Pix recebido de ${name}` : 'Pix recebido'
-}
-
-function installmentLabel(row: ImportTransaction): string {
-  if (!row.isInstallment || row.installmentNumber === null || row.installmentTotal === null) return ''
-  const left = row.installmentTotal - row.installmentNumber
-  const progress = `Compra parcelada: ${row.installmentNumber}/${row.installmentTotal}`
-  if (left === 0) return `${progress} — última parcela`
-  return `${progress} — ${left === 1 ? 'resta' : 'restam'} ${plural(left, 'parcela', 'parcelas')}`
 }
 
 /** Sequência das cargas: só a resposta da carga mais recente é aplicada. */

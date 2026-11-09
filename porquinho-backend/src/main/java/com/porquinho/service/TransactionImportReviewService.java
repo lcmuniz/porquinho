@@ -14,7 +14,6 @@ import com.porquinho.entity.TransactionImport;
 import com.porquinho.exception.BadRequestException;
 import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
-import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.CategoryRepository;
 import com.porquinho.repository.CreditCardRepository;
@@ -28,7 +27,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -72,18 +70,11 @@ public class TransactionImportReviewService {
     /** The confidence of a category chosen by the user. */
     static final int USER_CONFIDENCE = 100;
 
-    /** What sets the balance by hand: the transactions up to it are already in the balance (decision D3). */
-    private static final List<String> REFERENCE_EVENTS = List.of(AccountBalanceHistory.EVENT_INITIAL,
-        AccountBalanceHistory.EVENT_EDIT, AccountBalanceHistory.EVENT_RECONCILIATION);
-
-    private static final ZoneId SAO_PAULO = ZoneId.of("America/Sao_Paulo");
-
     private final TransactionImportRepository transactionImportRepository;
     private final TransactionRepository transactionRepository;
     private final CategoryRepository categoryRepository;
     private final AccountRepository accountRepository;
     private final CreditCardRepository creditCardRepository;
-    private final AccountBalanceHistoryRepository balanceHistoryRepository;
     private final BalanceHistoryRecorder balanceHistoryRecorder;
     private final AuditLogService auditLogService;
     private final ClassificationPatternService patternService;
@@ -92,7 +83,6 @@ public class TransactionImportReviewService {
                                           TransactionRepository transactionRepository,
                                           CategoryRepository categoryRepository, AccountRepository accountRepository,
                                           CreditCardRepository creditCardRepository,
-                                          AccountBalanceHistoryRepository balanceHistoryRepository,
                                           BalanceHistoryRecorder balanceHistoryRecorder,
                                           AuditLogService auditLogService,
                                           ClassificationPatternService patternService) {
@@ -101,7 +91,6 @@ public class TransactionImportReviewService {
         this.categoryRepository = categoryRepository;
         this.accountRepository = accountRepository;
         this.creditCardRepository = creditCardRepository;
-        this.balanceHistoryRepository = balanceHistoryRepository;
         this.balanceHistoryRecorder = balanceHistoryRecorder;
         this.auditLogService = auditLogService;
         this.patternService = patternService;
@@ -112,7 +101,7 @@ public class TransactionImportReviewService {
     public List<ImportTransactionResponse> list(UUID userId, UUID importId) {
         transactionImportRepository.findByIdAndUserId(importId, userId).orElseThrow(TransactionImportReviewService::notFound);
         List<Transaction> rows = transactionRepository.findForReviewByImport(userId, importId);
-        Map<UUID, Category> categories = categoriesOf(userId, rows);
+        Map<UUID, Category> categories = categoriesOf(categoryRepository, userId, rows);
         return rows.stream().map(row -> toResponse(row, categories)).toList();
     }
 
@@ -223,7 +212,7 @@ public class TransactionImportReviewService {
     private int applyBalanceEffect(UUID userId, UUID importId, UUID accountId, OffsetDateTime now) {
         Account account = accountRepository.findActiveByIdForUpdate(accountId, userId)
             .orElseThrow(() -> new ConflictException(ACCOUNT_REMOVED_MESSAGE));
-        LocalDate reference = referenceDate(account);
+        LocalDate reference = balanceHistoryRecorder.referenceDate(account);
         BigDecimal effect = transactionRepository.sumBalanceEffect(userId, importId, reference);
         if (effect.signum() != 0) {
             BigDecimal balance = account.getCurrentBalance().add(effect);
@@ -234,21 +223,6 @@ public class TransactionImportReviewService {
             balanceHistoryRecorder.record(accountRepository.save(account), AccountBalanceHistory.EVENT_TRANSACTION);
         }
         return transactionRepository.markAffectsBalance(userId, importId, reference, now);
-    }
-
-    /**
-     * The São Paulo date of the last time the balance was set by hand: the last initial, edit or reconciliation snapshot,
-     * or the last reconciliation, which leaves no snapshot when it finds no difference.
-     */
-    private LocalDate referenceDate(Account account) {
-        OffsetDateTime reference = balanceHistoryRepository
-            .findLastSnapshotDate(account.getId(), account.getUserId(), REFERENCE_EVENTS)
-            .orElse(account.getCreatedAt());
-        OffsetDateTime reconciled = account.getLastReconciliationDate();
-        if (reconciled != null && reconciled.isAfter(reference)) {
-            reference = reconciled;
-        }
-        return reference.atZoneSameInstant(SAO_PAULO).toLocalDate();
     }
 
     /**
@@ -288,7 +262,7 @@ public class TransactionImportReviewService {
     }
 
     /** The categories of {@code rows} and their parents, by id, removed ones included. */
-    private Map<UUID, Category> categoriesOf(UUID userId, List<Transaction> rows) {
+    static Map<UUID, Category> categoriesOf(CategoryRepository categoryRepository, UUID userId, List<Transaction> rows) {
         Set<UUID> ids = rows.stream().map(Transaction::getCategoryId).filter(Objects::nonNull).collect(Collectors.toSet());
         if (ids.isEmpty()) {
             return Map.of();
@@ -315,7 +289,7 @@ public class TransactionImportReviewService {
             row.isFutureInstallment());
     }
 
-    private static ImportTransactionResponse.Category category(UUID categoryId, Map<UUID, Category> categories) {
+    static ImportTransactionResponse.Category category(UUID categoryId, Map<UUID, Category> categories) {
         Category category = categoryId == null ? null : categories.get(categoryId);
         if (category == null) {
             return null;
@@ -326,7 +300,7 @@ public class TransactionImportReviewService {
     }
 
     /** The stored JSON as an object; never expected to fail (the column is jsonb), and a marker is not worth a 500. */
-    private static JsonNode pixDetails(Transaction row) {
+    static JsonNode pixDetails(Transaction row) {
         if (row.getPixDetails() == null) {
             return null;
         }
