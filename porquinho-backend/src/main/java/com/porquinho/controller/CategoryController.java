@@ -24,7 +24,8 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Category endpoints (Story 3.4: list and suggestions; Story 3.5: options, create, update and remove). Used by
+ * Category endpoints (Story 3.4: list and suggestions; Story 3.5: options, create, update and remove; Story 6.2:
+ * create a group and move a child to another group). Used by
  * onboarding steps 4 and 5 and, later, by the budget (Epic 6).
  * The user always comes from the JWT.
  */
@@ -57,7 +58,10 @@ public class CategoryController {
         return ResponseEntity.ok(CategoryOptions.OPTIONS);
     }
 
-    /** 201 with the new custom category (is_system_default=false); 400 when invalid; 409 on a repeated name. */
+    /**
+     * 201 with the new custom category or, without parentId, the new group (is_system_default=false); 400 when
+     * invalid; 409 on a repeated name.
+     */
     @PostMapping
     public ResponseEntity<CategoryResponse> create(@AuthenticationPrincipal Jwt jwt,
                                                    @Valid @RequestBody CreateCategoryRequest request) {
@@ -66,13 +70,13 @@ public class CategoryController {
             userId, request.name(), request.colorHex(), request.iconName(), request.parentId())));
     }
 
-    /** 200 with the updated category; 400 when invalid; 404 when not the user's; 409 on a repeated name. */
+    /** 200 with the updated (or moved) category; 400 when invalid; 404 when not the user's; 409 on a repeated name. */
     @PatchMapping("/{id}")
     public ResponseEntity<CategoryResponse> update(@AuthenticationPrincipal Jwt jwt, @PathVariable("id") UUID id,
                                                    @Valid @RequestBody UpdateCategoryRequest request) {
         UUID userId = UUID.fromString(jwt.getSubject());
         return ResponseEntity.ok(CategoryResponse.of(categoryService.update(
-            userId, id, request.name(), request.colorHex(), request.iconName())));
+            userId, id, request.name(), request.colorHex(), request.iconName(), request.parentId())));
     }
 
     /** Soft delete. 204; 404 when not the user's; 409 for a group with children or the last child. */

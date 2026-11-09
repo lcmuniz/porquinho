@@ -12,6 +12,7 @@ import java.text.Normalizer;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -22,8 +23,8 @@ import java.util.regex.Pattern;
 
 /**
  * Categories (Story 3.4: list and create from the suggestions; Story 3.5: create custom children, edit name,
- * color and icon, soft delete; moving and creating groups come in Epic 6). The user id always comes from the JWT;
- * another user's category behaves as if it did not exist (404).
+ * color and icon, soft delete; Story 6.2: create groups and move a child to another group). The user id always
+ * comes from the JWT; another user's category behaves as if it did not exist (404).
  *
  * Hierarchy has one level: a group has no parent and a child's parent is an active group of the same user.
  * Names are unique (case-insensitive) among all the user's active categories, groups and children alike.
@@ -39,9 +40,9 @@ public class CategoryService {
     public static final String NAME_TOO_LONG_MESSAGE = "Use no máximo 50 caracteres no nome da categoria";
     public static final String COLOR_INVALID_MESSAGE = "Escolha uma cor da paleta";
     public static final String ICON_INVALID_MESSAGE = "Escolha um ícone da lista";
-    public static final String PARENT_REQUIRED_MESSAGE = "Escolha o grupo da categoria";
     public static final String PARENT_INVALID_MESSAGE = "Grupo inválido. Recarregue a página e tente novamente.";
-    public static final String NOTHING_TO_UPDATE_MESSAGE = "Informe o nome, a cor ou o ícone para alterar";
+    public static final String NOTHING_TO_UPDATE_MESSAGE = "Informe o nome, a cor, o ícone ou o grupo para alterar";
+    public static final String GROUP_CANNOT_MOVE_MESSAGE = "Grupos não podem ficar dentro de outro grupo";
     public static final String DUPLICATE_NAME_MESSAGE = "Já existe uma categoria com esse nome";
     public static final String LAST_CHILD_MESSAGE = "Mantenha ao menos uma categoria";
     public static final String GROUP_NOT_EMPTY_MESSAGE = "Exclua ou mova as categorias deste grupo antes";
@@ -125,10 +126,11 @@ public class CategoryService {
      */
 
     /**
-     * Creates a custom child category (is_system_default=false) inside one of the user's active groups.
-     * 400 when the parent is missing, not the user's, removed or itself a child (max depth 1), or when the
-     * name, color or icon is invalid; 409 when another active category or group already has the name.
-     * Color and icon are optional (Story 6.1): null or blank = the group's color and CategoryOptions.DEFAULT_ICON.
+     * Creates a custom category (is_system_default=false): a child inside one of the user's active groups or, when
+     * parentId is null, a new group (Story 6.2). 400 when the parent is not the user's, removed or itself a child
+     * (max depth 1), or when the name, color or icon is invalid; 409 when another active category or group already
+     * has the name. Color and icon are optional (Story 6.1): null or blank = CategoryOptions.DEFAULT_ICON and the
+     * group's color (for a child) or the first palette color no active group uses (for a group).
      */
     @Transactional
     public Category create(UUID userId, String name, String colorHex, String iconName, UUID parentId) {
@@ -141,28 +143,44 @@ public class CategoryService {
         if (hasIcon) {
             validateIcon(iconName);
         }
-        if (parentId == null) {
-            throw new BadRequestException(PARENT_REQUIRED_MESSAGE);
-        }
         List<Category> active = categoryRepository.findActiveByUserIdForUpdate(userId);
-        Category parent = active.stream()
-            .filter(c -> c.getId().equals(parentId) && c.getParentCategoryId() == null)
-            .findFirst()
-            .orElseThrow(() -> new BadRequestException(PARENT_INVALID_MESSAGE));
+        Category parent = parentId == null ? null : findGroup(active, parentId);
         ensureUniqueName(active, cleanName, null);
-        return categoryRepository.save(new Category(userId, cleanName, parent.getId(),
-            hasColor ? CategoryOptions.normalizeColor(colorHex) : parent.getColorHex(),
+        String color = hasColor ? CategoryOptions.normalizeColor(colorHex)
+            : parent != null ? parent.getColorHex() : freeGroupColor(active);
+        return categoryRepository.save(new Category(userId, cleanName, parentId, color,
             hasIcon ? iconName : CategoryOptions.DEFAULT_ICON, false));
     }
 
+    /** First palette color no active group uses; the first of the palette when all are taken. */
+    private static String freeGroupColor(List<Category> active) {
+        Set<String> used = new HashSet<>();
+        active.stream().filter(c -> c.getParentCategoryId() == null)
+            .forEach(c -> used.add(CategoryOptions.normalizeColor(c.getColorHex())));
+        return CategoryOptions.COLORS.stream().filter(c -> !used.contains(c)).findFirst()
+            .orElse(CategoryOptions.COLORS.get(0));
+    }
+
+    /** The user's active group with this id; 400 when missing, removed, another user's or a child. */
+    private static Category findGroup(List<Category> active, UUID groupId) {
+        return active.stream()
+            .filter(c -> c.getId().equals(groupId) && c.getParentCategoryId() == null)
+            .findFirst()
+            .orElseThrow(() -> new BadRequestException(PARENT_INVALID_MESSAGE));
+    }
+
     /**
-     * Changes any combination of name, color and icon (null = unchanged) of a group or a child; the parent never
-     * changes. 404 when the category is not the user's active one; 400 when a value is invalid; 409 when the new
-     * name is already used by another active category or group of the user.
+     * Changes any combination of name, color, icon and parent (null = unchanged) of a group or a child. 404 when the
+     * category is not the user's active one; 400 when a value is invalid; 409 when the new name is already used by
+     * another active category or group of the user.
+     * Moving (Story 6.2): only a child moves (400 GROUP_CANNOT_MOVE_MESSAGE for a group), to an active group of the
+     * user (400 PARENT_INVALID_MESSAGE otherwise). The child takes the new group's color only when its color was the
+     * old group's and no colorHex came in the same request, so a hand-picked color is kept.
      */
     @Transactional
-    public Category update(UUID userId, UUID categoryId, String name, String colorHex, String iconName) {
-        if (name == null && colorHex == null && iconName == null) {
+    public Category update(UUID userId, UUID categoryId, String name, String colorHex, String iconName,
+                           UUID parentId) {
+        if (name == null && colorHex == null && iconName == null && parentId == null) {
             throw new BadRequestException(NOTHING_TO_UPDATE_MESSAGE);
         }
         String cleanName = name == null ? null : validName(name);
@@ -174,6 +192,20 @@ public class CategoryService {
         }
         List<Category> active = categoryRepository.findActiveByUserIdForUpdate(userId);
         Category category = find(active, categoryId);
+        if (parentId != null) {
+            if (category.getParentCategoryId() == null) {
+                throw new BadRequestException(GROUP_CANNOT_MOVE_MESSAGE);
+            }
+            Category target = findGroup(active, parentId);
+            if (!target.getId().equals(category.getParentCategoryId())) {
+                // the old group is active: a group with active children cannot be removed
+                Category oldGroup = find(active, category.getParentCategoryId());
+                if (colorHex == null && category.getColorHex().equalsIgnoreCase(oldGroup.getColorHex())) {
+                    category.setColorHex(target.getColorHex());
+                }
+                category.setParentCategoryId(target.getId());
+            }
+        }
         if (cleanName != null) {
             ensureUniqueName(active, cleanName, category.getId());
             category.setCategoryName(cleanName);

@@ -121,8 +121,8 @@ class CategoryCustomizationIntegrationTest {
         Category housing = named("Moradia");
         Category essentials = named("Essenciais");
 
-        categoryService.update(userId, leisure.getId(), "Diversão", null, null);
-        categoryService.update(userId, housing.getId(), null, "#64748b", null);
+        categoryService.update(userId, leisure.getId(), "Diversão", null, null, null);
+        categoryService.update(userId, housing.getId(), null, "#64748b", null, null);
         Category pets = categoryService.create(userId, "Pets", "#F59E0B", "paw-print", essentials.getId());
         categoryRepository.flush();
         onboardingService.completeCustomization(userId, false, "127.0.0.1");
@@ -141,7 +141,7 @@ class CategoryCustomizationIntegrationTest {
     @Test
     void skippingRecordsSkippedAndKeepsSavedEdits() {
         atStepFive(List.of("housing", "leisure"));
-        categoryService.update(userId, named("Lazer").getId(), "Diversão", null, null);
+        categoryService.update(userId, named("Lazer").getId(), "Diversão", null, null, null);
         categoryRepository.flush();
 
         onboardingService.completeCustomization(userId, true, "127.0.0.1");
@@ -186,10 +186,10 @@ class CategoryCustomizationIntegrationTest {
         atStepFive(List.of("housing"));
         UUID id = named("Moradia").getId();
 
-        assertThat(categoryService.update(userId, id, "  Casa  ", null, null).getCategoryName()).isEqualTo("Casa");
-        assertThatThrownBy(() -> categoryService.update(userId, id, "   ", null, null))
+        assertThat(categoryService.update(userId, id, "  Casa  ", null, null, null).getCategoryName()).isEqualTo("Casa");
+        assertThatThrownBy(() -> categoryService.update(userId, id, "   ", null, null, null))
             .isInstanceOf(BadRequestException.class).hasMessage(CategoryService.NAME_REQUIRED_MESSAGE);
-        assertThatThrownBy(() -> categoryService.update(userId, id, "x".repeat(51), null, null))
+        assertThatThrownBy(() -> categoryService.update(userId, id, "x".repeat(51), null, null, null))
             .isInstanceOf(BadRequestException.class).hasMessage(CategoryService.NAME_TOO_LONG_MESSAGE);
         categoryRepository.flush();
         assertThat(row(id)).containsEntry("category_name", "Casa");
@@ -199,7 +199,7 @@ class CategoryCustomizationIntegrationTest {
     void repeatedNameAnywhereIsAConflictIgnoringCase() {
         atStepFive(List.of("housing", "food", "leisure"));
 
-        assertThatThrownBy(() -> categoryService.update(userId, named("Moradia").getId(), "alimentação", null, null))
+        assertThatThrownBy(() -> categoryService.update(userId, named("Moradia").getId(), "alimentação", null, null, null))
             .isInstanceOf(ConflictException.class).hasMessage(CategoryService.DUPLICATE_NAME_MESSAGE);
         assertThatThrownBy(() -> categoryService.create(userId, "MORADIA", "#3B82F6", "house", named("Essenciais").getId()))
             .isInstanceOf(ConflictException.class);
@@ -207,10 +207,10 @@ class CategoryCustomizationIntegrationTest {
         // Names are unique across every group (decision B): same name under another group is a conflict too
         assertThatThrownBy(() -> categoryService.create(userId, "Moradia", "#3B82F6", "house", named("Variáveis").getId()))
             .isInstanceOf(ConflictException.class);
-        assertThatThrownBy(() -> categoryService.update(userId, named("Lazer").getId(), "moradia", null, null))
+        assertThatThrownBy(() -> categoryService.update(userId, named("Lazer").getId(), "moradia", null, null, null))
             .isInstanceOf(ConflictException.class);
         // renaming to itself with another case is fine
-        assertThat(categoryService.update(userId, named("Lazer").getId(), "LAZER", null, null).getCategoryName())
+        assertThat(categoryService.update(userId, named("Lazer").getId(), "LAZER", null, null, null).getCategoryName())
             .isEqualTo("LAZER");
     }
 
@@ -231,13 +231,13 @@ class CategoryCustomizationIntegrationTest {
         UUID id = named("Moradia").getId();
         UUID group = named("Essenciais").getId();
 
-        assertThatThrownBy(() -> categoryService.update(userId, id, null, "#123456", null))
+        assertThatThrownBy(() -> categoryService.update(userId, id, null, "#123456", null, null))
             .isInstanceOf(BadRequestException.class).hasMessage(CategoryService.COLOR_INVALID_MESSAGE);
-        assertThatThrownBy(() -> categoryService.update(userId, id, null, null, "skull"))
+        assertThatThrownBy(() -> categoryService.update(userId, id, null, null, "skull", null))
             .isInstanceOf(BadRequestException.class).hasMessage(CategoryService.ICON_INVALID_MESSAGE);
         assertThatThrownBy(() -> categoryService.create(userId, "X", "red", "house", group))
             .isInstanceOf(BadRequestException.class);
-        assertThat(categoryService.update(userId, id, null, "#EC4899", "gift").getIconName()).isEqualTo("gift");
+        assertThat(categoryService.update(userId, id, null, "#EC4899", "gift", null).getIconName()).isEqualTo("gift");
     }
 
     @Test
@@ -269,13 +269,110 @@ class CategoryCustomizationIntegrationTest {
         categoryService.createFromSuggestions(other, List.of("leisure"));
         categoryRepository.flush();
 
-        // a child as parent (depth 2), another user's group, an unknown id, no parent
+        // a child as parent (depth 2), another user's group, an unknown id
         for (UUID parent : new UUID[] {named("Moradia").getId(), named(other, "Variáveis").getId(), UUID.randomUUID()}) {
             assertThatThrownBy(() -> categoryService.create(userId, "Pets", "#F59E0B", "paw-print", parent))
                 .isInstanceOf(BadRequestException.class).hasMessage(CategoryService.PARENT_INVALID_MESSAGE);
         }
-        assertThatThrownBy(() -> categoryService.create(userId, "Pets", "#F59E0B", "paw-print", null))
-            .isInstanceOf(BadRequestException.class).hasMessage(CategoryService.PARENT_REQUIRED_MESSAGE);
+    }
+
+    // ---- Story 6.2: create groups and move children ----
+
+    @Test
+    void createWithoutParentCreatesAGroupWithTheFirstFreeColorAndTheFolderIcon() {
+        atStepFive(List.of("housing", "leisure")); // groups #2563EB and #9333EA
+
+        Category home = categoryService.create(userId, " Casa ", null, null, null);
+        categoryRepository.flush();
+
+        assertThat(row(home.getId()))
+            .containsEntry("category_name", "Casa")
+            .containsEntry("parent_category_id", null)
+            .containsEntry("color_hex", "#3B82F6")
+            .containsEntry("icon_name", CategoryOptions.DEFAULT_ICON)
+            .containsEntry("is_system_default", false);
+        assertThat(categoryService.create(userId, "Lazer extra", "#ec4899", "gift", null).getColorHex())
+            .isEqualTo("#EC4899");
+        assertThatThrownBy(() -> categoryService.create(userId, "casa", null, null, null))
+            .isInstanceOf(ConflictException.class).hasMessage(CategoryService.DUPLICATE_NAME_MESSAGE);
+    }
+
+    @Test
+    void whenEveryPaletteColorIsUsedByAGroupANewGroupTakesTheFirst() {
+        for (String color : CategoryOptions.COLORS) {
+            categoryService.create(userId, "G" + color, color, null, null);
+        }
+        assertThat(categoryService.create(userId, "Mais um", null, null, null).getColorHex())
+            .isEqualTo(CategoryOptions.COLORS.get(0));
+    }
+
+    @Test
+    void movingAChildTakesTheNewGroupsColorOnlyWhenItHadTheOldOnes() {
+        atStepFive(List.of("housing", "leisure"));
+        UUID essentials = named("Essenciais").getId();
+        Category home = categoryService.create(userId, "Casa", "#14B8A6", null, null);
+        UUID inherited = categoryService.create(userId, "Pets", null, null, essentials).getId();
+        UUID own = categoryService.create(userId, "Viagem", "#EC4899", "plane", essentials).getId();
+        UUID both = categoryService.create(userId, "Academia", null, null, essentials).getId();
+
+        Category moved = categoryService.update(userId, inherited, null, null, null, home.getId());
+        assertThat(moved.getParentCategoryId()).isEqualTo(home.getId());
+        assertThat(moved.getColorHex()).isEqualTo("#14B8A6");
+        assertThat(categoryService.update(userId, own, null, null, null, home.getId()).getColorHex())
+            .isEqualTo("#EC4899");
+        assertThat(categoryService.update(userId, both, null, "#f59e0b", null, home.getId()).getColorHex())
+            .isEqualTo("#F59E0B");
+        categoryRepository.flush();
+
+        assertThat(row(inherited)).containsEntry("parent_category_id", home.getId()).containsEntry("color_hex", "#14B8A6");
+        assertThat(row(own)).containsEntry("parent_category_id", home.getId());
+        assertThat(row(both)).containsEntry("parent_category_id", home.getId());
+    }
+
+    @Test
+    void movingToTheSameGroupChangesNothing() {
+        atStepFive(List.of("housing"));
+        UUID essentials = named("Essenciais").getId();
+        UUID pets = categoryService.create(userId, "Pets", null, null, essentials).getId();
+
+        Category same = categoryService.update(userId, pets, null, null, null, essentials);
+
+        assertThat(same.getParentCategoryId()).isEqualTo(essentials);
+        assertThat(same.getColorHex()).isEqualTo("#2563EB");
+    }
+
+    @Test
+    void aGroupCannotMoveAndTheTargetMustBeAnActiveGroupOfTheUser() {
+        atStepFive(List.of("housing", "leisure", "clothing"));
+        UUID other = newUser();
+        categoryService.createFromSuggestions(other, List.of("leisure"));
+        UUID essentials = named("Essenciais").getId();
+        UUID housing = named("Moradia").getId();
+        UUID removed = categoryService.create(userId, "Vazio", null, null, null).getId();
+        categoryService.delete(userId, removed);
+        categoryRepository.flush();
+
+        assertThatThrownBy(() -> categoryService.update(userId, essentials, null, null, null, named("Variáveis").getId()))
+            .isInstanceOf(BadRequestException.class).hasMessage(CategoryService.GROUP_CANNOT_MOVE_MESSAGE);
+        for (UUID target : new UUID[] {named(other, "Variáveis").getId(), removed, named("Lazer").getId(), housing,
+            UUID.randomUUID()}) {
+            assertThatThrownBy(() -> categoryService.update(userId, housing, null, null, null, target))
+                .isInstanceOf(BadRequestException.class).hasMessage(CategoryService.PARENT_INVALID_MESSAGE);
+        }
+        assertThat(row(housing)).containsEntry("parent_category_id", essentials);
+    }
+
+    @Test
+    void movingTheLastChildLeavesTheEmptyGroupInTheList() {
+        atStepFive(List.of("housing", "leisure"));
+        UUID variable = named("Variáveis").getId();
+
+        categoryService.update(userId, named("Moradia").getId(), null, null, null, variable);
+        categoryRepository.flush();
+
+        assertThat(categoryService.listActive(userId)).extracting(Category::getCategoryName)
+            .containsExactly("Essenciais", "Lazer", "Moradia", "Variáveis");
+        assertThat(named("Moradia").getParentCategoryId()).isEqualTo(variable);
     }
 
     @Test
@@ -328,12 +425,12 @@ class CategoryCustomizationIntegrationTest {
         atStepFive(ALL_KEYS);
         UUID essentials = named("Essenciais").getId();
 
-        assertThat(categoryService.update(userId, essentials, "Básicos", "#64748B", "wallet").getCategoryName())
+        assertThat(categoryService.update(userId, essentials, "Básicos", "#64748B", "wallet", null).getCategoryName())
             .isEqualTo("Básicos");
-        assertThatThrownBy(() -> categoryService.update(userId, essentials, "financeiro", null, null))
+        assertThatThrownBy(() -> categoryService.update(userId, essentials, "financeiro", null, null, null))
             .isInstanceOf(ConflictException.class);
         // a group cannot take the name of any child either
-        assertThatThrownBy(() -> categoryService.update(userId, essentials, "Moradia", null, null))
+        assertThatThrownBy(() -> categoryService.update(userId, essentials, "Moradia", null, null, null))
             .isInstanceOf(ConflictException.class);
         assertThatThrownBy(() -> categoryService.create(userId, "básicos", "#3B82F6", "house", named("Variáveis").getId()))
             .isInstanceOf(ConflictException.class);
@@ -347,14 +444,14 @@ class CategoryCustomizationIntegrationTest {
         categoryRepository.flush();
         UUID theirs = named(other, "Lazer").getId();
 
-        assertThatThrownBy(() -> categoryService.update(userId, theirs, "X", null, null))
+        assertThatThrownBy(() -> categoryService.update(userId, theirs, "X", null, null, null))
             .isInstanceOf(ResourceNotFoundException.class);
         assertThatThrownBy(() -> categoryService.delete(userId, theirs))
             .isInstanceOf(ResourceNotFoundException.class);
 
         UUID housing = named("Moradia").getId();
         categoryService.delete(userId, housing);
-        assertThatThrownBy(() -> categoryService.update(userId, housing, "X", null, null))
+        assertThatThrownBy(() -> categoryService.update(userId, housing, "X", null, null, null))
             .isInstanceOf(ResourceNotFoundException.class);
         assertThatThrownBy(() -> categoryService.delete(userId, housing))
             .isInstanceOf(ResourceNotFoundException.class);
@@ -376,9 +473,9 @@ class CategoryCustomizationIntegrationTest {
         atStepFive(List.of("housing"));
         UUID id = named("Moradia").getId();
 
-        assertThatThrownBy(() -> categoryService.update(userId, id, "\u200B\uFEFF \u200B", null, null))
+        assertThatThrownBy(() -> categoryService.update(userId, id, "\u200B\uFEFF \u200B", null, null, null))
             .isInstanceOf(BadRequestException.class).hasMessage(CategoryService.NAME_REQUIRED_MESSAGE);
-        assertThat(categoryService.update(userId, id, "\uFEFFCasa\u200B", null, null).getCategoryName()).isEqualTo("Casa");
+        assertThat(categoryService.update(userId, id, "\uFEFFCasa\u200B", null, null, null).getCategoryName()).isEqualTo("Casa");
     }
 
     @Test

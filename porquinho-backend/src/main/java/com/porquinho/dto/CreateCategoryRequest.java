@@ -5,16 +5,15 @@ import com.porquinho.service.CategoryOptions;
 import com.porquinho.service.CategoryService;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import java.util.UUID;
 
 /**
- * POST /api/v1/categories (Story 3.5): a custom category inside one of the user's groups. The name is stripped
+ * POST /api/v1/categories (Story 3.5): a custom category inside one of the user's groups, or a group. The name is stripped
  * of leading/trailing whitespace (Unicode spaces included) before validation. The color and the icon are optional
  * (Story 6.1: missing or blank = the group's color and the "folder" icon); when sent they must come from
- * GET /api/v1/categories/options. parentId is required: every category created here is a child of a group.
+ * GET /api/v1/categories/options. Without parentId a new group is created (Story 6.2).
  */
 public record CreateCategoryRequest(
     @NotBlank(message = CategoryService.NAME_REQUIRED_MESSAGE)
@@ -25,7 +24,6 @@ public record CreateCategoryRequest(
 
     String iconName,
 
-    @NotNull(message = CategoryService.PARENT_REQUIRED_MESSAGE)
     UUID parentId
 ) {
     public CreateCategoryRequest {
