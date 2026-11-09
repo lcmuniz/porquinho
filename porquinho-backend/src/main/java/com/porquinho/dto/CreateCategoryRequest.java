@@ -12,18 +12,17 @@ import java.util.UUID;
 
 /**
  * POST /api/v1/categories (Story 3.5): a custom category inside one of the user's groups. The name is stripped
- * of leading/trailing whitespace (Unicode spaces included) before validation. The color and the icon must come
- * from GET /api/v1/categories/options. parentId is required: creating groups comes in Epic 6 (decision A).
+ * of leading/trailing whitespace (Unicode spaces included) before validation. The color and the icon are optional
+ * (Story 6.1: missing or blank = the group's color and the "folder" icon); when sent they must come from
+ * GET /api/v1/categories/options. parentId is required: every category created here is a child of a group.
  */
 public record CreateCategoryRequest(
     @NotBlank(message = CategoryService.NAME_REQUIRED_MESSAGE)
     @Size(max = 50, message = CategoryService.NAME_TOO_LONG_MESSAGE)
     String name,
 
-    @NotBlank(message = CategoryService.COLOR_INVALID_MESSAGE)
     String colorHex,
 
-    @NotBlank(message = CategoryService.ICON_INVALID_MESSAGE)
     String iconName,
 
     @NotNull(message = CategoryService.PARENT_REQUIRED_MESSAGE)
@@ -33,14 +32,14 @@ public record CreateCategoryRequest(
         name = CategoryService.cleanName(name);
     }
 
-    /** Bean Validation property "colorAllowed"; a missing color is reported by @NotBlank instead. */
+    /** Bean Validation property "colorAllowed"; a missing color is allowed (the group's color is used). */
     @JsonIgnore
     @AssertTrue(message = CategoryService.COLOR_INVALID_MESSAGE)
     public boolean isColorAllowed() {
         return colorHex == null || colorHex.isBlank() || CategoryOptions.isAllowedColor(colorHex);
     }
 
-    /** Bean Validation property "iconAllowed"; a missing icon is reported by @NotBlank instead. */
+    /** Bean Validation property "iconAllowed"; a missing icon is allowed (CategoryOptions.DEFAULT_ICON is used). */
     @JsonIgnore
     @AssertTrue(message = CategoryService.ICON_INVALID_MESSAGE)
     public boolean isIconAllowed() {

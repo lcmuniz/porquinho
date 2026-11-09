@@ -30,11 +30,14 @@ export interface CategoryOptions {
   icons: string[]
 }
 
-/** Story 3.5: corpo do POST /api/v1/categories (categoria nova dentro de um grupo). */
+/**
+ * Story 3.5: corpo do POST /api/v1/categories (categoria nova dentro de um grupo). Story 6.1: cor e ícone
+ * opcionais; sem eles o backend usa a cor do grupo e o ícone `folder`.
+ */
 export interface CreateCategoryInput {
   name: string
-  colorHex: string
-  iconName: string
+  colorHex?: string
+  iconName?: string
   parentId: string
 }
 

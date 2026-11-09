@@ -109,6 +109,13 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      // Story 6.1: categorias de gasto (lista por grupo e criação)
+      path: '/categorias',
+      name: 'categories',
+      component: () => import('../views/CategoriesView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       // Story 2.2: plano mensal (Stripe Checkout). Retorno do Checkout: ?status=sucesso|cancelado
       path: '/assinatura',
       name: 'subscription',

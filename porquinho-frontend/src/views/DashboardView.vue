@@ -121,6 +121,13 @@
             Transações
           </RouterLink>
           <RouterLink
+            to="/categorias"
+            data-testid="categories-link"
+            class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+          >
+            Categorias
+          </RouterLink>
+          <RouterLink
             to="/auth/sessions"
             class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
           >
