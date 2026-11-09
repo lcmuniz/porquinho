@@ -218,3 +218,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/epic-5-retro-2026-11-09.md`
   summary: Editar a data de uma parcela (5.12) para longe da data esperada faz o InstallmentPlanner abrir um grupo novo e recriar futuras já removidas (Q2).
   evidence: InstallmentPlanner.findGroup/nearExpectedDate comparam com a data do membro mais próximo (tolerância de 20 dias); remover futuras + mover a data da parcela em ~25 dias quebra o agrupamento. Achado X4 da retro do Epic 5.
+- source_spec: `_bmad-output/implementation-artifacts/spec-e5-retro-25-nucleo-unico-transacao.md`
+  summary: Concluir uma importação de conta com mais de ~32 mil linhas no saldo falha no limite de parâmetros do Postgres (`TransactionRepository.markInBalance` usa `IN :ids`).
+  evidence: O limite do protocolo do Postgres é 32767 parâmetros por query; o upload limita só o tamanho (10 MB), não as linhas. A query antiga (`markAffectsBalance` por importId e data) não tinha esse limite. Correção possível: marcar em lotes de ids. Raro na prática (extrato mensal tem centenas de linhas).
