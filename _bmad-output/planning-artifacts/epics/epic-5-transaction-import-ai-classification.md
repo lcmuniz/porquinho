@@ -7,7 +7,7 @@ Usuários podem fazer upload de arquivos OFX/CSV dos 5 principais bancos brasile
 > **Decisões:**
 > - **D1 — transação de conta ou de cartão:** cada transação pertence a exatamente uma conta (`account_id`) ou um cartão (`credit_card_id`).
 > - **D2 — destino escolhido antes do upload:** o usuário escolhe a conta ou o cartão antes de enviar o arquivo. O OFX só confirma ou sugere.
-> - **D3 — saldo:** só transações de conta com data **posterior à data de referência do saldo** alteram `current_balance`. A data de referência é a do último snapshot `initial`, `edit` ou `reconciliation` da conta. A mudança passa sempre pelo `BalanceHistoryRecorder` (regra 8 da arquitetura). Transações de cartão nunca alteram saldo de conta.
+> - **D3 — saldo:** só transações de conta com data **posterior à data de referência do saldo** alteram `current_balance`. A data de referência é a do último snapshot `initial`, `edit` ou `reconciliation` da conta. A mudança passa sempre pelo `BalanceHistoryRecorder` (regra 8 da arquitetura). Transações de cartão nunca alteram saldo de conta. Conciliar ou editar o saldo absorve as linhas que estavam nele (`affects_balance=false`): removê-las ou editá-las depois na mesma conta não muda o saldo informado pelo usuário (retro do Epic 5, X2).
 > - **D4 — transferências já registradas:** um lançamento que corresponde a uma transferência da Story 4.5 (mesma conta, data ±1 dia, mesmo valor, sentido certo) não é importado.
 > - **D5 — IA:** Claude Haiku 5.5 (`claude-haiku-5-5`) via API da Anthropic. CPF e CNPJ são mascarados antes do envio.
 > - **D6 — sem arquivos reais:** os parsers são escritos e testados com amostras fictícias em `porquinho-backend/src/test/resources/import-samples/` (ver o README de lá; CSV com confiança baixa a média). O OFX é o formato principal; o CSV de cada banco é validado quando houver um arquivo real.
@@ -18,7 +18,7 @@ Usuários podem fazer upload de arquivos OFX/CSV dos 5 principais bancos brasile
 >
 > **Convenções do código atual:** PK `id` UUID, `user_id` indexado, `deleted_at`, dinheiro em `DECIMAL(15,2)`. Migrations na próxima versão livre (V25 em 2026-11-04; as do texto original, V15–V18, já existem com outro conteúdo). Toda tabela nova entra no export e no purge LGPD (Stories 1.6/1.7) na mesma story que a cria. Categorias já existem (`categories`, Story 3.4); contas, cartões, transferências e histórico de saldo também (Epic 4).
 >
-> **Fora deste épico:** atualizar o orçamento da categoria (Epic 6, ainda sem alocações); cache e Camadas do Dashboard GPS (Epic 7, o cache ainda não existe); métrica "precisão da IA no mês" (Epic 10).
+> **Fora deste épico:** atualizar o orçamento da categoria (Epic 6, ainda sem alocações); cache e Camadas do Dashboard GPS (Epic 7, o cache ainda não existe); métrica "precisão da IA no mês" (Epic 10). As metas de precisão do PRD (85%+ após 1 mês, 90%+ após 3 meses) também são medidas no Epic 10: este épico não as mede (retro do Epic 5, S5).
 
 ## Story 5.1: Upload OFX Files from 5 Brazilian Banks
 
@@ -134,6 +134,7 @@ So that users don't have duplicate entries inflating their data.
 **And** When either external_id is missing, or both exist but differ and the existing transaction came from an import of the other format (OFX × CSV: banks use different ids in each format; within the same format a different id is a different transaction, decision 4A), it is a duplicate when it matches an existing transaction of the same account or card on: date ±1 day, same amount and type, similar description (Levenshtein similarity 90%+ after normalization, or the shorter text with 10+ characters is a prefix of the longer one — the BB OFX truncates the MEMO) (rule P1)
 **And** Each existing transaction or transfer absorbs at most one entry per import; entries of the same file are not compared with each other
 **And** Duplicates are NOT saved
+**And** Retro Epic 5, X1: a confirmed transaction the user removed (Story 5.12) is still a candidate, so it does not come back with an overlapping statement; the rows of a discarded import (never confirmed) are not candidates
 **And** A debit/credit that matches a transfer already registered in Story 4.5 (same account, date ±1 day, same amount, matching direction) is not saved either and is counted apart: "N transferências já registradas" (D4)
 **And** Import record is updated with duplicates_found
 **And** User notification shows: "X duplicatas detectadas e ignoradas"
@@ -212,7 +213,7 @@ So that users save time and don't have to manually categorize everything.
 **And** After classification, the import status becomes 'REVIEW' and Story 5.9 is shown
 **And** User patterns are not applied here: `user_classification_patterns` does not exist yet, and Story 5.11 starts applying them before the AI call
 **And** Decision 1A (Luiz, 2026-11-06): the future installments created by the import inherit category, source and confidence from the installment in the file (same group, same import). They do not go to the AI, do not count in Y and get no history row
-**And** Decision 2A (Luiz, 2026-11-06): this story delivers sequential batches of up to 100, with no real-time test. NFR7 stays pending until there is an `ANTHROPIC_API_KEY` (see deferred-work)
+**And** Decision 2A (Luiz, 2026-11-06, revised after measuring with the real key): one call of 100 took 5.5–6.7 s, so each batch of 100 goes out as 4 parallel calls of up to 25; batches stay sequential, with progress and transaction per batch, and a failed call leaves only its rows "Não classificado". Measured after the change: 2.0–2.2 s per batch of 100 (3.3 s on the first run). NFR7 is met by manual measurement; there is no automated test against the real API
 
 ---
 
@@ -320,6 +321,13 @@ So that I can correct errors or update transaction details.
 **When** I use the action "Remover parcelas futuras desta compra" on any installment of that purchase
 **Then** The future installments of its installment_group_id are removed (soft delete) and the confirmed installments stay as they are, so I can handle a refund or an early payoff (decision 5A of Story 5.7)
 
+**Decisions (Luiz, 2026-11-09):**
+- **Q1:** the list shows one month at a time (default: current month, São Paulo), `GET /api/v1/transactions?month=YYYY-MM`, newest first; future installments are not listed
+- **Q2:** the removal is durable: `V31` adds `transactions.installment_futures_removed_at`, written on the active rows of the group; the `InstallmentPlanner` creates no futures for a marked group; the column is in the export
+- **Q3:** removing the last active confirmed installment of a purchase also removes its active futures and marks the group; the confirmation dialog says how many go along
+- **Q4:** on an installment, card/account and type cannot change (400); amount, date, description and category change on that row only
+- **Q5:** the learning of Story 5.11 uses the bank's text (the description before the edit)
+
 ---
 
 ## Story 5.13: Manually Add Transactions (Cash Expenses)
@@ -339,10 +347,11 @@ So that I have a complete record of all my spending.
   - Type (debit/credit)
   - Category (required)
   - Account or card (required)
-  - Payment method (optional: Dinheiro, Débito, Crédito, Pix, Transferência)
 **And** New transaction is created with user_id from JWT, import_id NULL, classification_source='USER', confidence 100, review_status='CONFIRMED'
 **And** The balance effect follows D3: an account transaction dated after the balance reference date changes `current_balance` through `BalanceHistoryRecorder`; card transactions do not
 **And** Transaction appears immediately in the list
 **And** Success message: "Transação adicionada"
 **And** Form validation: description required, amount > 0, category required, account or card required
 **And** Category budget update is Epic 6
+**And** Decision Q1 (Luiz, 2026-11-09): no "Payment method" field: the account or card already says where the money came from; no migration
+**And** Decision Q2 (Luiz, 2026-11-09): cash goes to an ordinary "Carteira" account; with no active account, the dialog shows "Para gastos em dinheiro, cadastre uma conta Carteira em Contas"
