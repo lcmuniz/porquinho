@@ -320,7 +320,7 @@ action_items:
     epic: 5
     action: "Reconciliar texto do Epic 5 com o construído (S1, S2, S5, S6)"
     owner: "Luiz / Claude"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-5-retro-2026-11-09.md"
   - id: "epic-5-retro-item-24-checklist-pré-produção-do-epic-5-transfe"
     epic: 5
