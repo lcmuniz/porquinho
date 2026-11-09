@@ -283,6 +283,10 @@ So that future classifications become more accurate for each user.
 **And** In future imports, a matching pattern classifies the transaction without the AI (Story 5.8), with classification_source='PATTERN'
 **And** A pattern whose category was deleted is ignored
 **And** Learning is user-specific (isolated per user_id)
+**And** Decision Q1 (Luiz, 2026-11-09): a `PATTERN` row gets confidence 100 and falls in High; its future installments inherit it, it does not go to the AI, does not count in Y and gets no history row
+**And** Decision Q2 (Luiz, 2026-11-09): every category the user saves teaches, whether a correction, a confirmation or a row without history. The same category as the pattern adds 1 to usage_count; a new pattern or another category is written with count 1
+**And** Decision Q3 (Luiz, 2026-11-09): learning happens when the category is saved; discarding the import does not undo the pattern
+**And** Decision Q4 (Luiz, 2026-11-09): a pattern made only of generic bank terms (pix, ted, doc, transf, pagamento, boleto, compra, débito, crédito, enviado, recebido, tarifa, saque, depósito…) neither learns nor matches, and the row goes to the AI
 
 ---
 

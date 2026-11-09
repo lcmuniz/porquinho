@@ -59,15 +59,16 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
     List<Transaction> findClassifiableByImport(@Param("userId") UUID userId, @Param("importId") UUID importId);
 
     /**
-     * Writes the classification of one row (Story 5.8). Only these columns: an import running at the same time may be
-     * changing the same rows, and saving the entity would write all of them back.
+     * Writes the classification of one row, by the AI (Story 5.8) or by a pattern of the user (Story 5.11). Only these
+     * columns: an import running at the same time may be changing the same rows, and saving the entity would write all
+     * of them back.
      */
     @Modifying
     @Query("UPDATE Transaction t SET t.categoryId = :categoryId, t.classificationConfidence = :confidence, "
-        + "t.classificationSource = com.porquinho.entity.Transaction.ClassificationSource.AI, t.updatedAt = :now "
-        + "WHERE t.id = :id")
-    int applyAiClassification(@Param("id") UUID id, @Param("categoryId") UUID categoryId,
-                              @Param("confidence") int confidence, @Param("now") OffsetDateTime now);
+        + "t.classificationSource = :source, t.updatedAt = :now WHERE t.id = :id")
+    int applyClassification(@Param("id") UUID id, @Param("categoryId") UUID categoryId,
+                            @Param("confidence") int confidence, @Param("source") Transaction.ClassificationSource source,
+                            @Param("now") OffsetDateTime now);
 
     /**
      * Story 5.8, decision 1A: the future installments that import {@code importId} created for a purchase inherit the
@@ -75,12 +76,17 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
      */
     @Modifying
     @Query("UPDATE Transaction t SET t.categoryId = :categoryId, t.classificationConfidence = :confidence, "
-        + "t.classificationSource = com.porquinho.entity.Transaction.ClassificationSource.AI, t.updatedAt = :now "
+        + "t.classificationSource = :source, t.updatedAt = :now "
         + "WHERE t.importId = :importId AND t.installmentGroupId = :groupId AND t.futureInstallment = true "
         + "AND t.deletedAt IS NULL")
-    int applyAiClassificationToFutures(@Param("importId") UUID importId, @Param("groupId") UUID groupId,
-                                       @Param("categoryId") UUID categoryId, @Param("confidence") int confidence,
-                                       @Param("now") OffsetDateTime now);
+    int applyClassificationToFutures(@Param("importId") UUID importId, @Param("groupId") UUID groupId,
+                                     @Param("categoryId") UUID categoryId, @Param("confidence") int confidence,
+                                     @Param("source") Transaction.ClassificationSource source,
+                                     @Param("now") OffsetDateTime now);
+
+    /** The descriptions of the user's transactions {@code ids} (Story 5.11: what the user's choice teaches). */
+    @Query("SELECT t.description FROM Transaction t WHERE t.userId = :userId AND t.id IN :ids")
+    List<String> findDescriptions(@Param("userId") UUID userId, @Param("ids") Collection<UUID> ids);
 
     /**
      * The rows of import {@code importId} shown in the review (Story 5.9, decision 2A): card payments included, future

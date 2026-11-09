@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.AdditionalAnswers;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -131,6 +132,7 @@ class TransactionImportIntegrationTest {
             jdbc.update("UPDATE transaction_imports SET status = 'FAILED' WHERE user_id = ? AND status = 'PROCESSING'", id);
             jdbc.update("DELETE FROM audit_logs WHERE user_id = ?", id);
             jdbc.update("DELETE FROM ai_classification_history WHERE user_id = ?", id);
+            jdbc.update("DELETE FROM user_classification_patterns WHERE user_id = ?", id);
             jdbc.update("DELETE FROM transactions WHERE user_id = ?", id);
             jdbc.update("DELETE FROM transfers WHERE user_id = ?", id);
             jdbc.update("DELETE FROM transaction_imports WHERE user_id = ?", id);
@@ -1222,8 +1224,8 @@ class TransactionImportIntegrationTest {
             });
 
         // an answer of the first import arriving now: only what is still future changes
-        transactionTemplate.executeWithoutResult(status -> transactionRepository.applyAiClassificationToFutures(first,
-            group, lazer, 40, java.time.OffsetDateTime.now()));
+        transactionTemplate.executeWithoutResult(status -> transactionRepository.applyClassificationToFutures(first,
+            group, lazer, 40, com.porquinho.entity.Transaction.ClassificationSource.AI, java.time.OffsetDateTime.now()));
 
         assertThat(futuresOf(first)).filteredOn(t -> group.equals(t.get("installment_group_id"))).hasSize(6)
             .allSatisfy(t -> assertThat(t.get("classification_confidence")).isEqualTo(40));
@@ -1633,6 +1635,85 @@ class TransactionImportIntegrationTest {
         } finally {
             release.countDown();
         }
+    }
+
+    private static MockMultipartFile cardCsv(String lines) {
+        return new MockMultipartFile("file", "fatura.csv", "text/csv",
+            ("date,title,amount\n" + lines).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    /** The descriptions the AI received since the last {@code clearInvocations}. */
+    @SuppressWarnings("unchecked")
+    private List<String> sentToTheAi() {
+        ArgumentCaptor<List<TransactionClassifier.Item>> items = ArgumentCaptor.forClass(List.class);
+        Mockito.verify(classifier, Mockito.atLeast(0)).classify(items.capture(), any());
+        return items.getAllValues().stream().flatMap(List::stream).map(TransactionClassifier.Item::description).toList();
+    }
+
+    private Map<String, Object> byDescription(UUID importId, String description) {
+        return jdbc.queryForMap("SELECT * FROM transactions WHERE import_id = ? AND description = ?", importId,
+            description);
+    }
+
+    /** Story 5.11, AC: a correction saved in the review classifies the same purchase of the next week without the AI. */
+    @Test
+    void aCorrectionClassifiesTheNextImportWithoutTheAi() throws Exception {
+        childCategory(userId, "Mercado");
+        UUID restaurante = childCategory(userId, "Restaurante");
+        UUID nubank = card(userId, "Nubank");
+        everyItemGets("Mercado", 90);
+        UUID first = transactionImportService.create(userId, null, nubank,
+            cardCsv("2026-11-02,UBER *TRIP 12/03,25.00\n2026-11-02,Padaria do Bairro,12.50\n"), "127.0.0.1").id();
+        assertThat(awaitDone(first).get("status")).isEqualTo("REVIEW");
+        UUID uber = (UUID) byDescription(first, "UBER *TRIP 12/03").get("id");
+
+        reviewService.updateCategory(userId, first, new UpdateImportCategoryRequest(List.of(uber), restaurante),
+            "127.0.0.1");
+
+        assertThat(jdbc.queryForMap("SELECT * FROM ai_classification_history WHERE transaction_id = ?", uber))
+            .containsEntry("was_corrected", true).containsEntry("corrected_category_id", restaurante);
+        String lastUsed = "SELECT last_used_at FROM user_classification_patterns WHERE user_id = ? "
+            + "AND description_pattern = 'uber trip'";
+        java.time.OffsetDateTime learnedAt = jdbc.queryForObject(lastUsed, java.time.OffsetDateTime.class, userId);
+        Mockito.clearInvocations(classifier);
+
+        UUID next = transactionImportService.create(userId, null, nubank,
+            cardCsv("2026-11-09,Uber Trip 15/04,31.90\n2026-11-09,Farmacia Central,8.00\n"), "127.0.0.1").id();
+
+        Map<String, Object> row = awaitDone(next);
+        assertThat(row.get("status")).isEqualTo("REVIEW");
+        assertThat(byDescription(next, "Uber Trip 15/04")).containsEntry("category_id", restaurante)
+            .containsEntry("classification_source", "PATTERN").containsEntry("classification_confidence", 100);
+        assertThat(sentToTheAi()).containsExactly("Farmacia Central");
+        assertThat(row.get("classification_total")).isEqualTo(1);
+        assertThat(jdbc.queryForObject(lastUsed, java.time.OffsetDateTime.class, userId)).isAfter(learnedAt);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM ai_classification_history h JOIN transactions t "
+            + "ON t.id = h.transaction_id WHERE t.import_id = ?", Long.class, next)).isEqualTo(1);
+
+        // another user's import with the same description does not use the pattern
+        UUID other = newUser();
+        childCategory(other, "Mercado");
+        UUID othersCard = card(other, "Nubank");
+        Mockito.clearInvocations(classifier);
+        UUID othersImport = transactionImportService.create(other, null, othersCard,
+            cardCsv("2026-11-09,Uber Trip 15/04,31.90\n"), "127.0.0.1").id();
+        assertThat(awaitDone(othersImport).get("status")).isEqualTo("REVIEW");
+        assertThat(sentToTheAi()).containsExactly("Uber Trip 15/04");
+
+        // the category of the pattern removed: the row goes to the AI again
+        jdbc.update("UPDATE categories SET deleted_at = now() WHERE id = ?", restaurante);
+        Mockito.clearInvocations(classifier);
+        UUID afterRemoval = transactionImportService.create(userId, null, nubank,
+            cardCsv("2026-11-16,UBER TRIP,19.00\n"), "127.0.0.1").id();
+        assertThat(awaitDone(afterRemoval).get("status")).isEqualTo("REVIEW");
+        assertThat(sentToTheAi()).containsExactly("UBER TRIP");
+        assertThat(byDescription(afterRemoval, "UBER TRIP")).containsEntry("classification_source", "AI");
+
+        @SuppressWarnings("unchecked")
+        var exported = (List<Map<String, Object>>) dataExportService.collectUserData(userId)
+            .get("user_classification_patterns");
+        assertThat(exported).singleElement().satisfies(p -> assertThat(p).containsOnlyKeys("id", "user_id",
+            "description_pattern", "preferred_category_id", "usage_count", "last_used_at", "created_at"));
     }
 
     private UUID insertProcessing(UUID accountId, String age, String bank) {

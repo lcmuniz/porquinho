@@ -44,6 +44,10 @@ class TransactionImportReviewServiceTest {
     private TransactionImportReviewService reviewService;
     @Autowired
     private JdbcTemplate jdbc;
+    @Autowired
+    private com.porquinho.repository.UserClassificationPatternRepository patternRepository;
+    @Autowired
+    private org.springframework.transaction.support.TransactionTemplate transactionTemplate;
     /** Never the real client: nothing here goes to the AI. */
     @MockitoBean
     private TransactionClassifier classifier;
@@ -62,6 +66,8 @@ class TransactionImportReviewServiceTest {
     void tearDown() {
         for (UUID id : users) {
             jdbc.update("DELETE FROM audit_logs WHERE user_id = ?", id);
+            jdbc.update("DELETE FROM ai_classification_history WHERE user_id = ?", id);
+            jdbc.update("DELETE FROM user_classification_patterns WHERE user_id = ?", id);
             jdbc.update("DELETE FROM transactions WHERE user_id = ?", id);
             jdbc.update("DELETE FROM transaction_imports WHERE user_id = ?", id);
             jdbc.update("DELETE FROM account_balance_history WHERE user_id = ?", id);
@@ -899,5 +905,111 @@ class TransactionImportReviewServiceTest {
         reviewService.discard(userId, creator, IP);
 
         assertThat(rowOf(confirmed)).containsEntry("import_id", confirmer).containsEntry("review_status", "CONFIRMED");
+    }
+
+    // Story 5.11
+
+    private UUID rowWithDescription(UUID importId, String description) {
+        UUID id = newRow(importId, 60, null);
+        jdbc.update("UPDATE transactions SET description = ? WHERE id = ?", description, id);
+        return id;
+    }
+
+    private void predicted(UUID transactionId, UUID categoryId) {
+        jdbc.update("INSERT INTO ai_classification_history (user_id, transaction_id, predicted_category_id, confidence) "
+            + "VALUES (?, ?, ?, 60)", userId, transactionId, categoryId);
+    }
+
+    private Map<String, Object> historyOf(UUID transactionId) {
+        return jdbc.queryForMap("SELECT * FROM ai_classification_history WHERE transaction_id = ?", transactionId);
+    }
+
+    private List<Map<String, Object>> patterns() {
+        return jdbc.queryForList("SELECT * FROM user_classification_patterns WHERE user_id = ?", userId);
+    }
+
+    @Test
+    void aCorrectionIsRecordedAndSavingAgainRecomputesItAndTheCounter() {
+        UUID review = newImport("REVIEW");
+        UUID group = newCategory("Alimentação", null);
+        UUID mercado = newCategory("Mercado", group);
+        UUID restaurante = newCategory("Restaurante", group);
+        UUID row = rowWithDescription(review, "UBER *TRIP 12/03 PARC 02/05");
+        predicted(row, mercado);
+
+        reviewService.updateCategory(userId, review, edit(restaurante, row), IP);
+
+        assertThat(historyOf(row)).containsEntry("was_corrected", true).containsEntry("corrected_category_id", restaurante);
+        assertThat(patterns()).singleElement().satisfies(p -> {
+            assertThat(p.get("description_pattern")).isEqualTo("uber trip");
+            assertThat(p.get("preferred_category_id")).isEqualTo(restaurante);
+            assertThat(p.get("usage_count")).isEqualTo(1);
+        });
+
+        // back to the suggestion: no correction, and the pattern starts again with the other category
+        reviewService.updateCategory(userId, review, edit(mercado, row), IP);
+        assertThat(historyOf(row)).containsEntry("was_corrected", false).containsEntry("corrected_category_id", null);
+        assertThat(patterns()).singleElement().satisfies(p -> {
+            assertThat(p.get("preferred_category_id")).isEqualTo(mercado);
+            assertThat(p.get("usage_count")).isEqualTo(1);
+        });
+
+        // the same category again (decision Q2)
+        reviewService.updateCategory(userId, review, edit(mercado, row), IP);
+        assertThat(patterns()).singleElement().satisfies(p -> assertThat(p.get("usage_count")).isEqualTo(2));
+    }
+
+    @Test
+    void aRowWithoutHistoryTeachesAndEqualDescriptionsMakeOnePattern() {
+        UUID review = newImport("REVIEW");
+        UUID transporte = newCategory("Transporte", newCategory("Mobilidade", null));
+        UUID first = rowWithDescription(review, "UBER TRIP 01/11");
+        UUID second = rowWithDescription(review, "Uber Trip");
+        UUID third = rowWithDescription(review, "uber *trip");
+        UUID number = rowWithDescription(review, "123456");
+
+        reviewService.updateCategory(userId, review, edit(transporte, first, second, third, number), IP);
+
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM ai_classification_history WHERE user_id = ?", Long.class,
+            userId)).isZero();
+        assertThat(patterns()).singleElement().satisfies(p -> {
+            assertThat(p.get("description_pattern")).isEqualTo("uber trip");
+            assertThat(p.get("preferred_category_id")).isEqualTo(transporte);
+            assertThat(p.get("usage_count")).isEqualTo(1);
+        });
+    }
+
+    @Test
+    void onlyGenericBankingTermsTeachNothingButANameMakesThemPartOfThePattern() {
+        UUID review = newImport("REVIEW");
+        UUID transporte = newCategory("Transporte", newCategory("Mobilidade", null));
+
+        reviewService.updateCategory(userId, review, edit(transporte, rowWithDescription(review, "PIX 98765"),
+            rowWithDescription(review, "PAGAMENTO BOLETO 3421"), rowWithDescription(review, "PIX TRANSF JOAO SILVA")), IP);
+
+        assertThat(patterns()).singleElement()
+            .satisfies(p -> assertThat(p.get("description_pattern")).isEqualTo("pix transf joao silva"));
+    }
+
+    @Test
+    void theUsablePatternsAreTheUsersWithAnActiveChildCategoryAndThePurgeTakesThemAll() {
+        UUID review = newImport("REVIEW");
+        UUID group = newCategory("Alimentação", null);
+        UUID mercado = newCategory("Mercado", group);
+        UUID removed = newCategory("Antiga", group);
+        UUID turnedGroup = newCategory("Virou grupo", group);
+        reviewService.updateCategory(userId, review, edit(mercado, rowWithDescription(review, "PADARIA")), IP);
+        reviewService.updateCategory(userId, review, edit(removed, rowWithDescription(review, "UBER")), IP);
+        reviewService.updateCategory(userId, review, edit(turnedGroup, rowWithDescription(review, "IFOOD")), IP);
+        jdbc.update("UPDATE categories SET deleted_at = now() WHERE id = ?", removed);
+        jdbc.update("UPDATE categories SET parent_category_id = NULL WHERE id = ?", turnedGroup);
+        UUID other = newUser();
+
+        assertThat(patternRepository.findUsableByUserId(other)).isEmpty();
+        assertThat(patternRepository.findUsableByUserId(userId)).singleElement()
+            .satisfies(p -> assertThat(p.getDescriptionPattern()).isEqualTo("padaria"));
+        Integer purged = transactionTemplate.execute(status -> patternRepository.deleteByUserId(userId));
+        assertThat(purged).isEqualTo(3);
+        assertThat(patternRepository.findByUserIdOrdered(userId)).isEmpty();
     }
 }

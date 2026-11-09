@@ -19,6 +19,7 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -37,6 +38,10 @@ import java.util.concurrent.Future;
  * <p>The rows are born "Não classificado" ({@code NONE}, confidence 0, see {@link TransactionImportProcessor}), so a
  * failed batch or a discarded item writes nothing to them. Any confidence keeps the category: flagged for review is
  * {@code classification_confidence < 80}. Logs carry only ids and counts.
+ *
+ * <p>Story 5.11: before the AI, the rows whose normalized description has a usable pattern of the user get its
+ * category ({@code PATTERN}, confidence {@value #PATTERN_CONFIDENCE}), and so do their future installments. They never
+ * go to the AI, do not count in {@code classification_total} and leave no history.
  */
 @Service
 public class TransactionClassificationService {
@@ -46,12 +51,15 @@ public class TransactionClassificationService {
     static final int BATCH_SIZE = 100;
     /** Rows per AI call: 100 in one call took 5.5–6.7 s against the real API, and 25 took 2.2–2.6 s (NFR7: < 3 s). */
     static final int CALL_SIZE = 25;
+    /** Decision Q1: a row classified by a pattern of the user is high confidence. */
+    static final int PATTERN_CONFIDENCE = 100;
 
     private final TransactionRepository transactionRepository;
     private final TransactionImportRepository transactionImportRepository;
     private final CategoryRepository categoryRepository;
     private final AiClassificationHistoryRepository historyRepository;
     private final TransactionClassifier classifier;
+    private final ClassificationPatternService patternService;
     private final TransactionTemplate transactionTemplate;
     private final Clock clock;
 
@@ -61,22 +69,24 @@ public class TransactionClassificationService {
                                             CategoryRepository categoryRepository,
                                             AiClassificationHistoryRepository historyRepository,
                                             TransactionClassifier classifier,
+                                            ClassificationPatternService patternService,
                                             PlatformTransactionManager transactionManager) {
         this(transactionRepository, transactionImportRepository, categoryRepository, historyRepository, classifier,
-            transactionManager, Clock.systemDefaultZone());
+            patternService, transactionManager, Clock.systemDefaultZone());
     }
 
     TransactionClassificationService(TransactionRepository transactionRepository,
                                      TransactionImportRepository transactionImportRepository,
                                      CategoryRepository categoryRepository,
                                      AiClassificationHistoryRepository historyRepository,
-                                     TransactionClassifier classifier, PlatformTransactionManager transactionManager,
-                                     Clock clock) {
+                                     TransactionClassifier classifier, ClassificationPatternService patternService,
+                                     PlatformTransactionManager transactionManager, Clock clock) {
         this.transactionRepository = transactionRepository;
         this.transactionImportRepository = transactionImportRepository;
         this.categoryRepository = categoryRepository;
         this.historyRepository = historyRepository;
         this.classifier = classifier;
+        this.patternService = patternService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.clock = clock;
     }
@@ -91,12 +101,21 @@ public class TransactionClassificationService {
     }
 
     private void classifyBatches(UUID importId, UUID userId, boolean creditCard) {
-        List<Transaction> rows = transactionRepository.findClassifiableByImport(userId, importId);
+        List<Transaction> classifiable = transactionRepository.findClassifiableByImport(userId, importId);
         Map<Integer, UUID> categoryIds = new HashMap<>();
         List<TransactionClassifier.CategoryChoice> categories = categoryChoices(userId, categoryIds);
-        if (rows.isEmpty() || categories.isEmpty()) {
-            log.info("Import {} has nothing to classify: {} row(s), {} categories", importId, rows.size(),
+        if (classifiable.isEmpty() || categories.isEmpty()) {
+            log.info("Import {} has nothing to classify: {} row(s), {} categories", importId, classifiable.size(),
                 categories.size());
+            return;
+        }
+        List<Transaction> rows = applyPatterns(importId, userId, classifiable);
+        if (rows == null) {
+            log.info("Import {} no longer processing: not classified", importId);
+            return;
+        }
+        if (rows.isEmpty()) {
+            log.info("Import {}: every row classified by the user's patterns, AI not called", importId);
             return;
         }
         if (transactionImportRepository.startClassification(importId, rows.size(), OffsetDateTime.now(clock)) == 0) {
@@ -129,6 +148,59 @@ public class TransactionClassificationService {
         }
         log.info("Import {} classified: {} row(s) sent, {} answered, {} failed batch(es)", importId, rows.size(),
             answered, failed);
+    }
+
+    /**
+     * Story 5.11: classifies the rows that match a usable pattern of the user, with their future installments, in one
+     * transaction guarded by PROCESSING. Returns the rows left for the AI, or null when the import left PROCESSING. A
+     * failure here sends every row to the AI, as before the patterns.
+     */
+    private List<Transaction> applyPatterns(UUID importId, UUID userId, List<Transaction> rows) {
+        Map<Transaction, UUID> matched = new LinkedHashMap<>();
+        Set<String> used = new HashSet<>();
+        List<Transaction> rest = new ArrayList<>();
+        Boolean applied;
+        try {
+            Map<String, UUID> patterns = patternService.match(userId);
+            for (Transaction row : rows) {
+                String pattern = ClassificationPatternService.normalize(row.getDescription());
+                UUID categoryId = ClassificationPatternService.isUsable(pattern) ? patterns.get(pattern) : null;
+                if (categoryId == null) {
+                    rest.add(row);
+                } else {
+                    matched.put(row, categoryId);
+                    used.add(pattern);
+                }
+            }
+            if (matched.isEmpty()) {
+                return rows;
+            }
+            applied = transactionTemplate.execute(status -> {
+                OffsetDateTime now = OffsetDateTime.now(clock);
+                if (transactionImportRepository.addClassified(importId, 0, now) == 0) {
+                    return false;
+                }
+                for (Map.Entry<Transaction, UUID> entry : matched.entrySet()) {
+                    Transaction row = entry.getKey();
+                    transactionRepository.applyClassification(row.getId(), entry.getValue(), PATTERN_CONFIDENCE,
+                        Transaction.ClassificationSource.PATTERN, now);
+                    if (row.getInstallmentGroupId() != null) {
+                        transactionRepository.applyClassificationToFutures(importId, row.getInstallmentGroupId(),
+                            entry.getValue(), PATTERN_CONFIDENCE, Transaction.ClassificationSource.PATTERN, now);
+                    }
+                }
+                patternService.touch(userId, used, now);
+                return true;
+            });
+        } catch (Exception e) {
+            log.warn("Import {} patterns not applied: {}", importId, e.getClass().getName());
+            return rows;
+        }
+        if (!Boolean.TRUE.equals(applied)) {
+            return null;
+        }
+        log.info("Import {}: {} row(s) classified by {} pattern(s) of the user", importId, matched.size(), used.size());
+        return rest;
     }
 
     /** The active child categories, numbered from 1: groups are not transaction categories. */
@@ -229,10 +301,11 @@ public class TransactionClassificationService {
             TransactionClassifier.Result result = entry.getValue();
             UUID categoryId = result.categoryId() == null ? null : categoryIds.get(result.categoryId());
             if (categoryId != null) {
-                transactionRepository.applyAiClassification(row.getId(), categoryId, result.confidence(), now);
+                transactionRepository.applyClassification(row.getId(), categoryId, result.confidence(),
+                    Transaction.ClassificationSource.AI, now);
                 if (row.getInstallmentGroupId() != null) {
-                    transactionRepository.applyAiClassificationToFutures(importId, row.getInstallmentGroupId(),
-                        categoryId, result.confidence(), now);
+                    transactionRepository.applyClassificationToFutures(importId, row.getInstallmentGroupId(),
+                        categoryId, result.confidence(), Transaction.ClassificationSource.AI, now);
                 }
             }
             history.add(new AiClassificationHistory(userId, row.getId(), categoryId, result.confidence()));
