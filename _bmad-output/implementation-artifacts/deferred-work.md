@@ -212,3 +212,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-12-manually-edit-any-transaction.md`
   summary: Testar o 409 de `TransactionService.lockRow` (linha movida por edição concorrente entre a leitura do destino e a trava).
   evidence: Nenhum teste de backend produz o `ConflictException(CHANGED_MESSAGE)`; remover a checagem não quebra nada. Exige duas transações coordenadas.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-13-manually-add-transactions-cash-expenses.md`
+  summary: TransactionsView não tem teste de devolução de foco ao fechar os diálogos (criar, editar, remover).
+  evidence: grep por focus/activeElement em TransactionsView.spec.ts não acha nada; o comportamento está certo hoje (Button renderiza o button como raiz), mas nenhuma regressão seria pega.

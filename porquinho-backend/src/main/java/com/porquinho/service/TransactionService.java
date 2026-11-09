@@ -1,5 +1,6 @@
 package com.porquinho.service;
 
+import com.porquinho.dto.TransactionCreateRequest;
 import com.porquinho.dto.TransactionResponse;
 import com.porquinho.dto.TransactionUpdateRequest;
 import com.porquinho.entity.Account;
@@ -35,9 +36,10 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * The confirmed transactions of /transacoes (Story 5.12): list one month, edit, remove (soft delete) and remove the
- * future installments of a purchase. Only the user's CONFIRMED, active, non-future rows; anything else is 404 with
- * nothing written. Every change of balance follows decision D3 through {@link BalanceHistoryRecorder}: the old effect
+ * The confirmed transactions of /transacoes (Story 5.12): list one month, add by hand (Story 5.13), edit, remove (soft
+ * delete) and remove the future installments of a purchase. Edit and remove reach only the user's CONFIRMED, active,
+ * non-future rows; any other row is 404 with nothing written. Adding needs an active account or card and category of
+ * the user, else 404 with nothing written. Every change of balance follows decision D3 through {@link BalanceHistoryRecorder}: the old effect
  * of the row (if it is in the balance and still after the reference date of its account) is undone and the new one
  * (destination is an account and the new date is after its reference) applied, one snapshot per account that changed.
  * Lock order, as in an import: advisory lock of each target (key order), the transaction row, then the account rows
@@ -46,6 +48,7 @@ import java.util.stream.Collectors;
 @Service
 public class TransactionService {
 
+    public static final String AUDIT_CREATED = "transaction_created";
     public static final String AUDIT_EDITED = "transaction_edited";
     public static final String AUDIT_DELETED = "transaction_deleted";
     public static final String AUDIT_FUTURES_REMOVED = "installment_futures_removed";
@@ -54,6 +57,7 @@ public class TransactionService {
     public static final String ONE_TARGET_MESSAGE = "Escolha uma conta ou um cartão";
     public static final String INVALID_MONTH_MESSAGE = "Mês inválido: use o formato AAAA-MM";
     public static final String CHANGED_MESSAGE = "Esta transação acabou de ser alterada. Recarregue a página e tente de novo.";
+    public static final String CATEGORY_REQUIRED_MESSAGE = "Escolha uma categoria";
     public static final String AMOUNT_MESSAGE = "Informe um valor maior que zero";
     public static final String AMOUNT_OUT_OF_RANGE_MESSAGE = "Informe um valor de no máximo 13 dígitos antes da vírgula";
     public static final String INSTALLMENT_TARGET_MESSAGE =
@@ -105,6 +109,68 @@ public class TransactionService {
     }
 
     /**
+     * Adds a transaction the user typed (Story 5.13), already CONFIRMED with the user's category. Its effect on the
+     * balance follows decision D3: an account with a date after its reference changes, a card never does. The manual
+     * description is not the bank's text, so nothing is learned from it.
+     */
+    @Transactional
+    public TransactionResponse create(UUID userId, TransactionCreateRequest request, String ipAddress) {
+        if ((request.accountId() == null) == (request.creditCardId() == null)) {
+            throw new BadRequestException(ONE_TARGET_MESSAGE);
+        }
+        if (request.categoryId() == null) {
+            throw new BadRequestException(CATEGORY_REQUIRED_MESSAGE);
+        }
+        if (request.amount() == null || request.amount().signum() <= 0) {
+            throw new BadRequestException(AMOUNT_MESSAGE);
+        }
+        if (!BalanceHistoryRecorder.fits(request.amount())) {
+            throw new BadRequestException(AMOUNT_OUT_OF_RANGE_MESSAGE);
+        }
+        Transaction.Type type = Transaction.Type.valueOf(request.type());
+        UUID target = request.creditCardId() != null ? request.creditCardId() : request.accountId();
+        transactionImportRepository.lockTarget(TransactionImportProcessor.lockKey(target));
+        if (request.creditCardId() != null) {
+            creditCardRepository.findActiveByIdForUpdate(request.creditCardId(), userId)
+                .orElseThrow(() -> new ResourceNotFoundException(CreditCardService.NOT_FOUND_MESSAGE));
+        }
+        requireChildCategory(userId, request.categoryId());
+
+        Map<UUID, Account> accounts = lockAccounts(userId, request.accountId());
+        if (request.accountId() != null && !accounts.containsKey(request.accountId())) {
+            throw new ResourceNotFoundException(AccountService.NOT_FOUND_MESSAGE);
+        }
+        Account account = request.accountId() == null ? null : accounts.get(request.accountId());
+        boolean affects = account != null && request.date().isAfter(balanceHistoryRecorder.referenceDate(account));
+        if (affects) {
+            applyDeltas(accounts, Map.of(account.getId(), signed(type, request.amount())));
+        }
+
+        Transaction row = new Transaction();
+        row.setUserId(userId);
+        row.setAccountId(request.accountId());
+        row.setCreditCardId(request.creditCardId());
+        row.setTransactionDate(request.date());
+        row.setDescription(request.description());
+        row.setOriginalDescription(request.description());
+        row.setAmount(request.amount());
+        row.setTransactionType(type);
+        row.setKind(Transaction.Kind.REGULAR);
+        row.setCategoryId(request.categoryId());
+        row.setClassificationSource(Transaction.ClassificationSource.USER);
+        row.setClassificationConfidence(TransactionImportReviewService.USER_CONFIDENCE);
+        row.setReviewStatus(Transaction.ReviewStatus.CONFIRMED);
+        row.setAffectsBalance(affects);
+        row.setPix(false);
+        row.setInstallment(false);
+        row.setFutureInstallment(false);
+        row = transactionRepository.saveAndFlush(row);
+        auditLogService.log(AUDIT_CREATED, userId, ipAddress, "{\"transaction_id\":\"" + row.getId()
+            + "\",\"accounts_changed\":" + (affects ? 1 : 0) + "}");
+        return toResponses(userId, List.of(row)).get(0);
+    }
+
+    /**
      * Edits date, description, amount, type, category and account or card of a confirmed transaction. An installment
      * keeps its card or account and its type (decision Q4); the other fields change on that row only.
      */
@@ -134,11 +200,7 @@ public class TransactionService {
         }
         boolean categoryChanged = !Objects.equals(row.getCategoryId(), request.categoryId());
         if (categoryChanged && request.categoryId() != null) {
-            Category category = categoryRepository.findActiveByIdAndUserId(request.categoryId(), userId)
-                .orElseThrow(() -> new ResourceNotFoundException(CategoryService.NOT_FOUND_MESSAGE));
-            if (category.getParentCategoryId() == null) {
-                throw new BadRequestException(TransactionImportReviewService.GROUP_NOT_ALLOWED_MESSAGE);
-            }
+            requireChildCategory(userId, request.categoryId());
         }
 
         Map<UUID, Account> accounts = lockAccounts(userId, row.getAccountId(), request.accountId());
@@ -249,6 +311,15 @@ public class TransactionService {
             throw new ConflictException(CHANGED_MESSAGE);
         }
         return row;
+    }
+
+    /** A category of the user, active and not a group: 404 when not available, 400 for a group. */
+    private void requireChildCategory(UUID userId, UUID categoryId) {
+        Category category = categoryRepository.findActiveByIdAndUserId(categoryId, userId)
+            .orElseThrow(() -> new ResourceNotFoundException(CategoryService.NOT_FOUND_MESSAGE));
+        if (category.getParentCategoryId() == null) {
+            throw new BadRequestException(TransactionImportReviewService.GROUP_NOT_ALLOWED_MESSAGE);
+        }
     }
 
     /** The user's active accounts among {@code ids} (nulls ignored), row-locked in id order. */

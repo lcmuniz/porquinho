@@ -1,9 +1,18 @@
 import { api } from './api'
-import type { Transaction, TransactionUpdateInput } from '@/types/transaction'
+import type { Transaction, TransactionCreateInput, TransactionUpdateInput } from '@/types/transaction'
 
 /** Story 5.12: as transações confirmadas do mês (AAAA-MM), da mais nova para a mais antiga, sem as parcelas futuras. */
 export async function listTransactions(month: string): Promise<Transaction[]> {
   const response = await api.get<Transaction[]>('/api/v1/transactions', { params: { month } })
+  return response.data
+}
+
+/**
+ * Story 5.13: adiciona uma transação já confirmada (despesa em dinheiro, lançamento que nenhum extrato trouxe). 400 traz
+ * `errors` por campo (ou `detail`); 404 se a conta, o cartão ou a categoria não estiverem disponíveis.
+ */
+export async function createTransaction(input: TransactionCreateInput): Promise<Transaction> {
+  const response = await api.post<Transaction>('/api/v1/transactions', input)
   return response.data
 }
 

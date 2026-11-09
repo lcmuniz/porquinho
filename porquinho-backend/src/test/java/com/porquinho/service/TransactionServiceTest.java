@@ -1,5 +1,6 @@
 package com.porquinho.service;
 
+import com.porquinho.dto.TransactionCreateRequest;
 import com.porquinho.dto.TransactionResponse;
 import com.porquinho.dto.TransactionUpdateRequest;
 import com.porquinho.exception.BadRequestException;
@@ -24,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * Story 5.12: listing, editing and removing confirmed transactions against the real schema (PostgreSQL via
+ * Stories 5.12 and 5.13: listing, adding, editing and removing confirmed transactions against the real schema (PostgreSQL via
  * Testcontainers, Flyway through V31). Every account has its D3 reference on 2026-11-01 (São Paulo).
  */
 @SpringBootTest
@@ -530,5 +531,133 @@ class TransactionServiceTest {
         assertThat(rowOf(fourth).get("deleted_at")).isNull();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM transactions WHERE installment_group_id = ? "
             + "AND installment_futures_removed_at IS NOT NULL", Integer.class, group)).isZero();
+    }
+
+    // Story 5.13: adding by hand
+
+    private TransactionCreateRequest add(String date, String type, String amount, UUID categoryId, UUID accountId,
+                                         UUID cardId) {
+        return new TransactionCreateRequest(LocalDate.parse(date), "Feira", new BigDecimal(amount), type, categoryId,
+            accountId, cardId);
+    }
+
+    private int rowsOfUser() {
+        return jdbc.queryForObject("SELECT COUNT(*) FROM transactions WHERE user_id = ?", Integer.class, userId);
+    }
+
+    @Test
+    void debitOnAnAccountAfterTheReferenceEntersTheBalanceConfirmedAndTeachesNothing() {
+        UUID account = newAccount("1000.00");
+        UUID category = newCategory("Feira", newCategory("Alimentação", null));
+
+        TransactionResponse response = service.create(userId, add("2026-11-05", "DEBIT", "50.00", category, account,
+            null), IP);
+
+        assertThat(balanceOf(account)).isEqualByComparingTo("950.00");
+        assertThat(transactionSnapshots(account)).isEqualTo(1);
+        Map<String, Object> saved = rowOf(response.id());
+        assertThat(saved.get("user_id")).isEqualTo(userId);
+        assertThat(saved.get("account_id")).isEqualTo(account);
+        assertThat(saved.get("credit_card_id")).isNull();
+        assertThat(saved.get("import_id")).isNull();
+        assertThat(saved.get("external_id")).isNull();
+        assertThat(saved.get("description")).isEqualTo("Feira");
+        assertThat(saved.get("original_description")).isEqualTo("Feira");
+        assertThat(saved.get("kind")).isEqualTo("REGULAR");
+        assertThat(saved.get("classification_source")).isEqualTo("USER");
+        assertThat(saved.get("classification_confidence")).isEqualTo(100);
+        assertThat(saved.get("review_status")).isEqualTo("CONFIRMED");
+        assertThat(saved.get("affects_balance")).isEqualTo(true);
+        assertThat(saved.get("is_pix")).isEqualTo(false);
+        assertThat(saved.get("is_installment")).isEqualTo(false);
+        assertThat(response.category()).isNotNull();
+        assertThat(service.list(userId, "2026-11")).extracting(TransactionResponse::id).contains(response.id());
+        assertThat(auditOf(TransactionService.AUDIT_CREATED)).singleElement().asString()
+            .contains(response.id().toString()).doesNotContain("Feira");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM user_classification_patterns WHERE user_id = ?",
+            Integer.class, userId)).isZero();
+    }
+
+    @Test
+    void dateOnOrBeforeTheReferenceOrACardLeavesEveryBalanceAlone() {
+        UUID account = newAccount("1000.00");
+        UUID card = newCard();
+        UUID category = newCategory("Feira", newCategory("Alimentação", null));
+
+        TransactionResponse reconciled = service.create(userId, add("2026-11-01", "DEBIT", "50.00", category, account,
+            null), IP);
+        TransactionResponse onCard = service.create(userId, add("2026-11-05", "CREDIT", "30.00", category, null, card),
+            IP);
+
+        assertThat(balanceOf(account)).isEqualByComparingTo("1000.00");
+        assertThat(transactionSnapshots(account)).isZero();
+        assertThat(rowOf(reconciled.id()).get("affects_balance")).isEqualTo(false);
+        assertThat(rowOf(onCard.id()).get("affects_balance")).isEqualTo(false);
+        assertThat(rowOf(onCard.id()).get("credit_card_id")).isEqualTo(card);
+    }
+
+    @Test
+    void missingCategoryGroupOrTargetIs400WithNothingWritten() {
+        UUID account = newAccount("1000.00");
+        UUID card = newCard();
+        UUID group = newCategory("Alimentação", null);
+        UUID category = newCategory("Feira", group);
+
+        for (TransactionCreateRequest request : List.of(
+            add("2026-11-05", "DEBIT", "50.00", null, account, null),
+            add("2026-11-05", "DEBIT", "50.00", group, account, null),
+            add("2026-11-05", "DEBIT", "50.00", category, account, card),
+            add("2026-11-05", "DEBIT", "50.00", category, null, null))) {
+            assertThatThrownBy(() -> service.create(userId, request, IP)).isInstanceOf(BadRequestException.class);
+        }
+        assertThat(rowsOfUser()).isZero();
+        assertThat(balanceOf(account)).isEqualByComparingTo("1000.00");
+    }
+
+    @Test
+    void targetOrCategoryOfAnotherUserOrRemovedIs404WithNothingWritten() {
+        UUID account = newAccount("1000.00");
+        UUID category = newCategory("Feira", newCategory("Alimentação", null));
+        UUID removedAccount = newAccount("1000.00");
+        jdbc.update("UPDATE accounts SET deleted_at = now() WHERE id = ?", removedAccount);
+        UUID removedCard = newCard();
+        jdbc.update("UPDATE credit_cards SET deleted_at = now() WHERE id = ?", removedCard);
+        UUID removedCategory = newCategory("Mercado", newCategory("Casa", null));
+        jdbc.update("UPDATE categories SET deleted_at = now() WHERE id = ?", removedCategory);
+        UUID me = userId;
+        userId = newUser();
+        UUID otherAccount = newAccount("1000.00");
+        UUID otherCard = newCard();
+        UUID otherCategory = newCategory("Feira", newCategory("Alimentação", null));
+        userId = me;
+
+        for (UUID target : List.of(removedAccount, otherAccount)) {
+            assertThatThrownBy(() -> service.create(userId, add("2026-11-05", "DEBIT", "50.00", category, target, null),
+                IP)).isInstanceOf(ResourceNotFoundException.class);
+        }
+        for (UUID card : List.of(removedCard, otherCard)) {
+            assertThatThrownBy(() -> service.create(userId, add("2026-11-05", "DEBIT", "50.00", category, null, card),
+                IP)).isInstanceOf(ResourceNotFoundException.class);
+        }
+        for (UUID other : List.of(removedCategory, otherCategory)) {
+            assertThatThrownBy(() -> service.create(userId, add("2026-11-05", "DEBIT", "50.00", other, account, null),
+                IP)).isInstanceOf(ResourceNotFoundException.class);
+        }
+        assertThat(rowsOfUser()).isZero();
+        assertThat(balanceOf(account)).isEqualByComparingTo("1000.00");
+        assertThat(balanceOf(otherAccount)).isEqualByComparingTo("1000.00");
+        assertThat(transactionSnapshots(account)).isZero();
+        assertThat(auditOf(TransactionService.AUDIT_CREATED)).isEmpty();
+    }
+
+    @Test
+    void balanceOutOfRangeOnCreateIs400WithNothingWritten() {
+        UUID account = newAccount("-9999999999999.00");
+        UUID category = newCategory("Feira", newCategory("Alimentação", null));
+
+        assertThatThrownBy(() -> service.create(userId, add("2026-11-05", "DEBIT", "10.00", category, account, null),
+            IP)).isInstanceOf(BadRequestException.class);
+        assertThat(balanceOf(account)).isEqualByComparingTo("-9999999999999.00");
+        assertThat(rowsOfUser()).isZero();
     }
 }

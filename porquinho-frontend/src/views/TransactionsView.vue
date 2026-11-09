@@ -6,13 +6,18 @@
           <h1 ref="heading" tabindex="-1" class="text-2xl font-semibold text-gray-900 outline-none">Transações</h1>
           <p class="mt-1 text-sm text-gray-600">Confira e corrija o que já entrou nas suas contas e cartões</p>
         </div>
-        <RouterLink
-          to="/dashboard"
-          data-testid="back-to-dashboard"
-          class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-        >
-          Voltar ao dashboard
-        </RouterLink>
+        <div class="flex flex-wrap justify-end gap-2">
+          <Button ref="addButton" class="min-h-[44px]" data-testid="add-transaction" @click="openCreate">
+            Adicionar transação
+          </Button>
+          <RouterLink
+            to="/dashboard"
+            data-testid="back-to-dashboard"
+            class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+          >
+            Voltar ao dashboard
+          </RouterLink>
+        </div>
       </div>
 
       <!-- Sempre no DOM: leitores de tela só anunciam mudanças numa região live que já existe -->
@@ -141,9 +146,13 @@
     <Dialog :open="editOpen" @update:open="onEditOpenChange">
       <DialogContent data-testid="edit-dialog" @close-auto-focus="returnFocus">
         <DialogHeader>
-          <DialogTitle>Editar transação</DialogTitle>
+          <DialogTitle>{{ creating ? 'Adicionar transação' : 'Editar transação' }}</DialogTitle>
           <DialogDescription>
-            Corrija data, descrição, valor, tipo, categoria ou onde a transação está.
+            {{
+              creating
+                ? 'Registre um gasto em dinheiro ou um lançamento que nenhum extrato trouxe.'
+                : 'Corrija data, descrição, valor, tipo, categoria ou onde a transação está.'
+            }}
           </DialogDescription>
         </DialogHeader>
         <p
@@ -217,7 +226,7 @@
               :disabled="optionsLoading"
               data-testid="edit-category"
             >
-              <option value="">Sem categoria</option>
+              <option value="" :disabled="creating">{{ creating ? 'Escolha a categoria' : 'Sem categoria' }}</option>
               <optgroup v-for="group in categoryGroups" :key="group.id" :label="group.name">
                 <option v-for="category in group.children" :key="category.id" :value="category.id">
                   {{ category.categoryName }}
@@ -247,6 +256,14 @@
                 <option v-for="card in cards" :key="card.id" :value="`card:${card.id}`">{{ card.cardName }}</option>
               </optgroup>
             </select>
+            <p
+              v-if="creating && !optionsLoading && accounts.length === 0"
+              class="text-sm text-gray-600"
+              data-testid="wallet-hint"
+            >
+              Para gastos em dinheiro, cadastre uma conta Carteira em
+              <RouterLink to="/contas" class="font-medium text-purple-700 underline">Contas</RouterLink>.
+            </p>
             <p v-if="isInstallment" id="installment-locked" class="text-sm text-gray-600" data-testid="installment-locked">
               Numa parcela, a conta ou o cartão e o tipo não mudam.
             </p>
@@ -337,6 +354,7 @@ import { listAccounts } from '@/services/accountService'
 import { listCards } from '@/services/cardService'
 import { listCategories } from '@/services/categoryService'
 import {
+  createTransaction,
   deleteTransaction,
   listTransactions,
   removeFutureInstallments,
@@ -347,7 +365,7 @@ import type { Category } from '@/types/category'
 import type { CreditCard as Card } from '@/types/creditCard'
 import type { Transaction } from '@/types/transaction'
 
-/** Story 5.12: as transações confirmadas, um mês por vez (decisão Q1), com edição e remoção. */
+/** Story 5.12: as transações confirmadas, um mês por vez (decisão Q1), com edição e remoção; 5.13: inclusão manual. */
 const FIELD_CLASS =
   'flex min-h-[44px] w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:outline-none'
 
@@ -364,6 +382,7 @@ function todaySaoPaulo(): string {
 }
 
 const heading = ref<HTMLElement | null>(null)
+const addButton = ref<{ $el: HTMLElement } | null>(null)
 const list = ref<HTMLElement | null>(null)
 const month = ref(todaySaoPaulo().slice(0, 7))
 const transactions = ref<Transaction[]>([])
@@ -378,6 +397,8 @@ const actionError = ref<string | null>(null)
 /** A linha do diálogo aberto. Continua definida depois de fechar, para o foco voltar ao botão dela. */
 const current = ref<Transaction | null>(null)
 const editOpen = ref(false)
+/** O diálogo de edição em modo "Adicionar transação" (Story 5.13). */
+const creating = ref(false)
 const saving = ref(false)
 const formError = ref<string | null>(null)
 const form = reactive({ date: '', description: '', amount: '', type: 'DEBIT', categoryId: '', target: '' })
@@ -488,7 +509,16 @@ function changeMonth(delta: number) {
   void load()
 }
 
+function openCreate() {
+  creating.value = true
+  current.value = null
+  formError.value = null
+  Object.assign(form, { date: todaySaoPaulo(), description: '', amount: '', type: 'DEBIT', categoryId: '', target: '' })
+  editOpen.value = true
+}
+
 function openEdit(row: Transaction) {
+  creating.value = false
   current.value = row
   formError.value = null
   form.date = row.date
@@ -510,11 +540,13 @@ function onConfirmOpenChange(open: boolean) {
   if (!confirming.value) confirmOpen.value = open
 }
 
-/** O foco volta ao "Editar" da linha, se ela ainda estiver na lista; senão, ao título. */
+/** O foco volta ao "Adicionar transação" ou ao "Editar" da linha, se ela ainda estiver na lista; senão, ao título. */
 function returnFocus(event: Event) {
   event.preventDefault()
   void nextTick(() => {
-    const button = current.value
+    const button = creating.value
+      ? addButton.value?.$el
+      : current.value
       ? list.value?.querySelector<HTMLElement>(`[data-testid="edit-${current.value.id}"]`)
       : null
     ;(button ?? heading.value)?.focus()
@@ -523,30 +555,39 @@ function returnFocus(event: Event) {
 
 async function save() {
   const row = current.value
-  if (!row || saving.value) return
+  const isCreate = creating.value
+  if ((!row && !isCreate) || saving.value) return
   const amount = parseBRL(form.amount)
   const description = form.description.trim()
   if (!form.date) return void (formError.value = 'Informe a data')
   if (!description) return void (formError.value = 'Informe a descrição')
   if (amount === null || amount <= 0) return void (formError.value = 'Informe um valor maior que zero')
+  if (isCreate && !form.categoryId) return void (formError.value = 'Escolha uma categoria')
   if (!form.target) return void (formError.value = 'Escolha uma conta ou um cartão')
   const [kind, targetId] = form.target.split(':')
+  const input = {
+    date: form.date,
+    description,
+    amount,
+    type: form.type as Transaction['type'],
+    categoryId: form.categoryId || null,
+    accountId: kind === 'account' ? targetId! : null,
+    creditCardId: kind === 'card' ? targetId! : null,
+  }
   formError.value = null
   saving.value = true
   try {
-    await updateTransaction(row.id, {
-      date: form.date,
-      description,
-      amount,
-      type: form.type as Transaction['type'],
-      categoryId: form.categoryId || null,
-      accountId: kind === 'account' ? targetId! : null,
-      creditCardId: kind === 'card' ? targetId! : null,
-    })
+    if (isCreate) {
+      await createTransaction({ ...input, categoryId: form.categoryId })
+      // a lista vai para o mês da transação criada, para ela aparecer
+      month.value = form.date.slice(0, 7)
+    } else {
+      await updateTransaction(row!.id, input)
+    }
     editOpen.value = false
     actionError.value = null
     await load()
-    setSuccess('Transação atualizada')
+    setSuccess(isCreate ? 'Transação adicionada' : 'Transação atualizada')
   } catch (err) {
     const response = (err as ApiError)?.response
     if (response?.status === 404 || response?.status === 400 || response?.status === 409) {
@@ -561,6 +602,7 @@ async function save() {
 }
 
 function openConfirm(row: Transaction, mode: 'delete' | 'futures') {
+  creating.value = false
   current.value = row
   confirmMode.value = mode
   confirmOpen.value = true

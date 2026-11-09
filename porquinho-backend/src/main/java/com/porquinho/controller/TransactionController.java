@@ -1,10 +1,12 @@
 package com.porquinho.controller;
 
+import com.porquinho.dto.TransactionCreateRequest;
 import com.porquinho.dto.TransactionResponse;
 import com.porquinho.dto.TransactionUpdateRequest;
 import com.porquinho.service.TransactionService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -22,7 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/** The confirmed transactions of /transacoes (Story 5.12). The user always comes from the JWT. */
+/** The confirmed transactions of /transacoes (Stories 5.12 and 5.13). The user always comes from the JWT. */
 @RestController
 @RequestMapping("/api/v1/transactions")
 public class TransactionController {
@@ -38,6 +40,15 @@ public class TransactionController {
     public ResponseEntity<List<TransactionResponse>> list(@AuthenticationPrincipal Jwt jwt,
                                                           @RequestParam(value = "month", required = false) String month) {
         return ResponseEntity.ok(transactionService.list(UUID.fromString(jwt.getSubject()), month));
+    }
+
+    /** Adds a transaction by hand (Story 5.13). 201; 400 for an invalid body or balance out of range; 404 for a target or category not available. */
+    @PostMapping
+    public ResponseEntity<TransactionResponse> create(@AuthenticationPrincipal Jwt jwt,
+                                                      @Valid @RequestBody TransactionCreateRequest request,
+                                                      HttpServletRequest httpRequest) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(transactionService.create(
+            UUID.fromString(jwt.getSubject()), request, httpRequest.getRemoteAddr()));
     }
 
     /** Edits a confirmed transaction. 400 for an invalid body or balance out of range; 404 for a row, target or category not available. */

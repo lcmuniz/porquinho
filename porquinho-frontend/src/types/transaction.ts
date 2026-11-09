@@ -23,3 +23,8 @@ export interface TransactionUpdateInput {
   accountId: string | null
   creditCardId: string | null
 }
+
+/** Corpo do POST /api/v1/transactions (Story 5.13): como o PUT, mas a categoria é obrigatória. */
+export interface TransactionCreateInput extends TransactionUpdateInput {
+  categoryId: string
+}

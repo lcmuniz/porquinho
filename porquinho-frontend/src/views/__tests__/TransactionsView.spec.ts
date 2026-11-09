@@ -5,17 +5,20 @@ import type { Transaction } from '@/types/transaction'
 
 const mockList = vi.fn()
 const mockUpdate = vi.fn()
+const mockCreate = vi.fn()
+const mockAccounts = vi.fn()
 const mockDelete = vi.fn()
 const mockRemoveFutures = vi.fn()
 
 vi.mock('@/services/transactionService', () => ({
   listTransactions: (...a: unknown[]) => mockList(...a),
   updateTransaction: (...a: unknown[]) => mockUpdate(...a),
+  createTransaction: (...a: unknown[]) => mockCreate(...a),
   deleteTransaction: (...a: unknown[]) => mockDelete(...a),
   removeFutureInstallments: (...a: unknown[]) => mockRemoveFutures(...a),
 }))
 vi.mock('@/services/accountService', () => ({
-  listAccounts: async () => [{ id: 'a1', accountName: 'Nubank' }, { id: 'a2', accountName: 'Itaú' }],
+  listAccounts: () => mockAccounts(),
 }))
 vi.mock('@/services/cardService', () => ({ listCards: async () => [{ id: 'k1', cardName: 'Nubank Roxinho' }] }))
 vi.mock('@/services/categoryService', () => ({
@@ -75,6 +78,10 @@ async function setValue(testId: string, value: string) {
 describe('TransactionsView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockAccounts.mockResolvedValue([
+      { id: 'a1', accountName: 'Nubank' },
+      { id: 'a2', accountName: 'Itaú' },
+    ])
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-11-09T15:00:00Z'))
   })
@@ -265,5 +272,91 @@ describe('TransactionsView', () => {
     expect(w.get('[data-testid="transactions-error"]').text()).toBe('Transação não encontrada')
     expect(w.find('[data-testid="transaction-t1"]').exists()).toBe(false)
     expect(w.get('[data-testid="transactions-success"]').text()).toBe('')
+  })
+
+  describe('adicionar transação (Story 5.13)', () => {
+    async function openCreate(w: VueWrapper) {
+      await w.get('[data-testid="add-transaction"]').trigger('click')
+      await flushPromises()
+    }
+
+    it('adiciona com hoje como data, leva a lista ao mês dela e mostra "Transação adicionada"', async () => {
+      const w = await mountView([])
+      await openCreate(w)
+      expect(inDialog('edit-dialog')?.textContent).toContain('Adicionar transação')
+      expect(inDialog<HTMLInputElement>('edit-date')?.value).toBe('2026-11-09')
+      expect(inDialog<HTMLSelectElement>('edit-type')?.value).toBe('DEBIT')
+      expect(inDialog<HTMLSelectElement>('edit-target')?.disabled).toBe(false)
+      expect(inDialog('wallet-hint')).toBeNull()
+
+      await setValue('edit-description', 'Feira')
+      await setValue('edit-amount', '50,00')
+      await setValue('edit-category', 'c1')
+      await setValue('edit-target', 'account:a2')
+      await setValue('edit-date', '2026-10-30')
+      mockCreate.mockResolvedValue(transaction('n1'))
+      mockList.mockResolvedValue([transaction('n1', { description: 'Feira' })])
+      inDialog<HTMLFormElement>('edit-form')!.dispatchEvent(new Event('submit'))
+      await flushPromises()
+
+      expect(mockCreate).toHaveBeenCalledExactlyOnceWith({
+        date: '2026-10-30',
+        description: 'Feira',
+        amount: 50,
+        type: 'DEBIT',
+        categoryId: 'c1',
+        accountId: 'a2',
+        creditCardId: null,
+      })
+      expect(mockUpdate).not.toHaveBeenCalled()
+      expect(mockList).toHaveBeenLastCalledWith('2026-10')
+      expect(w.find('[data-testid="transaction-n1"]').exists()).toBe(true)
+      expect(w.get('[data-testid="transactions-success"]').text()).toBe('Transação adicionada')
+      expect(inDialog('edit-dialog')).toBeNull()
+    })
+
+    it('sem categoria ou com valor zero mostra o erro e nada é enviado', async () => {
+      const w = await mountView([])
+      await openCreate(w)
+      await setValue('edit-description', 'Feira')
+      await setValue('edit-amount', '50,00')
+      await setValue('edit-target', 'account:a1')
+      inDialog<HTMLFormElement>('edit-form')!.dispatchEvent(new Event('submit'))
+      await flushPromises()
+      expect(inDialog('edit-error')?.textContent).toContain('Escolha uma categoria')
+
+      await setValue('edit-category', 'c1')
+      await setValue('edit-amount', '0')
+      inDialog<HTMLFormElement>('edit-form')!.dispatchEvent(new Event('submit'))
+      await flushPromises()
+      expect(inDialog('edit-error')?.textContent).toContain('maior que zero')
+      expect(mockCreate).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      [400, 'Esta alteração deixaria o saldo da conta fora do limite permitido'],
+      [404, 'Conta não encontrada'],
+    ])('falha %i mostra o detail e o diálogo continua aberto', async (status, detail) => {
+      const w = await mountView([])
+      await openCreate(w)
+      await setValue('edit-description', 'Feira')
+      await setValue('edit-amount', '50,00')
+      await setValue('edit-category', 'c1')
+      await setValue('edit-target', 'account:a1')
+      mockCreate.mockRejectedValue({ response: { status, data: { detail } } })
+      inDialog<HTMLFormElement>('edit-form')!.dispatchEvent(new Event('submit'))
+      await flushPromises()
+
+      expect(inDialog('edit-error')?.textContent).toContain(detail)
+      expect(inDialog('edit-dialog')).not.toBeNull()
+      expect(w.get('[data-testid="transactions-success"]').text()).toBe('')
+    })
+
+    it('sem conta ativa, sugere cadastrar uma conta Carteira', async () => {
+      mockAccounts.mockResolvedValue([])
+      const w = await mountView([])
+      await openCreate(w)
+      expect(inDialog('wallet-hint')?.textContent).toContain('cadastre uma conta Carteira')
+    })
   })
 })
