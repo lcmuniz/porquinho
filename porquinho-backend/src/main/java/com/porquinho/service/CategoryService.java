@@ -128,12 +128,19 @@ public class CategoryService {
      * Creates a custom child category (is_system_default=false) inside one of the user's active groups.
      * 400 when the parent is missing, not the user's, removed or itself a child (max depth 1), or when the
      * name, color or icon is invalid; 409 when another active category or group already has the name.
+     * Color and icon are optional (Story 6.1): null or blank = the group's color and CategoryOptions.DEFAULT_ICON.
      */
     @Transactional
     public Category create(UUID userId, String name, String colorHex, String iconName, UUID parentId) {
         String cleanName = validName(name);
-        validateColor(colorHex);
-        validateIcon(iconName);
+        boolean hasColor = colorHex != null && !colorHex.isBlank();
+        boolean hasIcon = iconName != null && !iconName.isBlank();
+        if (hasColor) {
+            validateColor(colorHex);
+        }
+        if (hasIcon) {
+            validateIcon(iconName);
+        }
         if (parentId == null) {
             throw new BadRequestException(PARENT_REQUIRED_MESSAGE);
         }
@@ -144,7 +151,8 @@ public class CategoryService {
             .orElseThrow(() -> new BadRequestException(PARENT_INVALID_MESSAGE));
         ensureUniqueName(active, cleanName, null);
         return categoryRepository.save(new Category(userId, cleanName, parent.getId(),
-            CategoryOptions.normalizeColor(colorHex), iconName, false));
+            hasColor ? CategoryOptions.normalizeColor(colorHex) : parent.getColorHex(),
+            hasIcon ? iconName : CategoryOptions.DEFAULT_ICON, false));
     }
 
     /**

@@ -9,4 +9,11 @@ describe('router', () => {
     expect(route.params.id).toBe('i1')
     expect(route.meta.requiresAuth).toBe(true)
   })
+
+  it('resolve as categorias, com autenticação (Story 6.1)', () => {
+    const route = router.resolve('/categorias')
+
+    expect(route.name).toBe('categories')
+    expect(route.meta.requiresAuth).toBe(true)
+  })
 })

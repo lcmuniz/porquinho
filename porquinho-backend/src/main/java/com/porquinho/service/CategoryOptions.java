@@ -26,8 +26,11 @@ public final class CategoryOptions {
         "shield-check", "house", "utensils", "car", "heart-pulse", "shuffle", "party-popper",
         "graduation-cap", "shirt", "repeat", "landmark", "trending-up", "piggy-bank",
         "shopping-cart", "paw-print", "plane", "gift", "smartphone", "zap", "fuel", "dumbbell",
-        "baby", "coffee", "wallet"
+        "baby", "coffee", "wallet", "folder"
     );
+
+    /** Icon of a category created without one (Story 6.1). */
+    public static final String DEFAULT_ICON = "folder";
 
     public static final Options OPTIONS = new Options(COLORS, ICONS);
 

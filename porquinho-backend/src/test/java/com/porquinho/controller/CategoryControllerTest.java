@@ -152,6 +152,21 @@ class CategoryControllerTest {
     }
 
     @Test
+    void createWithoutColorOrIconPassesNullsToTheService() throws Exception {
+        UUID parentId = UUID.randomUUID();
+        when(categoryService.create(userId, "Pets", null, null, parentId))
+            .thenReturn(saved("Pets", parentId, "#2563EB", CategoryOptions.DEFAULT_ICON));
+
+        mockMvc.perform(post("/api/v1/categories").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Pets\",\"parentId\":\"" + parentId + "\"}"))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.colorHex").value("#2563EB"))
+            .andExpect(jsonPath("$.iconName").value("folder"))
+            .andExpect(jsonPath("$.systemDefault").value(false));
+    }
+
+    @Test
     void createWithInvalidFieldsIs400WithoutCallingTheService() throws Exception {
         String parent = UUID.randomUUID().toString();
         String[][] cases = {

@@ -241,6 +241,28 @@ class CategoryCustomizationIntegrationTest {
     }
 
     @Test
+    void createWithoutColorOrIconUsesTheGroupColorAndTheFolderIcon() {
+        atStepFive(List.of("housing"));
+        Category group = named("Essenciais");
+
+        Category pets = categoryService.create(userId, "Pets", null, null, group.getId());
+        Category gym = categoryService.create(userId, "Academia", " ", "", group.getId());
+        Category trip = categoryService.create(userId, "Viagem", "#ec4899", "plane", group.getId());
+        categoryRepository.flush();
+
+        assertThat(row(pets.getId()))
+            .containsEntry("color_hex", group.getColorHex())
+            .containsEntry("icon_name", CategoryOptions.DEFAULT_ICON)
+            .containsEntry("parent_category_id", group.getId())
+            .containsEntry("is_system_default", false);
+
+        assertThat(row(gym.getId())).containsEntry("color_hex", group.getColorHex()).containsEntry("icon_name", "folder");
+
+        assertThat(row(trip.getId())).containsEntry("color_hex", "#EC4899").containsEntry("icon_name", "plane");
+        assertThat(CategoryOptions.isAllowedColor(group.getColorHex())).isTrue();
+    }
+
+    @Test
     void invalidParentIsRejected() {
         atStepFive(List.of("housing"));
         UUID other = newUser();

@@ -29,6 +29,7 @@ const BACKEND_ICONS = [
   'baby',
   'coffee',
   'wallet',
+  'folder',
 ]
 
 const BACKEND_COLORS = [
@@ -49,8 +50,8 @@ const BACKEND_COLORS = [
 ]
 
 describe('categoryIcons', () => {
-  it('mapeia os 24 ícones do backend para um componente próprio e um nome em pt-BR', () => {
-    expect(BACKEND_ICONS).toHaveLength(24)
+  it('mapeia os 25 ícones do backend para um componente próprio e um nome em pt-BR', () => {
+    expect(BACKEND_ICONS).toHaveLength(25)
     expect(BACKEND_ICONS.filter((icon) => categoryIcon(icon) === Tag)).toEqual([])
     expect(BACKEND_ICONS.filter((icon) => categoryIconLabel(icon) === icon)).toEqual([])
   })
