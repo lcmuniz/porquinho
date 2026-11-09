@@ -215,3 +215,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-13-manually-add-transactions-cash-expenses.md`
   summary: TransactionsView não tem teste de devolução de foco ao fechar os diálogos (criar, editar, remover).
   evidence: grep por focus/activeElement em TransactionsView.spec.ts não acha nada; o comportamento está certo hoje (Button renderiza o button como raiz), mas nenhuma regressão seria pega.
+- source_spec: `_bmad-output/implementation-artifacts/epic-5-retro-2026-11-09.md`
+  summary: Editar a data de uma parcela (5.12) para longe da data esperada faz o InstallmentPlanner abrir um grupo novo e recriar futuras já removidas (Q2).
+  evidence: InstallmentPlanner.findGroup/nearExpectedDate comparam com a data do membro mais próximo (tolerância de 20 dias); remover futuras + mover a data da parcela em ~25 dias quebra o agrupamento. Achado X4 da retro do Epic 5.
