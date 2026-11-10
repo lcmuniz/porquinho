@@ -1,6 +1,7 @@
 package com.porquinho.service;
 
 import com.porquinho.entity.AiClassificationHistory;
+import com.porquinho.entity.BudgetAllocation;
 import com.porquinho.entity.UserClassificationPattern;
 import com.porquinho.entity.Account;
 import com.porquinho.entity.AccountBalanceHistory;
@@ -23,6 +24,7 @@ import com.porquinho.entity.UserSession;
 import com.porquinho.exception.RateLimitExceededException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AiClassificationHistoryRepository;
+import com.porquinho.repository.BudgetAllocationRepository;
 import com.porquinho.repository.UserClassificationPatternRepository;
 import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.ReconciliationRepository;
@@ -127,6 +129,9 @@ class DataExportServiceTest {
 
     @Mock
     private UserClassificationPatternRepository userClassificationPatternRepository;
+
+    @Mock
+    private BudgetAllocationRepository budgetAllocationRepository;
 
     @InjectMocks
     private DataExportService dataExportService;
@@ -953,6 +958,33 @@ class DataExportServiceTest {
         assertEquals(category.toString(), first.get("preferred_category_id"));
         assertEquals(3, first.get("usage_count"));
         assertEquals("2026-11-09T12:00Z", first.get("last_used_at"));
+    }
+
+    @Test
+    void collectUserDataShouldExportTheBudgetAllocations() {
+        // Story 6.3: every stored column
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        UUID category = UUID.randomUUID();
+        BudgetAllocation allocation = new BudgetAllocation(userId, category, java.time.LocalDate.parse("2026-11-01"),
+            new java.math.BigDecimal("450.00"));
+        allocation.setId(UUID.randomUUID());
+        allocation.setCreatedAt(OffsetDateTime.parse("2026-11-02T12:00:00Z"));
+        allocation.setUpdatedAt(OffsetDateTime.parse("2026-11-09T12:00:00Z"));
+        when(budgetAllocationRepository.findByUserIdOrdered(userId)).thenReturn(List.of(allocation));
+
+        Map<String, Object> data = dataExportService.collectUserData(userId);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
+        assertTrue(((List<?>) metadata.get("exported_tables")).contains("budget_allocations"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("budget_allocations");
+        Map<String, Object> first = rows.get(0);
+        assertExportsEveryColumn(BudgetAllocation.class, first);
+        assertEquals(category.toString(), first.get("category_id"));
+        assertEquals("2026-11-01", first.get("month_year"));
+        assertEquals(new java.math.BigDecimal("450.00"), first.get("allocated_amount"));
+        assertEquals("2026-11-09T12:00Z", first.get("updated_at"));
     }
 
     private static void assertExportsEveryColumn(Class<?> entity, Map<String, Object> exported) {

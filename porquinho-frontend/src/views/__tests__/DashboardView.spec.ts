@@ -124,6 +124,19 @@ describe('DashboardView', () => {
     expect(link?.text()).toBe('Categorias')
   })
 
+  it('a navegação tem o link "Orçamento" para /orcamento (Story 6.3)', async () => {
+    mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const link = wrapper
+      .findAllComponents(RouterLinkStub)
+      .find((l) => l.attributes('data-testid') === 'budget-link')
+    expect(link?.props('to')).toBe('/orcamento')
+    expect(link?.text()).toBe('Orçamento')
+  })
+
   it('Sair limpa o usuário local, faz signOut e vai para /login', async () => {
     mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
     localStorage.setItem('user', '{"id":"x"}')

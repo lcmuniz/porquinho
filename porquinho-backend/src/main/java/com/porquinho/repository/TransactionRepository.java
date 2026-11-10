@@ -224,6 +224,31 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
     List<Transaction> findConfirmedBetween(@Param("userId") UUID userId, @Param("from") LocalDate from,
                                            @Param("to") LocalDate to);
 
+    /**
+     * Spent per category in [{@code from}, {@code to}] (Story 6.3): confirmed REGULAR debits, future installments left
+     * out (same base as {@link #findConfirmedBetween}). Each row is {categoryId, sum}; uncategorized rows come as null.
+     */
+    @Query("SELECT t.categoryId, SUM(t.amount) FROM Transaction t WHERE t.userId = :userId "
+        + "AND t.reviewStatus = com.porquinho.entity.Transaction.ReviewStatus.CONFIRMED AND t.futureInstallment = false "
+        + "AND t.deletedAt IS NULL AND t.kind = com.porquinho.entity.Transaction.Kind.REGULAR "
+        + "AND t.transactionType = com.porquinho.entity.Transaction.Type.DEBIT "
+        + "AND t.transactionDate BETWEEN :from AND :to GROUP BY t.categoryId")
+    List<Object[]> sumSpentByCategory(@Param("userId") UUID userId, @Param("from") LocalDate from,
+                                      @Param("to") LocalDate to);
+
+    /**
+     * Committed per category in [{@code from}, {@code to}] (Story 6.3): active confirmed future installments (an import
+     * still in review is left out), those of a removed
+     * card left out (they count again once the card is restored). Each row is {categoryId, sum}.
+     */
+    @Query("SELECT t.categoryId, SUM(t.amount) FROM Transaction t LEFT JOIN CreditCard c ON c.id = t.creditCardId "
+        + "WHERE t.userId = :userId AND t.futureInstallment = true AND t.deletedAt IS NULL "
+        + "AND t.reviewStatus = com.porquinho.entity.Transaction.ReviewStatus.CONFIRMED "
+        + "AND (t.creditCardId IS NULL OR c.deletedAt IS NULL) "
+        + "AND t.transactionDate BETWEEN :from AND :to GROUP BY t.categoryId")
+    List<Object[]> sumCommittedByCategory(@Param("userId") UUID userId, @Param("from") LocalDate from,
+                                          @Param("to") LocalDate to);
+
     /** The user's confirmed transaction the user can edit or remove (Story 5.12), row-locked. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT t FROM Transaction t WHERE t.id = :id AND t.userId = :userId "

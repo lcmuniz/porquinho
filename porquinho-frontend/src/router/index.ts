@@ -116,6 +116,13 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      // Story 6.3: orçamento mensal por categoria
+      path: '/orcamento',
+      name: 'budget',
+      component: () => import('../views/BudgetView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       // Story 2.2: plano mensal (Stripe Checkout). Retorno do Checkout: ?status=sucesso|cancelado
       path: '/assinatura',
       name: 'subscription',
