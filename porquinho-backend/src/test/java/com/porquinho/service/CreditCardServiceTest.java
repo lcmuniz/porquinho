@@ -30,12 +30,15 @@ class CreditCardServiceTest {
     @Mock
     private AuditLogService auditLogService;
 
+    @Mock
+    private BudgetBalanceCache budgetBalanceCache;
+
     private CreditCardService service;
     private UUID userId;
 
     @BeforeEach
     void setUp() {
-        service = new CreditCardService(creditCardRepository, auditLogService);
+        service = new CreditCardService(creditCardRepository, auditLogService, budgetBalanceCache);
         userId = UUID.randomUUID();
     }
 
@@ -92,6 +95,7 @@ class CreditCardServiceTest {
         verify(creditCardRepository).save(card);
         verify(creditCardRepository, never()).delete(any());
         verify(auditLogService).log("card_deleted", userId, "10.0.0.1", "{\"id\":\"" + card.getId() + "\"}");
+        verify(budgetBalanceCache).evict(userId);
     }
 
     @Test
@@ -126,6 +130,7 @@ class CreditCardServiceTest {
         assertNull(restored.getDeletedAt());
         assertNull(restored.getDeletedBy());
         verify(auditLogService).log("card_restored", userId, "ip", "{\"id\":\"" + card.getId() + "\"}");
+        verify(budgetBalanceCache).evict(userId);
     }
 
     @Test

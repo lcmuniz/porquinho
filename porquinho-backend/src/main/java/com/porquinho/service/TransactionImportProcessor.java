@@ -69,6 +69,7 @@ public class TransactionImportProcessor {
     private final TransferRepository transferRepository;
     private final AuditLogService auditLogService;
     private final TransactionClassificationService classificationService;
+    private final BudgetBalanceCache budgetBalanceCache;
     private final TransactionTemplate transactionTemplate;
     private final Clock clock;
     /** Taken when the bean is created, before the web server accepts uploads: older PROCESSING rows are orphans. */
@@ -79,21 +80,24 @@ public class TransactionImportProcessor {
                                       TransactionRepository transactionRepository,
                                       TransferRepository transferRepository, AuditLogService auditLogService,
                                       TransactionClassificationService classificationService,
+                                      BudgetBalanceCache budgetBalanceCache,
                                       PlatformTransactionManager transactionManager) {
         this(transactionImportRepository, transactionRepository, transferRepository, auditLogService,
-            classificationService, transactionManager, Clock.systemDefaultZone());
+            classificationService, budgetBalanceCache, transactionManager, Clock.systemDefaultZone());
     }
 
     TransactionImportProcessor(TransactionImportRepository transactionImportRepository,
                                TransactionRepository transactionRepository, TransferRepository transferRepository,
                                AuditLogService auditLogService,
                                TransactionClassificationService classificationService,
+                               BudgetBalanceCache budgetBalanceCache,
                                PlatformTransactionManager transactionManager, Clock clock) {
         this.transactionImportRepository = transactionImportRepository;
         this.transactionRepository = transactionRepository;
         this.transferRepository = transferRepository;
         this.auditLogService = auditLogService;
         this.classificationService = classificationService;
+        this.budgetBalanceCache = budgetBalanceCache;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.clock = clock;
         this.startedAt = OffsetDateTime.now(clock);
@@ -200,6 +204,8 @@ public class TransactionImportProcessor {
             }
             if (!plan.confirmed().isEmpty()) {
                 transactionRepository.saveAll(plan.confirmed());
+                // a confirmed future now counts as spent and leaves the committed; evicted after the commit
+                budgetBalanceCache.evict(transactionImport.getUserId());
             }
             if (!plan.toInsert().isEmpty()) {
                 transactionRepository.saveAll(plan.toInsert());

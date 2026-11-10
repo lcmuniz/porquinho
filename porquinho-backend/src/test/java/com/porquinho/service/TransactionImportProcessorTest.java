@@ -62,6 +62,8 @@ class TransactionImportProcessorTest {
     private TransactionClassificationService classificationService;
     @Mock
     private PlatformTransactionManager transactionManager;
+    @Mock
+    private BudgetBalanceCache budgetBalanceCache;
 
     private TransactionImportProcessor processor;
     private final UUID importId = UUID.randomUUID();
@@ -76,7 +78,7 @@ class TransactionImportProcessorTest {
     void setUp() {
         org.mockito.Mockito.lenient().when(transactionManager.getTransaction(any())).thenReturn(transactionStatus);
         processor = new TransactionImportProcessor(repository, transactionRepository, transferRepository,
-            auditLogService, classificationService, transactionManager,
+            auditLogService, classificationService, budgetBalanceCache, transactionManager,
             Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -202,9 +204,8 @@ class TransactionImportProcessorTest {
         verify(repository, never()).markFailed(any(), anyString(), any());
     }
 
-    @Test
-    void confirmedFutureIsRolledBackWhenTheImportLeftProcessing() throws IOException {
-        processingImport(null, cardId);
+    /** A future installment 03/10 of the card that itau-cartao.ofx confirms. */
+    private void futureOfTheCard() {
         Transaction future = new Transaction();
         future.setId(UUID.randomUUID());
         future.setUserId(userId);
@@ -220,13 +221,41 @@ class TransactionImportProcessorTest {
         future.setInstallmentGroupId(UUID.randomUUID());
         future.setFutureInstallment(true);
         when(transactionRepository.findActiveInstallmentsByCreditCard(userId, cardId)).thenReturn(List.of(future));
+    }
+
+    @Test
+    void confirmedFutureIsRolledBackWhenTheImportLeftProcessing() throws IOException {
+        processingImport(null, cardId);
+        futureOfTheCard();
         when(repository.recordParsed(importId, 8, 7, 1, 0, 0, now)).thenReturn(0);
 
         processor.process(importId, TransactionImport.FileType.OFX, sample("itau-cartao.ofx"));
 
         verify(transactionRepository, never()).saveAll(any());
+        verify(budgetBalanceCache, never()).evict(any());
         assertThat(transactionStatus.isRollbackOnly()).isTrue();
         verify(repository, never()).markFailed(any(), anyString(), any());
+    }
+
+    @Test
+    void savingAConfirmedFutureEvictsTheBudgetBalance() throws IOException {
+        processingImport(null, cardId);
+        futureOfTheCard();
+        when(repository.recordParsed(importId, 8, 7, 1, 0, 0, now)).thenReturn(1);
+
+        processor.process(importId, TransactionImport.FileType.OFX, sample("itau-cartao.ofx"));
+
+        verify(budgetBalanceCache).evict(userId);
+    }
+
+    @Test
+    void importWithoutConfirmedFuturesDoesNotEvict() throws IOException {
+        processingImport(accountId, null);
+        when(repository.recordParsed(importId, 10, 10, 0, 0, 0, now)).thenReturn(1);
+
+        processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx"));
+
+        verify(budgetBalanceCache, never()).evict(any());
     }
 
     @Test

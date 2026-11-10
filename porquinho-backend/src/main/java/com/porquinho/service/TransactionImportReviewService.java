@@ -68,6 +68,7 @@ public class TransactionImportReviewService {
     private final BalanceHistoryRecorder balanceHistoryRecorder;
     private final AuditLogService auditLogService;
     private final ClassificationPatternService patternService;
+    private final BudgetBalanceCache budgetBalanceCache;
 
     public TransactionImportReviewService(TransactionImportRepository transactionImportRepository,
                                           TransactionRepository transactionRepository,
@@ -75,7 +76,8 @@ public class TransactionImportReviewService {
                                           CreditCardRepository creditCardRepository,
                                           BalanceHistoryRecorder balanceHistoryRecorder,
                                           AuditLogService auditLogService,
-                                          ClassificationPatternService patternService) {
+                                          ClassificationPatternService patternService,
+                                          BudgetBalanceCache budgetBalanceCache) {
         this.transactionImportRepository = transactionImportRepository;
         this.transactionRepository = transactionRepository;
         this.core = core;
@@ -84,6 +86,7 @@ public class TransactionImportReviewService {
         this.balanceHistoryRecorder = balanceHistoryRecorder;
         this.auditLogService = auditLogService;
         this.patternService = patternService;
+        this.budgetBalanceCache = budgetBalanceCache;
     }
 
     /** The rows of the import without the future installments (decision 2A), with their categories resolved. */
@@ -189,6 +192,7 @@ public class TransactionImportReviewService {
             + "\",\"confirmed_transactions\":" + confirmed + ",\"balance_transactions\":" + affectingBalance + "}");
         log.info("Import {} completed: {} transaction(s) confirmed, {} affecting the balance", importId, confirmed,
             affectingBalance);
+        budgetBalanceCache.evict(userId);
         return new ImportReviewActionResponse(importId, TransactionImport.Status.COMPLETED.name(), confirmed);
     }
 
@@ -249,6 +253,7 @@ public class TransactionImportReviewService {
             + ",\"installments_reverted\":" + reverted + "}");
         log.info("Import {} discarded: {} transaction(s) removed, {} installment(s) transferred, {} reverted", importId,
             discarded, transferred, reverted);
+        budgetBalanceCache.evict(userId);
         return new ImportReviewActionResponse(importId, TransactionImport.Status.DISCARDED.name(), discarded);
     }
 

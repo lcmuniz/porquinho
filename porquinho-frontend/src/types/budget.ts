@@ -1,9 +1,17 @@
-/** Story 6.3: orçamento de uma categoria filha no mês. `allocated` nulo = sem orçamento; `committed` nulo = mês fechado. */
+/** Story 6.4: mesma regra em todo o épico (restante < 0; até 20% do alocado; acima de 20%). */
+export type BudgetStatus = 'HEALTHY' | 'LOW' | 'OVERSPENT'
+
+/**
+ * Story 6.3/6.4: orçamento de uma categoria filha no mês. `allocated` nulo = sem orçamento (e então `remaining` e
+ * `status` também são nulos); `committed` nulo = mês fechado.
+ */
 export interface CategoryBudget {
   categoryId: string
   allocated: number | null
   spent: number
   committed: number | null
+  remaining: number | null
+  status: BudgetStatus | null
 }
 
 /** Story 6.3: resposta de GET/PUT /api/v1/budgets/{AAAA-MM}. */

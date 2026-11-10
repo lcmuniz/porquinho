@@ -779,7 +779,7 @@ public class SubscriptionService {
         }
     }
 
-    // E-mail only after the row is committed, and outside the row lock. Also used by TrialReminderService.
+    // E-mail only after the row is committed, and outside the row lock. Also used by TrialReminderService and BudgetBalanceCache.
     static void afterCommit(Runnable action) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
