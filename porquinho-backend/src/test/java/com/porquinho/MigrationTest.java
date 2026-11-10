@@ -339,4 +339,13 @@ class MigrationTest {
             assertThat(count).withFailMessage("Index '%s' should exist", index).isEqualTo(1);
         }
     }
+
+    @Test
+    void everyPublicTableShouldHaveRowLevelSecurityEnabled() {
+        // afterMigrate.sql: sem RLS, o PostgREST do Supabase expõe a tabela para a anon key
+        var withoutRls = jdbcTemplate.queryForList(
+            "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace " +
+            "WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND NOT c.relrowsecurity", String.class);
+        assertThat(withoutRls).isEmpty();
+    }
 }
