@@ -124,7 +124,7 @@ development_status:
   6-3-allocate-monthly-budget-per-category: done
   6-4-display-real-time-available-balance-per-category: done
   6-5-reallocate-money-between-categories: done
-  6-6-auto-deduct-from-category-when-transaction-classified: backlog
+  6-6-auto-deduct-from-category-when-transaction-classified: review
   6-7-visual-indicators-for-lownegative-balance-categories: backlog
   6-8-view-category-allocation-history: backlog
   6-9-compare-planned-vs-actual-spending-by-category: backlog

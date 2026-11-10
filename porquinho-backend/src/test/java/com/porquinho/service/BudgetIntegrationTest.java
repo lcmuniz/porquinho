@@ -86,6 +86,8 @@ class BudgetIntegrationTest {
             jdbc.update("DELETE FROM transaction_imports WHERE user_id = ?", id);
             jdbc.update("DELETE FROM accounts WHERE user_id = ?", id);
             jdbc.update("DELETE FROM credit_cards WHERE user_id = ?", id);
+            // TransactionService.update learns a pattern when the category changes
+            jdbc.update("DELETE FROM user_classification_patterns WHERE user_id = ?", id);
             jdbc.update("DELETE FROM categories WHERE user_id = ? AND parent_category_id IS NOT NULL", id);
             jdbc.update("DELETE FROM categories WHERE user_id = ?", id);
             jdbc.update("DELETE FROM users WHERE id = ?", id);
@@ -375,6 +377,42 @@ class BudgetIntegrationTest {
         BudgetResponse.CategoryBudget deleted = of(service.get(userId, CURRENT.toString()), food);
         assertThat(deleted.spent()).isEqualByComparingTo("0");
         assertThat(deleted.status()).isEqualTo(BudgetStatus.HEALTHY);
+    }
+
+    @Test
+    void theSpentFollowsTheTransactionAcrossCategoriesAndMonths() {
+        UUID account = newAccount("1000", false);
+        service.save(userId, CURRENT.toString(), List.of(item(food, "100")));
+        LocalDate date = CURRENT.atDay(10);
+
+        UUID id = transactionService.create(userId, new TransactionCreateRequest(date, "Feira", new BigDecimal("40.00"),
+            "DEBIT", food, account, null), "127.0.0.1").id();
+        assertThat(of(service.get(userId, CURRENT.toString()), food).spent()).isEqualByComparingTo("40.00");
+
+        transactionService.update(userId, id, new TransactionUpdateRequest(date, "Feira", new BigDecimal("40.00"),
+            "DEBIT", transport, account, null), "127.0.0.1");
+        BudgetResponse moved = service.get(userId, CURRENT.toString());
+        assertThat(of(moved, food).spent()).isEqualByComparingTo("0");
+        assertThat(of(moved, food).remaining()).isEqualByComparingTo("100");
+        assertThat(of(moved, transport).spent()).isEqualByComparingTo("40.00");
+        assertThat(of(moved, transport).allocated()).isNull();
+
+        transactionService.update(userId, id, new TransactionUpdateRequest(CURRENT.plusMonths(1).atDay(10), "Feira",
+            new BigDecimal("40.00"), "DEBIT", transport, account, null), "127.0.0.1");
+        BudgetResponse current = service.get(userId, CURRENT.toString());
+        assertThat(of(current, food).spent()).isEqualByComparingTo("0");
+        assertThat(of(current, transport).spent()).isEqualByComparingTo("0");
+        assertThat(of(service.get(userId, CURRENT.plusMonths(1).toString()), transport).spent())
+            .isEqualByComparingTo("40.00");
+
+        transactionService.update(userId, id, new TransactionUpdateRequest(CURRENT.plusMonths(1).atDay(10), "Feira",
+            new BigDecimal("40.00"), "DEBIT", null, account, null), "127.0.0.1");
+        transactionService.create(userId, new TransactionCreateRequest(date, "Estorno", new BigDecimal("15.00"),
+            "CREDIT", food, account, null), "127.0.0.1");
+        assertThat(of(service.get(userId, CURRENT.plusMonths(1).toString()), transport).spent())
+            .isEqualByComparingTo("0");
+        assertThat(of(service.get(userId, CURRENT.toString()), food).spent()).isEqualByComparingTo("0");
+        assertThat(allocations()).isEqualTo(1);
     }
 
     @Test
