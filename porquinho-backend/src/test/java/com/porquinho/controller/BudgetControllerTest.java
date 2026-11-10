@@ -60,7 +60,8 @@ class BudgetControllerTest {
     void getReturnsTheMonthInCamelCaseWithNulls() throws Exception {
         UUID category = UUID.randomUUID();
         when(budgetService.get(userId, "2026-11")).thenReturn(new BudgetResponse("2026-11", new BigDecimal("1500.00"),
-            BigDecimal.ZERO, List.of(new BudgetResponse.CategoryBudget(category, null, new BigDecimal("30.00"), null))));
+            BigDecimal.ZERO, List.of(
+                new BudgetResponse.CategoryBudget(category, null, new BigDecimal("30.00"), null, null, null))));
 
         mockMvc.perform(get("/api/v1/budgets/2026-11").with(authentication(authToken)))
             .andExpect(status().isOk())
@@ -69,7 +70,9 @@ class BudgetControllerTest {
             .andExpect(jsonPath("$.categories[0].categoryId").value(category.toString()))
             .andExpect(jsonPath("$.categories[0].allocated").isEmpty())
             .andExpect(jsonPath("$.categories[0].spent").value(30.00))
-            .andExpect(jsonPath("$.categories[0].committed").isEmpty());
+            .andExpect(jsonPath("$.categories[0].committed").isEmpty())
+            .andExpect(jsonPath("$.categories[0].remaining").isEmpty())
+            .andExpect(jsonPath("$.categories[0].status").isEmpty());
     }
 
     @Test

@@ -7,6 +7,7 @@ import java.util.UUID;
 /**
  * GET/PUT /api/v1/budgets/{YYYY-MM} (Story 6.3). One entry per active child category. {@code allocated} is null when
  * the month has no allocation for it; {@code committed} is null in a closed month (before the current one).
+ * {@code remaining} (allocated - spent) and {@code status} (Story 6.4) are null without allocation.
  */
 public record BudgetResponse(
     String month,
@@ -14,6 +15,7 @@ public record BudgetResponse(
     BigDecimal totalAllocated,
     List<CategoryBudget> categories
 ) {
-    public record CategoryBudget(UUID categoryId, BigDecimal allocated, BigDecimal spent, BigDecimal committed) {
+    public record CategoryBudget(UUID categoryId, BigDecimal allocated, BigDecimal spent, BigDecimal committed,
+                                 BigDecimal remaining, BudgetStatus status) {
     }
 }

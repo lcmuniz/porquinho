@@ -26,10 +26,13 @@ public class CreditCardService {
 
     private final CreditCardRepository creditCardRepository;
     private final AuditLogService auditLogService;
+    private final BudgetBalanceCache budgetBalanceCache;
 
-    public CreditCardService(CreditCardRepository creditCardRepository, AuditLogService auditLogService) {
+    public CreditCardService(CreditCardRepository creditCardRepository, AuditLogService auditLogService,
+                             BudgetBalanceCache budgetBalanceCache) {
         this.creditCardRepository = creditCardRepository;
         this.auditLogService = auditLogService;
+        this.budgetBalanceCache = budgetBalanceCache;
     }
 
     @Transactional
@@ -82,6 +85,7 @@ public class CreditCardService {
         card.setDeletedBy(userId);
         creditCardRepository.save(card);
         auditLogService.log(AUDIT_DELETED, userId, ipAddress, AccountService.idMetadata(cardId));
+        budgetBalanceCache.evict(userId);
     }
 
     /**
@@ -96,6 +100,7 @@ public class CreditCardService {
         card.setDeletedBy(null);
         CreditCard saved = creditCardRepository.save(card);
         auditLogService.log(AUDIT_RESTORED, userId, ipAddress, AccountService.idMetadata(cardId));
+        budgetBalanceCache.evict(userId);
         return saved;
     }
 }

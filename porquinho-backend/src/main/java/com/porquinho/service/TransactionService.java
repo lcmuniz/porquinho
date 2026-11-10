@@ -71,6 +71,7 @@ public class TransactionService {
     private final BalanceHistoryRecorder balanceHistoryRecorder;
     private final ClassificationPatternService patternService;
     private final AuditLogService auditLogService;
+    private final BudgetBalanceCache budgetBalanceCache;
     private final Clock clock;
 
     public TransactionService(TransactionRepository transactionRepository,
@@ -78,7 +79,7 @@ public class TransactionService {
                               AccountRepository accountRepository, CreditCardRepository creditCardRepository,
                               BalanceHistoryRecorder balanceHistoryRecorder,
                               ClassificationPatternService patternService, AuditLogService auditLogService,
-                              Clock clock) {
+                              BudgetBalanceCache budgetBalanceCache, Clock clock) {
         this.transactionRepository = transactionRepository;
         this.core = core;
         this.accountRepository = accountRepository;
@@ -86,6 +87,7 @@ public class TransactionService {
         this.balanceHistoryRecorder = balanceHistoryRecorder;
         this.patternService = patternService;
         this.auditLogService = auditLogService;
+        this.budgetBalanceCache = budgetBalanceCache;
         this.clock = clock;
     }
 
@@ -161,6 +163,7 @@ public class TransactionService {
         row = transactionRepository.saveAndFlush(row);
         auditLogService.log(AUDIT_CREATED, userId, ipAddress, "{\"transaction_id\":\"" + row.getId()
             + "\",\"accounts_changed\":" + (affects ? 1 : 0) + "}");
+        budgetBalanceCache.evict(userId);
         return toResponses(userId, List.of(row)).get(0);
     }
 
@@ -235,6 +238,7 @@ public class TransactionService {
         transactionRepository.saveAndFlush(row);
         auditLogService.log(AUDIT_EDITED, userId, ipAddress, "{\"transaction_id\":\"" + id
             + "\",\"category_changed\":" + categoryChanged + ",\"accounts_changed\":" + accountsChanged + "}");
+        budgetBalanceCache.evict(userId);
         return toResponses(userId, List.of(row)).get(0);
     }
 
@@ -261,6 +265,7 @@ public class TransactionService {
         transactionRepository.save(row);
         auditLogService.log(AUDIT_DELETED, userId, ipAddress, "{\"transaction_id\":\"" + id
             + "\",\"accounts_changed\":" + accountsChanged + ",\"removed_installments\":" + futuresRemoved + "}");
+        budgetBalanceCache.evict(userId);
     }
 
     /**
@@ -277,6 +282,7 @@ public class TransactionService {
         int removed = removeFutures(userId, groupId, OffsetDateTime.now(clock));
         auditLogService.log(AUDIT_FUTURES_REMOVED, userId, ipAddress, "{\"transaction_id\":\"" + id
             + "\",\"installment_group_id\":\"" + groupId + "\",\"removed_installments\":" + removed + "}");
+        budgetBalanceCache.evict(userId);
         return removed;
     }
 

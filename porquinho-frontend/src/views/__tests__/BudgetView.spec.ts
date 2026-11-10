@@ -24,8 +24,8 @@ function budget(overrides: Partial<Budget> = {}): Budget {
     totalAvailable: 1000,
     totalAllocated: 400,
     categories: [
-      { categoryId: 'c1', allocated: 400, spent: 100, committed: 50 },
-      { categoryId: 'c2', allocated: null, spent: 30, committed: 0 },
+      { categoryId: 'c1', allocated: 400, spent: 100, committed: 50, remaining: 300, status: 'HEALTHY' },
+      { categoryId: 'c2', allocated: null, spent: 30, committed: 0, remaining: null, status: null },
     ],
     ...overrides,
   }
@@ -82,12 +82,52 @@ describe('BudgetView', () => {
     expect(w.find('[data-testid="progress-c2"]').exists()).toBe(false)
   })
 
+  it.each([
+    ['HEALTHY', 'Saudável', 'bg-green-600'],
+    ['LOW', 'Saldo baixo', 'bg-yellow-600'],
+    ['OVERSPENT', 'Estourada', 'bg-red-600'],
+  ] as const)('status %s tem cor, ícone e rótulo', async (status, label, bar) => {
+    mockGet.mockResolvedValue(
+      budget({
+        categories: [
+          { categoryId: 'c1', allocated: 100, spent: 80, committed: 0, remaining: 20, status },
+          { categoryId: 'c2', allocated: null, spent: 30, committed: 0, remaining: null, status: null },
+        ],
+      }),
+    )
+    const w = await mountView()
+    expect(w.get('[data-testid="status-c1"]').text()).toBe(label)
+    expect(w.get('[data-testid="status-c1"] svg').attributes('aria-hidden')).toBe('true')
+    expect(w.get('[data-testid="progress-bar-c1"]').classes()).toContain(bar)
+    expect(w.find('[data-testid="status-c2"]').exists()).toBe(false)
+    expect(w.get('[data-testid="no-budget-c2"]').text()).toBe('Sem orçamento definido')
+  })
+
+  it('categoria estourada mostra o restante negativo do backend e a barra cheia', async () => {
+    mockGet.mockResolvedValue(
+      budget({
+        categories: [
+          { categoryId: 'c1', allocated: 100, spent: 130, committed: 0, remaining: -30, status: 'OVERSPENT' },
+          { categoryId: 'c2', allocated: null, spent: 0, committed: 0, remaining: null, status: null },
+        ],
+      }),
+    )
+    const w = await mountView()
+    expect(w.get('[data-testid="progress-text-c1"]').text().replace(/\s/g, ' ')).toContain('Restante: -R$ 30,00')
+    expect(w.get('[data-testid="progress-c1"]').attributes('aria-valuenow')).toBe('100')
+    expect(w.get('[data-testid="status-c1"]').text()).toBe('Estourada')
+
+    // o valor digitado e não salvo não muda o status
+    await type('amount-c1', '500,00')
+    expect(w.get('[data-testid="status-c1"]').text()).toBe('Estourada')
+  })
+
   it('mês fechado não mostra o comprometido', async () => {
     mockGet.mockResolvedValue(
       budget({
         categories: [
-          { categoryId: 'c1', allocated: 400, spent: 100, committed: null },
-          { categoryId: 'c2', allocated: null, spent: 0, committed: null },
+          { categoryId: 'c1', allocated: 400, spent: 100, committed: null, remaining: 300, status: 'HEALTHY' },
+          { categoryId: 'c2', allocated: null, spent: 0, committed: null, remaining: null, status: null },
         ],
       }),
     )
@@ -99,8 +139,8 @@ describe('BudgetView', () => {
     mockSave.mockResolvedValue(
       budget({
         categories: [
-          { categoryId: 'c1', allocated: 400, spent: 100, committed: 50 },
-          { categoryId: 'c2', allocated: 0, spent: 30, committed: 0 },
+          { categoryId: 'c1', allocated: 400, spent: 100, committed: 50, remaining: 300, status: 'HEALTHY' },
+          { categoryId: 'c2', allocated: 0, spent: 30, committed: 0, remaining: -30, status: 'OVERSPENT' },
         ],
       }),
     )
@@ -144,7 +184,7 @@ describe('BudgetView', () => {
     mockGet.mockResolvedValue(
       budget({
         totalAvailable: -50,
-        categories: [{ categoryId: 'c1', allocated: null, spent: 0, committed: 0 }],
+        categories: [{ categoryId: 'c1', allocated: null, spent: 0, committed: 0, remaining: null, status: null }],
       }),
     )
     const w = await mountView()
@@ -189,8 +229,8 @@ describe('BudgetView', () => {
       budget({
         month: '2026-10',
         categories: [
-          { categoryId: 'c1', allocated: null, spent: 0, committed: null },
-          { categoryId: 'c2', allocated: 250.5, spent: 0, committed: null },
+          { categoryId: 'c1', allocated: null, spent: 0, committed: null, remaining: null, status: null },
+          { categoryId: 'c2', allocated: 250.5, spent: 0, committed: null, remaining: 250.5, status: 'HEALTHY' },
         ],
       }),
     )
@@ -208,8 +248,8 @@ describe('BudgetView', () => {
     mockGet.mockResolvedValueOnce(
       budget({
         categories: [
-          { categoryId: 'c1', allocated: null, spent: 0, committed: null },
-          { categoryId: 'c2', allocated: null, spent: 0, committed: null },
+          { categoryId: 'c1', allocated: null, spent: 0, committed: null, remaining: null, status: null },
+          { categoryId: 'c2', allocated: null, spent: 0, committed: null, remaining: null, status: null },
         ],
       }),
     )

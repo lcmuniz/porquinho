@@ -156,12 +156,32 @@
                   class="h-2 w-full overflow-hidden rounded-full bg-gray-200"
                   :data-testid="`progress-${child.id}`"
                 >
-                  <div class="h-full bg-gray-600" :style="{ width: `${progress(byCategory[child.id]!)}%` }" />
+                  <div
+                    class="h-full"
+                    :class="statusOf(byCategory[child.id]!)?.bar ?? 'bg-gray-600'"
+                    :style="{ width: `${progress(byCategory[child.id]!)}%` }"
+                    :data-testid="`progress-bar-${child.id}`"
+                  />
                 </div>
-                <p class="text-sm text-gray-700" :data-testid="`progress-text-${child.id}`">
-                  {{ formatBRL(byCategory[child.id]!.spent) }} de {{ formatBRL(byCategory[child.id]!.allocated!) }}
-                  · Restante: {{ formatBRL(byCategory[child.id]!.allocated! - byCategory[child.id]!.spent) }}
-                </p>
+                <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-700">
+                  <p :data-testid="`progress-text-${child.id}`">
+                    {{ formatBRL(byCategory[child.id]!.spent) }} de {{ formatBRL(byCategory[child.id]!.allocated!) }}
+                    · Restante: {{ formatBRL(byCategory[child.id]!.remaining ?? 0) }}
+                  </p>
+                  <span
+                    v-if="statusOf(byCategory[child.id]!)"
+                    class="inline-flex items-center gap-1 font-medium text-gray-900"
+                    :data-testid="`status-${child.id}`"
+                  >
+                    <component
+                      :is="statusOf(byCategory[child.id]!)!.icon"
+                      class="size-4"
+                      :class="statusOf(byCategory[child.id]!)!.text"
+                      aria-hidden="true"
+                    />
+                    {{ statusOf(byCategory[child.id]!)!.label }}
+                  </span>
+                </div>
               </div>
             </li>
           </ul>
@@ -190,17 +210,19 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import { CircleAlert, CircleCheck, TriangleAlert } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { formatBRL, formatBRLInput, parseBRL } from '@/lib/money'
 import { getBudget, saveBudget } from '@/services/budgetService'
 import { listCategories } from '@/services/categoryService'
-import type { Budget, CategoryBudget } from '@/types/budget'
+import type { Budget, BudgetStatus, CategoryBudget } from '@/types/budget'
 import type { Category } from '@/types/category'
 
 /**
  * Story 6.3: orçamento do mês por categoria filha, agrupado por grupo. O gasto e o comprometido vêm do backend; a
  * barra usa o valor salvo. O total alocado acompanha o que está digitado, e o aviso de excesso não impede salvar.
+ * Story 6.4: restante e status vêm do backend (refletem o salvo); o status tem cor, ícone e rótulo, nunca só cor.
  */
 const SUCCESS_TIMEOUT_MS = 5000
 const LOAD_FAILED = 'Não foi possível carregar o orçamento.'
@@ -285,6 +307,17 @@ const totalAllocated = computed(
 const overAvailable = computed(
   () => !!budget.value && totalAllocated.value > 0 && totalAllocated.value > budget.value.totalAvailable,
 )
+
+// Green/Yellow/Red 600 na barra; o ícone amarelo usa o 700 para ter contraste 3:1 (WCAG 1.4.11). O rótulo fica escuro
+const STATUS: Record<BudgetStatus, { label: string; icon: typeof CircleCheck; bar: string; text: string }> = {
+  HEALTHY: { label: 'Saudável', icon: CircleCheck, bar: 'bg-green-600', text: 'text-green-600' },
+  LOW: { label: 'Saldo baixo', icon: TriangleAlert, bar: 'bg-yellow-600', text: 'text-yellow-700' },
+  OVERSPENT: { label: 'Estourada', icon: CircleAlert, bar: 'bg-red-600', text: 'text-red-600' },
+}
+
+function statusOf(c: CategoryBudget) {
+  return c.status ? STATUS[c.status] : null
+}
 
 function progress(c: CategoryBudget): number {
   if (!c.allocated) return c.spent > 0 ? 100 : 0

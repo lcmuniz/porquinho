@@ -1,6 +1,7 @@
 package com.porquinho.service;
 
 import com.porquinho.dto.BudgetResponse;
+import com.porquinho.dto.BudgetStatus;
 import com.porquinho.dto.SaveBudgetRequest;
 import com.porquinho.entity.Account;
 import com.porquinho.entity.BudgetAllocation;
@@ -28,8 +29,9 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Monthly budget per child category (Story 6.3). Spent and committed are computed from the transactions on every read
- * (no stored spent_amount). Total available is the sum of the active accounts' balances (cards left out); going over it
+ * Monthly budget per child category (Story 6.3). Spent and committed are computed from the transactions (no stored
+ * spent_amount) and cached for 30 s by {@link BudgetBalanceCache} (Story 6.4); allocations and total available are read
+ * on every call. Total available is the sum of the active accounts' balances (cards left out); going over it
  * is only a warning on the screen, never checked here.
  */
 @Service
@@ -39,19 +41,23 @@ public class BudgetService {
     public static final String DUPLICATE_CATEGORY_MESSAGE = "Cada categoria pode aparecer só uma vez no orçamento";
 
     private static final ZoneId SAO_PAULO = ZoneId.of("America/Sao_Paulo");
+    private static final BigDecimal LOW_SHARE = new BigDecimal("0.20");
 
     private final BudgetAllocationRepository budgetAllocationRepository;
     private final CategoryRepository categoryRepository;
     private final TransactionRepository transactionRepository;
     private final AccountRepository accountRepository;
+    private final BudgetBalanceCache balanceCache;
     private final Clock clock;
 
     public BudgetService(BudgetAllocationRepository budgetAllocationRepository, CategoryRepository categoryRepository,
-                         TransactionRepository transactionRepository, AccountRepository accountRepository, Clock clock) {
+                         TransactionRepository transactionRepository, AccountRepository accountRepository,
+                         BudgetBalanceCache balanceCache, Clock clock) {
         this.budgetAllocationRepository = budgetAllocationRepository;
         this.categoryRepository = categoryRepository;
         this.transactionRepository = transactionRepository;
         this.accountRepository = accountRepository;
+        this.balanceCache = balanceCache;
         this.clock = clock;
     }
 
@@ -94,13 +100,15 @@ public class BudgetService {
         for (BudgetAllocation a : budgetAllocationRepository.findByUserIdAndMonthYear(userId, from)) {
             allocated.put(a.getCategoryId(), a.getAllocatedAmount());
         }
-        Map<UUID, BigDecimal> spent = sums(transactionRepository.sumSpentByCategory(userId, from, to));
         boolean open = !yearMonth.isBefore(YearMonth.now(clock.withZone(SAO_PAULO)));
-        Map<UUID, BigDecimal> committed = open ? sums(transactionRepository.sumCommittedByCategory(userId, from, to)) : null;
+        BudgetBalanceCache.Sums cached = balanceCache.get(userId, yearMonth, () -> new BudgetBalanceCache.Sums(
+            sums(transactionRepository.sumSpentByCategory(userId, from, to)),
+            open ? sums(transactionRepository.sumCommittedByCategory(userId, from, to)) : null));
+        Map<UUID, BigDecimal> spent = cached.spent();
+        Map<UUID, BigDecimal> committed = open ? cached.committed() : null;
 
         List<BudgetResponse.CategoryBudget> categories = children.stream()
-            .map(c -> new BudgetResponse.CategoryBudget(c.getId(), allocated.get(c.getId()),
-                spent.getOrDefault(c.getId(), BigDecimal.ZERO),
+            .map(c -> category(c.getId(), allocated.get(c.getId()), spent.getOrDefault(c.getId(), BigDecimal.ZERO),
                 committed == null ? null : committed.getOrDefault(c.getId(), BigDecimal.ZERO)))
             .toList();
         BigDecimal totalAllocated = categories.stream().map(BudgetResponse.CategoryBudget::allocated)
@@ -108,6 +116,23 @@ public class BudgetService {
         BigDecimal totalAvailable = accountRepository.findActiveByUserId(userId).stream()
             .map(Account::getCurrentBalance).reduce(BigDecimal.ZERO, BigDecimal::add);
         return new BudgetResponse(yearMonth.toString(), totalAvailable, totalAllocated, categories);
+    }
+
+    private static BudgetResponse.CategoryBudget category(UUID id, BigDecimal allocated, BigDecimal spent,
+                                                          BigDecimal committed) {
+        BigDecimal remaining = allocated == null ? null : allocated.subtract(spent);
+        return new BudgetResponse.CategoryBudget(id, allocated, spent, committed, remaining, status(allocated, remaining));
+    }
+
+    /** The epic's rule: OVERSPENT below 0, LOW up to 20% of the allocated, HEALTHY above; null without allocation. */
+    static BudgetStatus status(BigDecimal allocated, BigDecimal remaining) {
+        if (remaining == null) {
+            return null;
+        }
+        if (remaining.signum() < 0) {
+            return BudgetStatus.OVERSPENT;
+        }
+        return remaining.compareTo(allocated.multiply(LOW_SHARE)) <= 0 ? BudgetStatus.LOW : BudgetStatus.HEALTHY;
     }
 
     private static List<Category> children(List<Category> categories) {
