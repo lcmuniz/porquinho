@@ -250,6 +250,3 @@
 - source_spec: `_bmad-output/roteiro-testes-porquinho.md`
   summary: Na revisão da importação, avisar (sem bloquear) quando o banco detectado no arquivo difere do banco preenchido na conta de destino, ex.: "Este extrato parece ser do Nubank, mas a conta 'X' está cadastrada como Itaú. Confira se escolheu a conta certa antes de concluir." Sem aviso quando a conta não tem banco.
   evidence: Teste manual do Luiz em 2026-11-09: importou um OFX do Nubank na conta criada no onboarding sem nenhum alerta. A 5.1 só valida o tipo de destino (conta × cartão); `Account.bankName` é opcional e texto livre (`AccountForm.vue:33`, com sugestões `BANKS`) e o banco do arquivo só é conhecido no processamento (`TransactionImportProcessor.java:119`), por isso bloquear exigiria lista fechada no Epic 4. Comparar normalizado (sem acento/caixa, "Nu" ~ "Nubank"). Luiz aprovou o aviso.
-- source_spec: `_bmad-output/implementation-artifacts/spec-6-4-display-real-time-available-balance-per-category.md`
-  summary: Cobrir com teste a invalidação do cache de saldo por categoria em `TransactionService.removeFutureInstallments` (GET, remover futuras, GET mostra o comprometido sem elas).
-  evidence: Revisão da 6.4 (verification-gap): o `evict` existe, mas nenhum teste falharia se fosse removido; a staleness fica limitada a 30 s pelo TTL.
