@@ -189,6 +189,19 @@
 
         <div v-if="groups.length > 0" class="flex flex-col gap-2 sm:flex-row sm:justify-end">
           <Button
+            v-if="!closedMonth"
+            ref="reallocateButton"
+            type="button"
+            variant="outline"
+            class="min-h-[44px]"
+            :disabled="saving || repeating || dirty || !canReallocate"
+            :aria-describedby="dirty ? 'reallocate-hint' : undefined"
+            data-testid="open-reallocate"
+            @click="openReallocate"
+          >
+            Mover dinheiro
+          </Button>
+          <Button
             type="button"
             variant="outline"
             class="min-h-[44px]"
@@ -202,16 +215,67 @@
             {{ saving ? 'Salvando...' : 'Salvar orçamento' }}
           </Button>
         </div>
+        <p
+          v-if="groups.length > 0 && !closedMonth && dirty"
+          id="reallocate-hint"
+          class="text-right text-sm text-gray-600"
+          data-testid="reallocate-hint"
+        >
+          Salve o orçamento antes de mover dinheiro
+        </p>
       </form>
     </div>
+
+    <!-- Story 6.5: mover dinheiro entre categorias -->
+    <Dialog :open="reallocateOpen" @update:open="onReallocateOpenChange">
+      <DialogContent
+        :show-close-button="false"
+        data-testid="reallocate-dialog"
+        @open-auto-focus="onReallocateOpenAutoFocus"
+        @close-auto-focus="onReallocateCloseAutoFocus"
+      >
+        <DialogHeader>
+          <DialogTitle>Mover dinheiro</DialogTitle>
+          <DialogDescription>Tire dinheiro de uma categoria e coloque em outra. O total alocado não muda.</DialogDescription>
+        </DialogHeader>
+        <p
+          v-if="reallocateError"
+          role="alert"
+          data-testid="reallocate-error"
+          class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+        >
+          {{ reallocateError }}
+        </p>
+        <ReallocateForm
+          ref="reallocateForm"
+          v-model:submitting="reallocating"
+          :month="month"
+          :options="reallocateOptions"
+          @attempt="reallocateError = null"
+          @moved="onMoved"
+          @failed="(detail) => (reallocateError = detail ?? REALLOCATE_FAILED)"
+        />
+        <Button
+          variant="outline"
+          class="min-h-[44px] w-full"
+          data-testid="cancel-reallocate"
+          :disabled="reallocating"
+          @click="reallocateOpen = false"
+        >
+          Cancelar
+        </Button>
+      </DialogContent>
+    </Dialog>
   </main>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { CircleAlert, CircleCheck, TriangleAlert } from 'lucide-vue-next'
+import ReallocateForm from '@/components/budget/ReallocateForm.vue'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { formatBRL, formatBRLInput, parseBRL } from '@/lib/money'
 import { getBudget, saveBudget } from '@/services/budgetService'
@@ -223,11 +287,14 @@ import type { Category } from '@/types/category'
  * Story 6.3: orçamento do mês por categoria filha, agrupado por grupo. O gasto e o comprometido vêm do backend; a
  * barra usa o valor salvo. O total alocado acompanha o que está digitado, e o aviso de excesso não impede salvar.
  * Story 6.4: restante e status vêm do backend (refletem o salvo); o status tem cor, ícone e rótulo, nunca só cor.
+ * Story 6.5: "Mover dinheiro" abre um diálogo; fica bloqueado com valores não salvos (o sucesso recarrega os valores
+ * do backend e apagaria o que foi digitado) e some em mês fechado.
  */
 const SUCCESS_TIMEOUT_MS = 5000
 const LOAD_FAILED = 'Não foi possível carregar o orçamento.'
 const SAVE_FAILED = 'Não foi possível salvar o orçamento. Verifique sua conexão e tente novamente.'
 const REPEAT_FAILED = 'Não foi possível carregar o orçamento do mês anterior.'
+const REALLOCATE_FAILED = 'Não foi possível mover o dinheiro. Verifique sua conexão e tente novamente.'
 const INVALID_AMOUNT = 'Informe um valor válido, zero ou maior'
 
 interface ApiError {
@@ -256,6 +323,11 @@ const repeating = ref(false)
 const actionError = ref<string | null>(null)
 const successMessage = ref<string | null>(null)
 const notice = ref<string | null>(null)
+const reallocateOpen = ref(false)
+const reallocating = ref(false)
+const reallocateError = ref<string | null>(null)
+const reallocateForm = ref<InstanceType<typeof ReallocateForm> | null>(null)
+const reallocateButton = ref<InstanceType<typeof Button> | null>(null)
 
 const monthLabel = computed(() => {
   const [year, monthNumber] = month.value.split('-').map(Number)
@@ -306,6 +378,28 @@ const totalAllocated = computed(
 
 const overAvailable = computed(
   () => !!budget.value && totalAllocated.value > 0 && totalAllocated.value > budget.value.totalAvailable,
+)
+
+// AAAA-MM compara como texto
+const closedMonth = computed(() => month.value < currentMonth())
+
+// Compara o valor, não o texto: "400" num campo salvo como "400,00" não é edição; texto inválido conta como edição
+const dirty = computed(() =>
+  (budget.value?.categories ?? []).some((c) => {
+    const text = (values.value[c.categoryId] ?? '').trim()
+    return (text ? (parseBRL(text) ?? text) : null) !== c.allocated
+  }),
+)
+
+const reallocateOptions = computed(() =>
+  groups.value.flatMap((g) =>
+    g.children.map((c) => ({ id: c.id, name: c.categoryName, remaining: byCategory.value[c.id]!.remaining })),
+  ),
+)
+
+// Precisa de um destino diferente e de uma origem com restante > 0
+const canReallocate = computed(
+  () => reallocateOptions.value.length >= 2 && reallocateOptions.value.some((o) => (o.remaining ?? 0) > 0),
 )
 
 // Green/Yellow/Red 600 na barra; o ícone amarelo usa o 700 para ter contraste 3:1 (WCAG 1.4.11). O rótulo fica escuro
@@ -414,6 +508,36 @@ async function save() {
   } finally {
     saving.value = false
   }
+}
+
+function openReallocate() {
+  reallocateError.value = null
+  actionError.value = null
+  notice.value = null
+  reallocateOpen.value = true
+}
+
+function onReallocateOpenChange(open: boolean) {
+  // Não fecha no meio do envio (Esc ou clique fora)
+  if (!open && reallocating.value) return
+  reallocateOpen.value = open
+}
+
+function onReallocateOpenAutoFocus(event: Event) {
+  event.preventDefault()
+  if (reallocateForm.value) reallocateForm.value.focus()
+  else void nextTick(() => reallocateForm.value?.focus())
+}
+
+function onReallocateCloseAutoFocus(event: Event) {
+  event.preventDefault()
+  void nextTick(() => (reallocateButton.value?.$el as HTMLElement | undefined)?.focus())
+}
+
+function onMoved(data: Budget, message: string) {
+  reallocateOpen.value = false
+  fill(data)
+  setSuccess(message)
 }
 
 onMounted(load)

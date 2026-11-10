@@ -1,5 +1,5 @@
 # generated: 2026-03-13
-# last_updated: 2026-11-09
+# last_updated: 2026-11-10
 # project: porquinho
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-13
-last_updated: 11-10-2026 00:06
+last_updated: 11-10-2026 09:00
 project: porquinho
 project_key: NOKEY
 tracking_system: file-system
@@ -123,7 +123,7 @@ development_status:
   6-2-organize-categories-in-hierarchical-groups: done
   6-3-allocate-monthly-budget-per-category: done
   6-4-display-real-time-available-balance-per-category: done
-  6-5-reallocate-money-between-categories: backlog
+  6-5-reallocate-money-between-categories: review
   6-6-auto-deduct-from-category-when-transaction-classified: backlog
   6-7-visual-indicators-for-lownegative-balance-categories: backlog
   6-8-view-category-allocation-history: backlog

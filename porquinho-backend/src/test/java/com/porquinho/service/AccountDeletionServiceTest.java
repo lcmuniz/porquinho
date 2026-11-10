@@ -19,6 +19,7 @@ import com.porquinho.repository.TransferRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.AiClassificationHistoryRepository;
 import com.porquinho.repository.BudgetAllocationRepository;
+import com.porquinho.repository.BudgetReallocationRepository;
 import com.porquinho.repository.UserClassificationPatternRepository;
 import com.porquinho.repository.CategoryRepository;
 import com.porquinho.repository.CreditCardRepository;
@@ -107,6 +108,8 @@ class AccountDeletionServiceTest {
     @Mock
     private BudgetAllocationRepository budgetAllocationRepository;
     @Mock
+    private BudgetReallocationRepository budgetReallocationRepository;
+    @Mock
     private CategoryRepository categoryRepository;
     @Mock
     private GoalRepository goalRepository;
@@ -135,13 +138,13 @@ class AccountDeletionServiceTest {
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
             supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService,
             billingTransactionRepository, subscriptionService, onboardingProgressRepository, accountRepository,
-            creditCardRepository, categoryRepository, goalRepository, accountBalanceHistoryRepository, transferRepository, reconciliationRepository, transactionImportRepository, transactionRepository, aiClassificationHistoryRepository, userClassificationPatternRepository, budgetAllocationRepository, null);
+            creditCardRepository, categoryRepository, goalRepository, accountBalanceHistoryRepository, transferRepository, reconciliationRepository, transactionImportRepository, transactionRepository, aiClassificationHistoryRepository, userClassificationPatternRepository, budgetAllocationRepository, budgetReallocationRepository, null);
         service = new AccountDeletionService(
             userRepository, userSessionRepository, auditLogRepository, dataExportRepository,
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
             supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService,
             billingTransactionRepository, subscriptionService, onboardingProgressRepository, accountRepository,
-            creditCardRepository, categoryRepository, goalRepository, accountBalanceHistoryRepository, transferRepository, reconciliationRepository, transactionImportRepository, transactionRepository, aiClassificationHistoryRepository, userClassificationPatternRepository, budgetAllocationRepository, temp);
+            creditCardRepository, categoryRepository, goalRepository, accountBalanceHistoryRepository, transferRepository, reconciliationRepository, transactionImportRepository, transactionRepository, aiClassificationHistoryRepository, userClassificationPatternRepository, budgetAllocationRepository, budgetReallocationRepository, temp);
         // After construction, swap in the real reference so self == service (recursive ref ok
         // for tests because Spring's proxy would similarly route the call into this same bean).
         try {
@@ -384,6 +387,12 @@ class AccountDeletionServiceTest {
         budgetOrder.verify(budgetAllocationRepository).deleteByUserId(userId);
         budgetOrder.verify(categoryRepository).deleteByUserId(userId);
         budgetOrder.verify(userRepository).deleteByIdNative(userId);
+
+        // Story 6.5: the budget reallocations deleted BEFORE categories and user (FKs to both)
+        InOrder reallocationOrder = inOrder(budgetReallocationRepository, categoryRepository, userRepository);
+        reallocationOrder.verify(budgetReallocationRepository).deleteByUserId(userId);
+        reallocationOrder.verify(categoryRepository).deleteByUserId(userId);
+        reallocationOrder.verify(userRepository).deleteByIdNative(userId);
 
         // Story 5.4: transactions deleted BEFORE imports, accounts, cards, categories and user (FKs to all of them)
         InOrder transactionsOrder = inOrder(transactionRepository, transactionImportRepository, accountRepository,

@@ -1,6 +1,7 @@
 package com.porquinho.controller;
 
 import com.porquinho.dto.BudgetResponse;
+import com.porquinho.dto.ReallocateBudgetRequest;
 import com.porquinho.dto.SaveBudgetRequest;
 import com.porquinho.service.BudgetService;
 import jakarta.validation.Valid;
@@ -9,6 +10,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -38,5 +40,13 @@ public class BudgetController {
     public ResponseEntity<BudgetResponse> save(@AuthenticationPrincipal Jwt jwt, @PathVariable("month") String month,
                                                @Valid @RequestBody SaveBudgetRequest request) {
         return ResponseEntity.ok(budgetService.save(UUID.fromString(jwt.getSubject()), month, request.allocations()));
+    }
+
+    /** Moves money between two categories of an open month (Story 6.5); 200 with the month recalculated; 400 otherwise. */
+    @PostMapping("/{month}/reallocations")
+    public ResponseEntity<BudgetResponse> reallocate(@AuthenticationPrincipal Jwt jwt,
+                                                     @PathVariable("month") String month,
+                                                     @Valid @RequestBody ReallocateBudgetRequest request) {
+        return ResponseEntity.ok(budgetService.reallocate(UUID.fromString(jwt.getSubject()), month, request));
     }
 }

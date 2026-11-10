@@ -10,6 +10,7 @@ import com.porquinho.entity.Account;
 import com.porquinho.entity.AccountBalanceHistory;
 import com.porquinho.entity.AiClassificationHistory;
 import com.porquinho.entity.BudgetAllocation;
+import com.porquinho.entity.BudgetReallocation;
 import com.porquinho.entity.UserClassificationPattern;
 import com.porquinho.entity.Category;
 import com.porquinho.entity.CreditCard;
@@ -30,6 +31,7 @@ import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.AiClassificationHistoryRepository;
 import com.porquinho.repository.BudgetAllocationRepository;
+import com.porquinho.repository.BudgetReallocationRepository;
 import com.porquinho.repository.UserClassificationPatternRepository;
 import com.porquinho.repository.CategoryRepository;
 import com.porquinho.repository.CreditCardRepository;
@@ -93,6 +95,7 @@ public class DataExportService {
     private final AiClassificationHistoryRepository aiClassificationHistoryRepository;
     private final UserClassificationPatternRepository userClassificationPatternRepository;
     private final BudgetAllocationRepository budgetAllocationRepository;
+    private final BudgetReallocationRepository budgetReallocationRepository;
     private final ObjectMapper objectMapper;
 
     @Value("${app.export.directory:./exports}")
@@ -126,7 +129,8 @@ public class DataExportService {
             TransactionRepository transactionRepository,
             AiClassificationHistoryRepository aiClassificationHistoryRepository,
             UserClassificationPatternRepository userClassificationPatternRepository,
-            BudgetAllocationRepository budgetAllocationRepository) {
+            BudgetAllocationRepository budgetAllocationRepository,
+            BudgetReallocationRepository budgetReallocationRepository) {
         this.dataExportRepository = dataExportRepository;
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -149,6 +153,7 @@ public class DataExportService {
         this.aiClassificationHistoryRepository = aiClassificationHistoryRepository;
         this.userClassificationPatternRepository = userClassificationPatternRepository;
         this.budgetAllocationRepository = budgetAllocationRepository;
+        this.budgetReallocationRepository = budgetReallocationRepository;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
         this.objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
@@ -227,7 +232,7 @@ public class DataExportService {
         metadata.put("user_id", userId.toString());
         metadata.put("data_version", "1.0");
         metadata.put("exported_tables", List.of("users", "user_sessions", "audit_logs", "subscriptions",
-            "billing_transactions", "onboarding_progress", "accounts", "account_balance_history", "transfers", "reconciliation_history", "credit_cards", "transaction_imports", "transactions", "ai_classification_history", "user_classification_patterns", "budget_allocations", "categories", "goals"));
+            "billing_transactions", "onboarding_progress", "accounts", "account_balance_history", "transfers", "reconciliation_history", "credit_cards", "transaction_imports", "transactions", "ai_classification_history", "user_classification_patterns", "budget_allocations", "budget_reallocations", "categories", "goals"));
         data.put("metadata", metadata);
 
         // User profile (sanitized)
@@ -516,6 +521,25 @@ public class DataExportService {
             allocationList.add(allocationMap);
         }
         data.put("budget_allocations", allocationList);
+
+        // Budget reallocations (Story 6.5) - every stored column, oldest first; money as JSON numbers
+        List<Map<String, Object>> reallocationList = new ArrayList<>();
+        for (BudgetReallocation reallocation : budgetReallocationRepository.findByUserIdOrdered(userId)) {
+            Map<String, Object> reallocationMap = new LinkedHashMap<>();
+            reallocationMap.put("id", reallocation.getId() != null ? reallocation.getId().toString() : null);
+            reallocationMap.put("user_id", reallocation.getUserId() != null ? reallocation.getUserId().toString() : null);
+            reallocationMap.put("from_category_id",
+                reallocation.getFromCategoryId() != null ? reallocation.getFromCategoryId().toString() : null);
+            reallocationMap.put("to_category_id",
+                reallocation.getToCategoryId() != null ? reallocation.getToCategoryId().toString() : null);
+            reallocationMap.put("month_year",
+                reallocation.getMonthYear() != null ? reallocation.getMonthYear().toString() : null);
+            reallocationMap.put("amount", reallocation.getAmount());
+            reallocationMap.put("created_at",
+                reallocation.getCreatedAt() != null ? reallocation.getCreatedAt().toString() : null);
+            reallocationList.add(reallocationMap);
+        }
+        data.put("budget_reallocations", reallocationList);
 
         // Reconciliations (Story 4.6) - every stored column, oldest first; money as JSON numbers
         List<Map<String, Object>> reconciliationList = new ArrayList<>();

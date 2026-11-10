@@ -2,13 +2,16 @@ package com.porquinho.service;
 
 import com.porquinho.dto.BudgetResponse;
 import com.porquinho.dto.BudgetStatus;
+import com.porquinho.dto.ReallocateBudgetRequest;
 import com.porquinho.dto.SaveBudgetRequest;
 import com.porquinho.entity.Account;
 import com.porquinho.entity.BudgetAllocation;
+import com.porquinho.entity.BudgetReallocation;
 import com.porquinho.entity.Category;
 import com.porquinho.exception.BadRequestException;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.BudgetAllocationRepository;
+import com.porquinho.repository.BudgetReallocationRepository;
 import com.porquinho.repository.CategoryRepository;
 import com.porquinho.repository.TransactionRepository;
 import org.springframework.stereotype.Service;
@@ -23,6 +26,7 @@ import java.time.format.DateTimeParseException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -40,6 +44,9 @@ public class BudgetService {
     public static final String INVALID_CATEGORY_MESSAGE = "Escolha categorias válidas: só categorias ativas, sem grupos";
     public static final String DUPLICATE_CATEGORY_MESSAGE = "Cada categoria pode aparecer só uma vez no orçamento";
 
+    public static final String SAME_CATEGORY_MESSAGE = "Escolha categorias diferentes";
+    public static final String CLOSED_MONTH_MESSAGE = "Não dá para mover dinheiro em um mês que já fechou";
+
     private static final ZoneId SAO_PAULO = ZoneId.of("America/Sao_Paulo");
     private static final BigDecimal LOW_SHARE = new BigDecimal("0.20");
 
@@ -47,13 +54,16 @@ public class BudgetService {
     private final CategoryRepository categoryRepository;
     private final TransactionRepository transactionRepository;
     private final AccountRepository accountRepository;
+    private final BudgetReallocationRepository budgetReallocationRepository;
     private final BudgetBalanceCache balanceCache;
     private final Clock clock;
 
     public BudgetService(BudgetAllocationRepository budgetAllocationRepository, CategoryRepository categoryRepository,
                          TransactionRepository transactionRepository, AccountRepository accountRepository,
+                         BudgetReallocationRepository budgetReallocationRepository,
                          BudgetBalanceCache balanceCache, Clock clock) {
         this.budgetAllocationRepository = budgetAllocationRepository;
+        this.budgetReallocationRepository = budgetReallocationRepository;
         this.categoryRepository = categoryRepository;
         this.transactionRepository = transactionRepository;
         this.accountRepository = accountRepository;
@@ -91,6 +101,64 @@ public class BudgetService {
         budgetAllocationRepository.saveAll(items.stream()
             .map(i -> new BudgetAllocation(userId, i.categoryId(), monthYear, i.amount())).toList());
         return build(userId, yearMonth, children(categoryRepository.findActiveByUserId(userId)));
+    }
+
+    /**
+     * Moves money between two child categories of the month (Story 6.5) and records it; 400 (nothing written) on a
+     * closed month, the same category, an invalid category, a source without allocation, overspent or short.
+     * Nothing to invalidate: the cache holds only spent and committed, allocations are read on every call.
+     */
+    @Transactional
+    public BudgetResponse reallocate(UUID userId, String month, ReallocateBudgetRequest request) {
+        YearMonth yearMonth = parse(month);
+        if (yearMonth.isBefore(YearMonth.now(clock.withZone(SAO_PAULO)))) {
+            throw new BadRequestException(CLOSED_MONTH_MESSAGE);
+        }
+        if (request.fromCategoryId().equals(request.toCategoryId())) {
+            throw new BadRequestException(SAME_CATEGORY_MESSAGE);
+        }
+        // same lock as save: serializes with it and with other reallocations of the user
+        List<Category> children = children(categoryRepository.findActiveByUserIdForUpdate(userId));
+        Category from = children.stream().filter(c -> c.getId().equals(request.fromCategoryId())).findFirst()
+            .orElseThrow(() -> new BadRequestException(INVALID_CATEGORY_MESSAGE));
+        if (children.stream().noneMatch(c -> c.getId().equals(request.toCategoryId()))) {
+            throw new BadRequestException(INVALID_CATEGORY_MESSAGE);
+        }
+        LocalDate monthYear = yearMonth.atDay(1);
+        Map<UUID, BudgetAllocation> allocations = new HashMap<>();
+        for (BudgetAllocation a : budgetAllocationRepository.findByUserIdAndMonthYear(userId, monthYear)) {
+            allocations.put(a.getCategoryId(), a);
+        }
+        BudgetAllocation source = allocations.get(from.getId());
+        if (source == null) {
+            throw new BadRequestException(from.getCategoryName() + " não tem orçamento neste mês");
+        }
+        // spent straight from the database, not the 30 s cache
+        BigDecimal spent = sums(transactionRepository.sumSpentByCategory(userId, monthYear, yearMonth.atEndOfMonth()))
+            .getOrDefault(from.getId(), BigDecimal.ZERO);
+        BigDecimal remaining = source.getAllocatedAmount().subtract(spent);
+        if (remaining.signum() < 0) {
+            throw new BadRequestException(from.getCategoryName() + " está estourada: não dá para mover dinheiro dela");
+        }
+        if (request.amount().compareTo(remaining) > 0) {
+            throw new BadRequestException("O valor passa do restante de " + from.getCategoryName() + " ("
+                + brl(remaining) + ")");
+        }
+        source.setAllocatedAmount(source.getAllocatedAmount().subtract(request.amount()));
+        BudgetAllocation target = allocations.get(request.toCategoryId());
+        if (target == null) {
+            target = new BudgetAllocation(userId, request.toCategoryId(), monthYear, request.amount());
+        } else {
+            target.setAllocatedAmount(target.getAllocatedAmount().add(request.amount()));
+        }
+        budgetAllocationRepository.saveAll(List.of(source, target));
+        budgetReallocationRepository.save(new BudgetReallocation(userId, from.getId(), request.toCategoryId(),
+            monthYear, request.amount()));
+        return build(userId, yearMonth, children);
+    }
+
+    private static String brl(BigDecimal amount) {
+        return "R$ " + String.format(Locale.of("pt", "BR"), "%,.2f", amount);
     }
 
     private BudgetResponse build(UUID userId, YearMonth yearMonth, List<Category> children) {

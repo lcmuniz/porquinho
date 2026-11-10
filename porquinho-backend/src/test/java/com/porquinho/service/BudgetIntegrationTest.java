@@ -2,12 +2,15 @@ package com.porquinho.service;
 
 import com.porquinho.dto.BudgetResponse;
 import com.porquinho.dto.BudgetStatus;
+import com.porquinho.dto.ReallocateBudgetRequest;
 import com.porquinho.dto.SaveBudgetRequest;
 import com.porquinho.dto.TransactionCreateRequest;
 import com.porquinho.dto.TransactionUpdateRequest;
 import com.porquinho.entity.BudgetAllocation;
+import com.porquinho.entity.BudgetReallocation;
 import com.porquinho.exception.BadRequestException;
 import com.porquinho.repository.BudgetAllocationRepository;
+import com.porquinho.repository.BudgetReallocationRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,6 +50,8 @@ class BudgetIntegrationTest {
     @Autowired
     private BudgetAllocationRepository repository;
     @Autowired
+    private BudgetReallocationRepository reallocationRepository;
+    @Autowired
     private TransactionTemplate transactionTemplate;
     @Autowired
     private BudgetBalanceCache balanceCache;
@@ -76,6 +81,7 @@ class BudgetIntegrationTest {
             jdbc.update("DELETE FROM audit_logs WHERE user_id = ?", id);
             jdbc.update("DELETE FROM account_balance_history WHERE user_id = ?", id);
             jdbc.update("DELETE FROM budget_allocations WHERE user_id = ?", id);
+            jdbc.update("DELETE FROM budget_reallocations WHERE user_id = ?", id);
             jdbc.update("DELETE FROM transactions WHERE user_id = ?", id);
             jdbc.update("DELETE FROM transaction_imports WHERE user_id = ?", id);
             jdbc.update("DELETE FROM accounts WHERE user_id = ?", id);
@@ -403,5 +409,187 @@ class BudgetIntegrationTest {
         assertThat(transactionService.removeFutureInstallments(userId, current, "127.0.0.1")).isEqualTo(1);
 
         assertThat(of(service.get(userId, CURRENT.toString()), food).committed()).isEqualByComparingTo("0");
+    }
+
+    // Story 6.5: reallocations
+
+    private static ReallocateBudgetRequest move(UUID from, UUID to, String amount) {
+        return new ReallocateBudgetRequest(from, to, new BigDecimal(amount));
+    }
+
+    private int reallocations() {
+        return jdbc.queryForObject("SELECT COUNT(*) FROM budget_reallocations WHERE user_id = ?", Integer.class, userId);
+    }
+
+    private BigDecimal allocated(UUID category) {
+        return of(service.get(userId, CURRENT.toString()), category).allocated();
+    }
+
+    /** Food: allocated 300, spent 100 (remaining 200); transport: allocated 50. */
+    private UUID foodWithRemaining200() {
+        UUID account = newAccount("1000", false);
+        row(account, null, food, CURRENT, "100.00", "DEBIT", "REGULAR", "CONFIRMED", false);
+        service.save(userId, CURRENT.toString(), List.of(item(food, "300"), item(transport, "50")));
+        return account;
+    }
+
+    private void assertRejected(ReallocateBudgetRequest request, String month, String message) {
+        assertThatThrownBy(() -> service.reallocate(userId, month, request))
+            .isInstanceOf(BadRequestException.class).hasMessage(message);
+    }
+
+    @Test
+    void reallocateMovesTheMoneyAndRecordsIt() {
+        foodWithRemaining200();
+
+        BudgetResponse moved = service.reallocate(userId, CURRENT.toString(), move(food, transport, "150"));
+
+        assertThat(of(moved, food).allocated()).isEqualByComparingTo("150");
+        assertThat(of(moved, food).remaining()).isEqualByComparingTo("50");
+        assertThat(of(moved, transport).allocated()).isEqualByComparingTo("200");
+        assertThat(allocated(food)).isEqualByComparingTo("150");
+        assertThat(jdbc.queryForMap("SELECT from_category_id, to_category_id, month_year, amount FROM budget_reallocations "
+            + "WHERE user_id = ?", userId)).containsEntry("from_category_id", food).containsEntry("to_category_id", transport)
+            .containsEntry("month_year", java.sql.Date.valueOf(CURRENT.atDay(1)));
+        assertThat(reallocations()).isEqualTo(1);
+    }
+
+    @Test
+    void reallocateCanMoveTheWholeRemaining() {
+        foodWithRemaining200();
+
+        BudgetResponse moved = service.reallocate(userId, CURRENT.toString(), move(food, transport, "200"));
+
+        assertThat(of(moved, food).remaining()).isEqualByComparingTo("0");
+        assertThat(of(moved, transport).allocated()).isEqualByComparingTo("250");
+    }
+
+    @Test
+    void reallocateAboveTheRemainingIs400WithoutWritingAnything() {
+        foodWithRemaining200();
+
+        assertRejected(move(food, transport, "200.01"), CURRENT.toString(),
+            "O valor passa do restante de Alimentação (R$ 200,00)");
+
+        assertThat(allocated(food)).isEqualByComparingTo("300");
+        assertThat(allocated(transport)).isEqualByComparingTo("50");
+        assertThat(reallocations()).isZero();
+    }
+
+    @Test
+    void reallocateReadsTheSpentFromTheDatabaseNotTheCache() {
+        UUID account = foodWithRemaining200();
+        assertThat(of(service.get(userId, CURRENT.toString()), food).remaining()).isEqualByComparingTo("200");  // warm
+        rowWithoutEvict(account, null, food, CURRENT, "50.00", "DEBIT", "REGULAR", "CONFIRMED", false);
+
+        assertRejected(move(food, transport, "160"), CURRENT.toString(),
+            "O valor passa do restante de Alimentação (R$ 150,00)");
+        assertThat(reallocations()).isZero();
+    }
+
+    @Test
+    void reallocateFromAnOverspentCategoryIs400() {
+        UUID account = newAccount("1000", false);
+        row(account, null, food, CURRENT, "130.00", "DEBIT", "REGULAR", "CONFIRMED", false);
+        service.save(userId, CURRENT.toString(), List.of(item(food, "100"), item(transport, "50")));
+
+        assertRejected(move(food, transport, "1"), CURRENT.toString(),
+            "Alimentação está estourada: não dá para mover dinheiro dela");
+
+        assertThat(allocated(food)).isEqualByComparingTo("100");
+        assertThat(reallocations()).isZero();
+    }
+
+    @Test
+    void reallocateFromACategoryWithoutAllocationIs400() {
+        service.save(userId, CURRENT.toString(), List.of(item(transport, "50")));
+
+        assertRejected(move(food, transport, "1"), CURRENT.toString(), "Alimentação não tem orçamento neste mês");
+
+        assertThat(allocated(transport)).isEqualByComparingTo("50");
+        assertThat(allocations()).isEqualTo(1);
+        assertThat(reallocations()).isZero();
+    }
+
+    @Test
+    void reallocateToACategoryWithoutAllocationCreatesIt() {
+        service.save(userId, CURRENT.plusMonths(1).toString(), List.of(item(food, "300")));
+
+        BudgetResponse moved = service.reallocate(userId, CURRENT.plusMonths(1).toString(), move(food, transport, "120"));
+
+        assertThat(of(moved, food).allocated()).isEqualByComparingTo("180");
+        assertThat(of(moved, transport).allocated()).isEqualByComparingTo("120");
+        assertThat(allocations()).isEqualTo(2);
+        assertThat(reallocations()).isEqualTo(1);
+    }
+
+    @Test
+    void reallocateToTheSameCategoryIs400() {
+        foodWithRemaining200();
+
+        assertRejected(move(food, food, "10"), CURRENT.toString(), BudgetService.SAME_CATEGORY_MESSAGE);
+
+        assertThat(allocated(food)).isEqualByComparingTo("300");
+        assertThat(reallocations()).isZero();
+    }
+
+    @Test
+    void reallocateWithAGroupRemovedOrForeignCategoryIs400() {
+        foodWithRemaining200();
+        UUID other = newUser();
+        UUID otherGroup = newCategory(other, "G", null);
+        UUID foreign = newCategory(other, "Outra", otherGroup);
+        UUID removed = newCategory(userId, "Removida", group);
+        jdbc.update("INSERT INTO budget_allocations (user_id, category_id, month_year, allocated_amount) "
+            + "VALUES (?, ?, ?, 100)", userId, removed, CURRENT.atDay(1));
+        jdbc.update("UPDATE categories SET deleted_at = NOW() WHERE id = ?", removed);
+
+        for (UUID invalid : List.of(group, removed, foreign)) {
+            assertRejected(move(food, invalid, "10"), CURRENT.toString(), BudgetService.INVALID_CATEGORY_MESSAGE);
+            assertRejected(move(invalid, food, "10"), CURRENT.toString(), BudgetService.INVALID_CATEGORY_MESSAGE);
+        }
+
+        assertThat(allocated(food)).isEqualByComparingTo("300");
+        assertThat(allocations()).isEqualTo(3);
+        assertThat(reallocations()).isZero();
+    }
+
+    @Test
+    void reallocateInAClosedMonthIs400() {
+        service.save(userId, PAST.toString(), List.of(item(food, "300")));
+
+        assertRejected(move(food, transport, "10"), PAST.toString(), BudgetService.CLOSED_MONTH_MESSAGE);
+
+        assertThat(of(service.get(userId, PAST.toString()), food).allocated()).isEqualByComparingTo("300");
+        assertThat(reallocations()).isZero();
+    }
+
+    private void reallocationRow(UUID owner, UUID from, UUID to, String amount, String createdAt) {
+        jdbc.update("INSERT INTO budget_reallocations (user_id, from_category_id, to_category_id, month_year, amount, "
+            + "created_at) VALUES (?, ?, ?, ?, ?, CAST(? AS TIMESTAMP WITH TIME ZONE))", owner, from, to,
+            CURRENT.atDay(1), new BigDecimal(amount), createdAt);
+    }
+
+    @Test
+    void reallocationExportReadsTheRowsInOrderAndThePurgeDeletesThemSoTheCategoriesCanGo() {
+        // Purge SQL: other users keep theirs (the call order is in AccountDeletionServiceTest)
+        reallocationRow(userId, transport, food, "20", "2026-01-02T00:00:00Z");
+        reallocationRow(userId, food, transport, "10", "2026-01-01T00:00:00Z");
+        UUID other = newUser();
+        UUID otherGroup = newCategory(other, "G", null);
+        UUID otherA = newCategory(other, "A", otherGroup);
+        UUID otherB = newCategory(other, "B", otherGroup);
+        reallocationRow(other, otherA, otherB, "5", "2026-01-01T00:00:00Z");
+
+        assertThat(reallocationRepository.findByUserIdOrdered(userId)).extracting(BudgetReallocation::getFromCategoryId)
+            .containsExactly(food, transport);
+        // the real purge runs inside AccountDeletionService's transaction
+        Integer purged = transactionTemplate.execute(status -> reallocationRepository.deleteByUserId(userId));
+        assertThat(purged).isEqualTo(2);
+        assertThat(reallocations()).isZero();
+        assertThat(jdbc.update("DELETE FROM categories WHERE user_id = ? AND parent_category_id IS NOT NULL", userId))
+            .isEqualTo(2);
+        assertThat(jdbc.update("DELETE FROM categories WHERE user_id = ?", userId)).isEqualTo(1);
+        assertThat(reallocationRepository.findByUserIdOrdered(other)).hasSize(1);
     }
 }

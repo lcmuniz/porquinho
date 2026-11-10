@@ -5,10 +5,12 @@ import type { Budget } from '@/types/budget'
 
 const mockGet = vi.fn()
 const mockSave = vi.fn()
+const mockReallocate = vi.fn()
 
 vi.mock('@/services/budgetService', () => ({
   getBudget: (...a: unknown[]) => mockGet(...a),
   saveBudget: (...a: unknown[]) => mockSave(...a),
+  reallocateBudget: (...a: unknown[]) => mockReallocate(...a),
 }))
 vi.mock('@/services/categoryService', () => ({
   listCategories: async () => [
@@ -287,5 +289,121 @@ describe('BudgetView', () => {
     mockGet.mockRejectedValue({ response: { status: 400, data: { detail: 'Mês inválido: use o formato AAAA-MM' } } })
     const w = await mountView()
     expect(w.get('[data-testid="budget-load-error"]').text()).toContain('Mês inválido: use o formato AAAA-MM')
+  })
+
+  describe('mover dinheiro (Story 6.5)', () => {
+    const dialog = () => document.body.querySelector('[data-testid="reallocate-dialog"]')
+    const inDialog = <T extends Element = HTMLElement>(testId: string) =>
+      document.body.querySelector<T>(`[data-testid="${testId}"]`)
+
+    async function openAndSubmit(amount: string) {
+      await wrapper!.get('[data-testid="open-reallocate"]').trigger('click')
+      await flushPromises()
+      const from = inDialog<HTMLSelectElement>('reallocate-from-select')!
+      from.value = 'c1'
+      from.dispatchEvent(new Event('change'))
+      const to = inDialog<HTMLSelectElement>('reallocate-to-select')!
+      to.value = 'c2'
+      to.dispatchEvent(new Event('change'))
+      const input = inDialog<HTMLInputElement>('reallocate-amount-input')!
+      input.value = amount
+      input.dispatchEvent(new Event('input'))
+      await flushPromises()
+      inDialog('reallocate-form')!.dispatchEvent(new Event('submit'))
+      await flushPromises()
+    }
+
+    it('move, fecha o diálogo, mostra a mensagem e os valores atualizados', async () => {
+      mockReallocate.mockResolvedValue(
+        budget({
+          categories: [
+            { categoryId: 'c1', allocated: 350, spent: 100, committed: 50, remaining: 250, status: 'HEALTHY' },
+            { categoryId: 'c2', allocated: 50, spent: 30, committed: 0, remaining: 20, status: 'HEALTHY' },
+          ],
+        }),
+      )
+      const w = await mountView()
+      await openAndSubmit('50,00')
+
+      expect(mockReallocate).toHaveBeenCalledWith('2026-11', { fromCategoryId: 'c1', toCategoryId: 'c2', amount: 50 })
+      expect(dialog()).toBeNull()
+      expect(w.get('[data-testid="budget-success"]').text().replace(/\s/g, ' ')).toBe(
+        'R$ 50,00 movido de Mercado para Transporte',
+      )
+      expect((w.get('[data-testid="amount-c1"]').element as HTMLInputElement).value).toBe('350,00')
+      expect((w.get('[data-testid="amount-c2"]').element as HTMLInputElement).value).toBe('50,00')
+      expect(w.get('[data-testid="progress-text-c1"]').text()).toContain('250,00')
+    })
+
+    it('400 do backend mantém o diálogo aberto com o detail e o que foi digitado', async () => {
+      mockReallocate.mockRejectedValue({
+        response: { status: 400, data: { detail: 'O valor passa do restante de Mercado (R$ 300,00)' } },
+      })
+      await mountView()
+      await openAndSubmit('300,01')
+
+      expect(dialog()).not.toBeNull()
+      expect(inDialog('reallocate-error')!.textContent?.trim()).toBe('O valor passa do restante de Mercado (R$ 300,00)')
+      expect(inDialog<HTMLInputElement>('reallocate-amount-input')!.value).toBe('300,01')
+    })
+
+    it('o diálogo lista na origem só quem tem restante > 0 e no destino todas as filhas', async () => {
+      const w = await mountView()
+      await w.get('[data-testid="open-reallocate"]').trigger('click')
+      await flushPromises()
+      const labels = (testId: string) =>
+        [...document.body.querySelectorAll(`[data-testid="${testId}"] option`)].map((o) =>
+          o.textContent!.trim().replace(/\s/g, ' '),
+        )
+      expect(labels('reallocate-from-select')).toEqual(['Mercado — restante R$ 300,00'])
+      expect(labels('reallocate-to-select')).toEqual(['Mercado — restante R$ 300,00', 'Transporte — sem orçamento'])
+    })
+
+    it('fica bloqueado com valores digitados e não salvos', async () => {
+      const w = await mountView()
+      expect(w.get('[data-testid="open-reallocate"]').attributes('disabled')).toBeUndefined()
+
+      await type('amount-c1', '400')
+      expect(w.get('[data-testid="open-reallocate"]').attributes('disabled')).toBeUndefined()
+
+      await type('amount-c1', '450,00')
+
+      expect(w.get('[data-testid="open-reallocate"]').attributes('disabled')).toBeDefined()
+      expect(w.get('[data-testid="reallocate-hint"]').text()).toBe('Salve o orçamento antes de mover dinheiro')
+      expect(w.get('[data-testid="open-reallocate"]').attributes('aria-describedby')).toBe('reallocate-hint')
+    })
+
+    it('fica bloqueado quando nenhuma categoria tem orçamento', async () => {
+      mockGet.mockResolvedValue(
+        budget({
+          categories: [
+            { categoryId: 'c1', allocated: null, spent: 0, committed: 0, remaining: null, status: null },
+            { categoryId: 'c2', allocated: null, spent: 0, committed: 0, remaining: null, status: null },
+          ],
+        }),
+      )
+      const w = await mountView()
+      expect(w.get('[data-testid="open-reallocate"]').attributes('disabled')).toBeDefined()
+    })
+
+    it('fica bloqueado quando todas as alocadas estão estouradas', async () => {
+      mockGet.mockResolvedValue(
+        budget({
+          categories: [
+            { categoryId: 'c1', allocated: 100, spent: 130, committed: 0, remaining: -30, status: 'OVERSPENT' },
+            { categoryId: 'c2', allocated: null, spent: 0, committed: 0, remaining: null, status: null },
+          ],
+        }),
+      )
+      const w = await mountView()
+      expect(w.get('[data-testid="open-reallocate"]').attributes('disabled')).toBeDefined()
+    })
+
+    it('não aparece em mês fechado', async () => {
+      const w = await mountView()
+      await w.get('[data-testid="previous-month"]').trigger('click')
+      await flushPromises()
+      expect(w.find('[data-testid="open-reallocate"]').exists()).toBe(false)
+    })
   })
 })
