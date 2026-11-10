@@ -234,3 +234,22 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-deferred-quick-fixes.md`
   summary: O frontend engole o 409 "conta em exclusão" do registro (`RegisterView.vue`, lazy sync do `LoginView.vue`) e o `AuthCallbackView.vue` mostra a mensagem do axios; quem tem conta em exclusão entra no app sem registro no backend.
   evidence: Revisão da spec (Blind Hunter). Pré-existente: antes o mesmo caminho dava 500, também engolido. Corrigir mostrando o `detail` do 409 e encerrando a sessão.
+
+- source_spec: `_bmad-output/roteiro-testes-porquinho.md`
+  summary: Ao concluir a importação, dizer quantas transações são anteriores ao saldo informado e por isso não alteram o saldo da conta (ex.: "10 transações importadas. 10 são anteriores ao saldo informado e não alteram o saldo da conta.").
+  evidence: Teste manual do Luiz em 2026-11-09: importou um extrato de outubro numa conta criada hoje; o backend registrou "10 transaction(s) confirmed, 0 affecting the balance" (`TransactionImportReviewService`), mas a tela não explica e o saldo zerado parece falha. Regra em `BalanceHistoryRecorder.referenceDate`. Luiz aprovou a melhoria.
+- source_spec: `_bmad-output/roteiro-testes-porquinho.md`
+  summary: Depois de concluir uma importação, abrir `/transacoes` no mês das transações importadas, e não no mês atual.
+  evidence: Teste manual do Luiz em 2026-11-09: as transações de outubro "não apareciam" porque `/transacoes` abre em novembro e é preciso clicar em "‹ Mês anterior". Luiz aprovou a melhoria.
+- source_spec: `_bmad-output/roteiro-testes-porquinho.md`
+  summary: No login, quando a falha for de rede (backend fora do ar), mostrar "Não foi possível conectar ao servidor. Tente novamente em instantes." em vez de "Erro ao fazer login. Tente novamente.".
+  evidence: Teste manual do Luiz em 2026-11-09: com só o frontend no ar, `authService.checkLoginAllowed` (`LoginView.vue:43`) falha por rede, o erro é relançado e a tela mostra a mensagem genérica, que parece senha errada. Luiz aprovou.
+- source_spec: `_bmad-output/roteiro-testes-porquinho.md`
+  summary: Tipar os `catch (error: any)` das telas do Epic 1 para zerar os 15 avisos `@typescript-eslint/no-explicit-any` do lint.
+  evidence: `npm run lint` em 2026-11-09: 0 erros e 15 avisos em AccountDeletionView, DataExportView, EmailVerificationView, ForgotPasswordView, LoginView, RegisterView e ResetPasswordView. Luiz aprovou.
+- source_spec: `_bmad-output/roteiro-testes-porquinho.md`
+  summary: Na revisão da importação, avisar (sem bloquear) quando o banco detectado no arquivo difere do banco preenchido na conta de destino, ex.: "Este extrato parece ser do Nubank, mas a conta 'X' está cadastrada como Itaú. Confira se escolheu a conta certa antes de concluir." Sem aviso quando a conta não tem banco.
+  evidence: Teste manual do Luiz em 2026-11-09: importou um OFX do Nubank na conta criada no onboarding sem nenhum alerta. A 5.1 só valida o tipo de destino (conta × cartão); `Account.bankName` é opcional e texto livre (`AccountForm.vue:33`, com sugestões `BANKS`) e o banco do arquivo só é conhecido no processamento (`TransactionImportProcessor.java:119`), por isso bloquear exigiria lista fechada no Epic 4. Comparar normalizado (sem acento/caixa, "Nu" ~ "Nubank"). Luiz aprovou o aviso.
+- source_spec: `_bmad-output/implementation-artifacts/spec-6-4-display-real-time-available-balance-per-category.md`
+  summary: Cobrir com teste a invalidação do cache de saldo por categoria em `TransactionService.removeFutureInstallments` (GET, remover futuras, GET mostra o comprometido sem elas).
+  evidence: Revisão da 6.4 (verification-gap): o `evict` existe, mas nenhum teste falharia se fosse removido; a staleness fica limitada a 30 s pelo TTL.
