@@ -348,4 +348,24 @@ class MigrationTest {
             "WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND NOT c.relrowsecurity", String.class);
         assertThat(withoutRls).isEmpty();
     }
+
+    @Test
+    void afterMigrateShouldRevokeSupabaseApiRolesFromPublicTables() throws Exception {
+        // anon/authenticated só existem no Supabase: cria aqui para exercitar o REVOKE do afterMigrate.sql
+        jdbcTemplate.execute("DO $$ BEGIN " +
+            "IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon NOLOGIN; END IF; " +
+            "IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF; " +
+            "END $$");
+        jdbcTemplate.execute("GRANT SELECT ON public.users TO anon, authenticated");
+
+        var script = new String(getClass().getResourceAsStream("/db/migration/afterMigrate.sql").readAllBytes());
+        jdbcTemplate.execute(script);
+
+        var exposed = jdbcTemplate.queryForList(
+            "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace " +
+            "WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') " +
+            "AND (has_table_privilege('anon', c.oid, 'SELECT') OR has_table_privilege('authenticated', c.oid, 'SELECT'))",
+            String.class);
+        assertThat(exposed).isEmpty();
+    }
 }

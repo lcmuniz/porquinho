@@ -11,3 +11,14 @@ BEGIN
         EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t.relname);
     END LOOP;
 END $$;
+
+-- Alertas pg_graphql_anon/authenticated_table_exposed do Supabase: mesmo com RLS, o GRANT padrão deixa anon e
+-- authenticated verem o schema (tabelas e colunas) via GraphQL. O backend não usa esses roles. Eles só existem
+-- no Supabase, daí o IF (Postgres local e Testcontainers não têm).
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+        REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, authenticated;
+        REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM anon, authenticated;
+    END IF;
+END $$;
