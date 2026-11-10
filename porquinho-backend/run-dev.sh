@@ -13,6 +13,18 @@ else
   echo "⚠️  Arquivo .env não encontrado. Usando valores padrão."
 fi
 
+# O projeto exige Java 21; o padrão da máquina pode ser outro (ex.: 17)
+if ! "${JAVA_HOME:-/nonexistent}/bin/java" -version 2>&1 | grep -q 'version "21'; then
+  JDK21=$(ls -d "$HOME"/.sdkman/candidates/java/21* 2>/dev/null | head -1)
+  [ -z "$JDK21" ] && JDK21=$(/usr/libexec/java_home -v 21 2>/dev/null)
+  if [ -z "$JDK21" ]; then
+    echo "❌ JDK 21 não encontrado. Instale com: sdk install java 21.0.11-tem"
+    exit 1
+  fi
+  export JAVA_HOME="$JDK21"
+fi
+echo "☕ Usando Java em $JAVA_HOME"
+
 # Iniciar Spring Boot em modo dev
 echo "🚀 Iniciando backend Spring Boot (perfil: dev)..."
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
