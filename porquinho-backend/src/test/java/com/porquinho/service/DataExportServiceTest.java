@@ -2,6 +2,7 @@ package com.porquinho.service;
 
 import com.porquinho.entity.AiClassificationHistory;
 import com.porquinho.entity.BudgetAllocation;
+import com.porquinho.entity.BudgetReallocation;
 import com.porquinho.entity.UserClassificationPattern;
 import com.porquinho.entity.Account;
 import com.porquinho.entity.AccountBalanceHistory;
@@ -25,6 +26,7 @@ import com.porquinho.exception.RateLimitExceededException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AiClassificationHistoryRepository;
 import com.porquinho.repository.BudgetAllocationRepository;
+import com.porquinho.repository.BudgetReallocationRepository;
 import com.porquinho.repository.UserClassificationPatternRepository;
 import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.ReconciliationRepository;
@@ -132,6 +134,9 @@ class DataExportServiceTest {
 
     @Mock
     private BudgetAllocationRepository budgetAllocationRepository;
+
+    @Mock
+    private BudgetReallocationRepository budgetReallocationRepository;
 
     @InjectMocks
     private DataExportService dataExportService;
@@ -985,6 +990,34 @@ class DataExportServiceTest {
         assertEquals("2026-11-01", first.get("month_year"));
         assertEquals(new java.math.BigDecimal("450.00"), first.get("allocated_amount"));
         assertEquals("2026-11-09T12:00Z", first.get("updated_at"));
+    }
+
+    @Test
+    void collectUserDataShouldExportTheBudgetReallocations() {
+        // Story 6.5: every stored column
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        UUID from = UUID.randomUUID();
+        UUID to = UUID.randomUUID();
+        BudgetReallocation reallocation = new BudgetReallocation(userId, from, to,
+            java.time.LocalDate.parse("2026-11-01"), new java.math.BigDecimal("50.00"));
+        reallocation.setId(UUID.randomUUID());
+        reallocation.setCreatedAt(OffsetDateTime.parse("2026-11-10T12:00:00Z"));
+        when(budgetReallocationRepository.findByUserIdOrdered(userId)).thenReturn(List.of(reallocation));
+
+        Map<String, Object> data = dataExportService.collectUserData(userId);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
+        assertTrue(((List<?>) metadata.get("exported_tables")).contains("budget_reallocations"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("budget_reallocations");
+        Map<String, Object> first = rows.get(0);
+        assertExportsEveryColumn(BudgetReallocation.class, first);
+        assertEquals(from.toString(), first.get("from_category_id"));
+        assertEquals(to.toString(), first.get("to_category_id"));
+        assertEquals("2026-11-01", first.get("month_year"));
+        assertEquals(new java.math.BigDecimal("50.00"), first.get("amount"));
+        assertEquals("2026-11-10T12:00Z", first.get("created_at"));
     }
 
     private static void assertExportsEveryColumn(Class<?> entity, Map<String, Object> exported) {

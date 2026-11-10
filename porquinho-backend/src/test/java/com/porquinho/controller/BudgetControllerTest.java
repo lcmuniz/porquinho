@@ -2,6 +2,7 @@ package com.porquinho.controller;
 
 import com.porquinho.config.TestWebSecurityConfig;
 import com.porquinho.dto.BudgetResponse;
+import com.porquinho.dto.ReallocateBudgetRequest;
 import com.porquinho.dto.SaveBudgetRequest;
 import com.porquinho.exception.BadRequestException;
 import com.porquinho.service.BudgetService;
@@ -29,6 +30,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -113,5 +115,34 @@ class BudgetControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.totalAllocated").value(1));
         verify(budgetService).save(userId, "2026-11", List.of(new SaveBudgetRequest.Item(category, BigDecimal.ZERO)));
+    }
+
+    @Test
+    void postReallocationReturnsTheMonthRecalculated() throws Exception {
+        // Story 6.5
+        UUID from = UUID.randomUUID();
+        UUID to = UUID.randomUUID();
+        when(budgetService.reallocate(any(), any(), any())).thenReturn(
+            new BudgetResponse("2026-11", BigDecimal.TEN, BigDecimal.ONE, List.of()));
+
+        mockMvc.perform(post("/api/v1/budgets/2026-11/reallocations").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"fromCategoryId\":\"" + from + "\",\"toCategoryId\":\"" + to + "\",\"amount\":50.00}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.month").value("2026-11"));
+        verify(budgetService).reallocate(userId, "2026-11",
+            new ReallocateBudgetRequest(from, to, new BigDecimal("50.00")));
+    }
+
+    @Test
+    void anInvalidReallocationAmountIs400WithoutCallingTheService() throws Exception {
+        String ids = "\"fromCategoryId\":\"" + UUID.randomUUID() + "\",\"toCategoryId\":\"" + UUID.randomUUID() + "\"";
+        for (String body : List.of("{" + ids + ",\"amount\":0}", "{" + ids + ",\"amount\":-1}",
+            "{" + ids + ",\"amount\":1.001}", "{" + ids + "}", "{\"amount\":10}")) {
+            mockMvc.perform(post("/api/v1/budgets/2026-11/reallocations").with(authentication(authToken))
+                    .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest());
+        }
+        verifyNoInteractions(budgetService);
     }
 }

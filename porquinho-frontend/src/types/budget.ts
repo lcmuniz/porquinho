@@ -27,3 +27,10 @@ export interface BudgetAllocationInput {
   categoryId: string
   amount: number
 }
+
+/** Story 6.5: corpo do POST /api/v1/budgets/{AAAA-MM}/reallocations. */
+export interface BudgetReallocationInput {
+  fromCategoryId: string
+  toCategoryId: string
+  amount: number
+}
