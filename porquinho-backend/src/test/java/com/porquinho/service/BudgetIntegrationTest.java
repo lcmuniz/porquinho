@@ -387,4 +387,21 @@ class BudgetIntegrationTest {
 
         assertThat(of(service.get(userId, CURRENT.toString()), food).spent()).isEqualByComparingTo("40.00");
     }
+
+    @Test
+    void removingFutureInstallmentsInvalidatesTheCache() {
+        UUID card = newCard(false);
+        UUID groupId = UUID.randomUUID();
+        UUID current = UUID.randomUUID();
+        String insert = "INSERT INTO transactions (id, user_id, credit_card_id, category_id, transaction_date, description, "
+            + "original_description, amount, transaction_type, review_status, is_future_installment, installment_group_id) "
+            + "VALUES (?, ?, ?, ?, ?, 'X', 'X', 50.00, 'DEBIT', 'CONFIRMED', ?, ?)";
+        jdbc.update(insert, current, userId, card, food, CURRENT.atDay(5), false, groupId);
+        jdbc.update(insert, UUID.randomUUID(), userId, card, food, CURRENT.atDay(25), true, groupId);
+        assertThat(of(service.get(userId, CURRENT.toString()), food).committed()).isEqualByComparingTo("50.00");
+
+        assertThat(transactionService.removeFutureInstallments(userId, current, "127.0.0.1")).isEqualTo(1);
+
+        assertThat(of(service.get(userId, CURRENT.toString()), food).committed()).isEqualByComparingTo("0");
+    }
 }
