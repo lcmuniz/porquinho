@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-13
-last_updated: 11-09-2026 17:26
+last_updated: 11-09-2026 23:17
 project: porquinho
 project_key: NOKEY
 tracking_system: file-system
@@ -121,7 +121,7 @@ development_status:
   epic-6: in-progress
   6-1-create-custom-spending-categories: done
   6-2-organize-categories-in-hierarchical-groups: done
-  6-3-allocate-monthly-budget-per-category: backlog
+  6-3-allocate-monthly-budget-per-category: review
   6-4-display-real-time-available-balance-per-category: backlog
   6-5-reallocate-money-between-categories: backlog
   6-6-auto-deduct-from-category-when-transaction-classified: backlog
