@@ -17,6 +17,11 @@ vi.mock('@/services/categoryService', () => ({
     { id: 'g1', categoryName: 'Essenciais', parentCategoryId: null },
     { id: 'c2', categoryName: 'Transporte', parentCategoryId: 'g1' },
     { id: 'c1', categoryName: 'Mercado', parentCategoryId: 'g1' },
+    // Só aparecem quando o orçamento traz c3, c4 ou c5
+    { id: 'g0', categoryName: 'Casa', parentCategoryId: null },
+    { id: 'c3', categoryName: 'Aluguel', parentCategoryId: 'g0' },
+    { id: 'c4', categoryName: 'Luz', parentCategoryId: 'g0' },
+    { id: 'c5', categoryName: 'Água', parentCategoryId: 'g0' },
   ],
 }))
 
@@ -84,23 +89,30 @@ describe('BudgetView', () => {
     expect(w.find('[data-testid="progress-c2"]').exists()).toBe(false)
   })
 
+  const text = (w: VueWrapper, testId: string) => w.get(`[data-testid="${testId}"]`).text().replace(/\s/g, ' ')
+
   it.each([
-    ['HEALTHY', 'Saudável', 'bg-green-600'],
-    ['LOW', 'Saldo baixo', 'bg-yellow-600'],
-    ['OVERSPENT', 'Estourada', 'bg-red-600'],
-  ] as const)('status %s tem cor, ícone e rótulo', async (status, label, bar) => {
+    ['HEALTHY', 50, 50, 'Saudável', 'bg-green-600', '50%'],
+    ['LOW', 85, 15, 'Saldo baixo - R$ 15,00 restantes', 'bg-yellow-600', '85%'],
+    ['OVERSPENT', 130, -30, 'Categoria estourada! R$ 30,00 acima do orçamento', 'bg-red-600', '130%'],
+  ] as const)('status %s tem cor, ícone, mensagem e percentual', async (status, spent, remaining, label, bar, pct) => {
     mockGet.mockResolvedValue(
       budget({
         categories: [
-          { categoryId: 'c1', allocated: 100, spent: 80, committed: 0, remaining: 20, status },
+          { categoryId: 'c1', allocated: 100, spent, committed: 0, remaining, status },
           { categoryId: 'c2', allocated: null, spent: 30, committed: 0, remaining: null, status: null },
         ],
       }),
     )
     const w = await mountView()
-    expect(w.get('[data-testid="status-c1"]').text()).toBe(label)
+    expect(text(w, 'status-c1')).toBe(label)
     expect(w.get('[data-testid="status-c1"] svg').attributes('aria-hidden')).toBe('true')
     expect(w.get('[data-testid="progress-bar-c1"]').classes()).toContain(bar)
+    expect(w.get('[data-testid="percent-c1"]').text()).toBe(pct)
+    const exact = `R$ ${spent},00 de R$ 100,00`
+    expect(w.get('[data-testid="progress-c1"]').attributes('title')?.replace(/\s/g, ' ')).toBe(exact)
+    expect(w.get('[data-testid="status-c1"]').attributes('title')?.replace(/\s/g, ' ')).toBe(exact)
+    expect(w.get('[data-testid="category-c1"]').classes().includes('bg-red-50')).toBe(status === 'OVERSPENT')
     expect(w.find('[data-testid="status-c2"]').exists()).toBe(false)
     expect(w.get('[data-testid="no-budget-c2"]').text()).toBe('Sem orçamento definido')
   })
@@ -117,11 +129,92 @@ describe('BudgetView', () => {
     const w = await mountView()
     expect(w.get('[data-testid="progress-text-c1"]').text().replace(/\s/g, ' ')).toContain('Restante: -R$ 30,00')
     expect(w.get('[data-testid="progress-c1"]').attributes('aria-valuenow')).toBe('100')
-    expect(w.get('[data-testid="status-c1"]').text()).toBe('Estourada')
+    expect(w.get('[data-testid="progress-c1"]').attributes('aria-valuetext')).toBe('130%')
+    expect(w.get('[data-testid="progress-bar-c1"]').attributes('style')).toContain('width: 100%')
+    const label = 'Categoria estourada! R$ 30,00 acima do orçamento'
+    expect(text(w, 'status-c1')).toBe(label)
 
     // o valor digitado e não salvo não muda o status
     await type('amount-c1', '500,00')
-    expect(w.get('[data-testid="status-c1"]').text()).toBe('Estourada')
+    expect(text(w, 'status-c1')).toBe(label)
+  })
+
+  it('alocado 0 com gasto é estourada sem percentual', async () => {
+    mockGet.mockResolvedValue(
+      budget({
+        categories: [
+          { categoryId: 'c1', allocated: 0, spent: 10, committed: 0, remaining: -10, status: 'OVERSPENT' },
+          { categoryId: 'c2', allocated: null, spent: 0, committed: 0, remaining: null, status: null },
+        ],
+      }),
+    )
+    const w = await mountView()
+    expect(text(w, 'status-c1')).toBe('Categoria estourada! R$ 10,00 acima do orçamento')
+    expect(w.find('[data-testid="percent-c1"]').exists()).toBe(false)
+  })
+
+  it('estouradas vêm primeiro no grupo, e o grupo com estourada vem antes dos outros', async () => {
+    mockGet.mockResolvedValue(
+      budget({
+        categories: [
+          { categoryId: 'c1', allocated: 100, spent: 50, committed: 0, remaining: 50, status: 'HEALTHY' },
+          { categoryId: 'c2', allocated: 100, spent: 130, committed: 0, remaining: -30, status: 'OVERSPENT' },
+          { categoryId: 'c3', allocated: 100, spent: 10, committed: 0, remaining: 90, status: 'HEALTHY' },
+        ],
+      }),
+    )
+    const w = await mountView()
+    const items = w.findAll('[data-testid^="category-"]').map((li) => li.attributes('data-testid'))
+    // Essenciais (com Transporte estourada) antes de Casa; dentro dele Transporte antes de Mercado
+    expect(items).toEqual(['category-c2', 'category-c1', 'category-c3'])
+    expect(w.get('[data-testid="category-c2"]').classes()).toContain('bg-red-50')
+    expect(w.get('[data-testid="category-c1"]').classes()).not.toContain('bg-red-50')
+
+    // digitar sem salvar não reordena
+    await type('amount-c2', '500,00')
+    expect(w.findAll('[data-testid^="category-"]')[0]!.attributes('data-testid')).toBe('category-c2')
+  })
+
+  it('resume os status salvos, sem contar as categorias sem orçamento', async () => {
+    mockGet.mockResolvedValue(
+      budget({
+        categories: [
+          { categoryId: 'c1', allocated: 100, spent: 50, committed: 0, remaining: 50, status: 'HEALTHY' },
+          { categoryId: 'c2', allocated: 100, spent: 130, committed: 0, remaining: -30, status: 'OVERSPENT' },
+          { categoryId: 'c3', allocated: 100, spent: 10, committed: 0, remaining: 90, status: 'HEALTHY' },
+          { categoryId: 'c4', allocated: 100, spent: 85, committed: 0, remaining: 15, status: 'LOW' },
+          { categoryId: 'c5', allocated: null, spent: 10, committed: 0, remaining: null, status: null },
+        ],
+      }),
+    )
+    const w = await mountView()
+    expect(w.get('[data-testid="status-summary"]').text()).toBe('2 categorias saudáveis, 1 baixa, 1 estourada')
+  })
+
+  it('resumo usa singular com 1 e plural com 0', async () => {
+    mockGet.mockResolvedValue(
+      budget({
+        categories: [
+          { categoryId: 'c1', allocated: 100, spent: 50, committed: 0, remaining: 50, status: 'HEALTHY' },
+          { categoryId: 'c2', allocated: null, spent: 0, committed: 0, remaining: null, status: null },
+        ],
+      }),
+    )
+    const w = await mountView()
+    expect(w.get('[data-testid="status-summary"]').text()).toBe('1 categoria saudável, 0 baixas, 0 estouradas')
+  })
+
+  it('sem nada orçado não mostra o resumo', async () => {
+    mockGet.mockResolvedValue(
+      budget({
+        categories: [
+          { categoryId: 'c1', allocated: null, spent: 0, committed: 0, remaining: null, status: null },
+          { categoryId: 'c2', allocated: null, spent: 0, committed: 0, remaining: null, status: null },
+        ],
+      }),
+    )
+    const w = await mountView()
+    expect(w.find('[data-testid="status-summary"]').exists()).toBe(false)
   })
 
   it('mês fechado não mostra o comprometido', async () => {
