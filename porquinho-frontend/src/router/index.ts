@@ -123,6 +123,13 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      // Story 6.9: planejado × real por categoria (tabela, gráfico, CSV e impressão)
+      path: '/orcamento/comparativo',
+      name: 'budget-comparison',
+      component: () => import('../views/BudgetComparisonView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       // Story 6.8: histórico de alocações de uma categoria (gráfico, tabela e CSV)
       path: '/orcamento/categorias/:id/historico',
       name: 'category-budget-history',

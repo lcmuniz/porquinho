@@ -26,3 +26,13 @@ export const STATUS: Record<
 export function statusOf(c: { status: BudgetStatus | null }) {
   return c.status ? STATUS[c.status] : null
 }
+
+/**
+ * Story 6.9: regra do épico para linhas somadas no front (restante < 0; até 20% do alocado; acima). Em centavos para
+ * não errar a fronteira dos 20% por arredondamento de float.
+ */
+export function computeStatus(allocated: number, remaining: number): BudgetStatus {
+  const a = Math.round(allocated * 100)
+  const r = Math.round(remaining * 100)
+  return r < 0 ? 'OVERSPENT' : r * 5 <= a ? 'LOW' : 'HEALTHY'
+}
