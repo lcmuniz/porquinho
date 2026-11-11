@@ -144,9 +144,12 @@ public class AuthController {
      * @throws RateLimitExceededException if rate limit exceeded (429)
      */
     @PostMapping("/login/check")
-    public ResponseEntity<Void> checkLoginAllowed(@Valid @RequestBody LoginRequest request) {
-        // Check if account is locked (15 minutes after 5 failed attempts)
-        if (accountLockService.isLocked(request.getEmail())) {
+    public ResponseEntity<Void> checkLoginAllowed(
+        @Valid @RequestBody LoginRequest request,
+        HttpServletRequest httpRequest
+    ) {
+        // Locked for this IP (15 minutes after 5 failed attempts from it)
+        if (accountLockService.isLocked(request.getEmail(), getClientIpAddress(httpRequest))) {
             throw new AccountLockedException("Account temporarily locked due to multiple failed attempts. Try again in 15 minutes.");
         }
 
@@ -161,16 +164,20 @@ public class AuthController {
     /**
      * Record failed login attempt.
      * This endpoint is called when Supabase authentication fails (invalid credentials).
-     * Increments failed login counter and locks account after 5 attempts.
-     * Does not require authentication (called after failed login).
+     * Increments the failure counter for this email and client IP; after 5 attempts that IP is locked for 15 minutes.
+     * Does not require authentication (called after failed login), so the lock is per IP: a third party cannot
+     * use this endpoint to lock someone else out of their account.
      *
      * @param request Request containing email
      * @return 200 OK (no response body)
      */
     @PostMapping("/login/failed")
-    public ResponseEntity<Void> recordFailedLogin(@Valid @RequestBody LoginRequest request) {
-        // Record failed attempt (increments counter, locks account if >= 5 attempts)
-        accountLockService.recordFailedAttempt(request.getEmail());
+    public ResponseEntity<Void> recordFailedLogin(
+        @Valid @RequestBody LoginRequest request,
+        HttpServletRequest httpRequest
+    ) {
+        // Record failed attempt for this email + IP (locks this IP if >= 5 attempts)
+        accountLockService.recordFailedAttempt(request.getEmail(), getClientIpAddress(httpRequest));
 
         return ResponseEntity.ok().build();
     }
@@ -206,7 +213,7 @@ public class AuthController {
         auditLogService.log("user_login", user.getId(), ipAddress);
 
         // Reset failed login attempts on successful login
-        accountLockService.resetFailedAttempts(request.getEmail());
+        accountLockService.resetFailedAttempts(request.getEmail(), ipAddress);
 
         // Register session if JWT token is available
         String authHeader = httpRequest.getHeader("Authorization");

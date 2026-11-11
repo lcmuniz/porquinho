@@ -25,6 +25,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -309,7 +310,7 @@ class AuthControllerTest {
     void shouldAllowLoginCheckWhenNotRateLimitedOrLocked() throws Exception {
         // Arrange
         String loginJson = "{\"email\":\"test@example.com\"}";
-        when(accountLockService.isLocked(anyString())).thenReturn(false);
+        when(accountLockService.isLocked(anyString(), anyString())).thenReturn(false);
         when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(true);
 
         // Act & Assert
@@ -324,7 +325,7 @@ class AuthControllerTest {
     void shouldReturn429OnLoginCheckWhenRateLimited() throws Exception {
         // Arrange
         String loginJson = "{\"email\":\"test@example.com\"}";
-        when(accountLockService.isLocked(anyString())).thenReturn(false);
+        when(accountLockService.isLocked(anyString(), anyString())).thenReturn(false);
         when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(false);
 
         // Act & Assert
@@ -339,7 +340,7 @@ class AuthControllerTest {
     void shouldReturn423OnLoginCheckWhenAccountLocked() throws Exception {
         // Arrange
         String loginJson = "{\"email\":\"test@example.com\"}";
-        when(accountLockService.isLocked(anyString())).thenReturn(true);
+        when(accountLockService.isLocked(anyString(), anyString())).thenReturn(true);
 
         // Act & Assert
         mockMvc.perform(post("/api/v1/auth/login/check")
@@ -361,7 +362,7 @@ class AuthControllerTest {
                 .content(loginJson))
                 .andExpect(status().isOk());
 
-        verify(accountLockService).recordFailedAttempt("test@example.com");
+        verify(accountLockService).recordFailedAttempt(eq("test@example.com"), anyString());
     }
 
     @Test
@@ -384,7 +385,7 @@ class AuthControllerTest {
                 .content(loginJson))
                 .andExpect(status().isOk());
 
-        verify(accountLockService).resetFailedAttempts("test@example.com");
+        verify(accountLockService).resetFailedAttempts(eq("test@example.com"), anyString());
     }
 
     // ===== PASSWORD RESET TESTS (Story 1.4) =====

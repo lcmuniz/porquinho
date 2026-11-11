@@ -1,90 +1,66 @@
 package com.porquinho.service;
 
-import com.porquinho.entity.User;
-import com.porquinho.exception.ResourceNotFoundException;
-import com.porquinho.repository.UserRepository;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.Duration;
+import java.util.Locale;
 
 /**
- * Service for account locking after failed login attempts.
- * Implements security feature to prevent brute force attacks.
+ * Temporary lock after repeated failed logins.
+ *
+ * The failure signal comes from a public endpoint (Supabase does the actual authentication), so anyone can send it.
+ * To keep that signal from being used to lock out a victim, the counter is kept per (email, client IP): only
+ * the IP that keeps failing gets locked out, and other users of the same account keep logging in normally.
+ * The counter lives in Redis and expires on its own after the lock window.
  */
 @Service
 public class AccountLockService {
 
-    private final UserRepository userRepository;
+    static final int MAX_FAILED_ATTEMPTS = 5;
+    static final Duration LOCK_DURATION = Duration.ofMinutes(15);
 
-    public AccountLockService(UserRepository userRepository) {
-        this.userRepository = userRepository;
+    private final StringRedisTemplate redisTemplate;
+
+    public AccountLockService(StringRedisTemplate redisTemplate) {
+        this.redisTemplate = redisTemplate;
     }
 
     /**
-     * Record a failed login attempt for the user.
-     * Locks the account for 15 minutes after 5 failed attempts.
-     * Does nothing if user doesn't exist (Supabase-only architecture).
-     *
-     * @param email User's email address
+     * Records a failed login from this IP. After 5 failures within 15 minutes, this IP is locked for this email.
      */
-    @Transactional
-    public void recordFailedAttempt(String email) {
-        User user = userRepository.findByEmailAndDeletedAtIsNull(email).orElse(null);
-
-        if (user == null) {
-            // User doesn't exist in backend (Supabase-only architecture) - skip recording
-            return;
+    public void recordFailedAttempt(String email, String clientIp) {
+        String key = key(email, clientIp);
+        Long count = redisTemplate.opsForValue().increment(key);
+        if (count != null && count == 1) {
+            redisTemplate.expire(key, LOCK_DURATION);
         }
-
-        int failedAttempts = user.getFailedLoginAttempts() + 1;
-        user.setFailedLoginAttempts(failedAttempts);
-
-        // Lock account after 5 failed attempts
-        if (failedAttempts >= 5) {
-            user.setLockedUntil(LocalDateTime.now().plusMinutes(15));
-        }
-
-        userRepository.save(user);
     }
 
     /**
-     * Check if the user's account is currently locked.
-     * Account is locked if locked_until is in the future.
-     *
-     * @param email User's email address
-     * @return true if account is locked, false otherwise
+     * @return true if this IP has 5 or more recent failures for this email
      */
-    public boolean isLocked(String email) {
-        User user = userRepository.findByEmailAndDeletedAtIsNull(email).orElse(null);
-
-        if (user == null || user.getLockedUntil() == null) {
+    public boolean isLocked(String email, String clientIp) {
+        String value = redisTemplate.opsForValue().get(key(email, clientIp));
+        if (value == null) {
             return false;
         }
-
-        // Check if lock has expired
-        return LocalDateTime.now().isBefore(user.getLockedUntil());
+        try {
+            return Long.parseLong(value) >= MAX_FAILED_ATTEMPTS;
+        } catch (NumberFormatException e) {
+            return false;
+        }
     }
 
     /**
-     * Reset failed login attempts counter and unlock the account.
-     * Called after a successful login.
-     * Does nothing if user doesn't exist (Supabase-only architecture).
-     *
-     * @param email User's email address
+     * Clears the failure counter for this IP after a successful login.
      */
-    @Transactional
-    public void resetFailedAttempts(String email) {
-        User user = userRepository.findByEmailAndDeletedAtIsNull(email).orElse(null);
+    public void resetFailedAttempts(String email, String clientIp) {
+        redisTemplate.delete(key(email, clientIp));
+    }
 
-        if (user == null) {
-            // User doesn't exist in backend (Supabase-only architecture) - skip reset
-            return;
-        }
-
-        user.setFailedLoginAttempts(0);
-        user.setLockedUntil(null);
-
-        userRepository.save(user);
+    static String key(String email, String clientIp) {
+        String normalizedEmail = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
+        return "login_failed:" + normalizedEmail + ":" + (clientIp == null ? "unknown" : clientIp);
     }
 }
