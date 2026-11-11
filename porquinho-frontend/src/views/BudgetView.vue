@@ -81,6 +81,7 @@
           >
             Você está alocando mais do que tem disponível
           </p>
+          <p v-if="summary" class="text-gray-900" data-testid="status-summary">{{ summary }}</p>
         </div>
 
         <p v-if="notice" role="status" data-testid="budget-notice" class="text-sm text-gray-700">{{ notice }}</p>
@@ -108,6 +109,7 @@
               v-for="child in group.children"
               :key="child.id"
               class="space-y-2"
+              :class="{ '-mx-2 rounded-md bg-red-50 p-2': byCategory[child.id]!.status === 'OVERSPENT' }"
               :data-testid="`category-${child.id}`"
             >
               <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -147,21 +149,32 @@
                 Sem orçamento definido
               </p>
               <div v-else class="space-y-1">
-                <div
-                  role="progressbar"
-                  aria-valuemin="0"
-                  aria-valuemax="100"
-                  :aria-valuenow="progress(byCategory[child.id]!)"
-                  :aria-label="`Gasto de ${child.categoryName}`"
-                  class="h-2 w-full overflow-hidden rounded-full bg-gray-200"
-                  :data-testid="`progress-${child.id}`"
-                >
+                <div class="flex items-center gap-2">
                   <div
-                    class="h-full"
-                    :class="statusOf(byCategory[child.id]!)?.bar ?? 'bg-gray-600'"
-                    :style="{ width: `${progress(byCategory[child.id]!)}%` }"
-                    :data-testid="`progress-bar-${child.id}`"
-                  />
+                    role="progressbar"
+                    aria-valuemin="0"
+                    aria-valuemax="100"
+                    :aria-valuenow="progress(byCategory[child.id]!)"
+                    :aria-valuetext="percent(byCategory[child.id]!) !== null ? `${percent(byCategory[child.id]!)}%` : undefined"
+                    :aria-label="`Gasto de ${child.categoryName}`"
+                    :title="exact(byCategory[child.id]!)"
+                    class="h-2 w-full overflow-hidden rounded-full bg-gray-200"
+                    :data-testid="`progress-${child.id}`"
+                  >
+                    <div
+                      class="h-full"
+                      :class="statusOf(byCategory[child.id]!)?.bar ?? 'bg-gray-600'"
+                      :style="{ width: `${progress(byCategory[child.id]!)}%` }"
+                      :data-testid="`progress-bar-${child.id}`"
+                    />
+                  </div>
+                  <span
+                    v-if="percent(byCategory[child.id]!) !== null"
+                    class="shrink-0 text-sm font-medium text-gray-900"
+                    :data-testid="`percent-${child.id}`"
+                  >
+                    {{ percent(byCategory[child.id]!) }}%
+                  </span>
                 </div>
                 <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-700">
                   <p :data-testid="`progress-text-${child.id}`">
@@ -171,6 +184,7 @@
                   <span
                     v-if="statusOf(byCategory[child.id]!)"
                     class="inline-flex items-center gap-1 font-medium text-gray-900"
+                    :title="exact(byCategory[child.id]!)"
                     :data-testid="`status-${child.id}`"
                   >
                     <component
@@ -179,7 +193,7 @@
                       :class="statusOf(byCategory[child.id]!)!.text"
                       aria-hidden="true"
                     />
-                    {{ statusOf(byCategory[child.id]!)!.label }}
+                    {{ statusOf(byCategory[child.id]!)!.label(byCategory[child.id]!.remaining ?? 0) }}
                   </span>
                 </div>
               </div>
@@ -289,6 +303,8 @@ import type { Category } from '@/types/category'
  * Story 6.4: restante e status vêm do backend (refletem o salvo); o status tem cor, ícone e rótulo, nunca só cor.
  * Story 6.5: "Mover dinheiro" abre um diálogo; fica bloqueado com valores não salvos (o sucesso recarrega os valores
  * do backend e apagaria o que foi digitado) e some em mês fechado.
+ * Story 6.7: chip com mensagem por status, estouradas (e seus grupos) no topo com fundo vermelho, percentual real ao
+ * lado da barra e resumo por status. Tudo usa o status salvo: digitar sem salvar não reordena.
  */
 const SUCCESS_TIMEOUT_MS = 5000
 const LOAD_FAILED = 'Não foi possível carregar o orçamento.'
@@ -343,7 +359,11 @@ const byCategory = computed<Record<string, CategoryBudget>>(() =>
 const byName = (a: Category, b: Category) =>
   a.categoryName.localeCompare(b.categoryName, 'pt-BR', { sensitivity: 'base' }) || a.id.localeCompare(b.id)
 
-// Só as filhas que o backend devolveu (ativas); grupos sem filhas não aparecem
+const overspent = (c: Category) => byCategory.value[c.id]?.status === 'OVERSPENT'
+// Estouradas primeiro, depois por nome
+const overspentFirst = (a: Category, b: Category) => Number(overspent(b)) - Number(overspent(a)) || byName(a, b)
+
+// Só as filhas que o backend devolveu (ativas); grupos sem filhas não aparecem. Grupos com estourada vêm antes
 const groups = computed(() =>
   categories.value
     .filter((c) => c.parentCategoryId === null)
@@ -352,10 +372,27 @@ const groups = computed(() =>
       parent,
       children: categories.value
         .filter((c) => c.parentCategoryId === parent.id && byCategory.value[c.id])
-        .sort(byName),
+        .sort(overspentFirst),
     }))
-    .filter((g) => g.children.length > 0),
+    .filter((g) => g.children.length > 0)
+    .sort((a, b) => Number(overspent(b.children[0]!)) - Number(overspent(a.children[0]!))),
 )
+
+// "X categorias saudáveis, Y baixas, Z estouradas"; some quando nada tem orçamento
+const summary = computed(() => {
+  const count = { HEALTHY: 0, LOW: 0, OVERSPENT: 0 }
+  for (const c of groups.value.flatMap((g) => g.children)) {
+    const status = byCategory.value[c.id]!.status
+    if (status) count[status]++
+  }
+  if (count.HEALTHY + count.LOW + count.OVERSPENT === 0) return null
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+  return [
+    plural(count.HEALTHY, 'categoria saudável', 'categorias saudáveis'),
+    plural(count.LOW, 'baixa', 'baixas'),
+    plural(count.OVERSPENT, 'estourada', 'estouradas'),
+  ].join(', ')
+})
 
 const fieldErrors = computed<Record<string, string | null>>(() =>
   Object.fromEntries(
@@ -403,10 +440,23 @@ const canReallocate = computed(
 )
 
 // Green/Yellow/Red 600 na barra; o ícone amarelo usa o 700 para ter contraste 3:1 (WCAG 1.4.11). O rótulo fica escuro
-const STATUS: Record<BudgetStatus, { label: string; icon: typeof CircleCheck; bar: string; text: string }> = {
-  HEALTHY: { label: 'Saudável', icon: CircleCheck, bar: 'bg-green-600', text: 'text-green-600' },
-  LOW: { label: 'Saldo baixo', icon: TriangleAlert, bar: 'bg-yellow-600', text: 'text-yellow-700' },
-  OVERSPENT: { label: 'Estourada', icon: CircleAlert, bar: 'bg-red-600', text: 'text-red-600' },
+const STATUS: Record<
+  BudgetStatus,
+  { label: (remaining: number) => string; icon: typeof CircleCheck; bar: string; text: string }
+> = {
+  HEALTHY: { label: () => 'Saudável', icon: CircleCheck, bar: 'bg-green-600', text: 'text-green-600' },
+  LOW: {
+    label: (r) => `Saldo baixo - ${formatBRL(r)} restantes`,
+    icon: TriangleAlert,
+    bar: 'bg-yellow-600',
+    text: 'text-yellow-700',
+  },
+  OVERSPENT: {
+    label: (r) => `Categoria estourada! ${formatBRL(Math.abs(r))} acima do orçamento`,
+    icon: CircleAlert,
+    bar: 'bg-red-600',
+    text: 'text-red-600',
+  },
 }
 
 function statusOf(c: CategoryBudget) {
@@ -416,6 +466,15 @@ function statusOf(c: CategoryBudget) {
 function progress(c: CategoryBudget): number {
   if (!c.allocated) return c.spent > 0 ? 100 : 0
   return Math.min(100, Math.round((c.spent / c.allocated) * 100))
+}
+
+// Percentual real, pode passar de 100; sem alocado não há base
+function percent(c: CategoryBudget): number | null {
+  return c.allocated ? Math.round((c.spent / c.allocated) * 100) : null
+}
+
+function exact(c: CategoryBudget): string {
+  return `${formatBRL(c.spent)} de ${formatBRL(c.allocated ?? 0)}`
 }
 
 function fill(data: Budget) {
