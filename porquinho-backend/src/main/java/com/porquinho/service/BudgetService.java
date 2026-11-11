@@ -2,6 +2,7 @@ package com.porquinho.service;
 
 import com.porquinho.dto.BudgetResponse;
 import com.porquinho.dto.BudgetStatus;
+import com.porquinho.dto.CategoryBudgetHistoryResponse;
 import com.porquinho.dto.ReallocateBudgetRequest;
 import com.porquinho.dto.SaveBudgetRequest;
 import com.porquinho.entity.Account;
@@ -9,6 +10,7 @@ import com.porquinho.entity.BudgetAllocation;
 import com.porquinho.entity.BudgetReallocation;
 import com.porquinho.entity.Category;
 import com.porquinho.exception.BadRequestException;
+import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.BudgetAllocationRepository;
 import com.porquinho.repository.BudgetReallocationRepository;
@@ -155,6 +157,35 @@ public class BudgetService {
         budgetReallocationRepository.save(new BudgetReallocation(userId, from.getId(), request.toCategoryId(),
             monthYear, request.amount()));
         return build(userId, yearMonth, children);
+    }
+
+    /**
+     * Every month of the child category with an allocation, up to the current one, oldest first (Story 6.8). 404 for a
+     * group, removed, foreign or missing category. Read straight from the database (no cache): two queries.
+     */
+    @Transactional(readOnly = true)
+    public CategoryBudgetHistoryResponse history(UUID userId, UUID categoryId) {
+        Category category = categoryRepository.findActiveByIdAndUserId(categoryId, userId)
+            .filter(c -> c.getParentCategoryId() != null)
+            .orElseThrow(() -> new ResourceNotFoundException(CategoryService.NOT_FOUND_MESSAGE));
+        YearMonth current = YearMonth.now(clock.withZone(SAO_PAULO));
+        List<BudgetAllocation> allocations = budgetAllocationRepository
+            .findByUserIdAndCategoryIdAndMonthYearLessThanEqualOrderByMonthYear(userId, categoryId, current.atDay(1));
+        Map<YearMonth, BigDecimal> spent = new HashMap<>();
+        if (!allocations.isEmpty()) {
+            for (Object[] row : transactionRepository.sumSpentByMonth(userId, categoryId,
+                allocations.get(0).getMonthYear(), current.atEndOfMonth())) {
+                spent.put(YearMonth.of(((Number) row[0]).intValue(), ((Number) row[1]).intValue()), (BigDecimal) row[2]);
+            }
+        }
+        List<CategoryBudgetHistoryResponse.Month> months = allocations.stream().map(a -> {
+            YearMonth month = YearMonth.from(a.getMonthYear());
+            BigDecimal monthSpent = spent.getOrDefault(month, BigDecimal.ZERO);
+            BigDecimal remaining = a.getAllocatedAmount().subtract(monthSpent);
+            return new CategoryBudgetHistoryResponse.Month(month.toString(), a.getAllocatedAmount(), monthSpent,
+                remaining, status(a.getAllocatedAmount(), remaining));
+        }).toList();
+        return new CategoryBudgetHistoryResponse(category.getId(), category.getCategoryName(), months);
     }
 
     private static String brl(BigDecimal amount) {

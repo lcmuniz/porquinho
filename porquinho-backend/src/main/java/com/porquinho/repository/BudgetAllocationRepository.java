@@ -19,6 +19,10 @@ public interface BudgetAllocationRepository extends JpaRepository<BudgetAllocati
     /** The user's allocations of the month ({@code monthYear} is day 1). */
     List<BudgetAllocation> findByUserIdAndMonthYear(UUID userId, LocalDate monthYear);
 
+    /** The user's allocations of the category up to {@code monthYear} (day 1), oldest first (Story 6.8). */
+    List<BudgetAllocation> findByUserIdAndCategoryIdAndMonthYearLessThanEqualOrderByMonthYear(
+        UUID userId, UUID categoryId, LocalDate monthYear);
+
     /**
      * Deletes the user's allocations of the month for {@code categoryIds} (the active children: rows of a category
      * removed since are kept as history). A bulk statement run before the inserts of a save, so the

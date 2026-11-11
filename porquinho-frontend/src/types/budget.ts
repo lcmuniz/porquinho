@@ -34,3 +34,19 @@ export interface BudgetReallocationInput {
   toCategoryId: string
   amount: number
 }
+
+/** Story 6.8: um mês com orçamento no histórico da categoria (AAAA-MM). */
+export interface CategoryBudgetMonth {
+  month: string
+  allocated: number
+  spent: number
+  remaining: number
+  status: BudgetStatus
+}
+
+/** Story 6.8: resposta de GET /api/v1/budgets/categories/{id}/history, do mês mais antigo ao mais novo. */
+export interface CategoryBudgetHistory {
+  categoryId: string
+  categoryName: string
+  months: CategoryBudgetMonth[]
+}
