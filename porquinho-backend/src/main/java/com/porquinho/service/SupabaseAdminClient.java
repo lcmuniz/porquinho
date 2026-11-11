@@ -4,7 +4,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -89,8 +88,8 @@ public class SupabaseAdminClient {
             // retrieve() throws on 4xx/5xx, so any return from this chain is a 2xx success.
             restClient.delete()
                 .uri(endpoint)
+                // secret keys (sb_secret_...) are not JWTs: only on apikey, never as Bearer (Supabase docs)
                 .header("apikey", serviceRoleKey)
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + serviceRoleKey)
                 .retrieve()
                 .toBodilessEntity();
             log.info("Supabase user deleted successfully (userId={})", userId);

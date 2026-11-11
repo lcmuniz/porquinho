@@ -32,7 +32,7 @@ class SupabaseAdminClientTest {
         server.expect(requestTo(projectUrl + "/auth/v1/admin/users/" + userId))
             .andExpect(method(DELETE))
             .andExpect(header("apikey", key))
-            .andExpect(header("Authorization", "Bearer " + key))
+            .andExpect(headerDoesNotExist("Authorization"))
             .andRespond(withSuccess());
 
         SupabaseAdminClient client = new SupabaseAdminClient(projectUrl, key, builder, false);
