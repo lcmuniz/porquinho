@@ -96,7 +96,7 @@ public class AuthController {
      * Called by frontend after Supabase creates user to sync to backend database.
      *
      * HYBRID ARCHITECTURE - This endpoint IS CALLED by frontend for user sync.
-     * Following hybrid architecture decision (ARQUITETURA-SIMPLIFICADA.md), users are created
+     * Following hybrid architecture decision (README.md, Architecture), users are created
      * in Supabase Auth (authentication authority) and synced to backend database for:
      * - Account locking (failed login attempts)
      * - Audit logs (login history, IP tracking)

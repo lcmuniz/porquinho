@@ -49,7 +49,6 @@ jobs:
           ./mvnw test
         env:
           SPRING_PROFILES_ACTIVE: test
-          SUPABASE_JWT_SECRET: test-secret-key-for-ci-must-be-at-least-256-bits-long
           REDIS_HOST: localhost
           REDIS_PORT: 6379
           REDIS_PASSWORD: ""

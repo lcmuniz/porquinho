@@ -131,7 +131,7 @@ public class AuthService {
      * Otherwise, creates new user with Email provider and logs audit event.
      *
      * NOTE (2026-03-17): HYBRID ARCHITECTURE - This method IS CALLED by frontend.
-     * Following hybrid architecture (ARQUITETURA-SIMPLIFICADA.md), users are created
+     * Following hybrid architecture (README.md, Architecture), users are created
      * in Supabase Auth (authentication authority) and synced to backend for:
      * - Account locking, audit logs, rate limiting, business data
      *
