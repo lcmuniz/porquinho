@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-03-13
-last_updated: 2026-11-11
+last_updated: 11-11-2026 11:56
 project: porquinho
 project_key: NOKEY
 tracking_system: file-system
@@ -128,7 +128,7 @@ development_status:
   6-7-visual-indicators-for-lownegative-balance-categories: done
   6-8-view-category-allocation-history: done
   6-9-compare-planned-vs-actual-spending-by-category: done
-  epic-6-retrospective: optional
+  epic-6-retrospective: done
 
   # Epic 7: Dashboard GPS - Complete Financial Overview
   epic-7: backlog
@@ -351,3 +351,60 @@ action_items:
     owner: "Bob (SM)"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-5-retro-2026-11-09.md"
+  - id: "epic-6-retro-item-28-recategorizar-compra-parcelada-leva-junt"
+    epic: 6
+    action: "Recategorizar compra parcelada leva junto as parcelas futuras do installmentGroupId,
+      com teste de comprometido e confirmação (B1)"
+    owner: "dev"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-6-retro-2026-11-11.md"
+  - id: "epic-6-retro-item-29-controle-de-concorrência-no-put-do-orçam"
+    epic: 6
+    action: "Controle de concorrência no PUT do orçamento (versão do mês ou 409) para
+      formulário velho não desfazer realocação (F1)"
+    owner: "dev"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-6-retro-2026-11-11.md"
+  - id: "epic-6-retro-item-30-soma-de-grupo-na-6-9-comparar-alocado-só"
+    epic: 6
+    action: "Soma de grupo na 6.9: comparar alocado só com gasto das filhas orçadas
+      ou mostrar gasto sem orçamento à parte (F2)"
+    owner: "dev"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-6-retro-2026-11-11.md"
+  - id: "epic-6-retro-item-31-decidir-destino-do-gasto-de-categoria-ex"
+    epic: 6
+    action: "Decidir destino do gasto de categoria excluída: bloquear exclusão com
+      gasto no mês, mostrar (removida) ou reclassificar (B2, Q1)"
+    owner: "Luiz"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-6-retro-2026-11-11.md"
+  - id: "epic-6-retro-item-32-reconciliar-texto-do-epic-6-e-epic-6-con"
+    epic: 6
+    action: "Reconciliar texto do Epic 6 e epic-6-context com o construído (S1-S4,
+      S7), corrigir comentário da V33 (B4) e decidir listagem de realocações (S5)"
+    owner: "Luiz/SM"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-6-retro-2026-11-11.md"
+  - id: "epic-6-retro-item-33-gate-story-que-adiciona-fluxo-a-view-com"
+    epic: 6
+    action: "Gate: story que adiciona fluxo a view com mais de 400 linhas extrai composable
+      antes; começar por CSV, chip de status e cabeçalho ordenável da 6.8/6.9 (G1,
+      D1, D2)"
+    owner: "dev"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-6-retro-2026-11-11.md"
+  - id: "epic-6-retro-item-34-atualizar-roteiro-de-testes-manuais-com"
+    epic: 6
+    action: "Atualizar roteiro de testes manuais com 6.3 a 6.9 e rodar antes do Epic
+      7"
+    owner: "Luiz"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-6-retro-2026-11-11.md"
+  - id: "epic-6-retro-item-35-testes-faltantes-realocação-concorrente"
+    epic: 6
+    action: "Testes faltantes: realocação concorrente, discard invalida cache, alocado
+      0 vira LOW no backend, medir NFR10 do histórico"
+    owner: "dev"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-6-retro-2026-11-11.md"
