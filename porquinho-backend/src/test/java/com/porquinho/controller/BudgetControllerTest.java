@@ -2,9 +2,13 @@ package com.porquinho.controller;
 
 import com.porquinho.config.TestWebSecurityConfig;
 import com.porquinho.dto.BudgetResponse;
+import com.porquinho.dto.BudgetStatus;
+import com.porquinho.dto.CategoryBudgetHistoryResponse;
 import com.porquinho.dto.ReallocateBudgetRequest;
 import com.porquinho.dto.SaveBudgetRequest;
 import com.porquinho.exception.BadRequestException;
+import com.porquinho.exception.ResourceNotFoundException;
+import com.porquinho.service.CategoryService;
 import com.porquinho.service.BudgetService;
 import com.porquinho.service.TransactionService;
 import org.junit.jupiter.api.BeforeEach;
@@ -143,6 +147,43 @@ class BudgetControllerTest {
                     .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isBadRequest());
         }
+        verifyNoInteractions(budgetService);
+    }
+
+    @Test
+    void historyReturnsTheMonthsInCamelCase() throws Exception {
+        // Story 6.8
+        UUID category = UUID.randomUUID();
+        when(budgetService.history(userId, category)).thenReturn(new CategoryBudgetHistoryResponse(category, "Mercado",
+            List.of(new CategoryBudgetHistoryResponse.Month("2026-10", new BigDecimal("100.00"),
+                new BigDecimal("120.00"), new BigDecimal("-20.00"), BudgetStatus.OVERSPENT))));
+
+        mockMvc.perform(get("/api/v1/budgets/categories/" + category + "/history").with(authentication(authToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.categoryId").value(category.toString()))
+            .andExpect(jsonPath("$.categoryName").value("Mercado"))
+            .andExpect(jsonPath("$.months[0].month").value("2026-10"))
+            .andExpect(jsonPath("$.months[0].allocated").value(100.00))
+            .andExpect(jsonPath("$.months[0].spent").value(120.00))
+            .andExpect(jsonPath("$.months[0].remaining").value(-20.00))
+            .andExpect(jsonPath("$.months[0].status").value("OVERSPENT"));
+    }
+
+    @Test
+    void historyOfAnUnknownCategoryIs404() throws Exception {
+        UUID category = UUID.randomUUID();
+        when(budgetService.history(userId, category))
+            .thenThrow(new ResourceNotFoundException(CategoryService.NOT_FOUND_MESSAGE));
+
+        mockMvc.perform(get("/api/v1/budgets/categories/" + category + "/history").with(authentication(authToken)))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.detail").value("Categoria não encontrada"));
+    }
+
+    @Test
+    void historyWithAMalformedIdIs400WithoutCallingTheService() throws Exception {
+        mockMvc.perform(get("/api/v1/budgets/categories/not-a-uuid/history").with(authentication(authToken)))
+            .andExpect(status().isBadRequest());
         verifyNoInteractions(budgetService);
     }
 }

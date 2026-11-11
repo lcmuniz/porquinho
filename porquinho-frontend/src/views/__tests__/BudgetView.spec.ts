@@ -82,6 +82,14 @@ describe('BudgetView', () => {
     expect(w.get('[data-testid="total-available"]').text()).toContain('1.000,00')
   })
 
+  it('cada categoria tem o link "Histórico" para a tela da Story 6.8', async () => {
+    await mountView()
+    const link = wrapper!.get('[data-testid="history-c1"]').findComponent(RouterLinkStub)
+    expect(link.props('to')).toBe('/orcamento/categorias/c1/historico')
+    expect(link.attributes('aria-label')).toBe('Histórico de Mercado')
+    expect(wrapper!.find('[data-testid="history-c2"]').exists()).toBe(true)
+  })
+
   it('categoria sem alocação mostra "Sem orçamento definido" e o gasto, sem barra', async () => {
     const w = await mountView()
     expect(w.get('[data-testid="no-budget-c2"]').text()).toBe('Sem orçamento definido')

@@ -113,7 +113,17 @@
               :data-testid="`category-${child.id}`"
             >
               <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <label :for="`amount-${child.id}`" class="font-medium text-gray-900">{{ child.categoryName }}</label>
+                <div class="flex items-center gap-3">
+                  <label :for="`amount-${child.id}`" class="font-medium text-gray-900">{{ child.categoryName }}</label>
+                  <RouterLink
+                    :to="`/orcamento/categorias/${child.id}/historico`"
+                    :aria-label="`Histórico de ${child.categoryName}`"
+                    class="inline-flex min-h-[44px] items-center text-sm font-medium text-purple-700 underline hover:text-purple-800"
+                    :data-testid="`history-${child.id}`"
+                  >
+                    Histórico
+                  </RouterLink>
+                </div>
                 <div class="sm:w-40">
                   <Input
                     :id="`amount-${child.id}`"
@@ -286,15 +296,16 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { CircleAlert, CircleCheck, TriangleAlert } from 'lucide-vue-next'
 import ReallocateForm from '@/components/budget/ReallocateForm.vue'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { statusOf } from '@/lib/budgetStatus'
+import { currentMonth, formatMonthBR, shiftMonth } from '@/lib/date'
 import { formatBRL, formatBRLInput, parseBRL } from '@/lib/money'
 import { getBudget, saveBudget } from '@/services/budgetService'
 import { listCategories } from '@/services/categoryService'
-import type { Budget, BudgetStatus, CategoryBudget } from '@/types/budget'
+import type { Budget, CategoryBudget } from '@/types/budget'
 import type { Category } from '@/types/category'
 
 /**
@@ -317,17 +328,6 @@ interface ApiError {
   response?: { status?: number; data?: { detail?: string } }
 }
 
-/** "AAAA-MM" do mês atual em São Paulo (en-CA formata a data como AAAA-MM-DD). */
-function currentMonth(): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date()).slice(0, 7)
-}
-
-function shiftMonth(value: string, delta: number): string {
-  const [year, monthNumber] = value.split('-').map(Number)
-  const date = new Date(Date.UTC(year!, monthNumber! - 1 + delta, 1))
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`
-}
-
 const month = ref(currentMonth())
 const budget = ref<Budget | null>(null)
 const categories = ref<Category[]>([])
@@ -345,12 +345,7 @@ const reallocateError = ref<string | null>(null)
 const reallocateForm = ref<InstanceType<typeof ReallocateForm> | null>(null)
 const reallocateButton = ref<InstanceType<typeof Button> | null>(null)
 
-const monthLabel = computed(() => {
-  const [year, monthNumber] = month.value.split('-').map(Number)
-  return new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
-    Date.UTC(year!, monthNumber! - 1, 1),
-  )
-})
+const monthLabel = computed(() => formatMonthBR(month.value))
 
 const byCategory = computed<Record<string, CategoryBudget>>(() =>
   Object.fromEntries((budget.value?.categories ?? []).map((c) => [c.categoryId, c])),
@@ -438,30 +433,6 @@ const reallocateOptions = computed(() =>
 const canReallocate = computed(
   () => reallocateOptions.value.length >= 2 && reallocateOptions.value.some((o) => (o.remaining ?? 0) > 0),
 )
-
-// Green/Yellow/Red 600 na barra; o ícone amarelo usa o 700 para ter contraste 3:1 (WCAG 1.4.11). O rótulo fica escuro
-const STATUS: Record<
-  BudgetStatus,
-  { label: (remaining: number) => string; icon: typeof CircleCheck; bar: string; text: string }
-> = {
-  HEALTHY: { label: () => 'Saudável', icon: CircleCheck, bar: 'bg-green-600', text: 'text-green-600' },
-  LOW: {
-    label: (r) => `Saldo baixo - ${formatBRL(r)} restantes`,
-    icon: TriangleAlert,
-    bar: 'bg-yellow-600',
-    text: 'text-yellow-700',
-  },
-  OVERSPENT: {
-    label: (r) => `Categoria estourada! ${formatBRL(Math.abs(r))} acima do orçamento`,
-    icon: CircleAlert,
-    bar: 'bg-red-600',
-    text: 'text-red-600',
-  },
-}
-
-function statusOf(c: CategoryBudget) {
-  return c.status ? STATUS[c.status] : null
-}
 
 function progress(c: CategoryBudget): number {
   if (!c.allocated) return c.spent > 0 ? 100 : 0

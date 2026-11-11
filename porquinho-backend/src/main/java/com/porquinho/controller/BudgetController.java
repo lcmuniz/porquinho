@@ -1,6 +1,7 @@
 package com.porquinho.controller;
 
 import com.porquinho.dto.BudgetResponse;
+import com.porquinho.dto.CategoryBudgetHistoryResponse;
 import com.porquinho.dto.ReallocateBudgetRequest;
 import com.porquinho.dto.SaveBudgetRequest;
 import com.porquinho.service.BudgetService;
@@ -48,5 +49,12 @@ public class BudgetController {
                                                      @PathVariable("month") String month,
                                                      @Valid @RequestBody ReallocateBudgetRequest request) {
         return ResponseEntity.ok(budgetService.reallocate(UUID.fromString(jwt.getSubject()), month, request));
+    }
+
+    /** Monthly history of a child category (Story 6.8); 404 for a group, removed or foreign; 400 on a malformed id. */
+    @GetMapping("/categories/{categoryId}/history")
+    public ResponseEntity<CategoryBudgetHistoryResponse> history(@AuthenticationPrincipal Jwt jwt,
+                                                                 @PathVariable("categoryId") UUID categoryId) {
+        return ResponseEntity.ok(budgetService.history(UUID.fromString(jwt.getSubject()), categoryId));
     }
 }

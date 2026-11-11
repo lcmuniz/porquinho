@@ -237,6 +237,20 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
                                       @Param("to") LocalDate to);
 
     /**
+     * Spent of category {@code categoryId} per month in [{@code from}, {@code to}] (Story 6.8), same base as
+     * {@link #sumSpentByCategory}. Each row is {year, month, sum}.
+     */
+    @Query("SELECT YEAR(t.transactionDate), MONTH(t.transactionDate), SUM(t.amount) FROM Transaction t "
+        + "WHERE t.userId = :userId AND t.categoryId = :categoryId "
+        + "AND t.reviewStatus = com.porquinho.entity.Transaction.ReviewStatus.CONFIRMED AND t.futureInstallment = false "
+        + "AND t.deletedAt IS NULL AND t.kind = com.porquinho.entity.Transaction.Kind.REGULAR "
+        + "AND t.transactionType = com.porquinho.entity.Transaction.Type.DEBIT "
+        + "AND t.transactionDate BETWEEN :from AND :to "
+        + "GROUP BY YEAR(t.transactionDate), MONTH(t.transactionDate)")
+    List<Object[]> sumSpentByMonth(@Param("userId") UUID userId, @Param("categoryId") UUID categoryId,
+                                   @Param("from") LocalDate from, @Param("to") LocalDate to);
+
+    /**
      * Committed per category in [{@code from}, {@code to}] (Story 6.3): active confirmed future installments (an import
      * still in review is left out), those of a removed
      * card left out (they count again once the card is restored). Each row is {categoryId, sum}.

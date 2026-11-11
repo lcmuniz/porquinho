@@ -2,6 +2,7 @@ package com.porquinho.service;
 
 import com.porquinho.dto.BudgetResponse;
 import com.porquinho.dto.BudgetStatus;
+import com.porquinho.dto.CategoryBudgetHistoryResponse;
 import com.porquinho.dto.ReallocateBudgetRequest;
 import com.porquinho.dto.SaveBudgetRequest;
 import com.porquinho.dto.TransactionCreateRequest;
@@ -9,6 +10,7 @@ import com.porquinho.dto.TransactionUpdateRequest;
 import com.porquinho.entity.BudgetAllocation;
 import com.porquinho.entity.BudgetReallocation;
 import com.porquinho.exception.BadRequestException;
+import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.BudgetAllocationRepository;
 import com.porquinho.repository.BudgetReallocationRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -629,5 +631,60 @@ class BudgetIntegrationTest {
             .isEqualTo(2);
         assertThat(jdbc.update("DELETE FROM categories WHERE user_id = ?", userId)).isEqualTo(1);
         assertThat(reallocationRepository.findByUserIdOrdered(other)).hasSize(1);
+    }
+
+    @Test
+    void historyListsTheAllocatedMonthsUpToTheCurrentOneOldestFirst() {
+        // Story 6.8: months without allocation and future months stay out; only the base of the spent counts
+        UUID account = newAccount("100", false);
+        UUID card = newCard(false);
+        YearMonth older = CURRENT.minusMonths(2);
+        service.save(userId, older.toString(), List.of(item(food, "100")));
+        service.save(userId, CURRENT.toString(), List.of(item(food, "100"), item(transport, "50")));
+        service.save(userId, CURRENT.plusMonths(1).toString(), List.of(item(food, "999")));
+        row(account, null, food, older, "90.00", "DEBIT", "REGULAR", "CONFIRMED", false);
+        row(account, null, food, PAST, "40.00", "DEBIT", "REGULAR", "CONFIRMED", false);  // month without allocation
+        row(account, null, food, CURRENT, "120.00", "DEBIT", "REGULAR", "CONFIRMED", false);
+        row(account, null, food, CURRENT, "20.00", "CREDIT", "REGULAR", "CONFIRMED", false);
+        row(account, null, food, CURRENT, "30.00", "DEBIT", "REGULAR", "PENDING", false);
+        row(null, card, food, CURRENT, "60.00", "DEBIT", "REGULAR", "CONFIRMED", true);
+        row(account, null, food, CURRENT, "300.00", "DEBIT", "CARD_PAYMENT", "CONFIRMED", false);
+        jdbc.update("INSERT INTO transactions (id, user_id, account_id, category_id, transaction_date, description, "
+            + "original_description, amount, transaction_type, review_status, deleted_at) VALUES (?, ?, ?, ?, ?, 'X', 'X', "
+            + "80, 'DEBIT', 'CONFIRMED', NOW())", UUID.randomUUID(), userId, account, food, CURRENT.atDay(5));
+        row(account, null, transport, CURRENT, "10.00", "DEBIT", "REGULAR", "CONFIRMED", false);
+
+        CategoryBudgetHistoryResponse history = service.history(userId, food);
+
+        assertThat(history.categoryId()).isEqualTo(food);
+        assertThat(history.categoryName()).isEqualTo("Alimentação");
+        assertThat(history.months()).extracting(CategoryBudgetHistoryResponse.Month::month)
+            .containsExactly(older.toString(), CURRENT.toString());
+        CategoryBudgetHistoryResponse.Month first = history.months().get(0);
+        assertThat(first.spent()).isEqualByComparingTo("90.00");
+        assertThat(first.remaining()).isEqualByComparingTo("10.00");
+        assertThat(first.status()).isEqualTo(BudgetStatus.LOW);
+        CategoryBudgetHistoryResponse.Month last = history.months().get(1);
+        assertThat(last.spent()).isEqualByComparingTo("120.00");
+        assertThat(last.remaining()).isEqualByComparingTo("-20.00");
+        assertThat(last.status()).isEqualTo(BudgetStatus.OVERSPENT);
+    }
+
+    @Test
+    void historyWithoutAllocationsIsEmpty() {
+        assertThat(service.history(userId, food).months()).isEmpty();
+    }
+
+    @Test
+    void historyOfAGroupRemovedForeignOrMissingCategoryIs404() {
+        UUID removed = newCategory(userId, "Removida", group);
+        jdbc.update("UPDATE categories SET deleted_at = NOW() WHERE id = ?", removed);
+        UUID other = newUser();
+        UUID foreign = newCategory(other, "Alheia", newCategory(other, "G", null));
+
+        for (UUID id : List.of(group, removed, foreign, UUID.randomUUID())) {
+            assertThatThrownBy(() -> service.history(userId, id))
+                .isInstanceOf(ResourceNotFoundException.class).hasMessage(CategoryService.NOT_FOUND_MESSAGE);
+        }
     }
 }

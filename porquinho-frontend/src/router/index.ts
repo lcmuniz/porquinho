@@ -123,6 +123,13 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      // Story 6.8: histórico de alocações de uma categoria (gráfico, tabela e CSV)
+      path: '/orcamento/categorias/:id/historico',
+      name: 'category-budget-history',
+      component: () => import('../views/CategoryBudgetHistoryView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       // Story 2.2: plano mensal (Stripe Checkout). Retorno do Checkout: ?status=sucesso|cancelado
       path: '/assinatura',
       name: 'subscription',

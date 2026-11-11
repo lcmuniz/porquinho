@@ -126,7 +126,7 @@ development_status:
   6-5-reallocate-money-between-categories: done
   6-6-auto-deduct-from-category-when-transaction-classified: done
   6-7-visual-indicators-for-lownegative-balance-categories: done
-  6-8-view-category-allocation-history: backlog
+  6-8-view-category-allocation-history: review
   6-9-compare-planned-vs-actual-spending-by-category: backlog
   epic-6-retrospective: optional
 
