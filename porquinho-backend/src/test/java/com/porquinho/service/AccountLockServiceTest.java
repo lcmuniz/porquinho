@@ -1,122 +1,109 @@
 package com.porquinho.service;
 
-import com.porquinho.entity.User;
-import com.porquinho.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 
-import java.time.LocalDateTime;
-import java.util.Optional;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
- * Unit tests for AccountLockService.
- * Tests account locking after failed login attempts.
+ * Unit tests for AccountLockService: lock per (email, client IP), kept in Redis.
  */
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class AccountLockServiceTest {
 
+    private static final String EMAIL = "test@example.com";
+    private static final String IP = "203.0.113.7";
+
     @Mock
-    private UserRepository userRepository;
+    private StringRedisTemplate redisTemplate;
+
+    @Mock
+    private ValueOperations<String, String> valueOperations;
 
     private AccountLockService accountLockService;
 
     @BeforeEach
     void setUp() {
-        accountLockService = new AccountLockService(userRepository);
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        accountLockService = new AccountLockService(redisTemplate);
     }
 
     @Test
-    void shouldIncrementFailedAttempts() {
-        // Arrange
-        User user = new User("test@example.com", User.AuthProvider.EMAIL, null);
-        user.setFailedLoginAttempts(0);
+    void firstFailureStartsTheLockWindow() {
+        String key = AccountLockService.key(EMAIL, IP);
+        when(valueOperations.increment(key)).thenReturn(1L);
 
-        when(userRepository.findByEmailAndDeletedAtIsNull("test@example.com"))
-            .thenReturn(Optional.of(user));
+        accountLockService.recordFailedAttempt(EMAIL, IP);
 
-        // Act
-        accountLockService.recordFailedAttempt("test@example.com");
-
-        // Assert
-        assertEquals(1, user.getFailedLoginAttempts());
-        assertNull(user.getLockedUntil());
-        verify(userRepository).save(user);
+        verify(redisTemplate).expire(key, AccountLockService.LOCK_DURATION);
     }
 
     @Test
-    void shouldLockAccountAfter5FailedAttempts() {
-        // Arrange
-        User user = new User("test@example.com", User.AuthProvider.EMAIL, null);
-        user.setFailedLoginAttempts(4); // 4 failed attempts already
+    void laterFailuresDoNotExtendTheWindow() {
+        String key = AccountLockService.key(EMAIL, IP);
+        when(valueOperations.increment(key)).thenReturn(3L);
 
-        when(userRepository.findByEmailAndDeletedAtIsNull("test@example.com"))
-            .thenReturn(Optional.of(user));
+        accountLockService.recordFailedAttempt(EMAIL, IP);
 
-        // Act
-        accountLockService.recordFailedAttempt("test@example.com");
-
-        // Assert
-        assertEquals(5, user.getFailedLoginAttempts());
-        assertNotNull(user.getLockedUntil());
-        assertTrue(user.getLockedUntil().isAfter(LocalDateTime.now()));
-        verify(userRepository).save(user);
+        verify(redisTemplate, never()).expire(anyString(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test
-    void shouldReturnTrueWhenAccountIsLocked() {
-        // Arrange
-        User user = new User("test@example.com", User.AuthProvider.EMAIL, null);
-        user.setLockedUntil(LocalDateTime.now().plusMinutes(15));
+    void lockedAfterFiveFailuresFromTheSameIp() {
+        when(valueOperations.get(AccountLockService.key(EMAIL, IP))).thenReturn("5");
 
-        when(userRepository.findByEmailAndDeletedAtIsNull("test@example.com"))
-            .thenReturn(Optional.of(user));
-
-        // Act
-        boolean isLocked = accountLockService.isLocked("test@example.com");
-
-        // Assert
-        assertTrue(isLocked);
+        assertTrue(accountLockService.isLocked(EMAIL, IP));
     }
 
     @Test
-    void shouldReturnFalseWhenLockExpired() {
-        // Arrange
-        User user = new User("test@example.com", User.AuthProvider.EMAIL, null);
-        user.setLockedUntil(LocalDateTime.now().minusMinutes(1)); // Expired
+    void notLockedBelowFiveFailures() {
+        when(valueOperations.get(AccountLockService.key(EMAIL, IP))).thenReturn("4");
 
-        when(userRepository.findByEmailAndDeletedAtIsNull("test@example.com"))
-            .thenReturn(Optional.of(user));
-
-        // Act
-        boolean isLocked = accountLockService.isLocked("test@example.com");
-
-        // Assert
-        assertFalse(isLocked);
+        assertFalse(accountLockService.isLocked(EMAIL, IP));
     }
 
     @Test
-    void shouldResetFailedAttempts() {
-        // Arrange
-        User user = new User("test@example.com", User.AuthProvider.EMAIL, null);
-        user.setFailedLoginAttempts(3);
-        user.setLockedUntil(LocalDateTime.now().plusMinutes(15));
+    void notLockedWithoutFailures() {
+        when(valueOperations.get(anyString())).thenReturn(null);
 
-        when(userRepository.findByEmailAndDeletedAtIsNull("test@example.com"))
-            .thenReturn(Optional.of(user));
+        assertFalse(accountLockService.isLocked(EMAIL, IP));
+    }
 
-        // Act
-        accountLockService.resetFailedAttempts("test@example.com");
+    @Test
+    void failuresFromAnotherIpDoNotLockTheVictim() {
+        String attackerIp = "198.51.100.9";
+        when(valueOperations.get(AccountLockService.key(EMAIL, attackerIp))).thenReturn("50");
+        when(valueOperations.get(AccountLockService.key(EMAIL, IP))).thenReturn(null);
 
-        // Assert
-        assertEquals(0, user.getFailedLoginAttempts());
-        assertNull(user.getLockedUntil());
-        verify(userRepository).save(user);
+        assertTrue(accountLockService.isLocked(EMAIL, attackerIp));
+        assertFalse(accountLockService.isLocked(EMAIL, IP));
+        assertNotEquals(AccountLockService.key(EMAIL, attackerIp), AccountLockService.key(EMAIL, IP));
+    }
+
+    @Test
+    void emailIsNormalizedInTheKey() {
+        assertEquals(AccountLockService.key(EMAIL, IP), AccountLockService.key("  Test@Example.COM ", IP));
+    }
+
+    @Test
+    void resetClearsTheCounterForThisIp() {
+        accountLockService.resetFailedAttempts(EMAIL, IP);
+
+        verify(redisTemplate).delete(AccountLockService.key(EMAIL, IP));
     }
 }
