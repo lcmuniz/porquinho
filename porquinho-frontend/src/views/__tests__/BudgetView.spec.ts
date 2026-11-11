@@ -87,6 +87,9 @@ describe('BudgetView', () => {
     const link = wrapper!.get('[data-testid="history-c1"]').findComponent(RouterLinkStub)
     expect(link.props('to')).toBe('/orcamento/categorias/c1/historico')
     expect(link.attributes('aria-label')).toBe('Histórico de Mercado')
+    expect(wrapper!.get('[data-testid="comparison-link"]').findComponent(RouterLinkStub).props('to')).toBe(
+      '/orcamento/comparativo',
+    )
     expect(wrapper!.find('[data-testid="history-c2"]').exists()).toBe(true)
   })
 

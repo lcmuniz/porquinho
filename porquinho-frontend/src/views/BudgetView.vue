@@ -6,13 +6,22 @@
           <h1 tabindex="-1" class="text-2xl font-semibold text-gray-900 outline-none">Orçamento</h1>
           <p class="mt-1 text-sm text-gray-600">Quanto você pretende gastar em cada categoria no mês</p>
         </div>
-        <RouterLink
-          to="/dashboard"
-          data-testid="back-to-dashboard"
-          class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-        >
-          Voltar ao dashboard
-        </RouterLink>
+        <div class="flex flex-wrap justify-end gap-2">
+          <RouterLink
+            to="/orcamento/comparativo"
+            data-testid="comparison-link"
+            class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+          >
+            Planejado × real
+          </RouterLink>
+          <RouterLink
+            to="/dashboard"
+            data-testid="back-to-dashboard"
+            class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+          >
+            Voltar ao dashboard
+          </RouterLink>
+        </div>
       </div>
 
       <!-- Sempre no DOM: leitores de tela só anunciam mudanças numa região live que já existe -->

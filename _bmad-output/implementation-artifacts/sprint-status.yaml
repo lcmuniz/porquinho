@@ -127,7 +127,7 @@ development_status:
   6-6-auto-deduct-from-category-when-transaction-classified: done
   6-7-visual-indicators-for-lownegative-balance-categories: done
   6-8-view-category-allocation-history: done
-  6-9-compare-planned-vs-actual-spending-by-category: backlog
+  6-9-compare-planned-vs-actual-spending-by-category: review
   epic-6-retrospective: optional
 
   # Epic 7: Dashboard GPS - Complete Financial Overview

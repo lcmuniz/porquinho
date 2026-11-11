@@ -23,4 +23,11 @@ describe('router', () => {
     expect(route.name).toBe('budget')
     expect(route.meta.requiresAuth).toBe(true)
   })
+
+  it('resolve o planejado × real, com autenticação (Story 6.9)', () => {
+    const route = router.resolve('/orcamento/comparativo')
+
+    expect(route.name).toBe('budget-comparison')
+    expect(route.meta.requiresAuth).toBe(true)
+  })
 })
