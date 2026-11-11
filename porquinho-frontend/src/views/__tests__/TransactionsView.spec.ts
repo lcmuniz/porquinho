@@ -145,6 +145,36 @@ describe('TransactionsView', () => {
     expect(inDialog('edit-dialog')).toBeNull()
   })
 
+  it('avisa quando a nova categoria vai junto para as parcelas futuras', async () => {
+    const installment = { isInstallment: true, installmentNumber: 3, installmentTotal: 10, installmentGroupId: 'grp' }
+    const w = await mountView([transaction('p3', { ...installment, remainingInstallments: 7 })])
+    const status = () => w.get('[data-testid="transactions-success"]').text()
+
+    await w.get('[data-testid="edit-p3"]').trigger('click')
+    await flushPromises()
+    await setValue('edit-category', 'c2')
+    mockUpdate.mockResolvedValue(transaction('p3', { ...installment, remainingInstallments: 7 }))
+    inDialog<HTMLFormElement>('edit-form')!.dispatchEvent(new Event('submit'))
+    await flushPromises()
+    expect(status()).toBe('Transação atualizada. As 7 parcelas futuras também mudaram de categoria')
+
+    await w.get('[data-testid="edit-p3"]').trigger('click')
+    await flushPromises()
+    await setValue('edit-category', '')
+    mockUpdate.mockResolvedValue(transaction('p3', { ...installment, remainingInstallments: 1 }))
+    inDialog<HTMLFormElement>('edit-form')!.dispatchEvent(new Event('submit'))
+    await flushPromises()
+    expect(status()).toBe('Transação atualizada. A parcela futura também mudou de categoria')
+
+    // sem mudar a categoria, as futuras não mudam
+    await w.get('[data-testid="edit-p3"]').trigger('click')
+    await flushPromises()
+    await setValue('edit-amount', '150,50')
+    inDialog<HTMLFormElement>('edit-form')!.dispatchEvent(new Event('submit'))
+    await flushPromises()
+    expect(status()).toBe('Transação atualizada')
+  })
+
   it('avisa sobre data futura sem bloquear o envio', async () => {
     const w = await mountView([transaction('t1')])
     await w.get('[data-testid="edit-t1"]').trigger('click')

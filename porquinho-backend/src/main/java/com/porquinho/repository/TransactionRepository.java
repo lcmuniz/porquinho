@@ -158,6 +158,20 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
                                    @Param("confidence") int confidence, @Param("now") OffsetDateTime now);
 
     /**
+     * Retro do Epic 6, A1: recategorizing an installment on the edit takes the active future installments of its
+     * group along. Confirmed siblings keep their category.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE Transaction t SET t.categoryId = :categoryId, t.classificationConfidence = :confidence, "
+        + "t.classificationSource = :source, t.updatedAt = :now "
+        + "WHERE t.userId = :userId AND t.installmentGroupId = :groupId AND t.futureInstallment = true "
+        + "AND t.deletedAt IS NULL")
+    int applyCategoryToGroupFutures(@Param("userId") UUID userId, @Param("groupId") UUID groupId,
+                                    @Param("categoryId") UUID categoryId,
+                                    @Param("source") Transaction.ClassificationSource source,
+                                    @Param("confidence") int confidence, @Param("now") OffsetDateTime now);
+
+    /**
      * Decision D3 (Story 5.10): the rows of import {@code importId} that may enter the balance when it is finished, its
      * active rows other than future installments. Which of them do is decided by {@code TransactionCore#inBalance}.
      */

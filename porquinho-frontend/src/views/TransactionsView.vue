@@ -577,17 +577,26 @@ async function save() {
   formError.value = null
   saving.value = true
   try {
+    let message = 'Transação adicionada'
     if (isCreate) {
       await createTransaction({ ...input, categoryId: form.categoryId })
       // a lista vai para o mês da transação criada, para ela aparecer
       month.value = form.date.slice(0, 7)
     } else {
-      await updateTransaction(row!.id, input)
+      const updated = await updateTransaction(row!.id, input)
+      // retro do Epic 6 (A1): a nova categoria vai junto para as parcelas futuras da compra
+      const futures = (row!.category?.id ?? null) !== input.categoryId ? updated.remainingInstallments : 0
+      message =
+        futures === 0
+          ? 'Transação atualizada'
+          : futures === 1
+          ? 'Transação atualizada. A parcela futura também mudou de categoria'
+          : `Transação atualizada. As ${plural(futures, 'parcela futura', 'parcelas futuras')} também mudaram de categoria`
     }
     editOpen.value = false
     actionError.value = null
     await load()
-    setSuccess(isCreate ? 'Transação adicionada' : 'Transação atualizada')
+    setSuccess(message)
   } catch (err) {
     const response = (err as ApiError)?.response
     if (response?.status === 404 || response?.status === 400 || response?.status === 409) {

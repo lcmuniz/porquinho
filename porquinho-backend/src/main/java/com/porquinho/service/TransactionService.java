@@ -236,8 +236,16 @@ public class TransactionService {
                 : TransactionCore.USER_CONFIDENCE);
         }
         transactionRepository.saveAndFlush(row);
+        int futuresChanged = 0;
+        if (categoryChanged && row.getInstallmentGroupId() != null) {
+            // after the flush: the bulk update clears the persistence context
+            futuresChanged = transactionRepository.applyCategoryToGroupFutures(userId, row.getInstallmentGroupId(),
+                row.getCategoryId(), row.getClassificationSource(), row.getClassificationConfidence(),
+                OffsetDateTime.now(clock));
+        }
         auditLogService.log(AUDIT_EDITED, userId, ipAddress, "{\"transaction_id\":\"" + id
-            + "\",\"category_changed\":" + categoryChanged + ",\"accounts_changed\":" + accountsChanged + "}");
+            + "\",\"category_changed\":" + categoryChanged + ",\"accounts_changed\":" + accountsChanged
+            + ",\"future_installments_changed\":" + futuresChanged + "}");
         budgetBalanceCache.evict(userId);
         return toResponses(userId, List.of(row)).get(0);
     }

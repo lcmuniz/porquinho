@@ -92,9 +92,11 @@ describe('BudgetComparisonView', () => {
     expect(chart.findAll('rect')).toHaveLength(8)
 
     expect(plain(w.get('[data-testid="total-allocated"]').text())).toBe('R$ 2.100,00')
-    expect(plain(w.get('[data-testid="total-spent"]').text())).toBe('R$ 1.864,56')
-    expect(plain(w.get('[data-testid="total-remaining"]').text())).toBe('R$ 235,44')
-    expect(w.get('[data-testid="total-percent"]').text()).toBe('89% do orçamento utilizado')
+    // retro do Epic 6 (A3): gasto orçado + sem orçamento (Lazer) = gasto real
+    expect(plain(w.get('[data-testid="total-spent"]').text())).toBe('R$ 1.784,56')
+    expect(plain(w.get('[data-testid="total-unbudgeted"]').text())).toBe('R$ 80,00')
+    expect(plain(w.get('[data-testid="total-remaining"]').text())).toBe('R$ 315,44')
+    expect(w.get('[data-testid="total-percent"]').text()).toBe('85% do orçamento utilizado')
   })
 
   it('linhas: valores, %, status com ícone; sem orçamento e alocado 0 mostram "—"', async () => {
@@ -119,12 +121,44 @@ describe('BudgetComparisonView', () => {
     expect(zero[3]).toBe('—')
     expect(zero[4]).toBe('Saldo baixo - R$ 0,00 restantes')
 
-    // linha do grupo: soma das filhas e status recalculado
+    // linha do grupo: soma das filhas orçadas e status recalculado; o gasto sem orçamento fica à parte
     const group = plain(w.get('[data-testid="group-g1"] tr').text())
     expect(group).toContain('Essenciais')
     expect(group).toContain('R$ 2.100,00')
-    expect(group).toContain('R$ 1.864,56')
-    expect(group).toContain('Saldo baixo - R$ 235,44 restantes')
+    expect(group).toContain('R$ 1.784,56')
+    expect(group).toContain('Saldo baixo - R$ 315,44 restantes')
+    expect(plain(w.get('[data-testid="unbudgeted-g1"]').text())).toBe('Sem orçamento: R$ 80,00')
+    expect(w.find('[data-testid="unbudgeted-g2"]').exists()).toBe(false)
+  })
+
+  it('o gasto sem orçamento não estoura o grupo; grupo só sem orçamento fica como antes', async () => {
+    mockGet.mockResolvedValue(
+      budget('2026-11', [cb('c1', 100, 90), cb('c4', null, 500), cb('c5', null, 30)]),
+    )
+    const w = await mountView()
+    const group = plain(w.get('[data-testid="group-g1"] tr').text())
+    expect(group).toContain('R$ 90,00')
+    expect(group).not.toContain('estourada')
+    expect(plain(w.get('[data-testid="unbudgeted-g1"]').text())).toBe('Sem orçamento: R$ 500,00')
+
+    const only = w
+      .get('[data-testid="group-g2"] tr')
+      .findAll('td')
+      .map((td) => plain(td.text()))
+    expect(only).toEqual(['—', 'R$ 30,00', '—', '—', 'Sem orçamento'])
+    expect(w.find('[data-testid="unbudgeted-g2"]').exists()).toBe(false)
+
+    expect(plain(w.get('[data-testid="total-spent"]').text())).toBe('R$ 90,00')
+    expect(plain(w.get('[data-testid="total-unbudgeted"]').text())).toBe('R$ 530,00')
+  })
+
+  it('sem nenhuma linha orçada, todo o gasto vai para "Sem orçamento" nos totais', async () => {
+    mockGet.mockResolvedValue(budget('2026-11', [cb('c4', null, 80), cb('c5', null, 30)]))
+    const w = await mountView()
+    expect(plain(w.get('[data-testid="total-allocated"]').text())).toBe('R$ 0,00')
+    expect(plain(w.get('[data-testid="total-spent"]').text())).toBe('R$ 0,00')
+    expect(plain(w.get('[data-testid="total-unbudgeted"]').text())).toBe('R$ 110,00')
+    expect(w.find('[data-testid="total-percent"]').exists()).toBe(false)
   })
 
   it('o grupo abre e fecha mantendo o total', async () => {
@@ -135,6 +169,7 @@ describe('BudgetComparisonView', () => {
     expect(toggle().attributes('aria-expanded')).toBe('false')
     expect(rowIds(w)).toEqual(['c5'])
     expect(plain(w.get('[data-testid="group-g1"]').text())).toContain('R$ 2.100,00')
+    expect(w.find('[data-testid="unbudgeted-g1"]').exists()).toBe(true)
     await toggle().trigger('click')
     expect(rowIds(w)).toHaveLength(5)
   })
@@ -158,6 +193,8 @@ describe('BudgetComparisonView', () => {
     expect(rowIds(w)).toEqual(['c1'])
     expect(plain(w.get('[data-testid="total-allocated"]').text())).toBe('R$ 400,00')
     expect(w.get('[data-testid="total-percent"]').text()).toBe('125% do orçamento utilizado')
+    expect(w.find('[data-testid="unbudgeted-g1"]').exists()).toBe(false)
+    expect(w.find('[data-testid="total-unbudgeted"]').exists()).toBe(false)
     await w.get('[data-testid="filter-HEALTHY"]').trigger('click')
     expect(rowIds(w)).toEqual(['c2'])
 

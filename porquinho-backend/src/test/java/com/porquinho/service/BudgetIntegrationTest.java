@@ -451,6 +451,36 @@ class BudgetIntegrationTest {
         assertThat(of(service.get(userId, CURRENT.toString()), food).committed()).isEqualByComparingTo("0");
     }
 
+    @Test
+    void recategorizingAnInstallmentMovesTheCommittedFuturesAndTheirConfirmation() {
+        UUID card = newCard(false);
+        UUID groupId = UUID.randomUUID();
+        UUID current = UUID.randomUUID();
+        UUID next = UUID.randomUUID();
+        String insert = "INSERT INTO transactions (id, user_id, credit_card_id, category_id, transaction_date, description, "
+            + "original_description, amount, transaction_type, review_status, is_future_installment, installment_group_id) "
+            + "VALUES (?, ?, ?, ?, ?, 'X', 'X', 50.00, 'DEBIT', 'CONFIRMED', ?, ?)";
+        jdbc.update(insert, current, userId, card, food, CURRENT.atDay(5), false, groupId);
+        jdbc.update(insert, next, userId, card, food, CURRENT.plusMonths(1).atDay(5), true, groupId);
+        String nextMonth = CURRENT.plusMonths(1).toString();
+        assertThat(of(service.get(userId, nextMonth), food).committed()).isEqualByComparingTo("50.00");
+        assertThat(of(service.get(userId, nextMonth), transport).committed()).isEqualByComparingTo("0");
+
+        transactionService.update(userId, current, new TransactionUpdateRequest(CURRENT.atDay(5), "X",
+            new BigDecimal("50.00"), "DEBIT", transport, null, card), "127.0.0.1");
+
+        BudgetResponse after = service.get(userId, nextMonth);
+        assertThat(of(after, food).committed()).isEqualByComparingTo("0");
+        assertThat(of(after, transport).committed()).isEqualByComparingTo("50.00");
+
+        // the next confirmation keeps the future's category, now the new one
+        jdbc.update("UPDATE transactions SET is_future_installment = false WHERE id = ?", next);
+        balanceCache.evict(userId);
+        BudgetResponse confirmed = service.get(userId, nextMonth);
+        assertThat(of(confirmed, transport).spent()).isEqualByComparingTo("50.00");
+        assertThat(of(confirmed, food).spent()).isEqualByComparingTo("0");
+    }
+
     // Story 6.5: reallocations
 
     private static ReallocateBudgetRequest move(UUID from, UUID to, String amount) {

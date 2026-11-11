@@ -202,6 +202,19 @@
                   </th>
                   <RowCells :row="group.row" />
                 </tr>
+                <tr
+                  v-if="group.row.unbudgeted > 0"
+                  class="border-b border-gray-100 text-gray-600"
+                  :data-testid="`unbudgeted-${group.row.id}`"
+                >
+                  <th
+                    scope="row"
+                    :colspan="COLUMNS.length"
+                    class="py-2 pr-3 pl-8 text-left font-normal"
+                  >
+                    {{ NO_BUDGET }}: {{ formatBRL(group.row.unbudgeted) }}
+                  </th>
+                </tr>
                 <template v-if="!collapsed.has(group.row.id)">
                   <tr
                     v-for="row in group.children"
@@ -227,7 +240,7 @@
               </dd>
             </div>
             <div class="rounded-lg border border-gray-200 bg-white p-3">
-              <dt class="text-xs text-gray-600">Total gasto</dt>
+              <dt class="text-xs text-gray-600">Gasto orçado</dt>
               <dd class="font-semibold text-gray-900" data-testid="total-spent">
                 {{ formatBRL(totals.spent) }}
               </dd>
@@ -240,6 +253,15 @@
                 data-testid="total-remaining"
               >
                 {{ formatBRL(totals.remaining) }}
+              </dd>
+            </div>
+            <div
+              v-if="totals.unbudgeted > 0"
+              class="rounded-lg border border-gray-200 bg-white p-3"
+            >
+              <dt class="text-xs text-gray-600">{{ NO_BUDGET }}</dt>
+              <dd class="font-semibold text-gray-900" data-testid="total-unbudgeted">
+                {{ formatBRL(totals.unbudgeted) }}
               </dd>
             </div>
           </dl>
@@ -287,6 +309,8 @@ interface Row {
   difference: number | null
   percent: number | null
   status: BudgetStatus | null
+  /** Gasto das filhas sem orçamento, à parte do alocado (retro do Epic 6, A3); 0 nas filhas. */
+  unbudgeted: number
 }
 
 const PERIOD_OPTIONS: { value: Period; label: string }[] = [
@@ -358,19 +382,27 @@ function makeRow(id: string, name: string, allocatedCents: number | null, spentC
     difference,
     percent: allocatedCents ? Math.round((spentCents / allocatedCents) * 100) : null,
     status: allocated === null ? null : computeStatus(allocated, difference!),
+    unbudgeted: 0,
   }
 }
 
-/** Soma em centavos; o alocado só é nulo se nenhuma linha tiver orçamento. */
+/**
+ * Soma em centavos só das linhas com orçamento; o gasto das demais fica em `unbudgeted`, sem entrar no status. Se
+ * nenhuma linha tiver orçamento, o alocado é nulo e o gasto é o de todas, como uma filha sem orçamento.
+ */
 function sumRows(id: string, name: string, rows: Row[]): Row {
-  const withBudget = rows.filter((r) => r.allocated !== null)
   const cents = (v: number) => Math.round(v * 100)
-  return makeRow(
+  const spent = (list: Row[]) => list.reduce((t, r) => t + cents(r.spent), 0)
+  const withBudget = rows.filter((r) => r.allocated !== null)
+  if (withBudget.length === 0) return makeRow(id, name, null, spent(rows))
+  const row = makeRow(
     id,
     name,
-    withBudget.length ? withBudget.reduce((t, r) => t + cents(r.allocated!), 0) : null,
-    rows.reduce((t, r) => t + cents(r.spent), 0),
+    withBudget.reduce((t, r) => t + cents(r.allocated!), 0),
+    spent(withBudget),
   )
+  row.unbudgeted = (spent(rows) - spent(withBudget)) / 100
+  return row
 }
 
 /** Uma linha por filha devolvida em algum mês do período, somando os meses. */
@@ -431,12 +463,15 @@ const filteredRows = computed(() => groups.value.flatMap((g) => g.children))
 
 const totals = computed(() => {
   const total = sumRows('total', 'Total', filteredRows.value)
-  const allocated = total.allocated ?? 0
+  // sem nenhuma orçada, todo o gasto é sem orçamento
+  if (total.allocated === null)
+    return { allocated: 0, spent: 0, remaining: 0, percent: null, unbudgeted: total.spent }
   return {
-    allocated,
+    allocated: total.allocated,
     spent: total.spent,
-    remaining: Math.round((allocated - total.spent) * 100) / 100,
+    remaining: total.difference!,
     percent: total.percent,
+    unbudgeted: total.unbudgeted,
   }
 })
 

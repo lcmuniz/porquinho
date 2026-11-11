@@ -547,6 +547,56 @@ class TransactionServiceTest {
     }
 
     @Test
+    void newCategoryOfAnInstallmentGoesToTheFuturesOfItsGroupOnly() {
+        UUID card = newCard();
+        UUID parent = newCategory("Compras", null);
+        UUID oldCategory = newCategory("Roupas", parent);
+        UUID newCategory = newCategory("Casa", parent);
+        UUID group = UUID.randomUUID();
+        UUID second = newCardRow(card, "2026-10-02", 2, 10, group, false);
+        UUID third = newCardRow(card, "2026-11-02", 3, 10, group, false);
+        List<UUID> futures = new ArrayList<>();
+        for (int n = 4; n <= 10; n++) {
+            futures.add(newCardRow(card, LocalDate.parse("2026-11-02").plusMonths(n - 3).toString(), n, 10, group,
+                true));
+        }
+        UUID removedFuture = futures.remove(futures.size() - 1);
+        jdbc.update("UPDATE transactions SET deleted_at = now() WHERE id = ?", removedFuture);
+        UUID otherGroupFuture = newCardRow(card, "2026-12-02", 2, 3, UUID.randomUUID(), true);
+        jdbc.update("UPDATE transactions SET category_id = ?, classification_source = 'AI', "
+            + "classification_confidence = 80 WHERE user_id = ?", oldCategory, userId);
+
+        // no category change: the futures are untouched
+        service.update(userId, third, edit("2026-11-03", "DEBIT", "120.00", oldCategory, null, card), IP);
+        assertThat(rowOf(futures.get(0)).get("classification_source")).isEqualTo("AI");
+        assertThat(auditOf(TransactionService.AUDIT_EDITED)).singleElement().asString()
+            .contains("\"future_installments_changed\":0");
+
+        TransactionResponse response = service.update(userId, third,
+            edit("2026-11-03", "DEBIT", "120.00", newCategory, null, card), IP);
+
+        assertThat(response.remainingInstallments()).isEqualTo(6);
+        for (UUID future : futures) {
+            assertThat(rowOf(future)).containsEntry("category_id", newCategory)
+                .containsEntry("classification_source", "USER").containsEntry("classification_confidence", 100);
+        }
+        assertThat(rowOf(third).get("category_id")).isEqualTo(newCategory);
+        assertThat(rowOf(second)).containsEntry("category_id", oldCategory).containsEntry("classification_source", "AI");
+        assertThat(rowOf(removedFuture).get("category_id")).isEqualTo(oldCategory);
+        assertThat(rowOf(otherGroupFuture).get("category_id")).isEqualTo(oldCategory);
+        assertThat(auditOf(TransactionService.AUDIT_EDITED)).anySatisfy(m -> assertThat(m)
+            .contains("\"future_installments_changed\":6"));
+
+        // no category also goes to the futures, as "Não classificado"
+        service.update(userId, third, edit("2026-11-03", "DEBIT", "120.00", null, null, card), IP);
+        for (UUID future : futures) {
+            assertThat(rowOf(future)).containsEntry("category_id", null)
+                .containsEntry("classification_source", "NONE").containsEntry("classification_confidence", 0);
+        }
+        assertThat(rowOf(second).get("category_id")).isEqualTo(oldCategory);
+    }
+
+    @Test
     void removingTheOnlyConfirmedInstallmentTakesTheFuturesAlong() {
         UUID card = newCard();
         UUID group = UUID.randomUUID();
