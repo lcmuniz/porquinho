@@ -36,11 +36,12 @@ public class BudgetController {
         return ResponseEntity.ok(budgetService.get(UUID.fromString(jwt.getSubject()), month));
     }
 
-    /** Replaces the month's allocations; 200 with the month recalculated; 400 without writing anything. */
+    /** Replaces the month's allocations; 200 with the month recalculated; 400 without writing anything; 409 if stale. */
     @PutMapping("/{month}")
     public ResponseEntity<BudgetResponse> save(@AuthenticationPrincipal Jwt jwt, @PathVariable("month") String month,
                                                @Valid @RequestBody SaveBudgetRequest request) {
-        return ResponseEntity.ok(budgetService.save(UUID.fromString(jwt.getSubject()), month, request.allocations()));
+        return ResponseEntity.ok(budgetService.save(UUID.fromString(jwt.getSubject()), month, request.version(),
+            request.allocations()));
     }
 
     /** Moves money between two categories of an open month (Story 6.5); 200 with the month recalculated; 400 otherwise. */

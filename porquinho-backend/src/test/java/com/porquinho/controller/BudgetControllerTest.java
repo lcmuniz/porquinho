@@ -65,7 +65,7 @@ class BudgetControllerTest {
     @Test
     void getReturnsTheMonthInCamelCaseWithNulls() throws Exception {
         UUID category = UUID.randomUUID();
-        when(budgetService.get(userId, "2026-11")).thenReturn(new BudgetResponse("2026-11", new BigDecimal("1500.00"),
+        when(budgetService.get(userId, "2026-11")).thenReturn(new BudgetResponse("2026-11", "v1", new BigDecimal("1500.00"),
             BigDecimal.ZERO, List.of(
                 new BudgetResponse.CategoryBudget(category, null, new BigDecimal("30.00"), null, null, null))));
 
@@ -95,7 +95,8 @@ class BudgetControllerTest {
     void aNegativeOrMissingValueIs400WithoutCallingTheService() throws Exception {
         String category = UUID.randomUUID().toString();
         for (String body : List.of(
-            "{\"allocations\":[{\"categoryId\":\"" + category + "\",\"amount\":-1}]}",
+            "{\"version\":\"v\",\"allocations\":[{\"categoryId\":\"" + category + "\",\"amount\":-1}]}",
+            "{\"allocations\":[{\"categoryId\":\"" + category + "\",\"amount\":10}]}",
             "{\"allocations\":[{\"categoryId\":\"" + category + "\"}]}",
             "{\"allocations\":[{\"amount\":10}]}",
             "{\"allocations\":[{\"categoryId\":\"" + category + "\",\"amount\":1.234}]}",
@@ -110,15 +111,16 @@ class BudgetControllerTest {
     @Test
     void putReturnsTheMonthRecalculated() throws Exception {
         UUID category = UUID.randomUUID();
-        when(budgetService.save(any(), any(), any())).thenReturn(
-            new BudgetResponse("2026-11", BigDecimal.TEN, BigDecimal.ONE, List.of()));
+        when(budgetService.save(any(), any(), any(), any())).thenReturn(
+            new BudgetResponse("2026-11", "v2", BigDecimal.TEN, BigDecimal.ONE, List.of()));
 
         mockMvc.perform(put("/api/v1/budgets/2026-11").with(authentication(authToken))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"allocations\":[{\"categoryId\":\"" + category + "\",\"amount\":0}]}"))
+                .content("{\"version\":\"v1\",\"allocations\":[{\"categoryId\":\"" + category + "\",\"amount\":0}]}"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.totalAllocated").value(1));
-        verify(budgetService).save(userId, "2026-11", List.of(new SaveBudgetRequest.Item(category, BigDecimal.ZERO)));
+            .andExpect(jsonPath("$.totalAllocated").value(1))
+            .andExpect(jsonPath("$.version").value("v2"));
+        verify(budgetService).save(userId, "2026-11", "v1", List.of(new SaveBudgetRequest.Item(category, BigDecimal.ZERO)));
     }
 
     @Test
@@ -127,7 +129,7 @@ class BudgetControllerTest {
         UUID from = UUID.randomUUID();
         UUID to = UUID.randomUUID();
         when(budgetService.reallocate(any(), any(), any())).thenReturn(
-            new BudgetResponse("2026-11", BigDecimal.TEN, BigDecimal.ONE, List.of()));
+            new BudgetResponse("2026-11", "v1", BigDecimal.TEN, BigDecimal.ONE, List.of()));
 
         mockMvc.perform(post("/api/v1/budgets/2026-11/reallocations").with(authentication(authToken))
                 .contentType(MediaType.APPLICATION_JSON)

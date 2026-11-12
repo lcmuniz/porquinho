@@ -28,6 +28,7 @@ vi.mock('@/services/categoryService', () => ({
 function budget(overrides: Partial<Budget> = {}): Budget {
   return {
     month: '2026-11',
+    version: 'v1',
     totalAvailable: 1000,
     totalAllocated: 400,
     categories: [
@@ -255,7 +256,7 @@ describe('BudgetView', () => {
     await w.get('[data-testid="budget-form"]').trigger('submit')
     await flushPromises()
 
-    expect(mockSave).toHaveBeenCalledWith('2026-11', [
+    expect(mockSave).toHaveBeenCalledWith('2026-11', 'v1', [
       { categoryId: 'c1', amount: 400 },
       { categoryId: 'c2', amount: 0 },
     ])
@@ -386,6 +387,17 @@ describe('BudgetView', () => {
     await flushPromises()
 
     expect(w.get('[data-testid="budget-error"]').text()).toBe('Escolha categorias válidas')
+    expect((w.get('[data-testid="amount-c2"]').element as HTMLInputElement).value).toBe('80')
+  })
+
+  it('409 ao salvar (mudou em outra tela) mostra a mensagem e mantém os valores digitados', async () => {
+    mockSave.mockRejectedValue({ response: { status: 409, data: { detail: 'O orçamento deste mês foi alterado' } } })
+    const w = await mountView()
+    await type('amount-c2', '80')
+    await w.get('[data-testid="budget-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(w.get('[data-testid="budget-error"]').text()).toBe('O orçamento deste mês foi alterado')
     expect((w.get('[data-testid="amount-c2"]').element as HTMLInputElement).value).toBe('80')
   })
 

@@ -536,14 +536,15 @@ async function save() {
   const target = month.value
   saving.value = true
   try {
-    const data = await saveBudget(target, allocations)
+    const data = await saveBudget(target, budget.value.version, allocations)
     if (target !== month.value) return
     fill(data)
     notice.value = null
     setSuccess('Orçamento mensal definido')
   } catch (err) {
     const e = err as ApiError
-    actionError.value = e.response?.status === 400 ? (e.response.data?.detail ?? SAVE_FAILED) : SAVE_FAILED
+    const status = e.response?.status
+    actionError.value = status === 400 || status === 409 ? (e.response?.data?.detail ?? SAVE_FAILED) : SAVE_FAILED
   } finally {
     saving.value = false
   }

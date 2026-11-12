@@ -10,6 +10,7 @@ import com.porquinho.dto.TransactionUpdateRequest;
 import com.porquinho.entity.BudgetAllocation;
 import com.porquinho.entity.BudgetReallocation;
 import com.porquinho.exception.BadRequestException;
+import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.BudgetAllocationRepository;
 import com.porquinho.repository.BudgetReallocationRepository;
@@ -157,7 +158,7 @@ class BudgetIntegrationTest {
         newAccount("500.00", false);
         newAccount("9999.00", true);
 
-        BudgetResponse saved = service.save(userId, CURRENT.toString(), List.of(item(food, "800.00"), item(transport, "0")));
+        BudgetResponse saved = service.save(userId, CURRENT.toString(), null, List.of(item(food, "800.00"), item(transport, "0")));
 
         assertThat(saved.month()).isEqualTo(CURRENT.toString());
         assertThat(saved.totalAvailable()).isEqualByComparingTo("1500.00");
@@ -173,9 +174,9 @@ class BudgetIntegrationTest {
 
     @Test
     void putReplacesTheSetAndALeftOutCategoryLosesItsRow() {
-        service.save(userId, CURRENT.toString(), List.of(item(food, "800"), item(transport, "200")));
+        service.save(userId, CURRENT.toString(), null, List.of(item(food, "800"), item(transport, "200")));
 
-        BudgetResponse saved = service.save(userId, CURRENT.toString(), List.of(item(food, "700")));
+        BudgetResponse saved = service.save(userId, CURRENT.toString(), null, List.of(item(food, "700")));
 
         assertThat(of(saved, food).allocated()).isEqualByComparingTo("700");
         assertThat(of(saved, transport).allocated()).isNull();
@@ -233,17 +234,17 @@ class BudgetIntegrationTest {
 
     @Test
     void aClosedMonthCanBeEdited() {
-        BudgetResponse saved = service.save(userId, PAST.toString(), List.of(item(food, "10")));
+        BudgetResponse saved = service.save(userId, PAST.toString(), null, List.of(item(food, "10")));
         assertThat(of(saved, food).allocated()).isEqualByComparingTo("10");
         assertThat(of(saved, food).committed()).isNull();
     }
 
     @Test
     void anAllocationOfACategoryRemovedSinceSurvivesALaterSaveOfTheMonth() {
-        service.save(userId, CURRENT.toString(), List.of(item(food, "800"), item(transport, "200")));
+        service.save(userId, CURRENT.toString(), null, List.of(item(food, "800"), item(transport, "200")));
         jdbc.update("UPDATE categories SET deleted_at = NOW() WHERE id = ?", transport);
 
-        service.save(userId, CURRENT.toString(), List.of(item(food, "700")));
+        service.save(userId, CURRENT.toString(), null, List.of(item(food, "700")));
 
         assertThat(jdbc.queryForObject("SELECT allocated_amount FROM budget_allocations WHERE category_id = ?",
             BigDecimal.class, transport)).isEqualByComparingTo("200");
@@ -253,12 +254,12 @@ class BudgetIntegrationTest {
     @Test
     void exportReadsTheRowsInOrderAndThePurgeDeletesThemSoTheCategoriesCanGo() {
         // Purge SQL: other users keep theirs (the call order is in AccountDeletionServiceTest)
-        service.save(userId, PAST.toString(), List.of(item(food, "10")));
-        service.save(userId, CURRENT.toString(), List.of(item(transport, "20")));
+        service.save(userId, PAST.toString(), null, List.of(item(food, "10")));
+        service.save(userId, CURRENT.toString(), null, List.of(item(transport, "20")));
         UUID other = newUser();
         UUID otherGroup = newCategory(other, "G", null);
         UUID otherChild = newCategory(other, "Filha", otherGroup);
-        service.save(other, CURRENT.toString(), List.of(item(otherChild, "5")));
+        service.save(other, CURRENT.toString(), null, List.of(item(otherChild, "5")));
 
         assertThat(repository.findByUserIdOrdered(userId)).extracting(BudgetAllocation::getCategoryId)
             .containsExactly(food, transport);
@@ -275,12 +276,12 @@ class BudgetIntegrationTest {
     @Test
     void anInvalidMonthIs400() {
         assertThatThrownBy(() -> service.get(userId, "2026-13")).isInstanceOf(BadRequestException.class);
-        assertThatThrownBy(() -> service.save(userId, "nov", List.of())).isInstanceOf(BadRequestException.class);
+        assertThatThrownBy(() -> service.save(userId, "nov", null, List.of())).isInstanceOf(BadRequestException.class);
     }
 
     @Test
     void anInvalidCategoryIs400WithoutWritingAnything() {
-        service.save(userId, CURRENT.toString(), List.of(item(food, "800")));
+        service.save(userId, CURRENT.toString(), null, List.of(item(food, "800")));
         UUID other = newUser();
         UUID otherGroup = newCategory(other, "G", null);
         UUID foreign = newCategory(other, "Outra", otherGroup);
@@ -292,7 +293,7 @@ class BudgetIntegrationTest {
             List.of(item(transport, "1"), item(removed, "10")),
             List.of(item(transport, "1"), item(foreign, "10")),
             List.of(item(transport, "1"), item(transport, "10")))) {
-            assertThatThrownBy(() -> service.save(userId, CURRENT.toString(), items))
+            assertThatThrownBy(() -> service.save(userId, CURRENT.toString(), null, items))
                 .isInstanceOf(BadRequestException.class);
         }
 
@@ -302,7 +303,7 @@ class BudgetIntegrationTest {
 
     @Test
     void usersAreIsolated() {
-        service.save(userId, CURRENT.toString(), List.of(item(food, "800")));
+        service.save(userId, CURRENT.toString(), null, List.of(item(food, "800")));
         UUID account = newAccount("100", false);
         row(account, null, food, CURRENT, "50.00", "DEBIT", "REGULAR", "CONFIRMED", false);
         UUID other = newUser();
@@ -327,7 +328,7 @@ class BudgetIntegrationTest {
         row(account, null, transport, CURRENT, "80.00", "DEBIT", "REGULAR", "CONFIRMED", false);
         row(account, null, bills, CURRENT, "100.00", "DEBIT", "REGULAR", "CONFIRMED", false);
         row(account, null, fun, CURRENT, "130.00", "DEBIT", "REGULAR", "CONFIRMED", false);
-        service.save(userId, CURRENT.toString(), List.of(item(food, "100"), item(transport, "100"), item(bills, "100"),
+        service.save(userId, CURRENT.toString(), null, List.of(item(food, "100"), item(transport, "100"), item(bills, "100"),
             item(fun, "100")));
 
         BudgetResponse read = service.get(userId, CURRENT.toString());
@@ -359,7 +360,7 @@ class BudgetIntegrationTest {
     @Test
     void creatingEditingAndDeletingATransactionInvalidatesTheCache() {
         UUID account = newAccount("1000", false);
-        service.save(userId, CURRENT.toString(), List.of(item(food, "100")));
+        service.save(userId, CURRENT.toString(), null, List.of(item(food, "100")));
         LocalDate date = CURRENT.atDay(10);
         assertThat(of(service.get(userId, CURRENT.toString()), food).status()).isEqualTo(BudgetStatus.HEALTHY);
 
@@ -384,7 +385,7 @@ class BudgetIntegrationTest {
     @Test
     void theSpentFollowsTheTransactionAcrossCategoriesAndMonths() {
         UUID account = newAccount("1000", false);
-        service.save(userId, CURRENT.toString(), List.of(item(food, "100")));
+        service.save(userId, CURRENT.toString(), null, List.of(item(food, "100")));
         LocalDate date = CURRENT.atDay(10);
 
         UUID id = transactionService.create(userId, new TransactionCreateRequest(date, "Feira", new BigDecimal("40.00"),
@@ -499,13 +500,34 @@ class BudgetIntegrationTest {
     private UUID foodWithRemaining200() {
         UUID account = newAccount("1000", false);
         row(account, null, food, CURRENT, "100.00", "DEBIT", "REGULAR", "CONFIRMED", false);
-        service.save(userId, CURRENT.toString(), List.of(item(food, "300"), item(transport, "50")));
+        service.save(userId, CURRENT.toString(), null, List.of(item(food, "300"), item(transport, "50")));
         return account;
     }
 
     private void assertRejected(ReallocateBudgetRequest request, String month, String message) {
         assertThatThrownBy(() -> service.reallocate(userId, month, request))
             .isInstanceOf(BadRequestException.class).hasMessage(message);
+    }
+
+    @Test
+    void aStaleFormIs409AndDoesNotUndoAReallocation() {
+        String opened = service.save(userId, CURRENT.toString(), null, List.of(item(food, "300"), item(transport, "50"))).version();
+        service.reallocate(userId, CURRENT.toString(), move(food, transport, "100"));
+
+        assertThatThrownBy(() -> service.save(userId, CURRENT.toString(), opened, List.of(item(food, "300"), item(transport, "50"))))
+            .isInstanceOf(ConflictException.class).hasMessage(BudgetService.STALE_BUDGET_MESSAGE);
+        assertThat(allocated(food)).isEqualByComparingTo("200");
+        assertThat(allocated(transport)).isEqualByComparingTo("150");
+    }
+
+    @Test
+    void theVersionFromGetLetsTheSaveThroughAndChangesWithIt() {
+        String empty = service.get(userId, CURRENT.toString()).version();
+        BudgetResponse saved = service.save(userId, CURRENT.toString(), empty, List.of(item(food, "300")));
+        String read = service.get(userId, CURRENT.toString()).version();
+
+        assertThat(saved.version()).isEqualTo(read).isNotEqualTo(empty);
+        assertThat(service.save(userId, CURRENT.toString(), read, List.of(item(food, "250"))).version()).isNotEqualTo(read);
     }
 
     @Test
@@ -561,7 +583,7 @@ class BudgetIntegrationTest {
     void reallocateFromAnOverspentCategoryIs400() {
         UUID account = newAccount("1000", false);
         row(account, null, food, CURRENT, "130.00", "DEBIT", "REGULAR", "CONFIRMED", false);
-        service.save(userId, CURRENT.toString(), List.of(item(food, "100"), item(transport, "50")));
+        service.save(userId, CURRENT.toString(), null, List.of(item(food, "100"), item(transport, "50")));
 
         assertRejected(move(food, transport, "1"), CURRENT.toString(),
             "Alimentação está estourada: não dá para mover dinheiro dela");
@@ -572,7 +594,7 @@ class BudgetIntegrationTest {
 
     @Test
     void reallocateFromACategoryWithoutAllocationIs400() {
-        service.save(userId, CURRENT.toString(), List.of(item(transport, "50")));
+        service.save(userId, CURRENT.toString(), null, List.of(item(transport, "50")));
 
         assertRejected(move(food, transport, "1"), CURRENT.toString(), "Alimentação não tem orçamento neste mês");
 
@@ -583,7 +605,7 @@ class BudgetIntegrationTest {
 
     @Test
     void reallocateToACategoryWithoutAllocationCreatesIt() {
-        service.save(userId, CURRENT.plusMonths(1).toString(), List.of(item(food, "300")));
+        service.save(userId, CURRENT.plusMonths(1).toString(), null, List.of(item(food, "300")));
 
         BudgetResponse moved = service.reallocate(userId, CURRENT.plusMonths(1).toString(), move(food, transport, "120"));
 
@@ -626,7 +648,7 @@ class BudgetIntegrationTest {
 
     @Test
     void reallocateInAClosedMonthIs400() {
-        service.save(userId, PAST.toString(), List.of(item(food, "300")));
+        service.save(userId, PAST.toString(), null, List.of(item(food, "300")));
 
         assertRejected(move(food, transport, "10"), PAST.toString(), BudgetService.CLOSED_MONTH_MESSAGE);
 
@@ -669,9 +691,9 @@ class BudgetIntegrationTest {
         UUID account = newAccount("100", false);
         UUID card = newCard(false);
         YearMonth older = CURRENT.minusMonths(2);
-        service.save(userId, older.toString(), List.of(item(food, "100")));
-        service.save(userId, CURRENT.toString(), List.of(item(food, "100"), item(transport, "50")));
-        service.save(userId, CURRENT.plusMonths(1).toString(), List.of(item(food, "999")));
+        service.save(userId, older.toString(), null, List.of(item(food, "100")));
+        service.save(userId, CURRENT.toString(), null, List.of(item(food, "100"), item(transport, "50")));
+        service.save(userId, CURRENT.plusMonths(1).toString(), null, List.of(item(food, "999")));
         row(account, null, food, older, "90.00", "DEBIT", "REGULAR", "CONFIRMED", false);
         row(account, null, food, PAST, "40.00", "DEBIT", "REGULAR", "CONFIRMED", false);  // month without allocation
         row(account, null, food, CURRENT, "120.00", "DEBIT", "REGULAR", "CONFIRMED", false);

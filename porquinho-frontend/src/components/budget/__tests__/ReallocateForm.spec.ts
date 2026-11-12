@@ -15,7 +15,7 @@ const OPTIONS = [
   { id: 'c3', name: 'Farmácia', remaining: null },
 ]
 
-const updated: Budget = { month: '2026-11', totalAvailable: 1000, totalAllocated: 400, categories: [] }
+const updated: Budget = { month: '2026-11', version: 'v2', totalAvailable: 1000, totalAllocated: 400, categories: [] }
 
 function mountForm() {
   return mount(ReallocateForm, { props: { month: '2026-11', options: OPTIONS }, attachTo: document.body })

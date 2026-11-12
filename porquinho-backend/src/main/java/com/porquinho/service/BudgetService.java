@@ -10,6 +10,7 @@ import com.porquinho.entity.BudgetAllocation;
 import com.porquinho.entity.BudgetReallocation;
 import com.porquinho.entity.Category;
 import com.porquinho.exception.BadRequestException;
+import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.BudgetAllocationRepository;
@@ -48,6 +49,8 @@ public class BudgetService {
 
     public static final String SAME_CATEGORY_MESSAGE = "Escolha categorias diferentes";
     public static final String CLOSED_MONTH_MESSAGE = "Não dá para mover dinheiro em um mês que já fechou";
+    public static final String STALE_BUDGET_MESSAGE =
+        "O orçamento deste mês foi alterado em outra tela. Recarregue e tente de novo.";
 
     private static final ZoneId SAO_PAULO = ZoneId.of("America/Sao_Paulo");
     private static final BigDecimal LOW_SHARE = new BigDecimal("0.20");
@@ -79,12 +82,20 @@ public class BudgetService {
         return build(userId, yearMonth, children(categoryRepository.findActiveByUserId(userId)));
     }
 
-    /** Replaces the month's allocations; 400 (nothing written) on a repeated, group, removed or foreign category. */
+    /**
+     * Replaces the month's allocations; 400 (nothing written) on a repeated, group, removed or foreign category; 409 when
+     * {@code version} is not the month's current one (retro do Epic 6 A2: a stale form would undo a reallocation).
+     * A null version skips the check (the request DTO never lets it through).
+     */
     @Transactional
-    public BudgetResponse save(UUID userId, String month, List<SaveBudgetRequest.Item> items) {
+    public BudgetResponse save(UUID userId, String month, String version, List<SaveBudgetRequest.Item> items) {
         YearMonth yearMonth = parse(month);
         // the lock serializes concurrent saves of the same user; the active children also validate the request
         List<Category> children = children(categoryRepository.findActiveByUserIdForUpdate(userId));
+        LocalDate monthYear = yearMonth.atDay(1);
+        if (version != null && !version.equals(version(budgetAllocationRepository.findByUserIdAndMonthYear(userId, monthYear)))) {
+            throw new ConflictException(STALE_BUDGET_MESSAGE);
+        }
         Set<UUID> allowed = new HashSet<>();
         children.forEach(c -> allowed.add(c.getId()));
         Set<UUID> seen = new HashSet<>();
@@ -96,7 +107,6 @@ public class BudgetService {
                 throw new BadRequestException(DUPLICATE_CATEGORY_MESSAGE);
             }
         }
-        LocalDate monthYear = yearMonth.atDay(1);
         if (!allowed.isEmpty()) {
             budgetAllocationRepository.deleteByUserIdAndMonthYearAndCategoryIdIn(userId, monthYear, allowed);
         }
@@ -196,7 +206,8 @@ public class BudgetService {
         LocalDate from = yearMonth.atDay(1);
         LocalDate to = yearMonth.atEndOfMonth();
         Map<UUID, BigDecimal> allocated = new HashMap<>();
-        for (BudgetAllocation a : budgetAllocationRepository.findByUserIdAndMonthYear(userId, from)) {
+        List<BudgetAllocation> rows = budgetAllocationRepository.findByUserIdAndMonthYear(userId, from);
+        for (BudgetAllocation a : rows) {
             allocated.put(a.getCategoryId(), a.getAllocatedAmount());
         }
         boolean open = !yearMonth.isBefore(YearMonth.now(clock.withZone(SAO_PAULO)));
@@ -214,7 +225,17 @@ public class BudgetService {
             .filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal totalAvailable = accountRepository.findActiveByUserId(userId).stream()
             .map(Account::getCurrentBalance).reduce(BigDecimal.ZERO, BigDecimal::add);
-        return new BudgetResponse(yearMonth.toString(), totalAvailable, totalAllocated, categories);
+        return new BudgetResponse(yearMonth.toString(), version(rows), totalAvailable, totalAllocated, categories);
+    }
+
+    /**
+     * Version of the month's allocations: a hash of their content, so it changes with every save or reallocation that
+     * changes a value. Amounts at scale 2 so 100 and 100.00 match (the request allows at most 2 decimals).
+     */
+    static String version(List<BudgetAllocation> rows) {
+        Map<UUID, BigDecimal> content = new HashMap<>();
+        rows.forEach(a -> content.put(a.getCategoryId(), a.getAllocatedAmount().setScale(2)));
+        return Integer.toHexString(content.hashCode());
     }
 
     private static BudgetResponse.CategoryBudget category(UUID id, BigDecimal allocated, BigDecimal spent,

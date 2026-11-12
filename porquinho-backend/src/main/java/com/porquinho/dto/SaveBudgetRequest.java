@@ -11,9 +11,13 @@ import java.util.UUID;
 
 /**
  * PUT /api/v1/budgets/{YYYY-MM} (Story 6.3): the whole set of allocations of the month. A category left out has no
- * allocation. Repeated, group, removed or foreign categories are rejected by the service.
+ * allocation. Repeated, group, removed or foreign categories are rejected by the service. {@code version} is the one
+ * from the GET the form was filled with; 409 when the month changed since.
  */
 public record SaveBudgetRequest(
+    @NotNull(message = "Recarregue o orçamento e tente de novo")
+    String version,
+
     @NotNull(message = "Informe as alocações")
     List<@Valid @NotNull(message = "Informe a alocação") Item> allocations
 ) {

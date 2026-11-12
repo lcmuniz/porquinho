@@ -32,6 +32,7 @@ function cb(categoryId: string, allocated: number | null, spent: number): Catego
 function budget(month = '2026-11', categories?: CategoryBudget[]): Budget {
   return {
     month,
+    version: 'v1',
     totalAvailable: 5000,
     totalAllocated: 2100,
     categories: categories ?? [

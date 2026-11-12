@@ -14,9 +14,10 @@ export interface CategoryBudget {
   status: BudgetStatus | null
 }
 
-/** Story 6.3: resposta de GET/PUT /api/v1/budgets/{AAAA-MM}. */
+/** Story 6.3: resposta de GET/PUT /api/v1/budgets/{AAAA-MM}. `version` volta no PUT (409 se o mês mudou). */
 export interface Budget {
   month: string
+  version: string
   totalAvailable: number
   totalAllocated: number
   categories: CategoryBudget[]
