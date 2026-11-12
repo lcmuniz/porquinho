@@ -10,6 +10,11 @@ let mockRoute: { path: string; query: Record<string, string> } = { path: '/dashb
 const mockSignOut = vi.fn()
 let leaveGuard: (() => void) | undefined
 
+const mockGetFinancialHealth = vi.fn()
+vi.mock('@/services/dashboardService', () => ({
+  getFinancialHealth: () => mockGetFinancialHealth(),
+}))
+
 vi.mock('@/services/subscriptionService', () => ({
   getMySubscription: (...args: unknown[]) => mockGetMySubscription(...args),
 }))
@@ -27,6 +32,11 @@ vi.mock('@/services/supabase', () => ({
   supabase: { auth: { signOut: () => mockSignOut() } },
 }))
 
+// O semáforo (Story 7.2) também é um botão: localiza o Sair pelo texto
+function logoutButton(wrapper: ReturnType<typeof mountView>) {
+  return wrapper.findAll('button').find((b) => b.text() === 'Sair')!
+}
+
 function mountView() {
   return mount(DashboardView, { global: { stubs: { RouterLink: RouterLinkStub } } })
 }
@@ -39,6 +49,14 @@ describe('DashboardView', () => {
     vi.stubGlobal('location', { ...window.location, assign })
     setActivePinia(createPinia())
     mockGetMySubscription.mockReset()
+    mockGetFinancialHealth.mockReset().mockResolvedValue({
+      status: 'HEALTHY',
+      healthyCategories: 9,
+      lowCategories: 1,
+      overspentCategories: 0,
+      negativeAccounts: 0,
+      goalsBehind: 0,
+    })
     mockPush.mockReset()
     mockReplace.mockReset()
     mockRoute = { path: '/dashboard', query: {} }
@@ -149,7 +167,7 @@ describe('DashboardView', () => {
 
     const wrapper = mountView()
     await flushPromises()
-    await wrapper.get('button').trigger('click')
+    await logoutButton(wrapper).trigger('click')
     await flushPromises()
 
     expect(localStorage.getItem('user')).toBeNull()
@@ -345,6 +363,31 @@ describe('DashboardView', () => {
     })
   })
 
+  describe('Story 7.2: semáforo de saúde financeira', () => {
+    it('aparece no topo, antes do cabeçalho', async () => {
+      mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
+
+      const wrapper = mountView()
+      await flushPromises()
+
+      expect(wrapper.get('[data-testid="health-toggle"]').text()).toBe('Saúde Financeira: Saudável')
+      const container = wrapper.get('main > div')
+      expect(container.element.firstElementChild?.classList.contains('sticky')).toBe(true)
+    })
+
+    it('falha do semáforo não derruba o resto do dashboard', async () => {
+      mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
+      mockGetFinancialHealth.mockRejectedValue(new Error('rede'))
+
+      const wrapper = mountView()
+      await flushPromises()
+
+      expect(wrapper.find('[data-testid="health-error"]').exists()).toBe(true)
+      expect(wrapper.get('h1').text()).toBe('Dashboard')
+      expect(wrapper.text()).toContain('Excluir minha conta')
+    })
+  })
+
   describe('Story 7.1: Dashboard GPS', () => {
     it('mostra as 3 camadas entre os banners e as configurações da conta', async () => {
       mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
@@ -395,7 +438,7 @@ describe('DashboardView', () => {
       await flushPromises()
       vi.stubGlobal('scrollY', 800)
       leaveGuard?.()
-      await first.get('button').trigger('click')
+      await logoutButton(first).trigger('click')
       await flushPromises()
       first.unmount()
 

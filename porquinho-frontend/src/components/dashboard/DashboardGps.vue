@@ -20,7 +20,7 @@
         :key="layer.id"
         :aria-labelledby="`${layer.id}-heading`"
         tabindex="-1"
-        class="py-12 focus:outline-none"
+        class="scroll-mt-24 py-12 focus:outline-none"
       >
         <h2 :id="`${layer.id}-heading`" class="text-lg font-semibold text-gray-900">
           {{ layer.title }}

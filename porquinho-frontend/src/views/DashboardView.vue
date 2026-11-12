@@ -1,6 +1,8 @@
 <template>
   <main class="min-h-screen bg-gray-50 px-4 py-8">
     <div class="mx-auto max-w-6xl space-y-8">
+      <FinancialHealthSemaphore />
+
       <div class="flex items-start justify-between gap-4">
         <div>
           <div class="flex flex-wrap items-center gap-3">
@@ -181,6 +183,7 @@ import { onBeforeRouteLeave, RouterLink, useRoute, useRouter } from 'vue-router'
 import { PartyPopper, X } from 'lucide-vue-next'
 import TrialBadge from '@/components/subscription/TrialBadge.vue'
 import DashboardGps from '@/components/dashboard/DashboardGps.vue'
+import FinancialHealthSemaphore from '@/components/dashboard/FinancialHealthSemaphore.vue'
 import { getMySubscription } from '@/services/subscriptionService'
 import { supabase } from '@/services/supabase'
 import { useAuthStore } from '@/stores/auth'
