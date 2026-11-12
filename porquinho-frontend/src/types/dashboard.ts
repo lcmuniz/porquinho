@@ -21,4 +21,12 @@ export interface DashboardOverview {
   monthSpent: number
   monthAllocated: number
   projectedBalance: number
+  /** Story 7.4: patrimônio dos últimos 12 meses, do mais antigo a hoje (o último vale totalBalance); vazio sem histórico. */
+  wealthHistory: WealthPoint[]
+}
+
+/** Story 7.4: patrimônio no fim do dia `date` ("AAAA-MM-DD", São Paulo); o último ponto é agora. */
+export interface WealthPoint {
+  date: string
+  balance: number
 }

@@ -42,6 +42,18 @@ public interface AccountBalanceHistoryRepository extends JpaRepository<AccountBa
     List<AccountBalanceHistory> findByAccountBefore(@Param("accountId") UUID accountId, @Param("userId") UUID userId,
                                                     @Param("from") OffsetDateTime from, Pageable pageable);
 
+    /** Every snapshot of the user from {@code from} on, oldest first (Story 7.4, wealth curve). */
+    @Query("SELECT h FROM AccountBalanceHistory h WHERE h.userId = :userId AND h.snapshotDate >= :from "
+        + "ORDER BY h.snapshotDate ASC, h.createdAt ASC, h.id ASC")
+    List<AccountBalanceHistory> findByUserSince(@Param("userId") UUID userId, @Param("from") OffsetDateTime from);
+
+    /** The last snapshot before {@code from} of each of the user's accounts, removed ones included (Story 7.4). */
+    @Query(value = "SELECT DISTINCT ON (account_id) * FROM account_balance_history WHERE user_id = :userId "
+        + "AND snapshot_date < :from ORDER BY account_id, snapshot_date DESC, created_at DESC, id DESC",
+        nativeQuery = true)
+    List<AccountBalanceHistory> findLastPerAccountBefore(@Param("userId") UUID userId,
+                                                         @Param("from") OffsetDateTime from);
+
     /** When the account last got a snapshot of one of {@code events}: part of the reference date of D3 (Story 5.10). */
     @Query("SELECT MAX(h.snapshotDate) FROM AccountBalanceHistory h WHERE h.accountId = :accountId "
         + "AND h.userId = :userId AND h.createdByEvent IN :events")

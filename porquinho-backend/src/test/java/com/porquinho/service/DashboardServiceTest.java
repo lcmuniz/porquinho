@@ -7,8 +7,11 @@ import com.porquinho.dto.FinancialHealthResponse;
 import com.porquinho.dto.FinancialHealthResponse.HealthStatus;
 import com.porquinho.entity.Account;
 import com.porquinho.entity.Account.AccountType;
+import com.porquinho.entity.AccountBalanceHistory;
 import com.porquinho.entity.Category;
 import com.porquinho.entity.Goal;
+import com.porquinho.repository.AccountBalanceHistoryRepository;
+import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.TransactionRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,6 +23,8 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
@@ -36,7 +41,8 @@ import static org.mockito.Mockito.when;
 
 /**
  * Story 7.2: the traffic light rule, one line of the spec's matrix per test plus the 80/50 limits. Story 7.3: the 5
- * metrics (category order, goal %, projection on the first, a middle and the last day of the month).
+ * metrics (category order, goal %, projection on the first, a middle and the last day of the month). Story 7.4: the
+ * wealth curve, one line of the spec's matrix per test.
  */
 @ExtendWith(MockitoExtension.class)
 class DashboardServiceTest {
@@ -55,6 +61,10 @@ class DashboardServiceTest {
     private CategoryService categoryService;
     @Mock
     private TransactionRepository transactionRepository;
+    @Mock
+    private AccountRepository accountRepository;
+    @Mock
+    private AccountBalanceHistoryRepository balanceHistoryRepository;
 
     private DashboardService service;
     private UUID userId;
@@ -64,7 +74,7 @@ class DashboardServiceTest {
     @BeforeEach
     void setUp() {
         service = new DashboardService(budgetService, accountService, goalService, categoryService, transactionRepository,
-            CLOCK);
+            accountRepository, balanceHistoryRepository, CLOCK);
         userId = UUID.randomUUID();
         // the overview (7.3) reads the total from the budget, not the accounts
         lenient().when(accountService.listActive(userId)).thenReturn(accounts);
@@ -278,7 +288,7 @@ class DashboardServiceTest {
             .thenReturn(spentAfterToday);
         lenient().when(transactionRepository.sumCommittedByCategory(userId, first, last)).thenReturn(committed);
         return new DashboardService(budgetService, accountService, goalService, categoryService, transactionRepository,
-            clock).overview(userId);
+            accountRepository, balanceHistoryRepository, clock).overview(userId);
     }
 
     @Test
@@ -422,5 +432,126 @@ class DashboardServiceTest {
         assertEquals(new BigDecimal("2950.00"), service.overview(userId).projectedBalance());
         verify(budgetService).get(userId, "2026-11");
         verify(transactionRepository, never()).sumSpentByCategory(eq(userId), eq(TODAY.plusDays(1)), any());
+    }
+
+    // ---- Story 7.4: wealth history ----
+
+    private static final ZoneId SAO_PAULO = ZoneId.of("America/Sao_Paulo");
+    // TODAY = 2026-11-30 in São Paulo: the 12 months start on 2025-11-30, the 3 months on 2026-08-30
+    private static final LocalDate START = TODAY.minusMonths(12);
+    private final List<AccountBalanceHistory> before = new ArrayList<>();
+    private final List<AccountBalanceHistory> since = new ArrayList<>();
+    private final List<Account> allAccounts = new ArrayList<>();
+
+    private UUID newAccount(OffsetDateTime deletedAt) {
+        Account account = new Account(userId, "Conta", null, AccountType.CHECKING, BigDecimal.ZERO);
+        account.setId(UUID.randomUUID());
+        account.setDeletedAt(deletedAt);
+        allAccounts.add(account);
+        return account.getId();
+    }
+
+    /** A snapshot at {@code hour}:00 (São Paulo) of the given day; goes to "before" when it is on or before the first day. */
+    private void snapshot(UUID accountId, LocalDate day, int hour, String balance) {
+        AccountBalanceHistory h = new AccountBalanceHistory(accountId, userId, new BigDecimal(balance), "edit");
+        h.setSnapshotDate(day.atTime(hour, 0).atZone(SAO_PAULO).toOffsetDateTime());
+        h.setId(UUID.randomUUID());
+        if (day.isAfter(START)) {
+            since.add(h);
+        } else {
+            before.removeIf(b -> b.getAccountId().equals(accountId));
+            before.add(h);
+        }
+    }
+
+    private List<DashboardLayer1Response.WealthPoint> wealth(String totalBalance) {
+        OffsetDateTime cutoff = START.plusDays(1).atStartOfDay(SAO_PAULO).toOffsetDateTime();
+        when(balanceHistoryRepository.findLastPerAccountBefore(userId, cutoff)).thenReturn(before);
+        when(balanceHistoryRepository.findByUserSince(userId, cutoff)).thenReturn(since);
+        lenient().when(accountRepository.findByUserIdOrderByCreatedAtAsc(userId)).thenReturn(allAccounts);
+        return overview(TODAY, totalBalance).wealthHistory();
+    }
+
+    private static DashboardLayer1Response.WealthPoint point(LocalDate day, String balance) {
+        return new DashboardLayer1Response.WealthPoint(day, new BigDecimal(balance));
+    }
+
+    @Test
+    void wealthSumsTheAccountsAndANewAccountIsZeroBeforeItsFirstSnapshot() {
+        UUID a = newAccount(null), b = newAccount(null);
+        snapshot(a, TODAY.minusMonths(14), 12, "1000.00");
+        snapshot(b, TODAY.minusMonths(2), 12, "500.00");
+        snapshot(a, TODAY.minusMonths(1), 12, "1500.00");
+
+        assertEquals(List.of(point(START, "1000.00"), point(TODAY.minusMonths(2), "1500.00"),
+            point(TODAY.minusMonths(1), "2000.00"), point(TODAY, "2000.00")), wealth("2000.00"));
+    }
+
+    @Test
+    void theLastPointIsTodayWithTheTotalBalance() {
+        UUID a = newAccount(null);
+        snapshot(a, TODAY.minusMonths(13), 12, "1000.00");
+        // today's own snapshots do not make a point: today is the total balance
+        snapshot(a, TODAY, 10, "1234.56");
+
+        assertEquals(List.of(point(START, "1000.00"), point(TODAY, "1234.56")), wealth("1234.56"));
+    }
+
+    @Test
+    void withoutAnySnapshotTheHistoryIsEmpty() {
+        assertEquals(List.of(), wealth("0.00"));
+    }
+
+    @Test
+    void manyEventsOnOneDayMakeOnePointWithTheLastBalance() {
+        UUID a = newAccount(null);
+        LocalDate day = TODAY.minusDays(10);
+        snapshot(a, day, 9, "1000.00");
+        snapshot(a, day, 12, "1200.00");
+        snapshot(a, day, 18, "900.00");
+
+        assertEquals(List.of(point(START, "0"), point(day, "900.00"), point(TODAY, "900.00")), wealth("900.00"));
+    }
+
+    @Test
+    void aRemovedAccountCountsUntilItsRemovalAndZeroAfter() {
+        LocalDate removal = TODAY.minusMonths(1);
+        UUID a = newAccount(removal.atTime(15, 0).atZone(SAO_PAULO).toOffsetDateTime());
+        UUID b = newAccount(null);
+        snapshot(a, TODAY.minusMonths(13), 12, "1000.00");
+        snapshot(b, TODAY.minusMonths(13), 12, "500.00");
+
+        assertEquals(List.of(point(START, "1500.00"), point(removal, "500.00"), point(TODAY, "500.00")),
+            wealth("500.00"));
+    }
+
+    @Test
+    void anAccountRemovedBeforeThePeriodIsZeroAllAlong() {
+        UUID a = newAccount(TODAY.minusMonths(13).atStartOfDay(SAO_PAULO).toOffsetDateTime());
+        UUID b = newAccount(null);
+        snapshot(a, TODAY.minusMonths(14), 12, "1000.00");
+        snapshot(b, TODAY.minusMonths(14), 12, "200.00");
+
+        assertEquals(List.of(point(START, "200.00"), point(TODAY, "200.00")), wealth("200.00"));
+    }
+
+    @Test
+    void aNegativeSumIsKept() {
+        UUID a = newAccount(null);
+        snapshot(a, TODAY.minusMonths(13), 12, "100.00");
+        snapshot(a, TODAY.minusDays(5), 12, "-200.00");
+
+        assertEquals(List.of(point(START, "100.00"), point(TODAY.minusDays(5), "-200.00"), point(TODAY, "-200.00")),
+            wealth("-200.00"));
+    }
+
+    @Test
+    void wealthDaysUseSaoPaulo() {
+        UUID a = newAccount(null);
+        // 2026-11-20 23:00 in São Paulo is already the 21st in UTC: the point stays on the 20th
+        snapshot(a, LocalDate.of(2026, 11, 20), 23, "700.00");
+
+        assertEquals(List.of(point(START, "0"), point(LocalDate.of(2026, 11, 20), "700.00"), point(TODAY, "700.00")),
+            wealth("700.00"));
     }
 }

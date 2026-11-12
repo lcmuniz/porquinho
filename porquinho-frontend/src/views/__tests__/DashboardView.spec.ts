@@ -66,6 +66,7 @@ describe('DashboardView', () => {
       monthSpent: 0,
       monthAllocated: 0,
       projectedBalance: 1500,
+      wealthHistory: [],
     })
     mockPush.mockReset()
     mockReplace.mockReset()

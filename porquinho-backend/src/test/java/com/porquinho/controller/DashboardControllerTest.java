@@ -24,6 +24,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -95,7 +96,9 @@ class DashboardControllerTest {
             List.of(new DashboardLayer1Response.CategoryStatus(categoryId, "Lazer", BudgetStatus.OVERSPENT,
                 new BigDecimal("-20.00"))),
             new DashboardLayer1Response.MainGoal("Reserva", new BigDecimal("250.00"), new BigDecimal("1000.00"), 25),
-            new BigDecimal("320.00"), new BigDecimal("1000.00"), new BigDecimal("800.00")));
+            new BigDecimal("320.00"), new BigDecimal("1000.00"), new BigDecimal("800.00"),
+            List.of(new DashboardLayer1Response.WealthPoint(LocalDate.of(2025, 11, 12), new BigDecimal("1000.00")),
+                new DashboardLayer1Response.WealthPoint(LocalDate.of(2026, 11, 12), new BigDecimal("1500.00")))));
 
         mockMvc.perform(get("/api/v1/dashboard/layer1")
                 .with(authentication(new TestingAuthenticationToken(jwt, null, "ROLE_USER"))))
@@ -111,7 +114,11 @@ class DashboardControllerTest {
             .andExpect(jsonPath("$.mainGoal.percent").value(25))
             .andExpect(jsonPath("$.monthSpent").value(320.00))
             .andExpect(jsonPath("$.monthAllocated").value(1000.00))
-            .andExpect(jsonPath("$.projectedBalance").value(800.00));
+            .andExpect(jsonPath("$.projectedBalance").value(800.00))
+            .andExpect(jsonPath("$.wealthHistory[0].date").value("2025-11-12"))
+            .andExpect(jsonPath("$.wealthHistory[0].balance").value(1000.00))
+            .andExpect(jsonPath("$.wealthHistory[1].date").value("2026-11-12"))
+            .andExpect(jsonPath("$.wealthHistory[1].balance").value(1500.00));
     }
 
     @Test

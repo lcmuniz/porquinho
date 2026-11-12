@@ -23,6 +23,10 @@ function overview(overrides: Partial<DashboardOverview> = {}): DashboardOverview
     monthSpent: 320,
     monthAllocated: 1000,
     projectedBalance: 800,
+    wealthHistory: [
+      { date: '2026-08-12', balance: 1000 },
+      { date: '2026-11-12', balance: 1500 },
+    ],
     ...overrides,
   }
 }
@@ -43,10 +47,12 @@ describe('DashboardLayer1', () => {
     mockGetOverview.mockReset()
   })
 
-  it('mostra os 5 cards em grade de 1 coluna no mobile e 2 no desktop', async () => {
+  it('mostra os 5 cards; os 4 da grade de métricas ficam em 1 coluna no mobile e 2 no desktop', async () => {
     const wrapper = await mountWith(overview())
 
-    expect(wrapper.classes()).toEqual(expect.arrayContaining(['grid', 'grid-cols-1', 'md:grid-cols-2', 'gap-4']))
+    expect(wrapper.get('[data-testid="metrics-grid"]').classes()).toEqual(
+      expect.arrayContaining(['grid', 'grid-cols-1', 'md:grid-cols-2', 'gap-4']),
+    )
     const cards = ['balance', 'categories', 'goal', 'spent', 'projection'].map((id) =>
       wrapper.get(`[data-testid="card-${id}"]`),
     )
@@ -136,5 +142,24 @@ describe('DashboardLayer1', () => {
 
     expect(wrapper.get('[data-testid="overview-error"]').text()).toBe('Não foi possível carregar a visão geral')
     expect(wrapper.find('[data-testid="card-balance"]').exists()).toBe(false)
+  })
+
+  it('a curva do patrimônio ocupa 2/3 no desktop, com o card de saldo ao lado; no mobile, largura toda', async () => {
+    const wrapper = await mountWith(overview())
+    const row = wrapper.get('[data-testid="wealth-row"]')
+
+    expect(row.classes()).toEqual(expect.arrayContaining(['grid', 'grid-cols-1', 'lg:grid-cols-3']))
+    const chart = row.get('[data-testid="wealth-chart"]')
+    expect(chart.classes()).toEqual(expect.arrayContaining(['lg:col-span-2', 'min-w-0']))
+    expect(row.find('[data-testid="card-balance"]').exists()).toBe(true)
+    expect(brl(chart.text())).toContain('+R$ 500,00 em 3 meses')
+  })
+
+  it('falha na API não mostra o gráfico', async () => {
+    mockGetOverview.mockRejectedValue(new Error('network'))
+    const wrapper = mountIt()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="wealth-chart"]').exists()).toBe(false)
   })
 })

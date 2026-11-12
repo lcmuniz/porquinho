@@ -5,8 +5,12 @@ import com.porquinho.dto.BudgetStatus;
 import com.porquinho.dto.DashboardLayer1Response;
 import com.porquinho.dto.FinancialHealthResponse;
 import com.porquinho.dto.FinancialHealthResponse.HealthStatus;
+import com.porquinho.entity.Account;
+import com.porquinho.entity.AccountBalanceHistory;
 import com.porquinho.entity.Category;
 import com.porquinho.entity.Goal;
+import com.porquinho.repository.AccountBalanceHistoryRepository;
+import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.TransactionRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,17 +20,22 @@ import java.math.RoundingMode;
 import java.text.Collator;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-/** Dashboard GPS (Epic 7). Story 7.2: the financial health traffic light. Story 7.3: the 5 essential metrics. */
+/** Dashboard GPS (Epic 7). Story 7.2: the financial health traffic light. Story 7.3: the 5 essential metrics.
+ * Story 7.4: the wealth curve inside the layer 1. */
 @Service
 public class DashboardService {
 
@@ -37,16 +46,21 @@ public class DashboardService {
     private final GoalService goalService;
     private final CategoryService categoryService;
     private final TransactionRepository transactionRepository;
+    private final AccountRepository accountRepository;
+    private final AccountBalanceHistoryRepository balanceHistoryRepository;
     private final Clock clock;
 
     public DashboardService(BudgetService budgetService, AccountService accountService, GoalService goalService,
                             CategoryService categoryService, TransactionRepository transactionRepository,
-                            Clock clock) {
+                            AccountRepository accountRepository,
+                            AccountBalanceHistoryRepository balanceHistoryRepository, Clock clock) {
         this.budgetService = budgetService;
         this.accountService = accountService;
         this.goalService = goalService;
         this.categoryService = categoryService;
         this.transactionRepository = transactionRepository;
+        this.accountRepository = accountRepository;
+        this.balanceHistoryRepository = balanceHistoryRepository;
         this.clock = clock;
     }
 
@@ -117,7 +131,59 @@ public class DashboardService {
         List<Goal> goals = goalService.listActive(userId);
         DashboardLayer1Response.MainGoal mainGoal = goals.isEmpty() ? null : mainGoal(goals.get(0));
         return new DashboardLayer1Response(budget.totalAvailable(), categories, mainGoal, spent,
-            budget.totalAllocated(), projected);
+            budget.totalAllocated(), projected, wealthHistory(userId, today, budget.totalAvailable()));
+    }
+
+    /**
+     * Story 7.4: the sum of the account balances over the last 12 months. An account is worth its last snapshot up to
+     * that instant (0 before the first one) and 0 from its deleted_at on (a restored account counts all along). Every
+     * point is the value at the end of its São Paulo day, the first one (12 months ago) included; today is
+     * {@code totalBalance}. Two queries for the whole user, no per-account lookups.
+     */
+    private List<DashboardLayer1Response.WealthPoint> wealthHistory(UUID userId, LocalDate today, BigDecimal now) {
+        LocalDate start = today.minusMonths(12);
+        OffsetDateTime cutoff = endOfDay(start);
+        List<AccountBalanceHistory> before = balanceHistoryRepository.findLastPerAccountBefore(userId, cutoff);
+        List<AccountBalanceHistory> since = balanceHistoryRepository.findByUserSince(userId, cutoff);
+        if (before.isEmpty() && since.isEmpty()) return List.of();
+
+        Map<UUID, OffsetDateTime> deletedAt = new HashMap<>();
+        for (Account a : accountRepository.findByUserIdOrderByCreatedAtAsc(userId)) {
+            if (a.getDeletedAt() != null) deletedAt.put(a.getId(), a.getDeletedAt());
+        }
+        Map<UUID, BigDecimal> last = new HashMap<>();
+        before.forEach(h -> last.put(h.getAccountId(), h.getBalanceSnapshot()));
+
+        // Days with a change between the first day and today (both exclusive); a removal alone is a change too
+        TreeMap<LocalDate, List<AccountBalanceHistory>> days = new TreeMap<>();
+        for (AccountBalanceHistory h : since) {
+            LocalDate day = h.getSnapshotDate().atZoneSameInstant(SAO_PAULO).toLocalDate();
+            if (day.isBefore(today)) days.computeIfAbsent(day, d -> new ArrayList<>()).add(h);
+        }
+        deletedAt.values().forEach(at -> {
+            LocalDate day = at.atZoneSameInstant(SAO_PAULO).toLocalDate();
+            if (day.isAfter(start) && day.isBefore(today)) days.computeIfAbsent(day, d -> new ArrayList<>());
+        });
+
+        List<DashboardLayer1Response.WealthPoint> points = new ArrayList<>();
+        points.add(new DashboardLayer1Response.WealthPoint(start, sum(last, deletedAt, cutoff)));
+        days.forEach((day, snapshots) -> {
+            snapshots.forEach(h -> last.put(h.getAccountId(), h.getBalanceSnapshot()));
+            points.add(new DashboardLayer1Response.WealthPoint(day, sum(last, deletedAt, endOfDay(day))));
+        });
+        points.add(new DashboardLayer1Response.WealthPoint(today, now));
+        return points;
+    }
+
+    private static OffsetDateTime endOfDay(LocalDate day) {
+        return day.plusDays(1).atStartOfDay(SAO_PAULO).toOffsetDateTime();
+    }
+
+    /** Sum of the last balances at {@code at}, an account removed before that instant being worth 0. */
+    private static BigDecimal sum(Map<UUID, BigDecimal> last, Map<UUID, OffsetDateTime> deletedAt, OffsetDateTime at) {
+        return last.entrySet().stream()
+            .filter(e -> !deletedAt.containsKey(e.getKey()) || deletedAt.get(e.getKey()).isAfter(at))
+            .map(Map.Entry::getValue).reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     /** Sum of every {categoryId, sum} row, uncategorized (null id) included. */
