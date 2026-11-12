@@ -1,6 +1,6 @@
 <template>
   <main class="min-h-screen bg-gray-50 px-4 py-8">
-    <div class="mx-auto max-w-3xl space-y-8">
+    <div class="mx-auto max-w-6xl space-y-8">
       <div class="flex items-start justify-between gap-4">
         <div>
           <div class="flex flex-wrap items-center gap-3">
@@ -15,7 +15,6 @@
               {{ isFormerSubscriber ? 'Reativar' : 'Assinar' }}
             </RouterLink>
           </div>
-          <p class="text-gray-600">Em desenvolvimento — Epic 7</p>
         </div>
         <button
           type="button"
@@ -83,6 +82,8 @@
           Atualizar pagamento
         </RouterLink>
       </div>
+
+      <DashboardGps />
 
       <section aria-labelledby="account-settings-heading" class="space-y-3">
         <h2
@@ -169,11 +170,17 @@
   </main>
 </template>
 
+<script lang="ts">
+// Story 7.1: fora do setup para sobreviver à desmontagem da view
+let savedScrollY = 0
+</script>
+
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { computed, nextTick, onMounted, ref } from 'vue'
+import { onBeforeRouteLeave, RouterLink, useRoute, useRouter } from 'vue-router'
 import { PartyPopper, X } from 'lucide-vue-next'
 import TrialBadge from '@/components/subscription/TrialBadge.vue'
+import DashboardGps from '@/components/dashboard/DashboardGps.vue'
 import { getMySubscription } from '@/services/subscriptionService'
 import { supabase } from '@/services/supabase'
 import { useAuthStore } from '@/stores/auth'
@@ -224,7 +231,14 @@ async function logout() {
     console.warn('Supabase signOut failed', err)
   }
   await router.push('/login')
+  // A saída disparou o leave guard: o próximo login na mesma aba abre no topo
+  savedScrollY = 0
 }
+
+// Story 7.1: volta na mesma altura ao retornar ao dashboard; F5 recarrega o módulo e zera
+onBeforeRouteLeave(() => {
+  savedScrollY = window.scrollY
+})
 
 onMounted(async () => {
   try {
@@ -233,5 +247,8 @@ onMounted(async () => {
     // AC5: falha ou 404 esconde o badge, o dashboard continua funcionando
     subscription.value = null
   }
+  // Restaura depois do banner de pagamento, que muda a altura da página
+  await nextTick()
+  window.scrollTo({ top: savedScrollY, behavior: 'instant' })
 })
 </script>

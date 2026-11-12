@@ -246,6 +246,11 @@
   }
 }
 
+/* Story 7.1: scroll suave entre as camadas do Dashboard GPS */
+html {
+  scroll-behavior: smooth;
+}
+
 /* Story 0-9: prefers-reduced-motion (AC NFR) */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

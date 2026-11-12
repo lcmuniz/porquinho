@@ -8,6 +8,7 @@ const mockPush = vi.fn()
 const mockReplace = vi.fn()
 let mockRoute: { path: string; query: Record<string, string> } = { path: '/dashboard', query: {} }
 const mockSignOut = vi.fn()
+let leaveGuard: (() => void) | undefined
 
 vi.mock('@/services/subscriptionService', () => ({
   getMySubscription: (...args: unknown[]) => mockGetMySubscription(...args),
@@ -17,6 +18,9 @@ vi.mock('vue-router', async (importOriginal) => ({
   ...(await importOriginal<typeof import('vue-router')>()),
   useRouter: () => ({ push: mockPush, replace: mockReplace }),
   useRoute: () => mockRoute,
+  onBeforeRouteLeave: (guard: () => void) => {
+    leaveGuard = guard
+  },
 }))
 
 vi.mock('@/services/supabase', () => ({
@@ -39,10 +43,12 @@ describe('DashboardView', () => {
     mockReplace.mockReset()
     mockRoute = { path: '/dashboard', query: {} }
     mockSignOut.mockReset().mockResolvedValue({ error: null })
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
   })
 
   afterEach(() => {
     vi.unstubAllGlobals()
+    vi.restoreAllMocks()
   })
 
   it('mostra o badge do trial quando a API responde', async () => {
@@ -336,6 +342,67 @@ describe('DashboardView', () => {
 
       expect(wrapper.find('[data-testid="onboarding-done-message"]').exists()).toBe(false)
       expect(mockReplace).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('Story 7.1: Dashboard GPS', () => {
+    it('mostra as 3 camadas entre os banners e as configurações da conta', async () => {
+      mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
+
+      const wrapper = mountView()
+      await flushPromises()
+
+      const ids = wrapper.findAll('section').map((s) => s.attributes('aria-labelledby'))
+      expect(ids).toEqual([
+        'layer-overview-heading',
+        'layer-tactical-heading',
+        'layer-details-heading',
+        'account-settings-heading',
+        'danger-zone-heading',
+      ])
+      expect(wrapper.text()).not.toContain('Em desenvolvimento')
+    })
+
+    // Antes do teste de 800: o estado do módulo é compartilhado entre os testes
+    it('primeira visita abre no topo', async () => {
+      mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
+
+      mountView()
+      await flushPromises()
+
+      expect(window.scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: 'instant' })
+    })
+
+    it('sair grava o scrollY e remontar volta para a mesma altura', async () => {
+      mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
+
+      const first = mountView()
+      await flushPromises()
+      vi.stubGlobal('scrollY', 800)
+      leaveGuard?.()
+      first.unmount()
+
+      mountView()
+      await flushPromises()
+
+      expect(window.scrollTo).toHaveBeenLastCalledWith({ top: 800, behavior: 'instant' })
+    })
+
+    it('Sair zera a posição: o próximo login abre no topo', async () => {
+      mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
+
+      const first = mountView()
+      await flushPromises()
+      vi.stubGlobal('scrollY', 800)
+      leaveGuard?.()
+      await first.get('button').trigger('click')
+      await flushPromises()
+      first.unmount()
+
+      mountView()
+      await flushPromises()
+
+      expect(window.scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: 'instant' })
     })
   })
 })
