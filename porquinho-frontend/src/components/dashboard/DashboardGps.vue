@@ -25,13 +25,16 @@
         <h2 :id="`${layer.id}-heading`" class="text-lg font-semibold text-gray-900">
           {{ layer.title }}
         </h2>
-        <p class="mt-2 text-sm text-gray-600">Em breve</p>
+        <DashboardLayer1 v-if="layer.id === 'layer-overview'" />
+        <p v-else class="mt-2 text-sm text-gray-600">Em breve</p>
       </section>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import DashboardLayer1 from './DashboardLayer1.vue'
+
 // Story 7.1: as 3 camadas do Dashboard GPS; o conteúdo real chega nas stories 7.2–7.6
 const layers = [
   { id: 'layer-overview', title: 'Visão geral' },

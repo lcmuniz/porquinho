@@ -1,5 +1,6 @@
 package com.porquinho.controller;
 
+import com.porquinho.dto.DashboardLayer1Response;
 import com.porquinho.dto.FinancialHealthResponse;
 import com.porquinho.service.DashboardService;
 import org.springframework.http.ResponseEntity;
@@ -26,5 +27,11 @@ public class DashboardController {
     @GetMapping("/health")
     public ResponseEntity<FinancialHealthResponse> health(@AuthenticationPrincipal Jwt jwt) {
         return ResponseEntity.ok(dashboardService.health(UUID.fromString(jwt.getSubject())));
+    }
+
+    /** Story 7.3: the 5 essential metrics of the current month. */
+    @GetMapping("/layer1")
+    public ResponseEntity<DashboardLayer1Response> layer1(@AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(dashboardService.overview(UUID.fromString(jwt.getSubject())));
     }
 }

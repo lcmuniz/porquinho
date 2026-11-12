@@ -11,8 +11,10 @@ const mockSignOut = vi.fn()
 let leaveGuard: (() => void) | undefined
 
 const mockGetFinancialHealth = vi.fn()
+const mockGetOverview = vi.fn()
 vi.mock('@/services/dashboardService', () => ({
   getFinancialHealth: () => mockGetFinancialHealth(),
+  getOverview: () => mockGetOverview(),
 }))
 
 vi.mock('@/services/subscriptionService', () => ({
@@ -56,6 +58,14 @@ describe('DashboardView', () => {
       overspentCategories: 0,
       negativeAccounts: 0,
       goalsBehind: 0,
+    })
+    mockGetOverview.mockReset().mockResolvedValue({
+      totalBalance: 1500,
+      categories: [{ categoryId: 'c1', name: 'Mercado', status: 'HEALTHY', remaining: 100 }],
+      mainGoal: null,
+      monthSpent: 0,
+      monthAllocated: 0,
+      projectedBalance: 1500,
     })
     mockPush.mockReset()
     mockReplace.mockReset()
@@ -384,6 +394,29 @@ describe('DashboardView', () => {
 
       expect(wrapper.find('[data-testid="health-error"]').exists()).toBe(true)
       expect(wrapper.get('h1').text()).toBe('Dashboard')
+      expect(wrapper.text()).toContain('Excluir minha conta')
+    })
+  })
+
+  describe('Story 7.3: Camada 1', () => {
+    it('mostra os cards na Visão geral', async () => {
+      mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
+
+      const wrapper = mountView()
+      await flushPromises()
+
+      expect(wrapper.get('#layer-overview').find('[data-testid="card-balance"]').exists()).toBe(true)
+    })
+
+    it('falha da Camada 1 não derruba o semáforo nem o resto do dashboard', async () => {
+      mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
+      mockGetOverview.mockRejectedValue(new Error('rede'))
+
+      const wrapper = mountView()
+      await flushPromises()
+
+      expect(wrapper.find('[data-testid="overview-error"]').exists()).toBe(true)
+      expect(wrapper.get('[data-testid="health-toggle"]').text()).toBe('Saúde Financeira: Saudável')
       expect(wrapper.text()).toContain('Excluir minha conta')
     })
   })

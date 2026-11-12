@@ -1,5 +1,7 @@
 package com.porquinho.controller;
 
+import com.porquinho.dto.BudgetStatus;
+import com.porquinho.dto.DashboardLayer1Response;
 import com.porquinho.dto.FinancialHealthResponse;
 import com.porquinho.dto.FinancialHealthResponse.HealthStatus;
 import com.porquinho.service.DashboardService;
@@ -20,7 +22,9 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -30,7 +34,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Story 7.2: GET /api/v1/dashboard/health (JSON shape, user from the JWT, 401 without a token). */
+/** Stories 7.2 and 7.3: GET /api/v1/dashboard/health and /layer1 (JSON shape, user from the JWT, 401 without a token). */
 @WebMvcTest(DashboardController.class)
 @ActiveProfiles("test")
 @Import(DashboardControllerTest.ApiRequiresAuthentication.class)
@@ -77,6 +81,42 @@ class DashboardControllerTest {
     @Test
     void withoutATokenIs401() throws Exception {
         mockMvc.perform(get("/api/v1/dashboard/health"))
+            .andExpect(status().isUnauthorized());
+        verifyNoInteractions(dashboardService);
+    }
+
+    @Test
+    void returnsTheOverviewOfTheJwtUser() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID categoryId = UUID.randomUUID();
+        Jwt jwt = Jwt.withTokenValue("test-token").header("alg", "ES256").subject(userId.toString())
+            .issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(3600)).build();
+        when(dashboardService.overview(userId)).thenReturn(new DashboardLayer1Response(new BigDecimal("1500.00"),
+            List.of(new DashboardLayer1Response.CategoryStatus(categoryId, "Lazer", BudgetStatus.OVERSPENT,
+                new BigDecimal("-20.00"))),
+            new DashboardLayer1Response.MainGoal("Reserva", new BigDecimal("250.00"), new BigDecimal("1000.00"), 25),
+            new BigDecimal("320.00"), new BigDecimal("1000.00"), new BigDecimal("800.00")));
+
+        mockMvc.perform(get("/api/v1/dashboard/layer1")
+                .with(authentication(new TestingAuthenticationToken(jwt, null, "ROLE_USER"))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.totalBalance").value(1500.00))
+            .andExpect(jsonPath("$.categories[0].categoryId").value(categoryId.toString()))
+            .andExpect(jsonPath("$.categories[0].name").value("Lazer"))
+            .andExpect(jsonPath("$.categories[0].status").value("OVERSPENT"))
+            .andExpect(jsonPath("$.categories[0].remaining").value(-20.00))
+            .andExpect(jsonPath("$.mainGoal.name").value("Reserva"))
+            .andExpect(jsonPath("$.mainGoal.currentAmount").value(250.00))
+            .andExpect(jsonPath("$.mainGoal.targetAmount").value(1000.00))
+            .andExpect(jsonPath("$.mainGoal.percent").value(25))
+            .andExpect(jsonPath("$.monthSpent").value(320.00))
+            .andExpect(jsonPath("$.monthAllocated").value(1000.00))
+            .andExpect(jsonPath("$.projectedBalance").value(800.00));
+    }
+
+    @Test
+    void overviewWithoutATokenIs401() throws Exception {
+        mockMvc.perform(get("/api/v1/dashboard/layer1"))
             .andExpect(status().isUnauthorized());
         verifyNoInteractions(dashboardService);
     }

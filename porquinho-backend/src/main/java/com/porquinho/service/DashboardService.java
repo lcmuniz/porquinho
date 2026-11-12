@@ -2,22 +2,31 @@ package com.porquinho.service;
 
 import com.porquinho.dto.BudgetResponse;
 import com.porquinho.dto.BudgetStatus;
+import com.porquinho.dto.DashboardLayer1Response;
 import com.porquinho.dto.FinancialHealthResponse;
 import com.porquinho.dto.FinancialHealthResponse.HealthStatus;
+import com.porquinho.entity.Category;
 import com.porquinho.entity.Goal;
+import com.porquinho.repository.TransactionRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.text.Collator;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
-/** Dashboard GPS (Epic 7). Story 7.2: the financial health traffic light. */
+/** Dashboard GPS (Epic 7). Story 7.2: the financial health traffic light. Story 7.3: the 5 essential metrics. */
 @Service
 public class DashboardService {
 
@@ -26,13 +35,18 @@ public class DashboardService {
     private final BudgetService budgetService;
     private final AccountService accountService;
     private final GoalService goalService;
+    private final CategoryService categoryService;
+    private final TransactionRepository transactionRepository;
     private final Clock clock;
 
     public DashboardService(BudgetService budgetService, AccountService accountService, GoalService goalService,
+                            CategoryService categoryService, TransactionRepository transactionRepository,
                             Clock clock) {
         this.budgetService = budgetService;
         this.accountService = accountService;
         this.goalService = goalService;
+        this.categoryService = categoryService;
+        this.transactionRepository = transactionRepository;
         this.clock = clock;
     }
 
@@ -63,6 +77,59 @@ public class DashboardService {
         else if (under80 || overspent == 1 || goalsBehind > 0) status = HealthStatus.ATTENTION;
         else status = HealthStatus.HEALTHY;
         return new FinancialHealthResponse(status, healthy, low, overspent, negativeAccounts, goalsBehind);
+    }
+
+    /**
+     * Story 7.3. Projection (real money, with or without category): total available - (spent up to today / today's
+     * day x days left) - debits dated after today in the month - the month's future installments. The spent card
+     * keeps the budget screen's number (whole month, categories only). The main goal is the oldest active one.
+     */
+    @Transactional(readOnly = true)
+    public DashboardLayer1Response overview(UUID userId) {
+        LocalDate today = LocalDate.now(clock.withZone(SAO_PAULO));
+        BudgetResponse budget = budgetService.get(userId, YearMonth.from(today).toString());
+        Map<UUID, String> names = categoryService.listActive(userId).stream()
+            .collect(Collectors.toMap(Category::getId, Category::getCategoryName));
+        Collator collator = Collator.getInstance(Locale.of("pt", "BR"));
+        // BudgetStatus is HEALTHY, LOW, OVERSPENT: reversed puts the overspent first
+        List<DashboardLayer1Response.CategoryStatus> categories = budget.categories().stream()
+            .filter(c -> c.status() != null && names.containsKey(c.categoryId()))
+            .map(c -> new DashboardLayer1Response.CategoryStatus(c.categoryId(), names.get(c.categoryId()), c.status(),
+                c.remaining()))
+            .sorted(Comparator.comparing(DashboardLayer1Response.CategoryStatus::status, Comparator.reverseOrder())
+                .thenComparing(DashboardLayer1Response.CategoryStatus::name, collator))
+            .toList();
+
+        BigDecimal spent = budget.categories().stream().map(BudgetResponse.CategoryBudget::spent)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        LocalDate first = today.withDayOfMonth(1), last = today.withDayOfMonth(today.lengthOfMonth());
+        BigDecimal spentToDate = total(transactionRepository.sumSpentByCategory(userId, first, today));
+        BigDecimal scheduled = today.isBefore(last)
+            ? total(transactionRepository.sumSpentByCategory(userId, today.plusDays(1), last)) : BigDecimal.ZERO;
+        BigDecimal committed = total(transactionRepository.sumCommittedByCategory(userId, first, last));
+        int daysLeft = today.lengthOfMonth() - today.getDayOfMonth();
+        BigDecimal pace = spentToDate.multiply(BigDecimal.valueOf(daysLeft))
+            .divide(BigDecimal.valueOf(today.getDayOfMonth()), 2, RoundingMode.HALF_EVEN);
+        BigDecimal projected = budget.totalAvailable().subtract(pace).subtract(scheduled).subtract(committed)
+            .setScale(2, RoundingMode.HALF_EVEN);
+
+        List<Goal> goals = goalService.listActive(userId);
+        DashboardLayer1Response.MainGoal mainGoal = goals.isEmpty() ? null : mainGoal(goals.get(0));
+        return new DashboardLayer1Response(budget.totalAvailable(), categories, mainGoal, spent,
+            budget.totalAllocated(), projected);
+    }
+
+    /** Sum of every {categoryId, sum} row, uncategorized (null id) included. */
+    private static BigDecimal total(List<Object[]> rows) {
+        return rows.stream().map(r -> (BigDecimal) r[1]).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private static DashboardLayer1Response.MainGoal mainGoal(Goal goal) {
+        BigDecimal target = goal.getTargetAmount();
+        int percent = target.signum() <= 0 ? 100 : goal.getCurrentAmount().multiply(BigDecimal.valueOf(100))
+            .divide(target, 0, RoundingMode.FLOOR).max(BigDecimal.ZERO).min(BigDecimal.valueOf(100)).intValue();
+        return new DashboardLayer1Response.MainGoal(goal.getGoalName(), goal.getCurrentAmount(), target, percent);
     }
 
     /** Story 8.4 rule: today + ceil(missing / monthly allocation) months past the target date. */

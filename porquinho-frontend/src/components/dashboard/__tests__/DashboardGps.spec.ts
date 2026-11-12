@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, RouterLinkStub } from '@vue/test-utils'
 import DashboardGps from '../DashboardGps.vue'
+
+// A Camada 1 (Story 7.3) busca no onMounted; aqui fica carregando
+vi.mock('@/services/dashboardService', () => ({
+  getOverview: () => new Promise(() => {}),
+}))
+
+const global = { stubs: { RouterLink: RouterLinkStub } }
 
 describe('DashboardGps', () => {
   afterEach(() => {
@@ -8,7 +15,7 @@ describe('DashboardGps', () => {
   })
 
   it('mostra as 3 camadas na ordem, cada uma uma section rotulada pelo seu h2', () => {
-    const wrapper = mount(DashboardGps)
+    const wrapper = mount(DashboardGps, { global })
 
     const sections = wrapper.findAll('section')
     expect(sections.map((s) => s.attributes('id'))).toEqual([
@@ -25,12 +32,14 @@ describe('DashboardGps', () => {
       const h2 = section.get('h2')
       expect(section.attributes('aria-labelledby')).toBe(h2.attributes('id'))
       expect(section.classes()).toContain('py-12')
-      expect(section.text()).toContain('Em breve')
     }
+    expect(sections[0]!.find('[data-testid="overview-loading"]').exists()).toBe(true)
+    expect(sections[1]!.text()).toContain('Em breve')
+    expect(sections[2]!.text()).toContain('Em breve')
   })
 
   it('cada botão "Ir para" rola até a sua camada, sem forçar o behavior', async () => {
-    const wrapper = mount(DashboardGps, { attachTo: document.body })
+    const wrapper = mount(DashboardGps, { attachTo: document.body, global })
     const scrolled: string[] = []
     const scrollIntoView = vi.fn(function (this: Element) {
       scrolled.push(this.id)
