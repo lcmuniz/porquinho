@@ -30,3 +30,39 @@ export interface WealthPoint {
   date: string
   balance: number
 }
+
+/**
+ * Story 7.5: resposta de GET /api/v1/dashboard/layer2. `categories`: filhas com gasto ou alocação no mês `month`
+ * ("AAAA-MM"), maior gasto primeiro; `categoryId` null é "Não classificado". `trends`: 12 meses por categoria, do mais
+ * antigo ao corrente (parcial), meses sem gasto valem 0.
+ */
+export interface DashboardTactical {
+  month: string
+  categories: CategorySpending[]
+  trends: CategoryTrend[]
+}
+
+export interface CategorySpending {
+  categoryId: string | null
+  name: string
+  colorHex: string | null
+  spent: number
+  /** null sem alocação no mês (assim como `status`). */
+  allocated: number | null
+  status: BudgetStatus | null
+}
+
+export interface CategoryTrend {
+  categoryId: string | null
+  name: string
+  months: { month: string; spent: number }[]
+}
+
+/** Story 7.5: fatia do donut; `category` null é "Outras" (soma de várias, sem drill-down). */
+export interface DonutSlice {
+  id: string
+  name: string
+  value: number
+  color: string
+  category: CategorySpending | null
+}

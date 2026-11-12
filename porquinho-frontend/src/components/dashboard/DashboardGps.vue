@@ -26,6 +26,7 @@
           {{ layer.title }}
         </h2>
         <DashboardLayer1 v-if="layer.id === 'layer-overview'" />
+        <DashboardLayer2 v-else-if="layer.id === 'layer-tactical'" />
         <p v-else class="mt-2 text-sm text-gray-600">Em breve</p>
       </section>
     </div>
@@ -34,6 +35,7 @@
 
 <script setup lang="ts">
 import DashboardLayer1 from './DashboardLayer1.vue'
+import DashboardLayer2 from './DashboardLayer2.vue'
 
 // Story 7.1: as 3 camadas do Dashboard GPS; o conteúdo real chega nas stories 7.2–7.6
 const layers = [

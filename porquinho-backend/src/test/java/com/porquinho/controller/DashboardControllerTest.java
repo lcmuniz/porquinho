@@ -2,6 +2,7 @@ package com.porquinho.controller;
 
 import com.porquinho.dto.BudgetStatus;
 import com.porquinho.dto.DashboardLayer1Response;
+import com.porquinho.dto.DashboardLayer2Response;
 import com.porquinho.dto.FinancialHealthResponse;
 import com.porquinho.dto.FinancialHealthResponse.HealthStatus;
 import com.porquinho.service.DashboardService;
@@ -35,7 +36,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Stories 7.2 and 7.3: GET /api/v1/dashboard/health and /layer1 (JSON shape, user from the JWT, 401 without a token). */
+/** Stories 7.2, 7.3 and 7.5: GET /api/v1/dashboard/health, /layer1 and /layer2 (JSON shape, user from the JWT, 401 without a token). */
 @WebMvcTest(DashboardController.class)
 @ActiveProfiles("test")
 @Import(DashboardControllerTest.ApiRequiresAuthentication.class)
@@ -124,6 +125,44 @@ class DashboardControllerTest {
     @Test
     void overviewWithoutATokenIs401() throws Exception {
         mockMvc.perform(get("/api/v1/dashboard/layer1"))
+            .andExpect(status().isUnauthorized());
+        verifyNoInteractions(dashboardService);
+    }
+
+    @Test
+    void returnsTheTacticalViewOfTheJwtUser() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID categoryId = UUID.randomUUID();
+        Jwt jwt = Jwt.withTokenValue("test-token").header("alg", "ES256").subject(userId.toString())
+            .issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(3600)).build();
+        when(dashboardService.tactical(userId)).thenReturn(new DashboardLayer2Response("2026-11",
+            List.of(new DashboardLayer2Response.CategorySpending(categoryId, "Lazer", "#EC4899",
+                new BigDecimal("620.00"), new BigDecimal("500.00"), BudgetStatus.OVERSPENT),
+                new DashboardLayer2Response.CategorySpending(null, "Não classificado", null, new BigDecimal("40.00"),
+                    null, null)),
+            List.of(new DashboardLayer2Response.CategoryTrend(categoryId, "Lazer",
+                List.of(new DashboardLayer2Response.MonthSpent("2026-11", new BigDecimal("620.00")))))));
+
+        mockMvc.perform(get("/api/v1/dashboard/layer2")
+                .with(authentication(new TestingAuthenticationToken(jwt, null, "ROLE_USER"))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.month").value("2026-11"))
+            .andExpect(jsonPath("$.categories[0].categoryId").value(categoryId.toString()))
+            .andExpect(jsonPath("$.categories[0].name").value("Lazer"))
+            .andExpect(jsonPath("$.categories[0].colorHex").value("#EC4899"))
+            .andExpect(jsonPath("$.categories[0].spent").value(620.00))
+            .andExpect(jsonPath("$.categories[0].allocated").value(500.00))
+            .andExpect(jsonPath("$.categories[0].status").value("OVERSPENT"))
+            .andExpect(jsonPath("$.categories[1].categoryId").doesNotExist())
+            .andExpect(jsonPath("$.categories[1].name").value("Não classificado"))
+            .andExpect(jsonPath("$.trends[0].categoryId").value(categoryId.toString()))
+            .andExpect(jsonPath("$.trends[0].months[0].month").value("2026-11"))
+            .andExpect(jsonPath("$.trends[0].months[0].spent").value(620.00));
+    }
+
+    @Test
+    void tacticalWithoutATokenIs401() throws Exception {
+        mockMvc.perform(get("/api/v1/dashboard/layer2"))
             .andExpect(status().isUnauthorized());
         verifyNoInteractions(dashboardService);
     }

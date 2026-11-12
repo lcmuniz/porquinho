@@ -3,6 +3,7 @@ package com.porquinho.service;
 import com.porquinho.dto.BudgetResponse;
 import com.porquinho.dto.BudgetStatus;
 import com.porquinho.dto.DashboardLayer1Response;
+import com.porquinho.dto.DashboardLayer2Response;
 import com.porquinho.dto.FinancialHealthResponse;
 import com.porquinho.dto.FinancialHealthResponse.HealthStatus;
 import com.porquinho.entity.Account;
@@ -42,7 +43,8 @@ import static org.mockito.Mockito.when;
 /**
  * Story 7.2: the traffic light rule, one line of the spec's matrix per test plus the 80/50 limits. Story 7.3: the 5
  * metrics (category order, goal %, projection on the first, a middle and the last day of the month). Story 7.4: the
- * wealth curve, one line of the spec's matrix per test.
+ * wealth curve, one line of the spec's matrix per test. Story 7.5: the tactical view (order, "Não classificado",
+ * allocation and status, 12 months with zeros).
  */
 @ExtendWith(MockitoExtension.class)
 class DashboardServiceTest {
@@ -78,7 +80,8 @@ class DashboardServiceTest {
         userId = UUID.randomUUID();
         // the overview (7.3) reads the total from the budget, not the accounts
         lenient().when(accountService.listActive(userId)).thenReturn(accounts);
-        when(goalService.listActive(userId)).thenReturn(goals);
+        // the tactical view (7.5) reads no goal
+        lenient().when(goalService.listActive(userId)).thenReturn(goals);
     }
 
     private void budget(int healthy, int low, int overspent) {
@@ -553,5 +556,92 @@ class DashboardServiceTest {
 
         assertEquals(List.of(point(START, "0"), point(LocalDate.of(2026, 11, 20), "700.00"), point(TODAY, "700.00")),
             wealth("700.00"));
+    }
+
+    // ---- Story 7.5: tactical view ----
+
+    private final List<Object[]> monthly = new ArrayList<>();
+
+    private UUID child(String name) {
+        Category category = new Category(userId, name, UUID.randomUUID(), "#111111", "tag", false);
+        category.setId(UUID.randomUUID());
+        categories.add(category);
+        return category.getId();
+    }
+
+    /** A {categoryId, year, month, sum} row of the monthly query (Hibernate gives Integer for YEAR/MONTH). */
+    private void spent(UUID categoryId, int year, int month, String sum) {
+        monthly.add(new Object[] {categoryId, year, month, new BigDecimal(sum)});
+    }
+
+    private DashboardLayer2Response tactical() {
+        when(categoryService.listActive(userId)).thenReturn(categories);
+        when(budgetService.get(userId, "2026-11")).thenReturn(new BudgetResponse("2026-11", "v1", BigDecimal.ZERO,
+            BigDecimal.ZERO, budgetCategories));
+        when(transactionRepository.sumSpentByCategoryAndMonth(userId, LocalDate.of(2025, 12, 1),
+            LocalDate.of(2026, 11, 30))).thenReturn(monthly);
+        return service.tactical(userId);
+    }
+
+    @Test
+    void tacticalOrdersBySpentWithAllocationStatusAndUncategorized() {
+        UUID food = child("Mercado");
+        UUID fun = child("Lazer");
+        UUID home = child("Casa");
+        budgetCategories.add(new BudgetResponse.CategoryBudget(fun, new BigDecimal("500.00"), new BigDecimal("620.00"),
+            null, new BigDecimal("-120.00"), BudgetStatus.OVERSPENT));
+        budgetCategories.add(new BudgetResponse.CategoryBudget(home, new BigDecimal("300.00"), BigDecimal.ZERO, null,
+            new BigDecimal("300.00"), BudgetStatus.HEALTHY));
+        budgetCategories.add(new BudgetResponse.CategoryBudget(food, null, new BigDecimal("80.00"), null, null, null));
+        spent(food, 2026, 11, "80.00");
+        spent(fun, 2026, 11, "620.00");
+        spent(null, 2026, 11, "40.00");
+        spent(food, 2026, 1, "15.00");
+        // a category removed meanwhile is left out
+        spent(UUID.randomUUID(), 2026, 11, "999.00");
+
+        DashboardLayer2Response response = tactical();
+
+        assertEquals("2026-11", response.month());
+        assertEquals(List.of(
+            new DashboardLayer2Response.CategorySpending(fun, "Lazer", "#111111", new BigDecimal("620.00"),
+                new BigDecimal("500.00"), BudgetStatus.OVERSPENT),
+            new DashboardLayer2Response.CategorySpending(food, "Mercado", "#111111", new BigDecimal("80.00"), null, null),
+            new DashboardLayer2Response.CategorySpending(null, "Não classificado", null, new BigDecimal("40.00"), null,
+                null),
+            new DashboardLayer2Response.CategorySpending(home, "Casa", "#111111", BigDecimal.ZERO,
+                new BigDecimal("300.00"), BudgetStatus.HEALTHY)), response.categories());
+
+        assertEquals(3, response.trends().size());
+        DashboardLayer2Response.CategoryTrend foodTrend = response.trends().get(0);
+        assertEquals(food, foodTrend.categoryId());
+        assertEquals("Mercado", foodTrend.name());
+        assertEquals(12, foodTrend.months().size());
+        assertEquals(new DashboardLayer2Response.MonthSpent("2025-12", BigDecimal.ZERO), foodTrend.months().get(0));
+        assertEquals(new DashboardLayer2Response.MonthSpent("2026-01", new BigDecimal("15.00")),
+            foodTrend.months().get(1));
+        assertEquals(new DashboardLayer2Response.MonthSpent("2026-11", new BigDecimal("80.00")),
+            foodTrend.months().get(11));
+        assertEquals("Não classificado", response.trends().get(2).name());
+    }
+
+    @Test
+    void tacticalSpendingOnlyInThePastStaysInTheTrendsNotInTheMonth() {
+        UUID food = child("Mercado");
+        spent(food, 2026, 10, "50.00");
+
+        DashboardLayer2Response response = tactical();
+
+        assertEquals(List.of(), response.categories());
+        assertEquals(1, response.trends().size());
+        assertEquals(new BigDecimal("50.00"), response.trends().get(0).months().get(10).spent());
+        assertEquals(BigDecimal.ZERO, response.trends().get(0).months().get(11).spent());
+    }
+
+    @Test
+    void tacticalWithoutSpendingOrBudgetIsEmpty() {
+        DashboardLayer2Response response = tactical();
+
+        assertEquals(new DashboardLayer2Response("2026-11", List.of(), List.of()), response);
     }
 }

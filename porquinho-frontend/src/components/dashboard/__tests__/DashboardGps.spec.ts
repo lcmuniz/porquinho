@@ -2,9 +2,10 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { mount, RouterLinkStub } from '@vue/test-utils'
 import DashboardGps from '../DashboardGps.vue'
 
-// A Camada 1 (Story 7.3) busca no onMounted; aqui fica carregando
+// As Camadas 1 (Story 7.3) e 2 (Story 7.5) buscam no onMounted; aqui ficam carregando
 vi.mock('@/services/dashboardService', () => ({
   getOverview: () => new Promise(() => {}),
+  getTactical: () => new Promise(() => {}),
 }))
 
 const global = { stubs: { RouterLink: RouterLinkStub } }
@@ -34,7 +35,7 @@ describe('DashboardGps', () => {
       expect(section.classes()).toContain('py-12')
     }
     expect(sections[0]!.find('[data-testid="overview-loading"]').exists()).toBe(true)
-    expect(sections[1]!.text()).toContain('Em breve')
+    expect(sections[1]!.find('[data-testid="tactical-loading"]').exists()).toBe(true)
     expect(sections[2]!.text()).toContain('Em breve')
   })
 

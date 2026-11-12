@@ -1,6 +1,7 @@
 package com.porquinho.controller;
 
 import com.porquinho.dto.DashboardLayer1Response;
+import com.porquinho.dto.DashboardLayer2Response;
 import com.porquinho.dto.FinancialHealthResponse;
 import com.porquinho.service.DashboardService;
 import org.springframework.http.ResponseEntity;
@@ -33,5 +34,11 @@ public class DashboardController {
     @GetMapping("/layer1")
     public ResponseEntity<DashboardLayer1Response> layer1(@AuthenticationPrincipal Jwt jwt) {
         return ResponseEntity.ok(dashboardService.overview(UUID.fromString(jwt.getSubject())));
+    }
+
+    /** Story 7.5: spending per category of the current month and the last 12 months' trends. */
+    @GetMapping("/layer2")
+    public ResponseEntity<DashboardLayer2Response> layer2(@AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(dashboardService.tactical(UUID.fromString(jwt.getSubject())));
     }
 }

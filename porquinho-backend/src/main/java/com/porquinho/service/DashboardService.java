@@ -3,6 +3,7 @@ package com.porquinho.service;
 import com.porquinho.dto.BudgetResponse;
 import com.porquinho.dto.BudgetStatus;
 import com.porquinho.dto.DashboardLayer1Response;
+import com.porquinho.dto.DashboardLayer2Response;
 import com.porquinho.dto.FinancialHealthResponse;
 import com.porquinho.dto.FinancialHealthResponse.HealthStatus;
 import com.porquinho.entity.Account;
@@ -27,6 +28,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -35,7 +37,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /** Dashboard GPS (Epic 7). Story 7.2: the financial health traffic light. Story 7.3: the 5 essential metrics.
- * Story 7.4: the wealth curve inside the layer 1. */
+ * Story 7.4: the wealth curve inside the layer 1. Story 7.5: the layer 2 (spending per category). */
 @Service
 public class DashboardService {
 
@@ -132,6 +134,65 @@ public class DashboardService {
         DashboardLayer1Response.MainGoal mainGoal = goals.isEmpty() ? null : mainGoal(goals.get(0));
         return new DashboardLayer1Response(budget.totalAvailable(), categories, mainGoal, spent,
             budget.totalAllocated(), projected, wealthHistory(userId, today, budget.totalAvailable()));
+    }
+
+    /**
+     * Story 7.5. Spending per child category (Epic 6 rule) of the current month with its allocation and status, plus
+     * the last 12 months per category, from one query. A category no longer active is left out; uncategorized
+     * spending (null id) is "Não classificado".
+     */
+    @Transactional(readOnly = true)
+    public DashboardLayer2Response tactical(UUID userId) {
+        YearMonth current = YearMonth.from(LocalDate.now(clock.withZone(SAO_PAULO)));
+        YearMonth first = current.minusMonths(11);
+        Map<UUID, Category> active = categoryService.listActive(userId).stream()
+            .collect(Collectors.toMap(Category::getId, c -> c));
+
+        // categoryId (null = uncategorized) -> month -> spent; insertion order follows the query ORDER BY (stable output)
+        Map<UUID, Map<YearMonth, BigDecimal>> spent = new LinkedHashMap<>();
+        for (Object[] r : transactionRepository.sumSpentByCategoryAndMonth(userId, first.atDay(1),
+                current.atEndOfMonth())) {
+            UUID id = (UUID) r[0];
+            if (id != null && !active.containsKey(id)) continue;
+            YearMonth month = YearMonth.of(((Number) r[1]).intValue(), ((Number) r[2]).intValue());
+            spent.computeIfAbsent(id, k -> new HashMap<>()).put(month, (BigDecimal) r[3]);
+        }
+
+        Map<UUID, BudgetResponse.CategoryBudget> budget = new HashMap<>();
+        budgetService.get(userId, current.toString()).categories().forEach(c -> budget.put(c.categoryId(), c));
+
+        Collator collator = Collator.getInstance(Locale.of("pt", "BR"));
+        List<DashboardLayer2Response.CategorySpending> categories = new ArrayList<>();
+        spent.forEach((id, months) -> {
+            BigDecimal value = months.get(current);
+            if (value == null) return;
+            BudgetResponse.CategoryBudget b = id == null ? null : budget.get(id);
+            categories.add(new DashboardLayer2Response.CategorySpending(id, name(id, active),
+                id == null ? null : active.get(id).getColorHex(), value, b == null ? null : b.allocated(),
+                b == null ? null : b.status()));
+        });
+        budget.values().stream()
+            .filter(b -> b.allocated() != null && active.containsKey(b.categoryId())
+                && (!spent.containsKey(b.categoryId()) || !spent.get(b.categoryId()).containsKey(current)))
+            .forEach(b -> categories.add(new DashboardLayer2Response.CategorySpending(b.categoryId(),
+                name(b.categoryId(), active), active.get(b.categoryId()).getColorHex(), BigDecimal.ZERO,
+                b.allocated(), b.status())));
+        categories.sort(Comparator.comparing(DashboardLayer2Response.CategorySpending::spent, Comparator.reverseOrder())
+            .thenComparing(DashboardLayer2Response.CategorySpending::name, collator));
+
+        List<DashboardLayer2Response.CategoryTrend> trends = new ArrayList<>();
+        spent.forEach((id, months) -> {
+            List<DashboardLayer2Response.MonthSpent> series = new ArrayList<>();
+            for (YearMonth m = first; !m.isAfter(current); m = m.plusMonths(1)) {
+                series.add(new DashboardLayer2Response.MonthSpent(m.toString(), months.getOrDefault(m, BigDecimal.ZERO)));
+            }
+            trends.add(new DashboardLayer2Response.CategoryTrend(id, name(id, active), series));
+        });
+        return new DashboardLayer2Response(current.toString(), categories, trends);
+    }
+
+    private static String name(UUID id, Map<UUID, Category> active) {
+        return id == null ? "Não classificado" : active.get(id).getCategoryName();
     }
 
     /**

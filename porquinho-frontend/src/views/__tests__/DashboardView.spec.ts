@@ -15,6 +15,8 @@ const mockGetOverview = vi.fn()
 vi.mock('@/services/dashboardService', () => ({
   getFinancialHealth: () => mockGetFinancialHealth(),
   getOverview: () => mockGetOverview(),
+  // Camada 2 (Story 7.5): fica carregando, coberta no DashboardLayer2.spec
+  getTactical: () => new Promise(() => {}),
 }))
 
 vi.mock('@/services/subscriptionService', () => ({
