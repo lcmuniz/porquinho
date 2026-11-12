@@ -3,6 +3,9 @@ import { mount, RouterLinkStub } from '@vue/test-utils'
 import DashboardGps from '../DashboardGps.vue'
 
 // As Camadas 1 (Story 7.3) e 2 (Story 7.5) buscam no onMounted; aqui ficam carregando
+// O drill-down da Camada 2 importa o transactionService; sem mock, api.ts exige o .env (CI)
+vi.mock('@/services/transactionService', () => ({ listTransactions: vi.fn() }))
+
 vi.mock('@/services/dashboardService', () => ({
   getOverview: () => new Promise(() => {}),
   getTactical: () => new Promise(() => {}),

@@ -19,6 +19,9 @@ vi.mock('@/services/dashboardService', () => ({
   getTactical: () => new Promise(() => {}),
 }))
 
+// O drill-down da Camada 2 importa o transactionService; sem mock, api.ts exige o .env (CI)
+vi.mock('@/services/transactionService', () => ({ listTransactions: vi.fn() }))
+
 vi.mock('@/services/subscriptionService', () => ({
   getMySubscription: (...args: unknown[]) => mockGetMySubscription(...args),
 }))
