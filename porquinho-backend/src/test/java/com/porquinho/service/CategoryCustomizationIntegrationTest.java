@@ -217,7 +217,7 @@ class CategoryCustomizationIntegrationTest {
     @Test
     void aRemovedCategoryNameCanBeReused() {
         atStepFive(List.of("housing", "food"));
-        categoryService.delete(userId, named("Moradia").getId());
+        categoryService.delete(userId, named("Moradia").getId(), null);
         categoryRepository.flush();
 
         Category again = categoryService.create(userId, "Moradia", "#3B82F6", "house", named("Essenciais").getId());
@@ -349,7 +349,7 @@ class CategoryCustomizationIntegrationTest {
         UUID essentials = named("Essenciais").getId();
         UUID housing = named("Moradia").getId();
         UUID removed = categoryService.create(userId, "Vazio", null, null, null).getId();
-        categoryService.delete(userId, removed);
+        categoryService.delete(userId, removed, null);
         categoryRepository.flush();
 
         assertThatThrownBy(() -> categoryService.update(userId, essentials, null, null, null, named("Variáveis").getId()))
@@ -379,8 +379,8 @@ class CategoryCustomizationIntegrationTest {
     void removedGroupCannotReceiveNewCategories() {
         atStepFive(List.of("housing", "leisure"));
         UUID variable = named("Variáveis").getId();
-        categoryService.delete(userId, named("Lazer").getId());
-        categoryService.delete(userId, variable);
+        categoryService.delete(userId, named("Lazer").getId(), null);
+        categoryService.delete(userId, variable, null);
         categoryRepository.flush();
 
         assertThatThrownBy(() -> categoryService.create(userId, "Pets", "#F59E0B", "paw-print", variable))
@@ -393,12 +393,12 @@ class CategoryCustomizationIntegrationTest {
         UUID housing = named("Moradia").getId();
         UUID leisure = named("Lazer").getId();
 
-        categoryService.delete(userId, housing);
+        categoryService.delete(userId, housing, null);
         categoryRepository.flush();
 
         assertThat(row(housing).get("deleted_at")).isNotNull();
         assertThat(categoryService.listActive(userId)).extracting(Category::getCategoryName).doesNotContain("Moradia");
-        assertThatThrownBy(() -> categoryService.delete(userId, leisure))
+        assertThatThrownBy(() -> categoryService.delete(userId, leisure, null))
             .isInstanceOf(ConflictException.class).hasMessage(CategoryService.LAST_CHILD_MESSAGE);
         assertThat(row(leisure).get("deleted_at")).isNull();
     }
@@ -408,11 +408,11 @@ class CategoryCustomizationIntegrationTest {
         atStepFive(List.of("housing", "leisure"));
         UUID essentials = named("Essenciais").getId();
 
-        assertThatThrownBy(() -> categoryService.delete(userId, essentials))
+        assertThatThrownBy(() -> categoryService.delete(userId, essentials, null))
             .isInstanceOf(ConflictException.class).hasMessage(CategoryService.GROUP_NOT_EMPTY_MESSAGE);
 
-        categoryService.delete(userId, named("Moradia").getId());
-        categoryService.delete(userId, essentials);
+        categoryService.delete(userId, named("Moradia").getId(), null);
+        categoryService.delete(userId, essentials, null);
         categoryRepository.flush();
 
         assertThat(row(essentials).get("deleted_at")).isNotNull();
@@ -446,14 +446,14 @@ class CategoryCustomizationIntegrationTest {
 
         assertThatThrownBy(() -> categoryService.update(userId, theirs, "X", null, null, null))
             .isInstanceOf(ResourceNotFoundException.class);
-        assertThatThrownBy(() -> categoryService.delete(userId, theirs))
+        assertThatThrownBy(() -> categoryService.delete(userId, theirs, null))
             .isInstanceOf(ResourceNotFoundException.class);
 
         UUID housing = named("Moradia").getId();
-        categoryService.delete(userId, housing);
+        categoryService.delete(userId, housing, null);
         assertThatThrownBy(() -> categoryService.update(userId, housing, "X", null, null, null))
             .isInstanceOf(ResourceNotFoundException.class);
-        assertThatThrownBy(() -> categoryService.delete(userId, housing))
+        assertThatThrownBy(() -> categoryService.delete(userId, housing, null))
             .isInstanceOf(ResourceNotFoundException.class);
         assertThat(row(theirs)).containsEntry("category_name", "Lazer").containsEntry("deleted_at", null);
     }

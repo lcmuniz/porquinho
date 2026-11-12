@@ -37,7 +37,16 @@ export async function updateCategory(id: string, input: UpdateCategoryInput): Pr
   return response.data
 }
 
-/** Story 3.5: exclui (soft delete). 409 na última categoria ou num grupo com categorias. */
-export async function deleteCategory(id: string): Promise<void> {
-  await api.delete(`/api/v1/categories/${id}`)
+/** Retro Epic 6 A4: quantas transações ativas a categoria filha tem (decide se a exclusão pede destino). */
+export async function getCategoryUsage(id: string): Promise<{ transactionCount: number }> {
+  const response = await api.get<{ transactionCount: number }>(`/api/v1/categories/${id}/usage`)
+  return response.data
+}
+
+/**
+ * Story 3.5: exclui (soft delete). 409 na última categoria, num grupo com categorias ou numa filha com transações
+ * sem destino. Retro Epic 6 A4: com `targetCategoryId`, transações, orçamento e padrões vão para o destino.
+ */
+export async function deleteCategory(id: string, targetCategoryId?: string): Promise<void> {
+  await api.delete(`/api/v1/categories/${id}`, targetCategoryId ? { params: { targetCategoryId } } : undefined)
 }

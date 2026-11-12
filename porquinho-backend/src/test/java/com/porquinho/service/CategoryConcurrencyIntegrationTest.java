@@ -60,7 +60,7 @@ class CategoryConcurrencyIntegrationTest {
             List<Future<String>> results = children.stream().map(id -> pool.submit(() -> {
                 start.await();
                 try {
-                    categoryService.delete(userId, id);
+                    categoryService.delete(userId, id, null);
                     return "deleted";
                 } catch (ConflictException e) {
                     return e.getMessage();

@@ -48,6 +48,15 @@ public interface UserClassificationPatternRepository extends JpaRepository<UserC
     int touch(@Param("userId") UUID userId, @Param("patterns") Collection<String> patterns,
               @Param("now") OffsetDateTime now);
 
+    /**
+     * Retro Epic 6 A4: the category {@code fromId} is being removed, so the user's patterns pointing at it point at
+     * {@code toId}. No clash: the unique index is (user_id, description_pattern).
+     */
+    @Modifying(flushAutomatically = true)
+    @Query("UPDATE UserClassificationPattern p SET p.preferredCategoryId = :toId "
+        + "WHERE p.userId = :userId AND p.preferredCategoryId = :fromId")
+    int reassignCategory(@Param("userId") UUID userId, @Param("fromId") UUID fromId, @Param("toId") UUID toId);
+
     /** Every row of the user, oldest first (LGPD export). */
     @Query("SELECT p FROM UserClassificationPattern p WHERE p.userId = :userId ORDER BY p.createdAt ASC, p.id ASC")
     List<UserClassificationPattern> findByUserIdOrdered(@Param("userId") UUID userId);

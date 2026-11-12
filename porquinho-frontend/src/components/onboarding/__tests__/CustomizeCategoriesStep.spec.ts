@@ -8,6 +8,7 @@ const mockGetCategoryOptions = vi.fn()
 const mockCreateCategory = vi.fn()
 const mockUpdateCategory = vi.fn()
 const mockDeleteCategory = vi.fn()
+const mockGetCategoryUsage = vi.fn()
 const mockCompleteCustomization = vi.fn()
 
 vi.mock('@/services/categoryService', () => ({
@@ -16,6 +17,7 @@ vi.mock('@/services/categoryService', () => ({
   createCategory: (...a: unknown[]) => mockCreateCategory(...a),
   updateCategory: (...a: unknown[]) => mockUpdateCategory(...a),
   deleteCategory: (...a: unknown[]) => mockDeleteCategory(...a),
+  getCategoryUsage: (...a: unknown[]) => mockGetCategoryUsage(...a),
 }))
 
 vi.mock('@/services/onboardingService', () => ({
@@ -96,6 +98,7 @@ describe('CustomizeCategoriesStep', () => {
     mockCreateCategory.mockReset()
     mockUpdateCategory.mockReset()
     mockDeleteCategory.mockReset().mockResolvedValue(undefined)
+    mockGetCategoryUsage.mockReset().mockResolvedValue({ transactionCount: 0 })
     mockCompleteCustomization.mockReset().mockResolvedValue(PROGRESS)
   })
 
@@ -298,7 +301,66 @@ describe('CustomizeCategoriesStep', () => {
     bodyButton('confirm-delete-button').click()
     await flushPromises()
 
-    expect(mockDeleteCategory).toHaveBeenCalledWith('c4')
+    expect(mockDeleteCategory).toHaveBeenCalledWith('c4', undefined)
+    expect(wrapper.find('[data-testid="category-name-c4"]').exists()).toBe(false)
+  })
+
+  it('sem transações não mostra o seletor de destino', async () => {
+    const wrapper = await mountStep()
+
+    await wrapper.get('[data-testid="category-delete-c4"]').trigger('click')
+    await flushPromises()
+
+    expect(mockGetCategoryUsage).toHaveBeenCalledWith('c4')
+    expect(document.body.querySelector('[data-testid="delete-target"]')).toBeNull()
+    expect(bodyButton('confirm-delete-button').disabled).toBe(false)
+  })
+
+  it('falha ao buscar a contagem segue sem destino', async () => {
+    mockGetCategoryUsage.mockRejectedValue(new Error('rede'))
+    const wrapper = await mountStep()
+
+    await wrapper.get('[data-testid="category-delete-c4"]').trigger('click')
+    await flushPromises()
+
+    expect(document.body.querySelector('[data-testid="delete-target"]')).toBeNull()
+    expect(bodyButton('confirm-delete-button').disabled).toBe(false)
+    bodyButton('confirm-delete-button').click()
+    await flushPromises()
+    expect(mockDeleteCategory).toHaveBeenCalledWith('c4', undefined)
+  })
+
+  it('enquanto a contagem carrega, Excluir fica desabilitado', async () => {
+    mockGetCategoryUsage.mockReturnValue(new Promise(() => {}))
+    const wrapper = await mountStep()
+
+    await wrapper.get('[data-testid="category-delete-c4"]').trigger('click')
+    await flushPromises()
+
+    expect(bodyButton('confirm-delete-button').disabled).toBe(true)
+  })
+
+  it('com transações exige o destino e envia targetCategoryId', async () => {
+    mockGetCategoryUsage.mockResolvedValue({ transactionCount: 3 })
+    const wrapper = await mountStep()
+
+    await wrapper.get('[data-testid="category-delete-c4"]').trigger('click')
+    await flushPromises()
+
+    expect(document.body.textContent).toContain('3 transações vão para:')
+    const select = document.body.querySelector<HTMLSelectElement>('[data-testid="delete-target"]')!
+    // só as outras filhas, sem grupos e sem a própria
+    expect([...select.options].map((o) => o.value)).toEqual(['', 'c2', 'c3', 'c1'])
+    expect(bodyButton('confirm-delete-button').disabled).toBe(true)
+
+    select.value = 'c2'
+    select.dispatchEvent(new Event('change'))
+    await flushPromises()
+    expect(bodyButton('confirm-delete-button').disabled).toBe(false)
+    bodyButton('confirm-delete-button').click()
+    await flushPromises()
+
+    expect(mockDeleteCategory).toHaveBeenCalledWith('c4', 'c2')
     expect(wrapper.find('[data-testid="category-name-c4"]').exists()).toBe(false)
   })
 

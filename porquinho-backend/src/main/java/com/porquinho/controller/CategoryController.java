@@ -18,9 +18,11 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -79,11 +81,22 @@ public class CategoryController {
             userId, id, request.name(), request.colorHex(), request.iconName(), request.parentId())));
     }
 
-    /** Soft delete. 204; 404 when not the user's; 409 for a group with children or the last child. */
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@AuthenticationPrincipal Jwt jwt, @PathVariable("id") UUID id) {
+    /** {@code { transactionCount }} of the user's active child category (retro Epic 6 A4); 404 otherwise. */
+    @GetMapping("/{id}/usage")
+    public ResponseEntity<Map<String, Long>> usage(@AuthenticationPrincipal Jwt jwt, @PathVariable("id") UUID id) {
         UUID userId = UUID.fromString(jwt.getSubject());
-        categoryService.delete(userId, id);
+        return ResponseEntity.ok(Map.of("transactionCount", categoryService.transactionCount(userId, id)));
+    }
+
+    /**
+     * Soft delete. 204; 400 for an invalid target (or any target on a group); 404 when not the user's; 409 for a group
+     * with children, the last child, or a child with transactions and no {@code targetCategoryId}.
+     */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@AuthenticationPrincipal Jwt jwt, @PathVariable("id") UUID id,
+                                       @RequestParam(name = "targetCategoryId", required = false) UUID targetCategoryId) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        categoryService.delete(userId, id, targetCategoryId);
         return ResponseEntity.noContent().build();
     }
 }

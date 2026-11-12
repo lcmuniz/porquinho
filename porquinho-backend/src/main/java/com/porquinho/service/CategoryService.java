@@ -5,6 +5,8 @@ import com.porquinho.exception.BadRequestException;
 import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.CategoryRepository;
+import com.porquinho.repository.TransactionRepository;
+import com.porquinho.repository.UserClassificationPatternRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -47,6 +49,10 @@ public class CategoryService {
     public static final String LAST_CHILD_MESSAGE = "Mantenha ao menos uma categoria";
     public static final String GROUP_NOT_EMPTY_MESSAGE = "Exclua ou mova as categorias deste grupo antes";
     public static final String NOT_FOUND_MESSAGE = "Categoria não encontrada";
+    public static final String HAS_TRANSACTIONS_MESSAGE =
+        "Esta categoria tem transações. Escolha para qual categoria elas vão antes de excluir.";
+    public static final String TARGET_INVALID_MESSAGE =
+        "Categoria de destino inválida. Recarregue a página e tente novamente.";
 
     private static final int NAME_MAX_LENGTH = 50;
 
@@ -57,9 +63,19 @@ public class CategoryService {
     private static final Pattern EDGE_SPACES = Pattern.compile("^[\\s\\p{Z}\\p{Cf}]+|[\\s\\p{Z}\\p{Cf}]+$");
 
     private final CategoryRepository categoryRepository;
+    private final TransactionRepository transactionRepository;
+    private final UserClassificationPatternRepository patternRepository;
+    private final BudgetService budgetService;
+    private final BudgetBalanceCache balanceCache;
 
-    public CategoryService(CategoryRepository categoryRepository) {
+    public CategoryService(CategoryRepository categoryRepository, TransactionRepository transactionRepository,
+                           UserClassificationPatternRepository patternRepository, BudgetService budgetService,
+                           BudgetBalanceCache balanceCache) {
         this.categoryRepository = categoryRepository;
+        this.transactionRepository = transactionRepository;
+        this.patternRepository = patternRepository;
+        this.budgetService = budgetService;
+        this.balanceCache = balanceCache;
     }
 
     /** The user's active categories (groups and children), by name then id. */
@@ -219,21 +235,50 @@ public class CategoryService {
         return categoryRepository.save(category);
     }
 
+    /** The active transactions of the user's active child category (retro Epic 6 A4); 404 otherwise. */
+    @Transactional(readOnly = true)
+    public long transactionCount(UUID userId, UUID categoryId) {
+        Category category = find(categoryRepository.findActiveByUserId(userId), categoryId);
+        if (category.getParentCategoryId() == null) {
+            throw new ResourceNotFoundException(NOT_FOUND_MESSAGE);
+        }
+        return transactionRepository.countActiveByCategory(userId, categoryId);
+    }
+
     /**
-     * Soft delete (no cascade). A group can only be removed when it has no active children (409); removing an
-     * empty group does not count toward the minimum. A child cannot be removed when it is the user's last active
-     * child (409): the budget needs at least one envelope. 404 when the category is not the user's active one.
+     * Soft delete. A group can only be removed when it has no active children (409) and never takes a target (400);
+     * removing an empty group does not count toward the minimum. A child cannot be removed when it is the user's last
+     * active child (409): the budget needs at least one envelope. 404 when the category is not the user's active one.
+     * Retro Epic 6 A4: a child with transactions needs {@code targetCategoryId} (409 without it), another active child
+     * of the user (400 otherwise). With a target, its transactions, its allocations of the current and future months
+     * and its classification patterns move to the target; without one, nothing is reclassified.
      */
     @Transactional
-    public void delete(UUID userId, UUID categoryId) {
+    public void delete(UUID userId, UUID categoryId, UUID targetCategoryId) {
+        // same lock as the budget's save/reallocate: serializes the allocation move with them
         List<Category> active = categoryRepository.findActiveByUserIdForUpdate(userId);
         Category category = find(active, categoryId);
         if (category.getParentCategoryId() == null) {
+            if (targetCategoryId != null) {
+                throw new BadRequestException(TARGET_INVALID_MESSAGE);
+            }
             if (active.stream().anyMatch(c -> category.getId().equals(c.getParentCategoryId()))) {
                 throw new ConflictException(GROUP_NOT_EMPTY_MESSAGE);
             }
         } else if (active.stream().filter(c -> c.getParentCategoryId() != null).count() <= 1) {
             throw new ConflictException(LAST_CHILD_MESSAGE);
+        } else if (targetCategoryId != null) {
+            boolean validTarget = !targetCategoryId.equals(categoryId) && active.stream()
+                .anyMatch(c -> c.getId().equals(targetCategoryId) && c.getParentCategoryId() != null);
+            if (!validTarget) {
+                throw new BadRequestException(TARGET_INVALID_MESSAGE);
+            }
+            transactionRepository.reassignCategory(userId, categoryId, targetCategoryId, OffsetDateTime.now());
+            budgetService.moveAllocations(userId, categoryId, targetCategoryId);
+            patternRepository.reassignCategory(userId, categoryId, targetCategoryId);
+            balanceCache.evict(userId);
+        } else if (transactionRepository.countActiveByCategory(userId, categoryId) > 0) {
+            throw new ConflictException(HAS_TRANSACTIONS_MESSAGE);
         }
         category.setDeletedAt(OffsetDateTime.now());
         categoryRepository.save(category);

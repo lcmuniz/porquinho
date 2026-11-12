@@ -291,8 +291,8 @@ class CategoryControllerTest {
         UUID ok = UUID.randomUUID();
         UUID missing = UUID.randomUUID();
         UUID last = UUID.randomUUID();
-        doThrow(new ResourceNotFoundException(CategoryService.NOT_FOUND_MESSAGE)).when(categoryService).delete(userId, missing);
-        doThrow(new ConflictException(CategoryService.LAST_CHILD_MESSAGE)).when(categoryService).delete(userId, last);
+        doThrow(new ResourceNotFoundException(CategoryService.NOT_FOUND_MESSAGE)).when(categoryService).delete(userId, missing, null);
+        doThrow(new ConflictException(CategoryService.LAST_CHILD_MESSAGE)).when(categoryService).delete(userId, last, null);
 
         mockMvc.perform(delete("/api/v1/categories/" + ok).with(authentication(authToken)))
             .andExpect(status().isNoContent());
@@ -301,6 +301,21 @@ class CategoryControllerTest {
         mockMvc.perform(delete("/api/v1/categories/" + last).with(authentication(authToken)))
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.detail").value("Mantenha ao menos uma categoria"));
-        verify(categoryService).delete(userId, ok);
+        verify(categoryService).delete(userId, ok, null);
+    }
+
+    @Test
+    void deletePassesTheTargetAndUsageReturnsTheTransactionCount() throws Exception {
+        UUID id = UUID.randomUUID();
+        UUID target = UUID.randomUUID();
+        when(categoryService.transactionCount(userId, id)).thenReturn(3L);
+
+        mockMvc.perform(get("/api/v1/categories/" + id + "/usage").with(authentication(authToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.transactionCount").value(3));
+        mockMvc.perform(delete("/api/v1/categories/" + id).param("targetCategoryId", target.toString())
+                .with(authentication(authToken)))
+            .andExpect(status().isNoContent());
+        verify(categoryService).delete(userId, id, target);
     }
 }

@@ -62,6 +62,8 @@ class BudgetIntegrationTest {
     private TransactionService transactionService;
     @Autowired
     private TransactionImportReviewService importReviewService;
+    @Autowired
+    private CategoryService categoryService;
 
     private final List<UUID> users = new ArrayList<>();
     private UUID userId;
@@ -738,5 +740,130 @@ class BudgetIntegrationTest {
             assertThatThrownBy(() -> service.history(userId, id))
                 .isInstanceOf(ResourceNotFoundException.class).hasMessage(CategoryService.NOT_FOUND_MESSAGE);
         }
+    }
+
+    // --- retro Epic 6 A4: removing a child with a target category moves its transactions, allocations and patterns ---
+
+    private void allocationRow(UUID category, YearMonth month, String amount) {
+        jdbc.update("INSERT INTO budget_allocations (user_id, category_id, month_year, allocated_amount) VALUES (?, ?, ?, ?)",
+            userId, category, month.atDay(1), new BigDecimal(amount));
+    }
+
+    private String categoryOf(String pattern) {
+        return jdbc.queryForObject("SELECT preferred_category_id FROM user_classification_patterns WHERE user_id = ? "
+            + "AND description_pattern = ?", UUID.class, userId, pattern).toString();
+    }
+
+    private boolean removed(UUID category) {
+        return jdbc.queryForObject("SELECT deleted_at IS NOT NULL FROM categories WHERE id = ?", Boolean.class, category);
+    }
+
+    @Test
+    void deletingWithATargetMovesTransactionsOpenMonthAllocationsAndPatternsKeepingEachTotal() {
+        YearMonth next = CURRENT.plusMonths(1);
+        UUID account = newAccount("1000", false);
+        UUID card = newCard(false);
+        row(account, null, food, CURRENT, "40.00", "DEBIT", "REGULAR", "CONFIRMED", false);
+        row(null, card, food, next, "25.00", "DEBIT", "REGULAR", "CONFIRMED", true);  // future installment
+        allocationRow(food, PAST, "100");
+        allocationRow(food, CURRENT, "300");
+        allocationRow(transport, CURRENT, "200");
+        allocationRow(food, next, "50");
+        jdbc.update("INSERT INTO user_classification_patterns (user_id, description_pattern, preferred_category_id) "
+            + "VALUES (?, 'mercado', ?)", userId, food);
+        BudgetResponse before = service.get(userId, CURRENT.toString());  // warms the spent cache
+        BigDecimal nextTotal = service.get(userId, next.toString()).totalAllocated();
+        assertThat(categoryService.transactionCount(userId, food)).isEqualTo(2);
+
+        categoryService.delete(userId, food, transport);
+
+        assertThat(removed(food)).isTrue();
+        BudgetResponse after = service.get(userId, CURRENT.toString());
+        assertThat(after.categories()).extracting(BudgetResponse.CategoryBudget::categoryId).containsExactly(transport);
+        assertThat(after.totalAllocated()).isEqualByComparingTo(before.totalAllocated());
+        assertThat(of(after, transport).allocated()).isEqualByComparingTo("500");
+        assertThat(of(after, transport).spent()).isEqualByComparingTo("40.00");  // the cache was evicted
+        BudgetResponse afterNext = service.get(userId, next.toString());
+        assertThat(afterNext.totalAllocated()).isEqualByComparingTo(nextTotal);
+        assertThat(of(afterNext, transport).allocated()).isEqualByComparingTo("50");  // row created
+        assertThat(of(afterNext, transport).committed()).isEqualByComparingTo("25.00");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM transactions WHERE user_id = ? AND category_id = ?",
+            Integer.class, userId, food)).isZero();
+        // the closed month keeps food's row as history
+        assertThat(jdbc.queryForList("SELECT month_year FROM budget_allocations WHERE category_id = ?", java.sql.Date.class,
+            food)).containsExactly(java.sql.Date.valueOf(PAST.atDay(1)));
+        assertThat(reallocations()).isEqualTo(2);
+        assertThat(categoryOf("mercado")).isEqualTo(transport.toString());
+    }
+
+    @Test
+    void aZeroAllocationMovesWithoutARecordAndAFutureAmountIsAddedToTheTargetsRow() {
+        YearMonth next = CURRENT.plusMonths(1);
+        allocationRow(food, CURRENT, "0");
+        allocationRow(food, next, "50");
+        allocationRow(transport, next, "20");
+
+        categoryService.delete(userId, food, transport);
+
+        assertThat(removed(food)).isTrue();
+        assertThat(of(service.get(userId, next.toString()), transport).allocated()).isEqualByComparingTo("70");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM budget_allocations WHERE category_id = ? AND month_year = ?",
+            Integer.class, food, CURRENT.atDay(1))).isZero();
+        assertThat(reallocations()).isEqualTo(1);
+    }
+
+    @Test
+    void deletingAChildWithTransactionsWithoutATargetIs409AndChangesNothing() {
+        UUID account = newAccount("1000", false);
+        row(account, null, food, CURRENT, "40.00", "DEBIT", "REGULAR", "CONFIRMED", false);
+        allocationRow(food, CURRENT, "300");
+
+        assertThatThrownBy(() -> categoryService.delete(userId, food, null))
+            .isInstanceOf(ConflictException.class).hasMessage(CategoryService.HAS_TRANSACTIONS_MESSAGE);
+
+        assertThat(removed(food)).isFalse();
+        assertThat(allocated(food)).isEqualByComparingTo("300");
+        assertThat(of(service.get(userId, CURRENT.toString()), food).spent()).isEqualByComparingTo("40.00");
+    }
+
+    @Test
+    void anInvalidTargetIs400AndChangesNothing() {
+        UUID account = newAccount("1000", false);
+        row(account, null, food, CURRENT, "40.00", "DEBIT", "REGULAR", "CONFIRMED", false);
+        UUID gone = newCategory(userId, "Lazer", group);
+        jdbc.update("UPDATE categories SET deleted_at = NOW() WHERE id = ?", gone);
+        UUID otherUser = newUser();
+        UUID foreign = newCategory(otherUser, "Mercado", newCategory(otherUser, "Outros", null));
+
+        for (UUID invalid : List.of(food, group, gone, foreign)) {
+            assertThatThrownBy(() -> categoryService.delete(userId, food, invalid))
+                .isInstanceOf(BadRequestException.class).hasMessage(CategoryService.TARGET_INVALID_MESSAGE);
+        }
+
+        assertThat(removed(food)).isFalse();
+        assertThat(of(service.get(userId, CURRENT.toString()), food).spent()).isEqualByComparingTo("40.00");
+    }
+
+    @Test
+    void aGroupNeverTakesATargetAndTheUsageOfAGroupIs404() {
+        UUID empty = newCategory(userId, "Vazio", null);
+
+        assertThatThrownBy(() -> categoryService.delete(userId, empty, food))
+            .isInstanceOf(BadRequestException.class).hasMessage(CategoryService.TARGET_INVALID_MESSAGE);
+        assertThat(removed(empty)).isFalse();
+        assertThatThrownBy(() -> categoryService.transactionCount(userId, empty))
+            .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void deletingAChildWithoutTransactionsNeedsNoTargetAndMovesNothing() {
+        allocationRow(food, CURRENT, "300");
+        assertThat(categoryService.transactionCount(userId, food)).isZero();
+
+        categoryService.delete(userId, food, null);
+
+        assertThat(removed(food)).isTrue();
+        assertThat(allocated(transport)).isNull();
+        assertThat(reallocations()).isZero();
     }
 }

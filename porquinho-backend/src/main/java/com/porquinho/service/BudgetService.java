@@ -170,6 +170,33 @@ public class BudgetService {
     }
 
     /**
+     * Retro Epic 6 A4: the child {@code fromId} is being removed, so its allocation of the current month and of the
+     * future ones is added to {@code toId}'s (the row is created when missing) and recorded as a reallocation; each
+     * month's total stays the same. Closed months keep their rows as history. No lock of its own: runs in the caller's
+     * transaction, which already holds {@code findActiveByUserIdForUpdate}.
+     */
+    void moveAllocations(UUID userId, UUID fromId, UUID toId) {
+        LocalDate current = YearMonth.now(clock.withZone(SAO_PAULO)).atDay(1);
+        for (BudgetAllocation source : budgetAllocationRepository
+                .findByUserIdAndCategoryIdAndMonthYearGreaterThanEqual(userId, fromId, current)) {
+            LocalDate monthYear = source.getMonthYear();
+            BigDecimal amount = source.getAllocatedAmount();
+            BudgetAllocation target = budgetAllocationRepository.findByUserIdAndMonthYear(userId, monthYear).stream()
+                .filter(a -> a.getCategoryId().equals(toId)).findFirst().orElse(null);
+            if (target == null) {
+                target = new BudgetAllocation(userId, toId, monthYear, amount);
+            } else {
+                target.setAllocatedAmount(target.getAllocatedAmount().add(amount));
+            }
+            budgetAllocationRepository.delete(source);
+            budgetAllocationRepository.save(target);
+            if (amount.signum() > 0) {
+                budgetReallocationRepository.save(new BudgetReallocation(userId, fromId, toId, monthYear, amount));
+            }
+        }
+    }
+
+    /**
      * Every month of the child category with an allocation, up to the current one, oldest first (Story 6.8). 404 for a
      * group, removed, foreign or missing category. Read straight from the database (no cache): two queries.
      */

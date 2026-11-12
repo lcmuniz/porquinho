@@ -19,6 +19,7 @@ import {
   deleteCategory,
   getCategoryOptions,
   getCategorySuggestions,
+  getCategoryUsage,
   listCategories,
   updateCategory,
 } from '../categoryService'
@@ -72,6 +73,17 @@ describe('categoryService', () => {
 
   it('deleteCategory faz DELETE em /api/v1/categories/{id}', async () => {
     await expect(deleteCategory('c1')).resolves.toBeUndefined()
-    expect(mockDelete).toHaveBeenCalledWith('/api/v1/categories/c1')
+    expect(mockDelete).toHaveBeenCalledWith('/api/v1/categories/c1', undefined)
+  })
+
+  it('deleteCategory com destino envia targetCategoryId', async () => {
+    await deleteCategory('c1', 'c2')
+    expect(mockDelete).toHaveBeenCalledWith('/api/v1/categories/c1', { params: { targetCategoryId: 'c2' } })
+  })
+
+  it('getCategoryUsage faz GET em /api/v1/categories/{id}/usage', async () => {
+    mockGet.mockResolvedValueOnce({ data: { transactionCount: 3 } })
+    await expect(getCategoryUsage('c1')).resolves.toEqual({ transactionCount: 3 })
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/categories/c1/usage')
   })
 })

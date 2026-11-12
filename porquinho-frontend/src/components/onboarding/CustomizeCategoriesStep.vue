@@ -178,6 +178,23 @@
             }}
           </DialogDescription>
         </DialogHeader>
+        <div v-if="deleteUsage !== null && deleteUsage > 0" class="space-y-1">
+          <label for="delete-target" class="text-sm font-medium text-gray-900">
+            {{ deleteUsage === 1 ? '1 transação vai' : `${deleteUsage} transações vão` }} para:
+          </label>
+          <select
+            id="delete-target"
+            v-model="deleteTarget"
+            class="flex min-h-[44px] w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:outline-none"
+            data-testid="delete-target"
+            :disabled="deleting"
+          >
+            <option value="" disabled>Escolha uma categoria</option>
+            <option v-for="child in deleteTargets" :key="child.id" :value="child.id">
+              {{ child.categoryName }}
+            </option>
+          </select>
+        </div>
         <DialogFooter>
           <Button
             variant="outline"
@@ -191,7 +208,7 @@
           <Button
             class="min-h-[44px] bg-red-600 text-white hover:bg-red-700"
             data-testid="confirm-delete-button"
-            :disabled="deleting"
+            :disabled="!canConfirmDelete"
             @click="confirmDelete"
           >
             {{ deleting ? 'Excluindo...' : 'Excluir' }}
@@ -220,6 +237,7 @@ import {
   createCategory,
   deleteCategory,
   getCategoryOptions,
+  getCategoryUsage,
   listCategories,
 } from '@/services/categoryService'
 import { completeCustomization } from '@/services/onboardingService'
@@ -252,6 +270,9 @@ const adding = ref(false)
 
 const pendingDelete = ref<Category | null>(null)
 const deleting = ref(false)
+/** Retro Epic 6 A4: transações da filha a excluir (null = carregando) e a filha que as recebe. */
+const deleteUsage = ref<number | null>(null)
+const deleteTarget = ref('')
 
 /** Requisições de edição em andamento (true = deu certo): Próximo espera por elas antes de avançar. */
 const pending = new Set<Promise<boolean>>()
@@ -268,6 +289,19 @@ const groups = computed(() =>
       parent,
       children: categories.value.filter((c) => c.parentCategoryId === parent.id).sort(byName),
     })),
+)
+
+const deleteTargets = computed(() =>
+  categories.value
+    .filter((c) => c.parentCategoryId !== null && c.id !== pendingDelete.value?.id)
+    .sort(byName),
+)
+
+const canConfirmDelete = computed(
+  () =>
+    !deleting.value &&
+    deleteUsage.value !== null &&
+    (deleteUsage.value === 0 || deleteTarget.value !== ''),
 )
 
 interface ApiError {
@@ -347,8 +381,21 @@ async function submitNew(parent: Category) {
   }
 }
 
-function askDelete(category: Category) {
+async function askDelete(category: Category) {
   pendingDelete.value = category
+  deleteTarget.value = ''
+  if (category.parentCategoryId === null) {
+    deleteUsage.value = 0
+    return
+  }
+  deleteUsage.value = null
+  let count = 0
+  try {
+    count = (await getCategoryUsage(category.id)).transactionCount
+  } catch {
+    // Sem a contagem segue sem destino: o 409 do backend avisa se houver transações
+  }
+  if (pendingDelete.value?.id === category.id) deleteUsage.value = count
 }
 
 function closeDelete() {
@@ -360,7 +407,7 @@ async function confirmDelete() {
   const target = pendingDelete.value
   if (!target || deleting.value) return
   deleting.value = true
-  const request = deleteCategory(target.id)
+  const request = deleteCategory(target.id, deleteTarget.value || undefined)
   track(request)
   try {
     await request

@@ -326,6 +326,21 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
     int markFuturesRemoved(@Param("userId") UUID userId, @Param("groupId") UUID groupId,
                            @Param("now") OffsetDateTime now);
 
+    /** The user's active transactions (any review status, future installments included) in the category (retro Epic 6 A4). */
+    @Query("SELECT COUNT(t) FROM Transaction t WHERE t.userId = :userId AND t.categoryId = :categoryId "
+        + "AND t.deletedAt IS NULL")
+    long countActiveByCategory(@Param("userId") UUID userId, @Param("categoryId") UUID categoryId);
+
+    /**
+     * Retro Epic 6 A4: the category {@code fromId} is being removed, so every row of the user in it moves to
+     * {@code toId}: removed rows and future installments included, so nothing keeps pointing at a removed category.
+     */
+    @Modifying(flushAutomatically = true)
+    @Query("UPDATE Transaction t SET t.categoryId = :toId, t.updatedAt = :now "
+        + "WHERE t.userId = :userId AND t.categoryId = :fromId")
+    int reassignCategory(@Param("userId") UUID userId, @Param("fromId") UUID fromId, @Param("toId") UUID toId,
+                         @Param("now") OffsetDateTime now);
+
     /**
      * Hard-delete the user's transactions (LGPD account purge, Story 5.4). Must run BEFORE deleting the imports,
      * accounts, cards, categories and the user row (FKs to all of them).
