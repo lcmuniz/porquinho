@@ -30,6 +30,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -223,6 +224,40 @@ class GoalControllerTest {
                 .content(body("\"\\u200B\\uFEFF\"", "100", "null", "null")))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.errors.name").value("Informe o nome da meta"));
+
+        verifyNoInteractions(goalService);
+    }
+
+    @Test
+    void postCleansTheDescriptionAndBlankBecomesNull() throws Exception {
+        Goal created = goal("Viagem", "100.00", null, null);
+        created.setDescription("Viagem");
+        when(goalService.create(eq(userId), any(CreateGoalRequest.class))).thenReturn(created);
+
+        mockMvc.perform(post("/api/v1/goals").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Viagem\",\"targetAmount\":100,\"description\":\"  Viagem  \"}"))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.description").value("Viagem"))
+            .andExpect(jsonPath("$.currentAmount").value(0.0));
+        mockMvc.perform(post("/api/v1/goals").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Viagem\",\"targetAmount\":100,\"description\":\"   \"}"))
+            .andExpect(status().isCreated());
+
+        ArgumentCaptor<CreateGoalRequest> captor = ArgumentCaptor.forClass(CreateGoalRequest.class);
+        verify(goalService, times(2)).create(eq(userId), captor.capture());
+        assertThat(captor.getAllValues().get(0).description()).isEqualTo("Viagem");
+        assertThat(captor.getAllValues().get(1).description()).isNull();
+    }
+
+    @Test
+    void descriptionLongerThan500Is400OnTheField() throws Exception {
+        mockMvc.perform(post("/api/v1/goals").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Meta\",\"targetAmount\":100,\"description\":\"" + "a".repeat(501) + "\"}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errors.description").value("Use no máximo 500 caracteres na descrição"));
 
         verifyNoInteractions(goalService);
     }

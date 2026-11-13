@@ -215,16 +215,18 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ChevronLeft, Target } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { cleanCategoryName as cleanName } from '@/lib/categoryName'
 import {
   addMonths,
   formatMonthYear,
+  GOAL_FIELDS,
   monthsUntil,
   parseISODate,
   projectedCompletion,
   suggestedMonthlyAllocation,
   todayInSaoPaulo,
   toISODate,
+  validateGoalForm,
+  type GoalField,
 } from '@/lib/goalPlan'
 import { formatBRL, formatBRLInput, parseBRL } from '@/lib/money'
 import { createGoal, listGoals } from '@/services/goalService'
@@ -248,8 +250,8 @@ const DEFAULT_NAME = 'Reserva de Emergência'
 const DEFAULT_TARGET = 25000
 const DEFAULT_MONTHS = 12
 
-type Field = 'name' | 'targetAmount' | 'targetDate' | 'monthlyAllocation'
-const FIELDS: Field[] = ['name', 'targetAmount', 'targetDate', 'monthlyAllocation']
+// Sem campo de descrição no onboarding
+type Field = Exclude<GoalField, 'description'>
 
 // "Hoje" em São Paulo, como no backend (NotPastInSaoPaulo)
 const today = todayInSaoPaulo()
@@ -317,51 +319,12 @@ function clearErrors() {
   for (const key of Object.keys(errors) as Field[]) delete errors[key]
 }
 
-/** Validação local, com as mesmas regras e mensagens do backend. */
-function validate(): {
-  name: string
-  targetAmount: number
-  targetDate: string | null
-  monthlyAllocation: number | null
-} | null {
+/** Validação local, com as mesmas regras e mensagens do backend (sem descrição: ela não vai no payload). */
+function validate() {
   clearErrors()
-  const name = cleanName(form.name)
-  if (!name) errors.name = 'Informe o nome da meta'
-  else if (name.length > 100) errors.name = 'Use no máximo 100 caracteres no nome da meta'
-
-  let targetAmount: number | null = null
-  if (!form.targetAmount.trim()) {
-    errors.targetAmount = 'Informe o valor-alvo da meta'
-  } else {
-    targetAmount = parseBRL(form.targetAmount)
-    if (targetAmount === null) {
-      errors.targetAmount = 'Digite o valor no formato 25.000,00 (até 2 casas depois da vírgula)'
-    } else if (targetAmount <= 0) {
-      errors.targetAmount = 'O valor-alvo precisa ser maior que zero'
-    }
-  }
-
-  let targetDate: string | null = null
-  if (form.targetDate) {
-    const date = parseISODate(form.targetDate)
-    if (date === null) errors.targetDate = 'Escolha uma data válida'
-    else if (date < today) errors.targetDate = 'Escolha uma data de hoje em diante'
-    else targetDate = form.targetDate
-  }
-
-  let monthlyAllocation: number | null = null
-  if (form.monthlyAllocation.trim()) {
-    monthlyAllocation = parseBRL(form.monthlyAllocation)
-    if (monthlyAllocation === null) {
-      errors.monthlyAllocation =
-        'Digite o aporte no formato 2.083,34 (até 2 casas depois da vírgula)'
-    } else if (monthlyAllocation < 0) {
-      errors.monthlyAllocation = 'O aporte mensal não pode ser negativo'
-    }
-  }
-
-  if (Object.keys(errors).length > 0 || targetAmount === null) return null
-  return { name, targetAmount, targetDate, monthlyAllocation }
+  const result = validateGoalForm(form, today)
+  Object.assign(errors, result.errors)
+  return result.values
 }
 
 async function createAndFinish() {
@@ -377,7 +340,7 @@ async function createAndFinish() {
     } catch (err) {
       finishing.value = null
       const fieldErrors = (err as ApiError)?.response?.data?.errors ?? {}
-      const known = Object.entries(fieldErrors).filter(([key]) => FIELDS.includes(key as Field))
+      const known = Object.entries(fieldErrors).filter(([key]) => GOAL_FIELDS.includes(key as GoalField))
       if ((err as ApiError)?.response?.status === 400 && known.length > 0) {
         Object.assign(errors, Object.fromEntries(known))
       } else {

@@ -104,7 +104,7 @@ class GoalOnboardingIntegrationTest {
 
     private Goal addGoal(UUID owner, String name) {
         Goal goal = goalService.create(owner, new CreateGoalRequest(name, new BigDecimal("25000"),
-            LocalDate.now(ZoneId.of("America/Sao_Paulo")).plusYears(1), new BigDecimal("2083.34")));
+            LocalDate.now(ZoneId.of("America/Sao_Paulo")).plusYears(1), new BigDecimal("2083.34"), null));
         goalRepository.flush();
         return goal;
     }

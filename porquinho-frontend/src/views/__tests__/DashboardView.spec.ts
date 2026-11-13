@@ -170,6 +170,19 @@ describe('DashboardView', () => {
     expect(link?.text()).toBe('Categorias')
   })
 
+  it('a navegação tem o link "Metas" para /metas (Story 8.1)', async () => {
+    mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const link = wrapper
+      .findAllComponents(RouterLinkStub)
+      .find((l) => l.attributes('data-testid') === 'goals-link')
+    expect(link?.props('to')).toBe('/metas')
+    expect(link?.text()).toBe('Metas')
+  })
+
   it('a navegação tem o link "Orçamento" para /orcamento (Story 6.3)', async () => {
     mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
 

@@ -17,4 +17,6 @@ export interface CreateGoalInput {
   targetAmount: number
   targetDate: string | null
   monthlyAllocation: number | null
+  /** Story 8.1: opcional, até 500 caracteres; vazia vira null no backend. */
+  description?: string | null
 }

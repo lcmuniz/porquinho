@@ -3,6 +3,9 @@
  * datas de calendário (AAAA-MM-DD) representadas como meia-noite local; "hoje" é o dia em America/Sao_Paulo,
  * o mesmo critério do backend (NotPastInSaoPaulo).
  */
+import { cleanCategoryName } from './categoryName'
+import { parseBRL } from './money'
+import type { CreateGoalInput } from '@/types/goal'
 
 /** Acima disso a previsão fica longe demais para mostrar (e para o Date do navegador). */
 export const MAX_FORECAST_MONTHS = 1200
@@ -84,4 +87,70 @@ const MONTH_YEAR = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'nume
 /** Mês e ano por extenso, ex.: "novembro de 2027". */
 export function formatMonthYear(date: Date): string {
   return MONTH_YEAR.format(date)
+}
+
+export type GoalField = 'name' | 'targetAmount' | 'targetDate' | 'monthlyAllocation' | 'description'
+export const GOAL_FIELDS: GoalField[] = ['name', 'targetAmount', 'targetDate', 'monthlyAllocation', 'description']
+
+/** Campos do formulário como texto. Sem `description` (onboarding), ela não vai no payload. */
+export interface GoalForm {
+  name: string
+  targetAmount: string
+  targetDate: string
+  monthlyAllocation: string
+  description?: string
+}
+
+/**
+ * Story 8.1: validação local do formulário de meta (onboarding e tela de metas), com as mesmas regras e
+ * mensagens do backend (CreateGoalRequest). `values` é null quando há algum erro.
+ */
+export function validateGoalForm(
+  form: GoalForm,
+  today: Date,
+): { values: CreateGoalInput | null; errors: Partial<Record<GoalField, string>> } {
+  const errors: Partial<Record<GoalField, string>> = {}
+  const name = cleanCategoryName(form.name)
+  if (!name) errors.name = 'Informe o nome da meta'
+  else if (name.length > 100) errors.name = 'Use no máximo 100 caracteres no nome da meta'
+
+  let targetAmount: number | null = null
+  if (!form.targetAmount.trim()) {
+    errors.targetAmount = 'Informe o valor-alvo da meta'
+  } else {
+    targetAmount = parseBRL(form.targetAmount)
+    if (targetAmount === null) {
+      errors.targetAmount = 'Digite o valor no formato 25.000,00 (até 2 casas depois da vírgula)'
+    } else if (targetAmount <= 0) {
+      errors.targetAmount = 'O valor-alvo precisa ser maior que zero'
+    }
+  }
+
+  let targetDate: string | null = null
+  if (form.targetDate) {
+    const date = parseISODate(form.targetDate)
+    if (date === null) errors.targetDate = 'Escolha uma data válida'
+    else if (date < today) errors.targetDate = 'Escolha uma data de hoje em diante'
+    else targetDate = form.targetDate
+  }
+
+  let monthlyAllocation: number | null = null
+  if (form.monthlyAllocation.trim()) {
+    monthlyAllocation = parseBRL(form.monthlyAllocation)
+    if (monthlyAllocation === null) {
+      errors.monthlyAllocation = 'Digite o aporte no formato 2.083,34 (até 2 casas depois da vírgula)'
+    } else if (monthlyAllocation < 0) {
+      errors.monthlyAllocation = 'O aporte mensal não pode ser negativo'
+    }
+  }
+
+  const values: CreateGoalInput = { name, targetAmount: targetAmount ?? 0, targetDate, monthlyAllocation }
+  if (form.description !== undefined) {
+    const description = cleanCategoryName(form.description)
+    if (description.length > 500) errors.description = 'Use no máximo 500 caracteres na descrição'
+    values.description = description || null
+  }
+
+  if (Object.keys(errors).length > 0 || targetAmount === null) return { values: null, errors }
+  return { values, errors }
 }

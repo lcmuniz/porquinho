@@ -9,6 +9,7 @@ import {
   todayInSaoPaulo,
   suggestedMonthlyAllocation,
   toISODate,
+  validateGoalForm,
 } from '../goalPlan'
 
 const d = (text: string) => parseISODate(text)!
@@ -72,5 +73,57 @@ describe('goalPlan', () => {
 
   it('formata mês e ano por extenso', () => {
     expect(formatMonthYear(d('2027-11-02'))).toBe('novembro de 2027')
+  })
+
+  describe('validateGoalForm', () => {
+    const today = d('2026-11-13')
+    const valid = { name: ' Viagem ', targetAmount: '12.000,00', targetDate: '2027-11-13', monthlyAllocation: '1.000,00' }
+
+    it('devolve os valores limpos e sem erros', () => {
+      expect(validateGoalForm({ ...valid, description: '  Praia  ' }, today)).toEqual({
+        values: {
+          name: 'Viagem',
+          targetAmount: 12000,
+          targetDate: '2027-11-13',
+          monthlyAllocation: 1000,
+          description: 'Praia',
+        },
+        errors: {},
+      })
+    })
+
+    it('descrição em branco vira null; sem campo de descrição ela fica fora do payload', () => {
+      expect(validateGoalForm({ ...valid, description: '   ' }, today).values?.description).toBeNull()
+      expect(validateGoalForm(valid, today).values).not.toHaveProperty('description')
+    })
+
+    it('data e aporte vazios viram null; hoje é aceito', () => {
+      expect(validateGoalForm({ ...valid, targetDate: '', monthlyAllocation: '' }, today).values).toMatchObject({
+        targetDate: null,
+        monthlyAllocation: null,
+      })
+      expect(validateGoalForm({ ...valid, targetDate: '2026-11-13' }, today).errors).toEqual({})
+    })
+
+    it('mensagens iguais às do backend', () => {
+      const result = validateGoalForm(
+        { name: '\u200B', targetAmount: '0', targetDate: '2026-11-12', monthlyAllocation: '-1', description: 'a'.repeat(501) },
+        today,
+      )
+      expect(result.values).toBeNull()
+      expect(result.errors).toEqual({
+        name: 'Informe o nome da meta',
+        targetAmount: 'O valor-alvo precisa ser maior que zero',
+        targetDate: 'Escolha uma data de hoje em diante',
+        monthlyAllocation: 'O aporte mensal não pode ser negativo',
+        description: 'Use no máximo 500 caracteres na descrição',
+      })
+      expect(validateGoalForm({ ...valid, targetAmount: '' }, today).errors.targetAmount).toBe(
+        'Informe o valor-alvo da meta',
+      )
+      expect(validateGoalForm({ ...valid, name: 'a'.repeat(101) }, today).errors.name).toBe(
+        'Use no máximo 100 caracteres no nome da meta',
+      )
+    })
   })
 })

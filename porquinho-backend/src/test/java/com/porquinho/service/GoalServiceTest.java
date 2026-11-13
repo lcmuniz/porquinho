@@ -46,7 +46,7 @@ class GoalServiceTest {
         LocalDate date = LocalDate.now().plusYears(1);
 
         service.create(userId, new CreateGoalRequest("  Reserva de Emergência ", new BigDecimal("25000"), date,
-            new BigDecimal("2083.4")));
+            new BigDecimal("2083.4"), null));
 
         Goal saved = savedGoal();
         assertEquals(userId, saved.getUserId());
@@ -64,7 +64,7 @@ class GoalServiceTest {
     void createAcceptsNoDateAndNoAllocation() {
         when(goalRepository.save(any(Goal.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        service.create(userId, new CreateGoalRequest("Viagem", new BigDecimal("8000.50"), null, null));
+        service.create(userId, new CreateGoalRequest("Viagem", new BigDecimal("8000.50"), null, null, null));
 
         Goal saved = savedGoal();
         assertNull(saved.getTargetDate());
@@ -87,7 +87,7 @@ class GoalServiceTest {
         // The controller rejects 3 decimals; a direct caller must not hit an ArithmeticException
         when(goalRepository.save(any(Goal.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        service.create(userId, new CreateGoalRequest("Meta", new BigDecimal("10.005"), null, new BigDecimal("1.004")));
+        service.create(userId, new CreateGoalRequest("Meta", new BigDecimal("10.005"), null, new BigDecimal("1.004"), null));
 
         Goal saved = savedGoal();
         assertEquals(new BigDecimal("10.01"), saved.getTargetAmount());
@@ -96,7 +96,22 @@ class GoalServiceTest {
 
     @Test
     void nameIsCleanedOfInvisibleFormatCharactersAtTheEdges() {
-        assertEquals("Reserva", new CreateGoalRequest("\u200B\uFEFF Reserva\u00A0\u200B", BigDecimal.ONE, null, null).name());
-        assertEquals("", new CreateGoalRequest("\u200B\uFEFF", BigDecimal.ONE, null, null).name());
+        assertEquals("Reserva", new CreateGoalRequest("\u200B\uFEFF Reserva\u00A0\u200B", BigDecimal.ONE, null, null, null).name());
+        assertEquals("", new CreateGoalRequest("\u200B\uFEFF", BigDecimal.ONE, null, null, null).name());
+    }
+
+    @Test
+    void createStoresTheCleanedDescription() {
+        when(goalRepository.save(any(Goal.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.create(userId, new CreateGoalRequest("Viagem", BigDecimal.TEN, null, null, "  Viagem  "));
+
+        assertEquals("Viagem", savedGoal().getDescription());
+    }
+
+    @Test
+    void blankDescriptionBecomesNull() {
+        assertNull(new CreateGoalRequest("Meta", BigDecimal.ONE, null, null, " \u00A0\u200B ").description());
+        assertNull(new CreateGoalRequest("Meta", BigDecimal.ONE, null, null, null).description());
     }
 }

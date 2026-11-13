@@ -29,11 +29,13 @@ public class GoalService {
      */
     @Transactional
     public Goal create(UUID userId, CreateGoalRequest request) {
-        return goalRepository.save(new Goal(userId, request.name(),
+        Goal goal = new Goal(userId, request.name(),
             request.targetAmount().setScale(2, RoundingMode.HALF_UP),
             request.targetDate(),
             request.monthlyAllocation() == null ? null
-                : request.monthlyAllocation().setScale(2, RoundingMode.HALF_UP)));
+                : request.monthlyAllocation().setScale(2, RoundingMode.HALF_UP));
+        goal.setDescription(request.description());
+        return goalRepository.save(goal);
     }
 
     /** The user's active goals, oldest first. */

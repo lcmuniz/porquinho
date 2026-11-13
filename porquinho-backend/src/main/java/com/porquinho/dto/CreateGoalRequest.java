@@ -16,7 +16,8 @@ import java.time.LocalDate;
  * deserialization) like category names: NFC, no Unicode spaces (NBSP) nor format characters (U+200B, U+FEFF)
  * at the edges, so an invisible-only name is blank. The target amount must be > 0 and fit DECIMAL(15,2);
  * the target date is optional and may not be before today in America/Sao_Paulo; the monthly allocation is
- * optional, >= 0 and fits DECIMAL(15,2).
+ * optional, >= 0 and fits DECIMAL(15,2). Story 8.1: the optional description (up to 500 characters) is cleaned
+ * the same way and a blank one becomes null.
  */
 public record CreateGoalRequest(
     @NotBlank(message = "Informe o nome da meta")
@@ -35,9 +36,14 @@ public record CreateGoalRequest(
     @DecimalMin(value = "0", message = "O aporte mensal não pode ser negativo")
     @Digits(integer = 13, fraction = 2,
         message = "Informe o aporte mensal com até 2 casas decimais e no máximo 13 dígitos antes da vírgula")
-    BigDecimal monthlyAllocation
+    BigDecimal monthlyAllocation,
+
+    @Size(max = 500, message = "Use no máximo 500 caracteres na descrição")
+    String description
 ) {
     public CreateGoalRequest {
         name = CategoryService.cleanName(name);
+        description = CategoryService.cleanName(description);
+        if (description != null && description.isEmpty()) description = null;
     }
 }

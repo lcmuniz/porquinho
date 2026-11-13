@@ -116,6 +116,13 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      // Story 8.1: metas financeiras (lista e criação)
+      path: '/metas',
+      name: 'goals',
+      component: () => import('../views/GoalsView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       // Story 6.3: orçamento mensal por categoria
       path: '/orcamento',
       name: 'budget',
