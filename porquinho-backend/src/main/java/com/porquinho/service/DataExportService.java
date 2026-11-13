@@ -15,6 +15,7 @@ import com.porquinho.entity.UserClassificationPattern;
 import com.porquinho.entity.Category;
 import com.porquinho.entity.CreditCard;
 import com.porquinho.entity.Goal;
+import com.porquinho.entity.GoalAllocation;
 import com.porquinho.entity.Reconciliation;
 import com.porquinho.entity.Transaction;
 import com.porquinho.entity.TransactionImport;
@@ -31,6 +32,7 @@ import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.AiClassificationHistoryRepository;
 import com.porquinho.repository.BudgetAllocationRepository;
+import com.porquinho.repository.GoalAllocationRepository;
 import com.porquinho.repository.BudgetReallocationRepository;
 import com.porquinho.repository.UserClassificationPatternRepository;
 import com.porquinho.repository.CategoryRepository;
@@ -96,6 +98,7 @@ public class DataExportService {
     private final UserClassificationPatternRepository userClassificationPatternRepository;
     private final BudgetAllocationRepository budgetAllocationRepository;
     private final BudgetReallocationRepository budgetReallocationRepository;
+    private final GoalAllocationRepository goalAllocationRepository;
     private final ObjectMapper objectMapper;
 
     @Value("${app.export.directory:./exports}")
@@ -130,7 +133,8 @@ public class DataExportService {
             AiClassificationHistoryRepository aiClassificationHistoryRepository,
             UserClassificationPatternRepository userClassificationPatternRepository,
             BudgetAllocationRepository budgetAllocationRepository,
-            BudgetReallocationRepository budgetReallocationRepository) {
+            BudgetReallocationRepository budgetReallocationRepository,
+            GoalAllocationRepository goalAllocationRepository) {
         this.dataExportRepository = dataExportRepository;
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -154,6 +158,7 @@ public class DataExportService {
         this.userClassificationPatternRepository = userClassificationPatternRepository;
         this.budgetAllocationRepository = budgetAllocationRepository;
         this.budgetReallocationRepository = budgetReallocationRepository;
+        this.goalAllocationRepository = goalAllocationRepository;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
         this.objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
@@ -232,7 +237,7 @@ public class DataExportService {
         metadata.put("user_id", userId.toString());
         metadata.put("data_version", "1.0");
         metadata.put("exported_tables", List.of("users", "user_sessions", "audit_logs", "subscriptions",
-            "billing_transactions", "onboarding_progress", "accounts", "account_balance_history", "transfers", "reconciliation_history", "credit_cards", "transaction_imports", "transactions", "ai_classification_history", "user_classification_patterns", "budget_allocations", "budget_reallocations", "categories", "goals"));
+            "billing_transactions", "onboarding_progress", "accounts", "account_balance_history", "transfers", "reconciliation_history", "credit_cards", "transaction_imports", "transactions", "ai_classification_history", "user_classification_patterns", "budget_allocations", "budget_reallocations", "categories", "goals", "goal_allocations"));
         data.put("metadata", metadata);
 
         // User profile (sanitized)
@@ -617,6 +622,22 @@ public class DataExportService {
             goalList.add(goalMap);
         }
         data.put("goals", goalList);
+
+        // Goal allocations (Story 8.2) - every stored column, oldest first; money as JSON numbers
+        List<Map<String, Object>> goalAllocationList = new ArrayList<>();
+        for (GoalAllocation allocation : goalAllocationRepository.findByUserIdOrdered(userId)) {
+            Map<String, Object> allocationMap = new LinkedHashMap<>();
+            allocationMap.put("id", allocation.getId() != null ? allocation.getId().toString() : null);
+            allocationMap.put("user_id", allocation.getUserId() != null ? allocation.getUserId().toString() : null);
+            allocationMap.put("goal_id", allocation.getGoalId() != null ? allocation.getGoalId().toString() : null);
+            allocationMap.put("month_year", allocation.getMonthYear() != null ? allocation.getMonthYear().toString() : null);
+            allocationMap.put("allocated_amount", allocation.getAllocatedAmount());
+            allocationMap.put("contributed_amount", allocation.getContributedAmount());
+            allocationMap.put("created_at", allocation.getCreatedAt() != null ? allocation.getCreatedAt().toString() : null);
+            allocationMap.put("updated_at", allocation.getUpdatedAt() != null ? allocation.getUpdatedAt().toString() : null);
+            goalAllocationList.add(allocationMap);
+        }
+        data.put("goal_allocations", goalAllocationList);
 
         return data;
     }

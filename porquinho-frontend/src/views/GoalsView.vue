@@ -3,8 +3,12 @@
     <div class="mx-auto max-w-3xl space-y-6">
       <div class="flex items-start justify-between gap-4">
         <div>
-          <h1 ref="heading" tabindex="-1" class="text-2xl font-semibold text-gray-900 outline-none">Metas</h1>
-          <p class="mt-1 text-sm text-gray-600">Seus objetivos financeiros e quanto falta para cada um</p>
+          <h1 ref="heading" tabindex="-1" class="text-2xl font-semibold text-gray-900 outline-none">
+            Metas
+          </h1>
+          <p class="mt-1 text-sm text-gray-600">
+            Seus objetivos financeiros e quanto falta para cada um
+          </p>
         </div>
         <div class="flex flex-wrap justify-end gap-2">
           <Button
@@ -63,39 +67,89 @@
         Você ainda não tem metas. Use Criar meta para definir a primeira.
       </p>
 
-      <ul v-else class="space-y-3">
-        <li
-          v-for="goal in goals"
-          :key="goal.id"
-          class="space-y-3 rounded-lg border border-gray-200 bg-white p-4"
-          :data-testid="`goal-${goal.id}`"
+      <template v-else>
+        <div
+          class="space-y-2 rounded-lg border border-gray-200 bg-white p-4 text-sm"
+          data-testid="goals-total"
         >
-          <div class="flex items-center gap-2">
-            <Target class="h-5 w-5 text-purple-600" aria-hidden="true" />
-            <h2 class="min-w-0 font-medium break-words text-gray-900">{{ goal.name }}</h2>
-          </div>
-          <p v-if="goal.description" class="text-sm break-words whitespace-pre-line text-gray-600">{{ goal.description }}</p>
-          <div
-            class="h-3 w-full overflow-hidden rounded-full bg-gray-100"
-            role="progressbar"
-            :aria-valuenow="percent(goal)"
-            aria-valuemin="0"
-            aria-valuemax="100"
-            :aria-label="`Progresso de ${goal.name}: ${percent(goal)}%`"
+          <p class="text-gray-900">
+            Total alocado em metas:
+            <span class="font-medium">{{ formatBRL(totalAllocated) }}/mês</span>
+          </p>
+          <p
+            v-if="overAvailable"
+            role="alert"
+            data-testid="goals-over-available"
+            class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900"
           >
-            <div class="h-full rounded-full bg-green-500" :style="{ width: `${percent(goal)}%` }" />
-          </div>
-          <p class="text-sm text-gray-700" data-testid="goal-progress-text">
-            {{ formatBRL(goal.currentAmount) }} de {{ formatBRL(goal.targetAmount) }} ({{ percent(goal) }}%)
+            Suas metas somam mais do que você tem disponível
           </p>
-          <p v-if="goal.targetDate" class="text-sm text-gray-600">
-            Data-alvo: {{ formatLocalDateBR(goal.targetDate) }}
-          </p>
-          <p v-if="goal.monthlyAllocation !== null" class="text-sm text-gray-600">
-            Aporte mensal: {{ formatBRL(goal.monthlyAllocation) }}
-          </p>
-        </li>
-      </ul>
+        </div>
+
+        <ul class="space-y-3">
+          <li
+            v-for="goal in goals"
+            :key="goal.id"
+            class="space-y-3 rounded-lg border border-gray-200 bg-white p-4"
+            :data-testid="`goal-${goal.id}`"
+          >
+            <div class="flex items-center gap-2">
+              <Target class="h-5 w-5 text-purple-600" aria-hidden="true" />
+              <h2 class="min-w-0 font-medium break-words text-gray-900">{{ goal.name }}</h2>
+            </div>
+            <p
+              v-if="goal.description"
+              class="text-sm break-words whitespace-pre-line text-gray-600"
+            >
+              {{ goal.description }}
+            </p>
+            <div
+              class="h-3 w-full overflow-hidden rounded-full bg-gray-100"
+              role="progressbar"
+              :aria-valuenow="percent(goal)"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              :aria-label="`Progresso de ${goal.name}: ${percent(goal)}%`"
+            >
+              <div
+                class="h-full rounded-full bg-green-500"
+                :style="{ width: `${percent(goal)}%` }"
+              />
+            </div>
+            <p class="text-sm text-gray-700" data-testid="goal-progress-text">
+              {{ formatBRL(goal.currentAmount) }} de {{ formatBRL(goal.targetAmount) }} ({{
+                percent(goal)
+              }}%)
+            </p>
+            <p v-if="goal.targetDate" class="text-sm text-gray-600">
+              Data-alvo: {{ formatLocalDateBR(goal.targetDate) }}
+            </p>
+            <p v-if="goal.monthlyAllocation !== null" class="text-sm text-gray-600">
+              Aporte mensal: {{ formatBRL(goal.monthlyAllocation) }}/mês
+            </p>
+            <div class="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                class="min-h-[44px]"
+                :aria-label="`Editar alocação de ${goal.name}`"
+                data-testid="edit-allocation"
+                @click="openAmount('allocation', goal, $event)"
+              >
+                Editar alocação
+              </Button>
+              <Button
+                variant="outline"
+                class="min-h-[44px]"
+                :aria-label="`Aportar em ${goal.name}`"
+                data-testid="contribute"
+                @click="openAmount('contribution', goal, $event)"
+              >
+                Aportar
+              </Button>
+            </div>
+          </li>
+        </ul>
+      </template>
     </div>
 
     <Dialog :open="dialogOpen" @update:open="onOpenChange">
@@ -126,14 +180,21 @@
               :aria-invalid="errors.name ? 'true' : undefined"
               :aria-describedby="errors.name ? 'goal-name-error' : undefined"
             />
-            <p v-if="errors.name" id="goal-name-error" class="text-sm text-red-600" data-testid="goal-name-error">
+            <p
+              v-if="errors.name"
+              id="goal-name-error"
+              class="text-sm text-red-600"
+              data-testid="goal-name-error"
+            >
               {{ errors.name }}
             </p>
           </div>
 
           <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div class="space-y-1">
-              <label for="goal-target-amount" class="text-sm font-medium text-gray-900">Valor-alvo (R$)</label>
+              <label for="goal-target-amount" class="text-sm font-medium text-gray-900"
+                >Valor-alvo (R$)</label
+              >
               <Input
                 id="goal-target-amount"
                 v-model="form.targetAmount"
@@ -255,11 +316,84 @@
         </form>
       </DialogContent>
     </Dialog>
+
+    <Dialog :open="amountOpen" @update:open="onAmountOpenChange">
+      <DialogContent data-testid="amount-dialog" @close-auto-focus="returnAmountFocus">
+        <DialogHeader>
+          <DialogTitle>{{
+            amountAction?.kind === 'allocation' ? 'Editar alocação' : 'Aportar'
+          }}</DialogTitle>
+          <DialogDescription>
+            {{
+              amountAction?.kind === 'allocation'
+                ? `Quanto guardar por mês em ${amountAction?.goal.name}.`
+                : `Quanto você guardou agora em ${amountAction?.goal.name}.`
+            }}
+          </DialogDescription>
+        </DialogHeader>
+        <p
+          v-if="amountFormError"
+          role="alert"
+          data-testid="amount-form-error"
+          class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+        >
+          {{ amountFormError }}
+        </p>
+        <form class="space-y-4" novalidate data-testid="amount-form" @submit.prevent="saveAmount">
+          <div class="space-y-1">
+            <label for="goal-amount" class="text-sm font-medium text-gray-900">
+              {{
+                amountAction?.kind === 'allocation' ? 'Aporte mensal (R$)' : 'Valor do aporte (R$)'
+              }}
+            </label>
+            <Input
+              id="goal-amount"
+              v-model="amountText"
+              class="min-h-[44px]"
+              inputmode="decimal"
+              placeholder="0,00"
+              autocomplete="off"
+              data-testid="amount-input"
+              :aria-invalid="amountError ? 'true' : undefined"
+              :aria-describedby="amountError ? 'goal-amount-error' : undefined"
+            />
+            <p
+              v-if="amountError"
+              id="goal-amount-error"
+              class="text-sm text-red-600"
+              data-testid="amount-error"
+            >
+              {{ amountError }}
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              class="min-h-[44px]"
+              :disabled="amountSaving"
+              data-testid="amount-cancel"
+              @click="amountOpen = false"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              class="min-h-[44px]"
+              :disabled="amountSaving"
+              data-testid="amount-save"
+            >
+              {{ amountSaving ? 'Salvando...' : 'Salvar' }}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   </main>
 </template>
 
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { Target } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
@@ -284,12 +418,19 @@ import {
   type GoalField,
 } from '@/lib/goalPlan'
 import { formatBRL, formatBRLInput, parseBRL } from '@/lib/money'
-import { createGoal, listGoals } from '@/services/goalService'
-import type { Goal } from '@/types/goal'
+import {
+  contributeToGoal,
+  createGoal,
+  getGoalsSummary,
+  listGoals,
+  updateGoalAllocation,
+} from '@/services/goalService'
+import type { Goal, GoalsSummary } from '@/types/goal'
 
 /**
  * Story 8.1: metas ativas do usuário (ordem de criação) e criação de outra meta, sem limite. O aporte mensal é
  * sugerido pelo valor-alvo e pela data até o usuário editá-lo; a validação é a mesma do onboarding.
+ * Story 8.2: editar a alocação mensal, aportar e o total alocado no topo, com aviso acima do disponível.
  */
 const SUCCESS_TIMEOUT_MS = 5000
 const SAVE_FAILED = 'Não foi possível criar a meta. Verifique sua conexão e tente novamente.'
@@ -303,18 +444,53 @@ const addButton = ref<{ $el: HTMLElement } | null>(null)
 const dialogOpen = ref(false)
 const saving = ref(false)
 const today = ref(todayInSaoPaulo())
-const form = reactive({ name: '', targetAmount: '', targetDate: '', monthlyAllocation: '', description: '' })
+const form = reactive({
+  name: '',
+  targetAmount: '',
+  targetDate: '',
+  monthlyAllocation: '',
+  description: '',
+})
 const errors = reactive<Partial<Record<GoalField, string>>>({})
 /** Depois que o usuário mexe no aporte, mudar valor ou data não o sobrescreve mais. */
 const allocationEdited = ref(false)
 const formError = ref<string | null>(null)
 const successMessage = ref<string | null>(null)
 
+/** Story 8.2: um diálogo só para "Editar alocação" e "Aportar"; muda o rótulo, a regra e o endpoint. */
+type AmountKind = 'allocation' | 'contribution'
+// Os textos leem a última ação; ela só muda ao abrir, então o diálogo não troca de texto enquanto fecha
+const amountAction = ref<{ kind: AmountKind; goal: Goal } | null>(null)
+const amountOpen = ref(false)
+const amountText = ref('')
+const amountError = ref<string | null>(null)
+const amountFormError = ref<string | null>(null)
+const amountSaving = ref(false)
+let amountTrigger: HTMLElement | null = null
+const AMOUNT_FAILED = 'Não foi possível salvar. Verifique sua conexão e tente novamente.'
+
+/** Story 8.2: null quando o GET falhou; aí só o aviso some, a lista continua. */
+const summary = ref<GoalsSummary | null>(null)
+
+// Soma em centavos: em float, 0,10 + 0,20 passaria de 0,30 e acenderia o aviso à toa
+const totalAllocated = computed(
+  () =>
+    goals.value.reduce((cents, g) => cents + Math.round((g.monthlyAllocation ?? 0) * 100), 0) / 100,
+)
+const overAvailable = computed(
+  () =>
+    !!summary.value &&
+    totalAllocated.value > 0 &&
+    totalAllocated.value > summary.value.totalAvailable,
+)
+
 watch(
   () => [parseBRL(form.targetAmount), parseISODate(form.targetDate)] as const,
   ([target, date]) => {
     if (allocationEdited.value || target === null || target <= 0 || date === null) return
-    form.monthlyAllocation = formatBRLInput(suggestedMonthlyAllocation(target, monthsUntil(today.value, date)))
+    form.monthlyAllocation = formatBRLInput(
+      suggestedMonthlyAllocation(target, monthsUntil(today.value, date)),
+    )
   },
 )
 
@@ -331,6 +507,11 @@ async function load() {
   loading.value = true
   loadFailed.value = false
   try {
+    // Sem await: a lista não espera o resumo, que só controla o aviso
+    void getGoalsSummary().then(
+      (s) => (summary.value = s),
+      () => (summary.value = null),
+    )
     goals.value = await listGoals()
   } catch {
     loadFailed.value = true
@@ -352,7 +533,13 @@ function clearErrors() {
 }
 
 function openCreate() {
-  Object.assign(form, { name: '', targetAmount: '', targetDate: '', monthlyAllocation: '', description: '' })
+  Object.assign(form, {
+    name: '',
+    targetAmount: '',
+    targetDate: '',
+    monthlyAllocation: '',
+    description: '',
+  })
   today.value = todayInSaoPaulo()
   allocationEdited.value = false
   clearErrors()
@@ -388,10 +575,76 @@ async function save() {
     const known = Object.entries(response?.data?.errors ?? {}).filter(([key]) =>
       GOAL_FIELDS.includes(key as GoalField),
     )
-    if (response?.status === 400 && known.length > 0) Object.assign(errors, Object.fromEntries(known))
+    if (response?.status === 400 && known.length > 0)
+      Object.assign(errors, Object.fromEntries(known))
     else formError.value = response?.data?.detail ?? SAVE_FAILED
   } finally {
     saving.value = false
+  }
+}
+
+function openAmount(kind: AmountKind, goal: Goal, event: Event) {
+  amountTrigger = event.currentTarget as HTMLElement | null
+  amountText.value =
+    kind === 'allocation' && goal.monthlyAllocation !== null
+      ? formatBRLInput(goal.monthlyAllocation)
+      : ''
+  amountError.value = null
+  amountFormError.value = null
+  amountAction.value = { kind, goal }
+  amountOpen.value = true
+}
+
+function onAmountOpenChange(open: boolean) {
+  if (!open && !amountSaving.value) amountOpen.value = false
+}
+
+function returnAmountFocus(event: Event) {
+  event.preventDefault()
+  void nextTick(() => (amountTrigger?.isConnected ? amountTrigger : heading.value)?.focus())
+}
+
+function validateAmount(kind: AmountKind, text: string): number | string {
+  if (!text.trim())
+    return kind === 'allocation' ? 'Informe o aporte mensal' : 'Informe o valor do aporte'
+  const value = parseBRL(text)
+  if (value === null) return 'Informe um valor válido, com até 2 casas decimais'
+  if (kind === 'allocation' && value < 0) return 'O aporte mensal não pode ser negativo'
+  if (kind === 'contribution' && value <= 0) return 'O aporte precisa ser maior que zero'
+  return value
+}
+
+async function saveAmount() {
+  const action = amountAction.value
+  if (!amountOpen.value || !action || amountSaving.value) return
+  amountError.value = null
+  amountFormError.value = null
+  const value = validateAmount(action.kind, amountText.value)
+  if (typeof value === 'string') {
+    amountError.value = value
+    return
+  }
+  amountSaving.value = true
+  try {
+    const updated =
+      action.kind === 'allocation'
+        ? await updateGoalAllocation(action.goal.id, value)
+        : await contributeToGoal(action.goal.id, value)
+    goals.value = goals.value.map((g) => (g.id === updated.id ? updated : g))
+    amountOpen.value = false
+    setSuccess(
+      action.kind === 'allocation'
+        ? `Alocação atualizada para ${updated.name}`
+        : `Aporte registrado em ${updated.name}`,
+    )
+  } catch (err) {
+    const response = (err as ApiError)?.response
+    const field =
+      response?.data?.errors?.[action.kind === 'allocation' ? 'monthlyAllocation' : 'amount']
+    if (response?.status === 400 && field) amountError.value = field
+    else amountFormError.value = response?.data?.detail ?? AMOUNT_FAILED
+  } finally {
+    amountSaving.value = false
   }
 }
 

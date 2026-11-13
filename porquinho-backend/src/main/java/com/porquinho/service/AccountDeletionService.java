@@ -14,6 +14,7 @@ import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.AiClassificationHistoryRepository;
 import com.porquinho.repository.BudgetAllocationRepository;
+import com.porquinho.repository.GoalAllocationRepository;
 import com.porquinho.repository.BudgetReallocationRepository;
 import com.porquinho.repository.UserClassificationPatternRepository;
 import com.porquinho.repository.CategoryRepository;
@@ -104,6 +105,7 @@ public class AccountDeletionService {
     private final UserClassificationPatternRepository userClassificationPatternRepository;
     private final BudgetAllocationRepository budgetAllocationRepository;
     private final BudgetReallocationRepository budgetReallocationRepository;
+    private final GoalAllocationRepository goalAllocationRepository;
 
     @Value("${app.export.directory:./exports}")
     private String exportDirectory;
@@ -145,6 +147,7 @@ public class AccountDeletionService {
             UserClassificationPatternRepository userClassificationPatternRepository,
             BudgetAllocationRepository budgetAllocationRepository,
             BudgetReallocationRepository budgetReallocationRepository,
+            GoalAllocationRepository goalAllocationRepository,
             @Lazy AccountDeletionService self) {
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -174,6 +177,7 @@ public class AccountDeletionService {
         this.userClassificationPatternRepository = userClassificationPatternRepository;
         this.budgetAllocationRepository = budgetAllocationRepository;
         this.budgetReallocationRepository = budgetReallocationRepository;
+        this.goalAllocationRepository = goalAllocationRepository;
         this.self = self;
     }
 
@@ -392,6 +396,7 @@ public class AccountDeletionService {
         accountRepository.deleteByUserId(userId);  // Story 3.2: FK to users (removed accounts too)
         creditCardRepository.deleteByUserId(userId);  // Story 3.3: FK to users (removed cards too)
         categoryRepository.deleteByUserId(userId);  // Story 3.4: FK to users; one statement, so parent FK does not block
+        goalAllocationRepository.deleteByUserId(userId);  // Story 8.2: FKs to goals and users
         goalRepository.deleteByUserId(userId);  // Story 3.8: FK to users (removed goals too)
         userRepository.deleteByIdNative(userId);
 

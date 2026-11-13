@@ -4,6 +4,8 @@ import com.porquinho.dto.CreateAccountRequest;
 import com.porquinho.dto.CreateGoalRequest;
 import com.porquinho.entity.Goal;
 import com.porquinho.exception.ConflictException;
+import com.porquinho.exception.ResourceNotFoundException;
+import com.porquinho.repository.GoalAllocationRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.CategoryRepository;
 import com.porquinho.repository.GoalRepository;
@@ -67,6 +69,9 @@ class GoalOnboardingIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbc;
+
+    @Autowired
+    private GoalAllocationRepository goalAllocationRepository;
 
     private UUID userId;
 
@@ -302,5 +307,40 @@ class GoalOnboardingIntegrationTest {
         assertThat(rows.get(0)).containsEntry("goal_name", "Reserva de Emergência").containsEntry("deleted_at", null)
             .containsEntry("is_completed", false);
         assertThat((BigDecimal) rows.get(0).get("current_amount")).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void allocationAndContributionsShareOneRowPerMonthAndItsForeignKeyBlocksDeletingTheGoals() {
+        // Story 8.2: the real lock query, the upsert under UNIQUE (goal_id, month_year) and the FK to goals
+        Goal goal = addGoal(userId, "Viagem");
+        goalService.updateAllocation(userId, goal.getId(), new BigDecimal("500"));
+        goalService.contribute(userId, goal.getId(), new BigDecimal("50"));
+        goalService.updateAllocation(userId, goal.getId(), new BigDecimal("700"));
+        Goal after = goalService.contribute(userId, goal.getId(), new BigDecimal("25.50"));
+        goalAllocationRepository.flush();
+
+        assertThat(after.getCurrentAmount()).isEqualByComparingTo("75.50");
+        assertThat(after.getMonthlyAllocation()).isEqualByComparingTo("700");
+        var rows = goalAllocationRepository.findByUserIdOrdered(userId);
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).getAllocatedAmount()).isEqualByComparingTo("700");
+        assertThat(rows.get(0).getContributedAmount()).isEqualByComparingTo("75.50");
+        assertThat(rows.get(0).getMonthYear().getDayOfMonth()).isEqualTo(1);
+
+        UUID other = newUser();
+        assertThatThrownBy(() -> goalService.contribute(other, goal.getId(), BigDecimal.TEN))
+            .isInstanceOf(ResourceNotFoundException.class);
+
+        assertThatThrownBy(() -> goalRepository.deleteByUserId(userId)).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void purgeDeletesTheGoalAllocationsThenTheGoals() {
+        Goal goal = addGoal(userId, "Viagem");
+        goalService.contribute(userId, goal.getId(), new BigDecimal("50"));
+        goalAllocationRepository.flush();
+
+        assertThat(goalAllocationRepository.deleteByUserId(userId)).isEqualTo(1);
+        assertThat(goalRepository.deleteByUserId(userId)).isEqualTo(1);
     }
 }

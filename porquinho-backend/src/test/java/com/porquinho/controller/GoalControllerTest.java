@@ -3,6 +3,7 @@ package com.porquinho.controller;
 import com.porquinho.config.TestWebSecurityConfig;
 import com.porquinho.dto.CreateGoalRequest;
 import com.porquinho.entity.Goal;
+import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.service.GoalService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,6 +38,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(GoalController.class)
@@ -260,5 +262,73 @@ class GoalControllerTest {
             .andExpect(jsonPath("$.errors.description").value("Use no máximo 500 caracteres na descrição"));
 
         verifyNoInteractions(goalService);
+    }
+
+    @Test
+    void putAllocationReturns200WithTheGoal() throws Exception {
+        Goal updated = goal("Viagem", "8000.00", null, "700.00");
+        when(goalService.updateAllocation(userId, updated.getId(), new BigDecimal("700"))).thenReturn(updated);
+
+        mockMvc.perform(put("/api/v1/goals/" + updated.getId() + "/allocation").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"monthlyAllocation\":700}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.monthlyAllocation").value(700.0));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{\"monthlyAllocation\":-1}", "{}", "{\"monthlyAllocation\":1.001}"})
+    void invalidAllocationIs400OnTheField(String content) throws Exception {
+        mockMvc.perform(put("/api/v1/goals/" + UUID.randomUUID() + "/allocation").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content(content))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errors.monthlyAllocation").exists());
+
+        verifyNoInteractions(goalService);
+    }
+
+    @Test
+    void postContributionReturns201WithTheGoal() throws Exception {
+        Goal updated = goal("Viagem", "8000.00", null, null);
+        updated.setCurrentAmount(new BigDecimal("150.00"));
+        when(goalService.contribute(userId, updated.getId(), new BigDecimal("50"))).thenReturn(updated);
+
+        mockMvc.perform(post("/api/v1/goals/" + updated.getId() + "/contributions").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"amount\":50}"))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.currentAmount").value(150.0));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{\"amount\":0}", "{\"amount\":-5}", "{}", "{\"amount\":1.001}"})
+    void invalidContributionIs400OnTheField(String content) throws Exception {
+        mockMvc.perform(post("/api/v1/goals/" + UUID.randomUUID() + "/contributions").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content(content))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errors.amount").exists());
+
+        verifyNoInteractions(goalService);
+    }
+
+    @Test
+    void anotherUsersGoalIs404() throws Exception {
+        UUID goalId = UUID.randomUUID();
+        when(goalService.contribute(eq(userId), eq(goalId), any())).thenThrow(new ResourceNotFoundException("Meta não encontrada"));
+        when(goalService.updateAllocation(eq(userId), eq(goalId), any())).thenThrow(new ResourceNotFoundException("Meta não encontrada"));
+
+        mockMvc.perform(post("/api/v1/goals/" + goalId + "/contributions").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"amount\":50}"))
+            .andExpect(status().isNotFound());
+        mockMvc.perform(put("/api/v1/goals/" + goalId + "/allocation").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"monthlyAllocation\":50}"))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void getSummaryReturnsTheTotalAvailableOfTheJwtUser() throws Exception {
+        when(goalService.totalAvailable(userId)).thenReturn(new BigDecimal("1234.56"));
+
+        mockMvc.perform(get("/api/v1/goals/summary").with(authentication(authToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.totalAvailable").value(1234.56));
     }
 }

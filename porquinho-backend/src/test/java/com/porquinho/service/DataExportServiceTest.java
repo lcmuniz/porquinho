@@ -2,6 +2,7 @@ package com.porquinho.service;
 
 import com.porquinho.entity.AiClassificationHistory;
 import com.porquinho.entity.BudgetAllocation;
+import com.porquinho.entity.GoalAllocation;
 import com.porquinho.entity.BudgetReallocation;
 import com.porquinho.entity.UserClassificationPattern;
 import com.porquinho.entity.Account;
@@ -26,6 +27,7 @@ import com.porquinho.exception.RateLimitExceededException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AiClassificationHistoryRepository;
 import com.porquinho.repository.BudgetAllocationRepository;
+import com.porquinho.repository.GoalAllocationRepository;
 import com.porquinho.repository.BudgetReallocationRepository;
 import com.porquinho.repository.UserClassificationPatternRepository;
 import com.porquinho.repository.AccountBalanceHistoryRepository;
@@ -137,6 +139,9 @@ class DataExportServiceTest {
 
     @Mock
     private BudgetReallocationRepository budgetReallocationRepository;
+
+    @Mock
+    private GoalAllocationRepository goalAllocationRepository;
 
     @InjectMocks
     private DataExportService dataExportService;
@@ -990,6 +995,34 @@ class DataExportServiceTest {
         assertEquals("2026-11-01", first.get("month_year"));
         assertEquals(new java.math.BigDecimal("450.00"), first.get("allocated_amount"));
         assertEquals("2026-11-09T12:00Z", first.get("updated_at"));
+    }
+
+    @Test
+    void collectUserDataShouldExportTheGoalAllocations() {
+        // Story 8.2: every stored column
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        UUID goal = UUID.randomUUID();
+        GoalAllocation allocation = new GoalAllocation(userId, goal, java.time.LocalDate.parse("2026-11-01"),
+            new java.math.BigDecimal("300.00"));
+        allocation.setContributedAmount(new java.math.BigDecimal("50.00"));
+        allocation.setId(UUID.randomUUID());
+        allocation.setCreatedAt(OffsetDateTime.parse("2026-11-02T12:00:00Z"));
+        allocation.setUpdatedAt(OffsetDateTime.parse("2026-11-09T12:00:00Z"));
+        when(goalAllocationRepository.findByUserIdOrdered(userId)).thenReturn(List.of(allocation));
+
+        Map<String, Object> data = dataExportService.collectUserData(userId);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
+        assertTrue(((List<?>) metadata.get("exported_tables")).contains("goal_allocations"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("goal_allocations");
+        Map<String, Object> first = rows.get(0);
+        assertExportsEveryColumn(GoalAllocation.class, first);
+        assertEquals(goal.toString(), first.get("goal_id"));
+        assertEquals("2026-11-01", first.get("month_year"));
+        assertEquals(new java.math.BigDecimal("300.00"), first.get("allocated_amount"));
+        assertEquals(new java.math.BigDecimal("50.00"), first.get("contributed_amount"));
     }
 
     @Test

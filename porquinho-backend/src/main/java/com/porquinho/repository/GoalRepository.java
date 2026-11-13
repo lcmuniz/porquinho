@@ -1,13 +1,16 @@
 package com.porquinho.repository;
 
 import com.porquinho.entity.Goal;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -19,6 +22,14 @@ public interface GoalRepository extends JpaRepository<Goal, UUID> {
     /** The user's active goals, oldest first (id breaks ties for rows created in the same instant). */
     @Query("SELECT g FROM Goal g WHERE g.userId = :userId AND g.deletedAt IS NULL ORDER BY g.createdAt ASC, g.id ASC")
     List<Goal> findActiveByUserId(@Param("userId") UUID userId);
+
+    /**
+     * The user's active goal, row-locked (Story 8.2): two concurrent contributions cannot both read the same
+     * current_amount, and the month's goal_allocations row is created only once.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT g FROM Goal g WHERE g.id = :id AND g.userId = :userId AND g.deletedAt IS NULL")
+    Optional<Goal> findActiveByIdAndUserIdForUpdate(@Param("id") UUID id, @Param("userId") UUID userId);
 
     long countByUserIdAndDeletedAtIsNull(UUID userId);
 

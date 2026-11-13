@@ -19,6 +19,7 @@ import com.porquinho.repository.TransferRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.AiClassificationHistoryRepository;
 import com.porquinho.repository.BudgetAllocationRepository;
+import com.porquinho.repository.GoalAllocationRepository;
 import com.porquinho.repository.BudgetReallocationRepository;
 import com.porquinho.repository.UserClassificationPatternRepository;
 import com.porquinho.repository.CategoryRepository;
@@ -113,6 +114,8 @@ class AccountDeletionServiceTest {
     private CategoryRepository categoryRepository;
     @Mock
     private GoalRepository goalRepository;
+    @Mock
+    private GoalAllocationRepository goalAllocationRepository;
 
     private AccountDeletionService service;
 
@@ -138,13 +141,13 @@ class AccountDeletionServiceTest {
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
             supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService,
             billingTransactionRepository, subscriptionService, onboardingProgressRepository, accountRepository,
-            creditCardRepository, categoryRepository, goalRepository, accountBalanceHistoryRepository, transferRepository, reconciliationRepository, transactionImportRepository, transactionRepository, aiClassificationHistoryRepository, userClassificationPatternRepository, budgetAllocationRepository, budgetReallocationRepository, null);
+            creditCardRepository, categoryRepository, goalRepository, accountBalanceHistoryRepository, transferRepository, reconciliationRepository, transactionImportRepository, transactionRepository, aiClassificationHistoryRepository, userClassificationPatternRepository, budgetAllocationRepository, budgetReallocationRepository, goalAllocationRepository, null);
         service = new AccountDeletionService(
             userRepository, userSessionRepository, auditLogRepository, dataExportRepository,
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
             supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService,
             billingTransactionRepository, subscriptionService, onboardingProgressRepository, accountRepository,
-            creditCardRepository, categoryRepository, goalRepository, accountBalanceHistoryRepository, transferRepository, reconciliationRepository, transactionImportRepository, transactionRepository, aiClassificationHistoryRepository, userClassificationPatternRepository, budgetAllocationRepository, budgetReallocationRepository, temp);
+            creditCardRepository, categoryRepository, goalRepository, accountBalanceHistoryRepository, transferRepository, reconciliationRepository, transactionImportRepository, transactionRepository, aiClassificationHistoryRepository, userClassificationPatternRepository, budgetAllocationRepository, budgetReallocationRepository, goalAllocationRepository, temp);
         // After construction, swap in the real reference so self == service (recursive ref ok
         // for tests because Spring's proxy would similarly route the call into this same bean).
         try {
@@ -431,6 +434,12 @@ class AccountDeletionServiceTest {
         InOrder goalsOrder = inOrder(goalRepository, userRepository);
         goalsOrder.verify(goalRepository).deleteByUserId(userId);
         goalsOrder.verify(userRepository).deleteByIdNative(userId);
+
+        // Story 8.2: the goal allocations deleted BEFORE goals and user (FKs to both)
+        InOrder goalAllocationsOrder = inOrder(goalAllocationRepository, goalRepository, userRepository);
+        goalAllocationsOrder.verify(goalAllocationRepository).deleteByUserId(userId);
+        goalAllocationsOrder.verify(goalRepository).deleteByUserId(userId);
+        goalAllocationsOrder.verify(userRepository).deleteByIdNative(userId);
 
         // Supabase admin called
         verify(supabaseAdminClient).deleteUser(userId);

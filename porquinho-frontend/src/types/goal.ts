@@ -20,3 +20,8 @@ export interface CreateGoalInput {
   /** Story 8.1: opcional, até 500 caracteres; vazia vira null no backend. */
   description?: string | null
 }
+
+/** Story 8.2: GET /api/v1/goals/summary. Soma dos saldos das contas ativas (cartões fora), como no Orçamento. */
+export interface GoalsSummary {
+  totalAvailable: number
+}

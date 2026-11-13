@@ -1,7 +1,10 @@
 package com.porquinho.controller;
 
 import com.porquinho.dto.CreateGoalRequest;
+import com.porquinho.dto.GoalContributionRequest;
 import com.porquinho.dto.GoalResponse;
+import com.porquinho.dto.GoalSummaryResponse;
+import com.porquinho.dto.UpdateGoalAllocationRequest;
 import com.porquinho.service.GoalService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -9,7 +12,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -45,5 +50,29 @@ public class GoalController {
         UUID userId = UUID.fromString(jwt.getSubject());
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(GoalResponse.of(goalService.create(userId, request)));
+    }
+
+    /** Total available to allocate: sum of the active accounts' balances (Story 8.2). */
+    @GetMapping("/summary")
+    public ResponseEntity<GoalSummaryResponse> summary(@AuthenticationPrincipal Jwt jwt) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(new GoalSummaryResponse(goalService.totalAvailable(userId)));
+    }
+
+    /** 200 with the goal; also records the current month's allocation. 404 for another user's goal. */
+    @PutMapping("/{id}/allocation")
+    public ResponseEntity<GoalResponse> updateAllocation(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
+                                                         @Valid @RequestBody UpdateGoalAllocationRequest request) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(GoalResponse.of(goalService.updateAllocation(userId, id, request.monthlyAllocation())));
+    }
+
+    /** 201 with the goal after the contribution. 404 for another user's goal. */
+    @PostMapping("/{id}/contributions")
+    public ResponseEntity<GoalResponse> contribute(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
+                                                   @Valid @RequestBody GoalContributionRequest request) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.status(HttpStatus.CREATED)
+            .body(GoalResponse.of(goalService.contribute(userId, id, request.amount())));
     }
 }
