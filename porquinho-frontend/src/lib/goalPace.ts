@@ -1,6 +1,8 @@
 /**
  * Story 8.3: ritmo da meta (verde/amarelo/vermelho), reaproveitado na 8.4. Meses são "AAAA-MM" em America/Sao_Paulo.
  */
+import { shiftMonth } from './date'
+import { MAX_FORECAST_MONTHS } from './goalPlan'
 import type { Goal } from '@/types/goal'
 
 export type GoalPace = 'on-track' | 'late' | 'very-late'
@@ -44,4 +46,33 @@ export function goalPace(goal: Goal, currentMonth: string): GoalPace {
   const delay = months - monthsBetween(currentMonth, goal.targetDate.slice(0, 7))
   if (delay <= 0) return 'on-track'
   return delay <= 3 ? 'late' : 'very-late'
+}
+
+/** Aporte para cumprir o prazo: mensal até o mês da data-alvo, ou o que falta de uma vez se o prazo já chegou. */
+export type GoalSuggestion = { kind: 'monthly' | 'lump-sum'; amount: number }
+
+export type GoalProjection =
+  | { kind: 'reached' }
+  | { kind: 'no-allocation'; suggestion: GoalSuggestion | null }
+  | { kind: 'too-far'; suggestion: GoalSuggestion | null }
+  | { kind: 'month'; month: string; suggestion: GoalSuggestion | null }
+
+/**
+ * Story 8.4: mês projetado = mês corrente + monthsToTarget. Sugestão só com data-alvo e ritmo atrasado
+ * (mensal, ⌈falta / meses até o mês da data-alvo⌉ no centavo) ou com o prazo no mês corrente ou antes (o que falta).
+ */
+export function goalProjection(goal: Goal, currentMonth: string): GoalProjection {
+  const months = monthsToTarget(goal.targetAmount, goal.currentAmount, goal.monthlyAllocation)
+  if (months === 0) return { kind: 'reached' }
+  const missing = Math.round(goal.targetAmount * 100) - Math.round(goal.currentAmount * 100)
+  let suggestion: GoalSuggestion | null = null
+  if (goal.targetDate) {
+    const monthsLeft = monthsBetween(currentMonth, goal.targetDate.slice(0, 7))
+    if (monthsLeft <= 0) suggestion = { kind: 'lump-sum', amount: missing / 100 }
+    else if (goalPace(goal, currentMonth) !== 'on-track')
+      suggestion = { kind: 'monthly', amount: Math.ceil(missing / monthsLeft) / 100 }
+  }
+  if (months === null) return { kind: 'no-allocation', suggestion }
+  if (months > MAX_FORECAST_MONTHS) return { kind: 'too-far', suggestion }
+  return { kind: 'month', month: shiftMonth(currentMonth, months), suggestion }
 }

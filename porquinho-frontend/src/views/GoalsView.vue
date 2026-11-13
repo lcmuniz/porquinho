@@ -141,6 +141,16 @@
                 {{ PACE_LABEL[goalPace(goal, thisMonth)] }}
               </p>
             </div>
+            <p class="text-sm text-gray-700" data-testid="goal-projection">
+              {{ projectionText(goalProjection(goal, thisMonth)) }}
+            </p>
+            <p
+              v-if="suggestionText(goalProjection(goal, thisMonth))"
+              class="text-sm text-gray-700"
+              data-testid="goal-suggestion"
+            >
+              {{ suggestionText(goalProjection(goal, thisMonth)) }}
+            </p>
             <p v-if="goal.targetDate" class="text-sm text-gray-600">
               Data-alvo: {{ formatLocalDateBR(goal.targetDate) }}
             </p>
@@ -459,8 +469,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import GoalProgressChart from '@/components/goals/GoalProgressChart.vue'
-import { currentMonth, formatLocalDateBR } from '@/lib/date'
-import { goalPace, PACE_LABEL, type GoalPace } from '@/lib/goalPace'
+import { currentMonth, formatLocalDateBR, formatMonthBR } from '@/lib/date'
+import {
+  goalPace,
+  goalProjection,
+  PACE_LABEL,
+  type GoalPace,
+  type GoalProjection,
+} from '@/lib/goalPace'
 import {
   GOAL_FIELDS,
   monthsUntil,
@@ -487,6 +503,7 @@ import type { Goal, GoalProgressPoint, GoalsSummary } from '@/types/goal'
  * sugerido pelo valor-alvo e pela data até o usuário editá-lo; a validação é a mesma do onboarding.
  * Story 8.2: editar a alocação mensal, aportar e o total alocado no topo, com aviso acima do disponível.
  * Story 8.3: barra com marcos e cor de ritmo; "Ver evolução" abre o gráfico no card e só então busca a série.
+ * Story 8.4: projeção do mês de conclusão e aporte sugerido para o prazo, calculados no front a partir da meta.
  */
 const SUCCESS_TIMEOUT_MS = 5000
 const SAVE_FAILED = 'Não foi possível criar a meta. Verifique sua conexão e tente novamente.'
@@ -556,6 +573,21 @@ const PACE_STYLE: Record<GoalPace, { bar: string; text: string }> = {
   'very-late': { bar: 'bg-red-500', text: 'text-red-700' },
 }
 const thisMonth = currentMonth()
+
+function projectionText(projection: GoalProjection): string {
+  if (projection.kind === 'reached') return 'Valor-alvo atingido'
+  if (projection.kind === 'no-allocation') return 'Defina alocação mensal para ver projeção'
+  if (projection.kind === 'too-far') return 'Projeção de conclusão: daqui a mais de 100 anos'
+  return `Projeção de conclusão: ${formatMonthBR(projection.month)}`
+}
+
+function suggestionText(projection: GoalProjection): string | null {
+  if (projection.kind === 'reached' || !projection.suggestion) return null
+  const { kind, amount } = projection.suggestion
+  return kind === 'monthly'
+    ? `Aumente alocação para ${formatBRL(amount)}/mês para atingir meta no prazo`
+    : `O prazo desta meta já chegou. Aporte ${formatBRL(amount)} para concluí-la`
+}
 
 /** Story 8.3: série dos gráficos abertos, por id da meta. Sem a chave, o gráfico está fechado. */
 const progress = reactive<Record<string, GoalProgressPoint[] | 'loading' | 'error'>>({})

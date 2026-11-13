@@ -402,6 +402,85 @@ describe('GoalsView', () => {
     })
   })
 
+  describe('Story 8.4: projeção de conclusão', () => {
+    const text = (testid: string) =>
+      plain(wrapper!.get(`[data-testid="goal-g1"] [data-testid="${testid}"]`).text())
+    const hasSuggestion = () =>
+      wrapper!.find('[data-testid="goal-g1"] [data-testid="goal-suggestion"]').exists()
+
+    async function saveAllocation(value: string) {
+      await wrapper!.get('[data-testid="goal-g1"] [data-testid="edit-allocation"]').trigger('click')
+      await flushPromises()
+      await type('amount-input', value)
+      inDialog<HTMLFormElement>('amount-form')!.dispatchEvent(new Event('submit'))
+      await flushPromises()
+    }
+
+    it.each([
+      [{}, 'Projeção de conclusão: setembro de 2027', null],
+      [{ targetDate: '2027-10-01' }, 'Projeção de conclusão: setembro de 2027', null],
+      [
+        { targetDate: '2027-07-13' },
+        'Projeção de conclusão: setembro de 2027',
+        'Aumente alocação para R$ 125,00/mês para atingir meta no prazo',
+      ],
+      [
+        { monthlyAllocation: null, targetDate: '2027-07-13' },
+        'Defina alocação mensal para ver projeção',
+        null,
+      ],
+      [{ currentAmount: 1200 }, 'Valor-alvo atingido', null],
+      [
+        { targetAmount: 1_000_000, monthlyAllocation: 0.01 },
+        'Projeção de conclusão: daqui a mais de 100 anos',
+        null,
+      ],
+      [
+        { currentAmount: 400, targetDate: '2026-11-30' },
+        'Projeção de conclusão: maio de 2027',
+        'O prazo desta meta já chegou. Aporte R$ 600,00 para concluí-la',
+      ],
+    ])('%o → "%s"', async (extra, projection, suggestion) => {
+      mockList.mockResolvedValue([
+        goal('g1', 'Viagem', { targetAmount: 1000, monthlyAllocation: 100, ...extra }),
+      ])
+      await mountView()
+      expect(text('goal-projection')).toBe(projection)
+      const shown = wrapper!.find('[data-testid="goal-g1"] [data-testid="goal-suggestion"]')
+      expect(shown.exists() ? plain(shown.text()) : null).toBe(suggestion)
+    })
+
+    it('salvar a alocação sugerida tira a sugestão, projeta no mês do prazo e vira "Em dia"', async () => {
+      const late = { targetAmount: 1000, monthlyAllocation: 100, targetDate: '2027-07-13' }
+      mockList.mockResolvedValue([goal('g1', 'Viagem', late)])
+      mockAllocation.mockResolvedValue(goal('g1', 'Viagem', { ...late, monthlyAllocation: 125 }))
+      await mountView()
+      expect(text('goal-pace')).toBe('Atrasada')
+
+      await saveAllocation('125')
+
+      expect(mockList).toHaveBeenCalledTimes(1)
+      expect(hasSuggestion()).toBe(false)
+      expect(text('goal-projection')).toBe('Projeção de conclusão: julho de 2027')
+      expect(text('goal-pace')).toBe('Em dia')
+    })
+
+    it('definir alocação numa meta sem alocação mostra a projeção', async () => {
+      mockList.mockResolvedValue([
+        goal('g1', 'Viagem', { targetAmount: 1000, monthlyAllocation: null }),
+      ])
+      mockAllocation.mockResolvedValue(
+        goal('g1', 'Viagem', { targetAmount: 1000, monthlyAllocation: 100 }),
+      )
+      await mountView()
+      expect(text('goal-projection')).toBe('Defina alocação mensal para ver projeção')
+
+      await saveAllocation('100')
+
+      expect(text('goal-projection')).toBe('Projeção de conclusão: setembro de 2027')
+    })
+  })
+
   describe('Story 8.3: ritmo e evolução', () => {
     it('barra tem marcos de 25/50/75% e fica verde "Em dia" sem data-alvo', async () => {
       await mountView()
