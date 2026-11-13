@@ -93,7 +93,7 @@
               >
                 {{ formatSignedBRL(signedAmount(row)) }}
               </span>
-              <span class="text-gray-600" data-testid="row-target">{{ targetName(row) }}</span>
+              <span class="text-gray-600" data-testid="row-target">{{ targetName(row, accounts, cards) }}</span>
               <span class="text-gray-700" data-testid="row-category">{{ categoryLabel(row) }}</span>
               <span v-if="row.isPix" class="inline-flex items-center gap-1 text-gray-700" data-testid="row-pix">
                 <ArrowLeftRight class="size-4" aria-hidden="true" />
@@ -143,149 +143,19 @@
       </ul>
     </div>
 
-    <Dialog :open="editOpen" @update:open="onEditOpenChange">
-      <DialogContent data-testid="edit-dialog" @close-auto-focus="returnFocus">
-        <DialogHeader>
-          <DialogTitle>{{ creating ? 'Adicionar transação' : 'Editar transação' }}</DialogTitle>
-          <DialogDescription>
-            {{
-              creating
-                ? 'Registre um gasto em dinheiro ou um lançamento que nenhum extrato trouxe.'
-                : 'Corrija data, descrição, valor, tipo, categoria ou onde a transação está.'
-            }}
-          </DialogDescription>
-        </DialogHeader>
-        <p
-          v-if="formError"
-          role="alert"
-          data-testid="edit-error"
-          class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
-        >
-          {{ formError }}
-        </p>
-        <form class="space-y-4" novalidate data-testid="edit-form" @submit.prevent="save">
-          <div class="space-y-1">
-            <label for="transaction-date" class="text-sm font-medium text-gray-900">Data</label>
-            <input
-              id="transaction-date"
-              v-model="form.date"
-              type="date"
-              :class="FIELD_CLASS"
-              :aria-describedby="isFutureDate ? 'transaction-date-warning' : undefined"
-              data-testid="edit-date"
-            />
-            <p
-              v-if="isFutureDate"
-              id="transaction-date-warning"
-              class="text-sm text-amber-800"
-              data-testid="future-date-warning"
-            >
-              Esta data ainda não chegou. Confira se é isso mesmo.
-            </p>
-          </div>
-          <div class="space-y-1">
-            <label for="transaction-description" class="text-sm font-medium text-gray-900">Descrição</label>
-            <input
-              id="transaction-description"
-              v-model="form.description"
-              maxlength="500"
-              :class="FIELD_CLASS"
-              data-testid="edit-description"
-            />
-          </div>
-          <div class="space-y-1">
-            <label for="transaction-amount" class="text-sm font-medium text-gray-900">Valor (R$)</label>
-            <input
-              id="transaction-amount"
-              v-model="form.amount"
-              inputmode="decimal"
-              :class="FIELD_CLASS"
-              data-testid="edit-amount"
-            />
-          </div>
-          <div class="space-y-1">
-            <label for="transaction-type" class="text-sm font-medium text-gray-900">Tipo</label>
-            <select
-              id="transaction-type"
-              v-model="form.type"
-              :class="FIELD_CLASS"
-              :disabled="isInstallment"
-              :aria-describedby="isInstallment ? 'installment-locked' : undefined"
-              data-testid="edit-type"
-            >
-              <option value="DEBIT">Saída (débito)</option>
-              <option value="CREDIT">Entrada (crédito)</option>
-            </select>
-          </div>
-          <div class="space-y-1">
-            <label for="transaction-category" class="text-sm font-medium text-gray-900">Categoria</label>
-            <select
-              id="transaction-category"
-              v-model="form.categoryId"
-              :class="FIELD_CLASS"
-              :disabled="optionsLoading"
-              data-testid="edit-category"
-            >
-              <option value="" :disabled="creating">{{ creating ? 'Escolha a categoria' : 'Sem categoria' }}</option>
-              <optgroup v-for="group in categoryGroups" :key="group.id" :label="group.name">
-                <option v-for="category in group.children" :key="category.id" :value="category.id">
-                  {{ category.categoryName }}
-                </option>
-              </optgroup>
-            </select>
-          </div>
-          <div class="space-y-1">
-            <label for="transaction-target" class="text-sm font-medium text-gray-900">Conta ou cartão</label>
-            <select
-              id="transaction-target"
-              v-model="form.target"
-              :class="FIELD_CLASS"
-              :disabled="optionsLoading || isInstallment"
-              :aria-describedby="isInstallment ? 'installment-locked' : undefined"
-              data-testid="edit-target"
-            >
-              <option value="" disabled>Escolha a conta ou o cartão</option>
-              <!-- Destino removido continua aceito enquanto não mudar -->
-              <option v-if="removedTargetLabel" :value="form.target">{{ removedTargetLabel }}</option>
-              <optgroup v-if="accounts.length" label="Contas">
-                <option v-for="account in accounts" :key="account.id" :value="`account:${account.id}`">
-                  {{ account.accountName }}
-                </option>
-              </optgroup>
-              <optgroup v-if="cards.length" label="Cartões">
-                <option v-for="card in cards" :key="card.id" :value="`card:${card.id}`">{{ card.cardName }}</option>
-              </optgroup>
-            </select>
-            <p
-              v-if="creating && !optionsLoading && accounts.length === 0"
-              class="text-sm text-gray-600"
-              data-testid="wallet-hint"
-            >
-              Para gastos em dinheiro, cadastre uma conta Carteira em
-              <RouterLink to="/contas" class="font-medium text-purple-700 underline">Contas</RouterLink>.
-            </p>
-            <p v-if="isInstallment" id="installment-locked" class="text-sm text-gray-600" data-testid="installment-locked">
-              Numa parcela, a conta ou o cartão e o tipo não mudam.
-            </p>
-          </div>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              class="min-h-[44px]"
-              :disabled="saving"
-              data-testid="edit-cancel"
-              @click="editOpen = false"
-            >
-              Cancelar
-            </Button>
-            <Button type="submit" class="min-h-[44px]" :disabled="saving || optionsLoading" data-testid="edit-save">
-              {{ saving ? 'Salvando...' : 'Salvar' }}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <TransactionFormDialog
+      v-model:open="editOpen"
+      :row="current"
+      :creating="creating"
+      :accounts="accounts"
+      :cards="cards"
+      :categories="categories"
+      :options-loading="optionsLoading"
+      :options-failed="optionsFailed"
+      @saved="onSaved"
+      @stale="load"
+      @close-auto-focus="returnFocus"
+    />
 
     <Dialog :open="confirmOpen" @update:open="onConfirmOpenChange">
       <DialogContent data-testid="confirm-dialog" @close-auto-focus="returnFocus">
@@ -335,7 +205,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { ArrowLeftRight, CreditCard } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import {
@@ -346,28 +216,24 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import TransactionFormDialog from '@/components/transactions/TransactionFormDialog.vue'
 import { formatLocalDateBR } from '@/lib/date'
-import { formatBRLInput, formatSignedBRL, parseBRL } from '@/lib/money'
+import { formatSignedBRL } from '@/lib/money'
 import { plural } from '@/lib/plural'
-import { installmentLabel, pixLabel } from '@/lib/transactionLabels'
+import { categoryLabel, installmentLabel, pixLabel, signedAmount, targetName } from '@/lib/transactionLabels'
 import { listAccounts } from '@/services/accountService'
 import { listCards } from '@/services/cardService'
 import { listCategories } from '@/services/categoryService'
-import {
-  createTransaction,
-  deleteTransaction,
-  listTransactions,
-  removeFutureInstallments,
-  updateTransaction,
-} from '@/services/transactionService'
+import { deleteTransaction, listTransactions, removeFutureInstallments } from '@/services/transactionService'
 import type { Account } from '@/types/account'
 import type { Category } from '@/types/category'
 import type { CreditCard as Card } from '@/types/creditCard'
 import type { Transaction } from '@/types/transaction'
 
-/** Story 5.12: as transações confirmadas, um mês por vez (decisão Q1), com edição e remoção; 5.13: inclusão manual. */
-const FIELD_CLASS =
-  'flex min-h-[44px] w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:outline-none'
+/**
+ * Story 5.12: as transações confirmadas, um mês por vez (decisão Q1), com edição e remoção; 5.13: inclusão manual.
+ * O diálogo de edição/inclusão é o TransactionFormDialog (Story 7.6).
+ */
 
 const ACTION_FAILED = 'Não foi possível concluir a ação. Tente de novo.'
 const SUCCESS_TIMEOUT_MS = 5000
@@ -392,6 +258,7 @@ const categories = ref<Category[]>([])
 const loading = ref(true)
 const loadFailed = ref(false)
 const optionsLoading = ref(false)
+const optionsFailed = ref(false)
 const successMessage = ref<string | null>(null)
 const actionError = ref<string | null>(null)
 /** A linha do diálogo aberto. Continua definida depois de fechar, para o foco voltar ao botão dela. */
@@ -399,9 +266,6 @@ const current = ref<Transaction | null>(null)
 const editOpen = ref(false)
 /** O diálogo de edição em modo "Adicionar transação" (Story 5.13). */
 const creating = ref(false)
-const saving = ref(false)
-const formError = ref<string | null>(null)
-const form = reactive({ date: '', description: '', amount: '', type: 'DEBIT', categoryId: '', target: '' })
 const confirmOpen = ref(false)
 const confirmMode = ref<'delete' | 'futures'>('delete')
 const confirming = ref(false)
@@ -413,37 +277,10 @@ const monthLabel = computed(() => {
   )
 })
 
-/** Decisão Q4: numa parcela, destino e tipo ficam como estão. */
-const isInstallment = computed(() => !!current.value?.isInstallment)
-
 /** Decisão Q3: remover a única parcela confirmada leva as futuras ativas junto. */
 const futuresGoingAlong = computed(() =>
   current.value?.isInstallment && current.value.confirmedInstallments <= 1 ? current.value.remainingInstallments : 0,
 )
-
-/** Rótulo do destino atual quando ele já foi removido (fora das listas de ativos). */
-const removedTargetLabel = computed(() => {
-  const row = current.value
-  if (!row || optionsLoading.value) return null
-  if (row.accountId) return accounts.value.some((a) => a.id === row.accountId) ? null : 'Conta removida'
-  return cards.value.some((c) => c.id === row.creditCardId) ? null : 'Cartão removido'
-})
-
-const isFutureDate = computed(() => !!form.date && form.date > todaySaoPaulo())
-
-/** Grupos sem categoria filha ficam de fora: grupo não é categoria de transação. */
-const categoryGroups = computed(() => {
-  const byName = (a: Category, b: Category) => a.categoryName.localeCompare(b.categoryName, 'pt-BR')
-  return categories.value
-    .filter((category) => category.parentCategoryId === null)
-    .sort(byName)
-    .map((parent) => ({
-      id: parent.id,
-      name: parent.categoryName,
-      children: categories.value.filter((category) => category.parentCategoryId === parent.id).sort(byName),
-    }))
-    .filter((group) => group.children.length > 0)
-})
 
 let successTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -451,21 +288,6 @@ function setSuccess(message: string | null) {
   clearTimeout(successTimer)
   successMessage.value = message
   if (message) successTimer = setTimeout(() => (successMessage.value = null), SUCCESS_TIMEOUT_MS)
-}
-
-function signedAmount(row: Transaction): number {
-  return row.type === 'DEBIT' ? -row.amount : row.amount
-}
-
-function categoryLabel(row: Transaction): string {
-  if (row.kind === 'CARD_PAYMENT') return 'Pagamento de fatura'
-  if (!row.category) return 'Não classificado'
-  return row.category.group ? `${row.category.group} › ${row.category.name}` : row.category.name
-}
-
-function targetName(row: Transaction): string {
-  if (row.accountId) return accounts.value.find((a) => a.id === row.accountId)?.accountName ?? 'Conta removida'
-  return cards.value.find((c) => c.id === row.creditCardId)?.cardName ?? 'Cartão removido'
 }
 
 /** Sequência das cargas: só a resposta da carga mais recente é aplicada. */
@@ -489,13 +311,14 @@ async function load() {
 /** Contas, cartões e categorias: nomes na lista e opções do formulário. Sem eles a lista ainda funciona. */
 async function loadOptions() {
   optionsLoading.value = true
+  optionsFailed.value = false
   try {
     const [accountList, cardList, categoryList] = await Promise.all([listAccounts(), listCards(), listCategories()])
     accounts.value = accountList
     cards.value = cardList
     categories.value = categoryList
   } catch {
-    formError.value = editOpen.value ? 'Não foi possível carregar suas contas, cartões e categorias.' : null
+    optionsFailed.value = true
   } finally {
     optionsLoading.value = false
   }
@@ -512,28 +335,13 @@ function changeMonth(delta: number) {
 function openCreate() {
   creating.value = true
   current.value = null
-  formError.value = null
-  Object.assign(form, { date: todaySaoPaulo(), description: '', amount: '', type: 'DEBIT', categoryId: '', target: '' })
   editOpen.value = true
 }
 
 function openEdit(row: Transaction) {
   creating.value = false
   current.value = row
-  formError.value = null
-  form.date = row.date
-  form.description = row.description
-  form.amount = formatBRLInput(row.amount)
-  form.type = row.type
-  // Categoria removida fica em branco no select, mas é enviada igual: o backend só valida categoria trocada
-  form.categoryId = row.category?.id ?? ''
-  form.target = row.accountId ? `account:${row.accountId}` : `card:${row.creditCardId}`
   editOpen.value = true
-}
-
-/** Com o PUT em andamento o diálogo não fecha: fechar pareceria cancelar uma alteração que já vai acontecer. */
-function onEditOpenChange(open: boolean) {
-  if (!saving.value) editOpen.value = open
 }
 
 function onConfirmOpenChange(open: boolean) {
@@ -553,61 +361,12 @@ function returnFocus(event: Event) {
   })
 }
 
-async function save() {
-  const row = current.value
-  const isCreate = creating.value
-  if ((!row && !isCreate) || saving.value) return
-  const amount = parseBRL(form.amount)
-  const description = form.description.trim()
-  if (!form.date) return void (formError.value = 'Informe a data')
-  if (!description) return void (formError.value = 'Informe a descrição')
-  if (amount === null || amount <= 0) return void (formError.value = 'Informe um valor maior que zero')
-  if (isCreate && !form.categoryId) return void (formError.value = 'Escolha uma categoria')
-  if (!form.target) return void (formError.value = 'Escolha uma conta ou um cartão')
-  const [kind, targetId] = form.target.split(':')
-  const input = {
-    date: form.date,
-    description,
-    amount,
-    type: form.type as Transaction['type'],
-    categoryId: form.categoryId || null,
-    accountId: kind === 'account' ? targetId! : null,
-    creditCardId: kind === 'card' ? targetId! : null,
-  }
-  formError.value = null
-  saving.value = true
-  try {
-    let message = 'Transação adicionada'
-    if (isCreate) {
-      await createTransaction({ ...input, categoryId: form.categoryId })
-      // a lista vai para o mês da transação criada, para ela aparecer
-      month.value = form.date.slice(0, 7)
-    } else {
-      const updated = await updateTransaction(row!.id, input)
-      // retro do Epic 6 (A1): a nova categoria vai junto para as parcelas futuras da compra
-      const futures = (row!.category?.id ?? null) !== input.categoryId ? updated.remainingInstallments : 0
-      message =
-        futures === 0
-          ? 'Transação atualizada'
-          : futures === 1
-          ? 'Transação atualizada. A parcela futura também mudou de categoria'
-          : `Transação atualizada. As ${plural(futures, 'parcela futura', 'parcelas futuras')} também mudaram de categoria`
-    }
-    editOpen.value = false
-    actionError.value = null
-    await load()
-    setSuccess(message)
-  } catch (err) {
-    const response = (err as ApiError)?.response
-    if (response?.status === 404 || response?.status === 400 || response?.status === 409) {
-      formError.value = response.data?.detail ?? ACTION_FAILED
-      if (response.status !== 400) void load()
-    } else {
-      formError.value = ACTION_FAILED
-    }
-  } finally {
-    saving.value = false
-  }
+async function onSaved({ message, month: createdMonth }: { message: string; month?: string }) {
+  // a lista vai para o mês da transação criada, para ela aparecer
+  if (createdMonth) month.value = createdMonth
+  actionError.value = null
+  await load()
+  setSuccess(message)
 }
 
 function openConfirm(row: Transaction, mode: 'delete' | 'futures') {

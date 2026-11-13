@@ -76,7 +76,7 @@ class DashboardServiceTest {
     @BeforeEach
     void setUp() {
         service = new DashboardService(budgetService, accountService, goalService, categoryService, transactionRepository,
-            accountRepository, balanceHistoryRepository, CLOCK);
+            accountRepository, balanceHistoryRepository, null, null, CLOCK);
         userId = UUID.randomUUID();
         // the overview (7.3) reads the total from the budget, not the accounts
         lenient().when(accountService.listActive(userId)).thenReturn(accounts);
@@ -291,7 +291,7 @@ class DashboardServiceTest {
             .thenReturn(spentAfterToday);
         lenient().when(transactionRepository.sumCommittedByCategory(userId, first, last)).thenReturn(committed);
         return new DashboardService(budgetService, accountService, goalService, categoryService, transactionRepository,
-            accountRepository, balanceHistoryRepository, clock).overview(userId);
+            accountRepository, balanceHistoryRepository, null, null, clock).overview(userId);
     }
 
     @Test

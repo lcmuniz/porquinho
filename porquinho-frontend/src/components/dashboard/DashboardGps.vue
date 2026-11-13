@@ -25,17 +25,28 @@
         <h2 :id="`${layer.id}-heading`" class="text-lg font-semibold text-gray-900">
           {{ layer.title }}
         </h2>
-        <DashboardLayer1 v-if="layer.id === 'layer-overview'" />
-        <DashboardLayer2 v-else-if="layer.id === 'layer-tactical'" />
-        <p v-else class="mt-2 text-sm text-gray-600">Em breve</p>
+        <DashboardLayer1 v-if="layer.id === 'layer-overview'" :key="`overview-${refresh}`" />
+        <DashboardLayer2 v-else-if="layer.id === 'layer-tactical'" :key="`tactical-${refresh}`" />
+        <DashboardLayer3 v-else @transaction-saved="onTransactionSaved" />
       </section>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
 import DashboardLayer1 from './DashboardLayer1.vue'
 import DashboardLayer2 from './DashboardLayer2.vue'
+import DashboardLayer3 from './DashboardLayer3.vue'
+
+const emit = defineEmits<{ 'transaction-saved': [] }>()
+
+// Story 7.6 (Q1=B): uma edição na Camada 3 remonta as Camadas 1 e 2, que buscam de novo; o semáforo fica com a view
+const refresh = ref(0)
+function onTransactionSaved() {
+  refresh.value++
+  emit('transaction-saved')
+}
 
 // Story 7.1: as 3 camadas do Dashboard GPS; o conteúdo real chega nas stories 7.2–7.6
 const layers = [

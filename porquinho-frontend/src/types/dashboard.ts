@@ -1,3 +1,4 @@
+import type { Transaction } from './transaction'
 import type { BudgetStatus } from './budget'
 
 /** Story 7.2: cor do semáforo de saúde financeira. */
@@ -65,4 +66,29 @@ export interface DonutSlice {
   value: number
   color: string
   category: CategorySpending | null
+}
+
+/** Story 7.6: campo e direção da ordenação da Camada 3. */
+export type DetailsSortField = 'date' | 'amount' | 'category'
+
+/**
+ * Story 7.6: filtros da Camada 3. `from`/`to` "AAAA-MM-DD"; `categoryIds` com 'uncategorized' para "Não classificado";
+ * `targets` como "account:<id>"/"card:<id>"; listas vazias não filtram.
+ */
+export interface DetailsFilter {
+  from: string
+  to: string
+  categoryIds: string[]
+  targets: string[]
+  q: string
+  sort: DetailsSortField
+  dir: 'asc' | 'desc'
+}
+
+/** Story 7.6: resposta de GET /api/v1/dashboard/layer3 (página de 50, começando em 0). */
+export interface DashboardDetails {
+  items: Transaction[]
+  page: number
+  totalItems: number
+  totalPages: number
 }

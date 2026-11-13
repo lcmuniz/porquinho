@@ -1,7 +1,7 @@
 <template>
   <main class="min-h-screen bg-gray-50 px-4 py-8">
     <div class="mx-auto max-w-6xl space-y-8">
-      <FinancialHealthSemaphore />
+      <FinancialHealthSemaphore :key="healthKey" />
 
       <div class="flex items-start justify-between gap-4">
         <div>
@@ -85,7 +85,8 @@
         </RouterLink>
       </div>
 
-      <DashboardGps />
+      <!-- Story 7.6 (Q1=B): editar na Camada 3 recarrega o semáforo -->
+      <DashboardGps @transaction-saved="healthKey++" />
 
       <section aria-labelledby="account-settings-heading" class="space-y-3">
         <h2
@@ -190,6 +191,7 @@ import { useAuthStore } from '@/stores/auth'
 import type { Subscription } from '@/types/subscription'
 
 const subscription = ref<Subscription | null>(null)
+const healthKey = ref(0)
 // Trial, ou assinatura expirada/suspensa/cancelada já sem acesso (Stories 2.4 e 2.7)
 const showSubscribeCta = computed(() => {
   const sub = subscription.value

@@ -17,10 +17,16 @@ vi.mock('@/services/dashboardService', () => ({
   getOverview: () => mockGetOverview(),
   // Camada 2 (Story 7.5): fica carregando, coberta no DashboardLayer2.spec
   getTactical: () => new Promise(() => {}),
+  // Camada 3 (Story 7.6): fica carregando, coberta no DashboardLayer3.spec
+  getDetails: () => new Promise(() => {}),
+  exportDetails: vi.fn(),
 }))
+vi.mock('@/services/accountService', () => ({ listAccounts: async () => [] }))
+vi.mock('@/services/cardService', () => ({ listCards: async () => [] }))
+vi.mock('@/services/categoryService', () => ({ listCategories: async () => [] }))
 
 // O drill-down da Camada 2 importa o transactionService; sem mock, api.ts exige o .env (CI)
-vi.mock('@/services/transactionService', () => ({ listTransactions: vi.fn() }))
+vi.mock('@/services/transactionService', () => ({ listTransactions: vi.fn(), updateTransaction: vi.fn() }))
 
 vi.mock('@/services/subscriptionService', () => ({
   getMySubscription: (...args: unknown[]) => mockGetMySubscription(...args),
@@ -401,6 +407,18 @@ describe('DashboardView', () => {
       expect(wrapper.find('[data-testid="health-error"]').exists()).toBe(true)
       expect(wrapper.get('h1').text()).toBe('Dashboard')
       expect(wrapper.text()).toContain('Excluir minha conta')
+    })
+
+    it('recarrega quando uma edição é salva na Camada 3 (Story 7.6, Q1=B)', async () => {
+      mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
+      const wrapper = mountView()
+      await flushPromises()
+      expect(mockGetFinancialHealth).toHaveBeenCalledTimes(1)
+
+      wrapper.findComponent({ name: 'DashboardGps' }).vm.$emit('transaction-saved')
+      await flushPromises()
+
+      expect(mockGetFinancialHealth).toHaveBeenCalledTimes(2)
     })
   })
 

@@ -3,6 +3,7 @@ package com.porquinho.repository;
 import com.porquinho.entity.Transaction;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -16,9 +17,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Repository for Transaction (Story 5.4). */
+/** Repository for Transaction (Story 5.4). Specifications: the optional filters of the dashboard layer 3 (Story 7.6). */
 @Repository
-public interface TransactionRepository extends JpaRepository<Transaction, UUID> {
+public interface TransactionRepository extends JpaRepository<Transaction, UUID>, JpaSpecificationExecutor<Transaction> {
 
     /** Every row of the user, removed ones included, oldest first (LGPD export). */
     @Query("SELECT t FROM Transaction t WHERE t.userId = :userId ORDER BY t.createdAt ASC, t.id ASC")

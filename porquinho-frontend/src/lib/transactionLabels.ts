@@ -1,4 +1,7 @@
 import { plural } from '@/lib/plural'
+import type { Account } from '@/types/account'
+import type { CreditCard } from '@/types/creditCard'
+import type { Transaction } from '@/types/transaction'
 import type { PixDetails } from '@/types/transactionImport'
 
 /** Pix sempre com texto, nunca só ícone (Stories 5.9 e 5.12). */
@@ -26,4 +29,26 @@ export function installmentLabel(row: {
   const left = row.remainingInstallments ?? row.installmentTotal - row.installmentNumber
   if (left === 0) return progress
   return `${progress} — ${left === 1 ? 'resta' : 'restam'} ${plural(left, 'parcela', 'parcelas')}`
+}
+
+/** Valor com sinal: saída negativa, entrada positiva (Stories 5.12 e 7.6). */
+export function signedAmount(row: { type: 'DEBIT' | 'CREDIT'; amount: number }): number {
+  return row.type === 'DEBIT' ? -row.amount : row.amount
+}
+
+/** "Grupo › Categoria", "Pagamento de fatura" ou "Não classificado" (Stories 5.12 e 7.6). */
+export function categoryLabel(row: Pick<Transaction, 'kind' | 'category'>): string {
+  if (row.kind === 'CARD_PAYMENT') return 'Pagamento de fatura'
+  if (!row.category) return 'Não classificado'
+  return row.category.group ? `${row.category.group} › ${row.category.name}` : row.category.name
+}
+
+/** Nome da conta ou do cartão; fora das listas de ativos, "Conta removida"/"Cartão removido" (Stories 5.12 e 7.6). */
+export function targetName(
+  row: Pick<Transaction, 'accountId' | 'creditCardId'>,
+  accounts: Pick<Account, 'id' | 'accountName'>[],
+  cards: Pick<CreditCard, 'id' | 'cardName'>[],
+): string {
+  if (row.accountId) return accounts.find((a) => a.id === row.accountId)?.accountName ?? 'Conta removida'
+  return cards.find((c) => c.id === row.creditCardId)?.cardName ?? 'Cartão removido'
 }

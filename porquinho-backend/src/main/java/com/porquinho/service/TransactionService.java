@@ -366,7 +366,8 @@ public class TransactionService {
         return balances.size();
     }
 
-    private List<TransactionResponse> toResponses(UUID userId, List<Transaction> rows) {
+    /** Also the rows of the dashboard layer 3 (Story 7.6). */
+    List<TransactionResponse> toResponses(UUID userId, List<Transaction> rows) {
         Map<UUID, Category> categories = core.categoriesOf(userId, rows);
         Set<UUID> groups = rows.stream().map(Transaction::getInstallmentGroupId).filter(Objects::nonNull)
             .collect(Collectors.toSet());

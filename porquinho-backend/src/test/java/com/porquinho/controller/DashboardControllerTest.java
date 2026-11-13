@@ -3,6 +3,8 @@ package com.porquinho.controller;
 import com.porquinho.dto.BudgetStatus;
 import com.porquinho.dto.DashboardLayer1Response;
 import com.porquinho.dto.DashboardLayer2Response;
+import com.porquinho.dto.DashboardLayer3Response;
+import com.porquinho.exception.BadRequestException;
 import com.porquinho.dto.FinancialHealthResponse;
 import com.porquinho.dto.FinancialHealthResponse.HealthStatus;
 import com.porquinho.service.DashboardService;
@@ -29,14 +31,19 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Stories 7.2, 7.3 and 7.5: GET /api/v1/dashboard/health, /layer1 and /layer2 (JSON shape, user from the JWT, 401 without a token). */
+/** Stories 7.2, 7.3, 7.5 and 7.6: GET /api/v1/dashboard/health, /layer1, /layer2 and /layer3 (JSON shape, user from the JWT, 401 without a token). */
 @WebMvcTest(DashboardController.class)
 @ActiveProfiles("test")
 @Import(DashboardControllerTest.ApiRequiresAuthentication.class)
@@ -164,6 +171,93 @@ class DashboardControllerTest {
     void tacticalWithoutATokenIs401() throws Exception {
         mockMvc.perform(get("/api/v1/dashboard/layer2"))
             .andExpect(status().isUnauthorized());
+        verifyNoInteractions(dashboardService);
+    }
+
+    private static Jwt jwt(UUID userId) {
+        return Jwt.withTokenValue("test-token").header("alg", "ES256").subject(userId.toString())
+            .issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(3600)).build();
+    }
+
+    @Test
+    void layer3PassesTheFiltersOfTheJwtUser() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID category = UUID.randomUUID();
+        UUID account = UUID.randomUUID();
+        UUID card = UUID.randomUUID();
+        DashboardService.DetailsFilter expected = new DashboardService.DetailsFilter("2026-11-01", "2026-11-30",
+            List.of(category), true, List.of(account), List.of(card), "mercado", "amount,desc");
+        when(dashboardService.details(userId, expected, 2)).thenReturn(new DashboardLayer3Response(List.of(), 2, 120, 3));
+
+        mockMvc.perform(get("/api/v1/dashboard/layer3").param("from", "2026-11-01").param("to", "2026-11-30")
+                .param("categoryIds", category.toString()).param("uncategorized", "true")
+                .param("accountIds", account.toString()).param("creditCardIds", card.toString())
+                .param("q", "mercado").param("sort", "amount,desc").param("page", "2")
+                .with(authentication(new TestingAuthenticationToken(jwt(userId), null, "ROLE_USER"))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items").isEmpty())
+            .andExpect(jsonPath("$.page").value(2))
+            .andExpect(jsonPath("$.totalItems").value(120))
+            .andExpect(jsonPath("$.totalPages").value(3));
+    }
+
+    @Test
+    void layer3InvalidPeriodIs400() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(dashboardService.details(eq(userId), any(), eq(0))).thenThrow(new BadRequestException("Período inválido"));
+
+        mockMvc.perform(get("/api/v1/dashboard/layer3").param("from", "x")
+                .with(authentication(new TestingAuthenticationToken(jwt(userId), null, "ROLE_USER"))))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void layer3ExportIsACsvAttachment() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(dashboardService.detailsCsv(eq(userId), any())).thenReturn("\uFEFFData;Descrição\r\n");
+
+        mockMvc.perform(get("/api/v1/dashboard/layer3/export").param("sort", "category,asc")
+                .with(authentication(new TestingAuthenticationToken(jwt(userId), null, "ROLE_USER"))))
+            .andExpect(status().isOk())
+            .andExpect(header().string("Content-Disposition", "attachment; filename=\"transacoes.csv\""))
+            .andExpect(content().contentTypeCompatibleWith("text/csv"))
+            .andExpect(content().string("\uFEFFData;Descrição\r\n"));
+        verify(dashboardService).detailsCsv(userId, new DashboardService.DetailsFilter(null, null, null, false, null,
+            null, null, "category,asc"));
+    }
+
+    @Test
+    void layer3ExportPassesEveryFilter() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID category = UUID.randomUUID();
+        UUID account = UUID.randomUUID();
+        UUID card = UUID.randomUUID();
+        when(dashboardService.detailsCsv(eq(userId), any())).thenReturn("x");
+
+        mockMvc.perform(get("/api/v1/dashboard/layer3/export").param("from", "2026-10-01").param("to", "2026-10-31")
+                .param("categoryIds", category.toString()).param("uncategorized", "true")
+                .param("accountIds", account.toString()).param("creditCardIds", card.toString())
+                .param("q", "mercado").param("sort", "date,asc")
+                .with(authentication(new TestingAuthenticationToken(jwt(userId), null, "ROLE_USER"))))
+            .andExpect(status().isOk());
+        verify(dashboardService).detailsCsv(userId, new DashboardService.DetailsFilter("2026-10-01", "2026-10-31",
+            List.of(category), true, List.of(account), List.of(card), "mercado", "date,asc"));
+    }
+
+    @Test
+    void layer3ExportInvalidPeriodIs400() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(dashboardService.detailsCsv(eq(userId), any())).thenThrow(new BadRequestException("Período inválido"));
+
+        mockMvc.perform(get("/api/v1/dashboard/layer3/export")
+                .with(authentication(new TestingAuthenticationToken(jwt(userId), null, "ROLE_USER"))))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void layer3WithoutATokenIs401() throws Exception {
+        mockMvc.perform(get("/api/v1/dashboard/layer3")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/dashboard/layer3/export")).andExpect(status().isUnauthorized());
         verifyNoInteractions(dashboardService);
     }
 }
