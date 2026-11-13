@@ -64,6 +64,8 @@ class TransactionImportProcessorTest {
     private PlatformTransactionManager transactionManager;
     @Mock
     private BudgetBalanceCache budgetBalanceCache;
+    @Mock
+    private DashboardCache dashboardCache;
 
     private TransactionImportProcessor processor;
     private final UUID importId = UUID.randomUUID();
@@ -78,7 +80,7 @@ class TransactionImportProcessorTest {
     void setUp() {
         org.mockito.Mockito.lenient().when(transactionManager.getTransaction(any())).thenReturn(transactionStatus);
         processor = new TransactionImportProcessor(repository, transactionRepository, transferRepository,
-            auditLogService, classificationService, budgetBalanceCache, transactionManager,
+            auditLogService, classificationService, budgetBalanceCache, dashboardCache, transactionManager,
             Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -233,6 +235,7 @@ class TransactionImportProcessorTest {
 
         verify(transactionRepository, never()).saveAll(any());
         verify(budgetBalanceCache, never()).evict(any());
+        verify(dashboardCache, never()).evictAll(any());
         assertThat(transactionStatus.isRollbackOnly()).isTrue();
         verify(repository, never()).markFailed(any(), anyString(), any());
     }
@@ -246,6 +249,26 @@ class TransactionImportProcessorTest {
         processor.process(importId, TransactionImport.FileType.OFX, sample("itau-cartao.ofx"));
 
         verify(budgetBalanceCache).evict(userId);
+        verify(dashboardCache).evictAll(userId);
+    }
+
+    @Test
+    void anImportThatOnlyConfirmsAFutureEvictsTheDashboard() throws IOException {
+        processingImport(null, cardId);
+        futureOfTheCard();
+        // every row but the 03/10 is already saved: nothing new, only the future confirmed
+        List<Transaction> inDb = OfxTransactionParser.parse(sample("itau-cartao.ofx"), true).entries().stream()
+            .filter(e -> !e.originalDescription().contains("03/10"))
+            .map(TransactionImportProcessorTest::existing).toList();
+        when(transactionRepository.findDuplicateCandidatesByCreditCardBetween(eq(userId), eq(cardId), any(), any()))
+            .thenReturn(inDb);
+        when(repository.markCompletedWithNothingNew(importId, 8, 8, 0, 0, now)).thenReturn(1);
+
+        processor.process(importId, TransactionImport.FileType.OFX, sample("itau-cartao.ofx"));
+
+        verify(repository).markCompletedWithNothingNew(importId, 8, 8, 0, 0, now);
+        verify(budgetBalanceCache).evict(userId);
+        verify(dashboardCache).evictAll(userId);
     }
 
     @Test
@@ -256,6 +279,8 @@ class TransactionImportProcessorTest {
         processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx"));
 
         verify(budgetBalanceCache, never()).evict(any());
+        // the new rows still change the dashboard (7.7)
+        verify(dashboardCache).evictAll(userId);
     }
 
     @Test

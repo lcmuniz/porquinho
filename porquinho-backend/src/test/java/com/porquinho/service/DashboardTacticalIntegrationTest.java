@@ -38,6 +38,8 @@ class DashboardTacticalIntegrationTest {
     private BudgetBalanceCache balanceCache;
     @Autowired
     private JdbcTemplate jdbc;
+    @Autowired
+    private DashboardCache dashboardCache;
 
     private final List<UUID> users = new ArrayList<>();
     private UUID userId;
@@ -55,6 +57,7 @@ class DashboardTacticalIntegrationTest {
     @AfterEach
     void tearDown() {
         for (UUID id : users) {
+            dashboardCache.evictAll(id);
             balanceCache.evict(id);
             jdbc.update("DELETE FROM audit_logs WHERE user_id = ?", id);
             jdbc.update("DELETE FROM transactions WHERE user_id = ?", id);

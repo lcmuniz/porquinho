@@ -31,6 +31,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.text.Collator;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -43,6 +46,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -73,6 +77,7 @@ public class DashboardService {
     private final AccountBalanceHistoryRepository balanceHistoryRepository;
     private final CreditCardRepository creditCardRepository;
     private final TransactionService transactionService;
+    private final DashboardCache dashboardCache;
     private final Clock clock;
 
     public DashboardService(BudgetService budgetService, AccountService accountService, GoalService goalService,
@@ -80,7 +85,8 @@ public class DashboardService {
                             AccountRepository accountRepository,
                             AccountBalanceHistoryRepository balanceHistoryRepository,
                             CreditCardRepository creditCardRepository, TransactionService transactionService,
-                            Clock clock) {
+                            DashboardCache dashboardCache, Clock clock) {
+        this.dashboardCache = dashboardCache;
         this.creditCardRepository = creditCardRepository;
         this.transactionService = transactionService;
         this.budgetService = budgetService;
@@ -99,6 +105,11 @@ public class DashboardService {
      */
     @Transactional(readOnly = true)
     public FinancialHealthResponse health(UUID userId) {
+        return dashboardCache.get(DashboardCache.Layer.HEALTH, userId, null, FinancialHealthResponse.class,
+            () -> computeHealth(userId));
+    }
+
+    private FinancialHealthResponse computeHealth(UUID userId) {
         LocalDate today = LocalDate.now(clock.withZone(SAO_PAULO));
         BudgetResponse budget = budgetService.get(userId, YearMonth.from(today).toString());
         int healthy = 0, low = 0, overspent = 0;
@@ -129,6 +140,11 @@ public class DashboardService {
      */
     @Transactional(readOnly = true)
     public DashboardLayer1Response overview(UUID userId) {
+        return dashboardCache.get(DashboardCache.Layer.LAYER1, userId, null, DashboardLayer1Response.class,
+            () -> computeOverview(userId));
+    }
+
+    private DashboardLayer1Response computeOverview(UUID userId) {
         LocalDate today = LocalDate.now(clock.withZone(SAO_PAULO));
         BudgetResponse budget = budgetService.get(userId, YearMonth.from(today).toString());
         Map<UUID, String> names = categoryService.listActive(userId).stream()
@@ -170,6 +186,11 @@ public class DashboardService {
      */
     @Transactional(readOnly = true)
     public DashboardLayer2Response tactical(UUID userId) {
+        return dashboardCache.get(DashboardCache.Layer.LAYER2, userId, null, DashboardLayer2Response.class,
+            () -> computeTactical(userId));
+    }
+
+    private DashboardLayer2Response computeTactical(UUID userId) {
         YearMonth current = YearMonth.from(LocalDate.now(clock.withZone(SAO_PAULO)));
         YearMonth first = current.minusMonths(11);
         Map<UUID, Category> active = categoryService.listActive(userId).stream()
@@ -237,10 +258,33 @@ public class DashboardService {
     @Transactional(readOnly = true)
     public DashboardLayer3Response details(UUID userId, DetailsFilter filter, int page) {
         if (page < 0) throw new BadRequestException(INVALID_PAGE_MESSAGE, "page");
+        return dashboardCache.get(DashboardCache.Layer.LAYER3, userId, filtersHash(filter, page),
+            DashboardLayer3Response.class, () -> computeDetails(userId, filter, page));
+    }
+
+    private DashboardLayer3Response computeDetails(UUID userId, DetailsFilter filter, int page) {
         Page<Transaction> rows = transactionRepository.findAll(detailsSpec(userId, filter),
             PageRequest.of(page, DETAILS_PAGE_SIZE));
         return new DashboardLayer3Response(transactionService.toResponses(userId, rows.getContent()), page,
             rows.getTotalElements(), rows.getTotalPages());
+    }
+
+    /** Story 7.7: SHA-256 of the whole filter, the page and the current month (blank dates mean the current month). */
+    String filtersHash(DetailsFilter f, int page) {
+        StringBuilder text = new StringBuilder();
+        // length-prefixed parts: no free text (q) can pass for another field; null is "-1:", which no string gives
+        for (Object part : java.util.Arrays.asList(f.from(), f.to(), f.categoryIds(), f.uncategorized(),
+                f.accountIds(), f.creditCardIds(), f.q(), f.sort(), page,
+                YearMonth.from(LocalDate.now(clock.withZone(SAO_PAULO))))) {
+            String value = part == null ? "" : part.toString();
+            text.append(part == null ? -1 : value.length()).append(':').append(value);
+        }
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                .digest(text.toString().getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     /**

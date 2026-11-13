@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -52,6 +53,13 @@ class DashboardServiceTest {
     // 2026-12-01 01:00 UTC is still 2026-11-30 in São Paulo
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-12-01T01:00:00Z"), ZoneOffset.UTC);
     private static final LocalDate TODAY = LocalDate.of(2026, 11, 30);
+    // the cache (7.7) has its own test: here every read computes
+    private static final DashboardCache NO_CACHE = new DashboardCache(null, null, null) {
+        @Override
+        public <T> T get(Layer layer, UUID userId, String field, Class<T> type, java.util.function.Supplier<T> loader) {
+            return loader.get();
+        }
+    };
 
     @Mock
     private BudgetService budgetService;
@@ -76,7 +84,7 @@ class DashboardServiceTest {
     @BeforeEach
     void setUp() {
         service = new DashboardService(budgetService, accountService, goalService, categoryService, transactionRepository,
-            accountRepository, balanceHistoryRepository, null, null, CLOCK);
+            accountRepository, balanceHistoryRepository, null, null, NO_CACHE, CLOCK);
         userId = UUID.randomUUID();
         // the overview (7.3) reads the total from the budget, not the accounts
         lenient().when(accountService.listActive(userId)).thenReturn(accounts);
@@ -291,7 +299,7 @@ class DashboardServiceTest {
             .thenReturn(spentAfterToday);
         lenient().when(transactionRepository.sumCommittedByCategory(userId, first, last)).thenReturn(committed);
         return new DashboardService(budgetService, accountService, goalService, categoryService, transactionRepository,
-            accountRepository, balanceHistoryRepository, null, null, clock).overview(userId);
+            accountRepository, balanceHistoryRepository, null, null, NO_CACHE, clock).overview(userId);
     }
 
     @Test
@@ -643,5 +651,36 @@ class DashboardServiceTest {
         DashboardLayer2Response response = tactical();
 
         assertEquals(new DashboardLayer2Response("2026-11", List.of(), List.of()), response);
+    }
+
+    // Story 7.7: one cache entry per filter, page and month
+    @Test
+    void theLayer3CacheFieldChangesWithEveryFilterPartThePageAndTheMonth() {
+        UUID id = UUID.randomUUID();
+        DashboardService.DetailsFilter base = new DashboardService.DetailsFilter(null, null, List.of(id), false,
+            List.of(), List.of(), "feira", null);
+        String hash = service.filtersHash(base, 0);
+
+        assertEquals(hash, service.filtersHash(new DashboardService.DetailsFilter(null, null, List.of(id), false,
+            List.of(), List.of(), "feira", null), 0));
+        assertNotEquals(hash, service.filtersHash(base, 1));
+        assertNotEquals(hash, service.filtersHash(new DashboardService.DetailsFilter(null, null, List.of(id), false,
+            List.of(), List.of(), "mercado", null), 0));
+        assertNotEquals(hash, service.filtersHash(new DashboardService.DetailsFilter(null, null, List.of(id), false,
+            List.of(), List.of(), "feira", "amount,asc"), 0));
+        assertNotEquals(hash, service.filtersHash(new DashboardService.DetailsFilter(null, null, List.of(), false,
+            List.of(id), List.of(), "feira", null), 0));
+        // free text cannot pass for the next field
+        assertNotEquals(service.filtersHash(new DashboardService.DetailsFilter(null, null, List.of(), false, List.of(),
+            List.of(), "a5:null", "x"), 0), service.filtersHash(new DashboardService.DetailsFilter(null, null,
+            List.of(), false, List.of(), List.of(), "a", "null5:x"), 0));
+        // the literal text "null" is not an absent q
+        assertNotEquals(service.filtersHash(new DashboardService.DetailsFilter(null, null, List.of(), false, List.of(),
+            List.of(), null, null), 0), service.filtersHash(new DashboardService.DetailsFilter(null, null, List.of(),
+            false, List.of(), List.of(), "null", null), 0));
+        DashboardService nextMonth = new DashboardService(budgetService, accountService, goalService, categoryService,
+            transactionRepository, accountRepository, balanceHistoryRepository, null, null, NO_CACHE,
+            Clock.offset(CLOCK, java.time.Duration.ofDays(1)));
+        assertNotEquals(hash, nextMonth.filtersHash(base, 0));
     }
 }

@@ -40,12 +40,6 @@ public class RedisConfig {
 
         return RedisCacheManager.builder(connectionFactory)
                 .cacheDefaults(defaultConfig)
-                .withCacheConfiguration("dashboard-layer1",
-                        defaultConfig.entryTtl(Duration.ofSeconds(30)))
-                .withCacheConfiguration("dashboard-layer2",
-                        defaultConfig.entryTtl(Duration.ofMinutes(5)))
-                .withCacheConfiguration("dashboard-layer3",
-                        defaultConfig.entryTtl(Duration.ofMinutes(15)))
                 .build();
     }
 }

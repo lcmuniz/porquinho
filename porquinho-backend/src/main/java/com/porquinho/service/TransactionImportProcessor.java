@@ -70,6 +70,7 @@ public class TransactionImportProcessor {
     private final AuditLogService auditLogService;
     private final TransactionClassificationService classificationService;
     private final BudgetBalanceCache budgetBalanceCache;
+    private final DashboardCache dashboardCache;
     private final TransactionTemplate transactionTemplate;
     private final Clock clock;
     /** Taken when the bean is created, before the web server accepts uploads: older PROCESSING rows are orphans. */
@@ -80,18 +81,19 @@ public class TransactionImportProcessor {
                                       TransactionRepository transactionRepository,
                                       TransferRepository transferRepository, AuditLogService auditLogService,
                                       TransactionClassificationService classificationService,
-                                      BudgetBalanceCache budgetBalanceCache,
+                                      BudgetBalanceCache budgetBalanceCache, DashboardCache dashboardCache,
                                       PlatformTransactionManager transactionManager) {
         this(transactionImportRepository, transactionRepository, transferRepository, auditLogService,
-            classificationService, budgetBalanceCache, transactionManager, Clock.systemDefaultZone());
+            classificationService, budgetBalanceCache, dashboardCache, transactionManager, Clock.systemDefaultZone());
     }
 
     TransactionImportProcessor(TransactionImportRepository transactionImportRepository,
                                TransactionRepository transactionRepository, TransferRepository transferRepository,
                                AuditLogService auditLogService,
                                TransactionClassificationService classificationService,
-                               BudgetBalanceCache budgetBalanceCache,
+                               BudgetBalanceCache budgetBalanceCache, DashboardCache dashboardCache,
                                PlatformTransactionManager transactionManager, Clock clock) {
+        this.dashboardCache = dashboardCache;
         this.transactionImportRepository = transactionImportRepository;
         this.transactionRepository = transactionRepository;
         this.transferRepository = transferRepository;
@@ -209,6 +211,10 @@ public class TransactionImportProcessor {
             }
             if (!plan.toInsert().isEmpty()) {
                 transactionRepository.saveAll(plan.toInsert());
+            }
+            if (!plan.confirmed().isEmpty() || !plan.toInsert().isEmpty()) {
+                // Story 7.7: no HTTP request behind this write, so the interceptor does not see it; after the commit
+                dashboardCache.evictAll(transactionImport.getUserId());
             }
             Outcome outcome = new Outcome(imported, duplicates, detection.transfers(), plan);
             auditLogService.log(AUDIT_DUPLICATES_CHECKED, transactionImport.getUserId(), null,

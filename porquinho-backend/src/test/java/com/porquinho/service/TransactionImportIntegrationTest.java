@@ -591,7 +591,8 @@ class TransactionImportIntegrationTest {
             throw new IllegalStateException("boom");
         }).when(failing).saveAll(any());
         TransactionImportProcessor processor = new TransactionImportProcessor(transactionImportRepository, failing,
-            transferRepository, auditLogService, classificationService, Mockito.mock(BudgetBalanceCache.class), transactionManager,
+            transferRepository, auditLogService, classificationService, Mockito.mock(BudgetBalanceCache.class),
+            Mockito.mock(DashboardCache.class), transactionManager,
             Clock.systemDefaultZone());
 
         processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx").getBytes());  // not the proxy: runs right here
@@ -610,7 +611,8 @@ class TransactionImportIntegrationTest {
         jdbc.update("UPDATE transaction_imports SET status = 'FAILED', error_message = ?, classification_total = 9, "
             + "classified_count = 4 WHERE id = ?", TransactionImportProcessor.INTERRUPTED_MESSAGE, importId);
         TransactionImportProcessor processor = new TransactionImportProcessor(transactionImportRepository,
-            transactionRepository, transferRepository, auditLogService, classificationService, Mockito.mock(BudgetBalanceCache.class), transactionManager,
+            transactionRepository, transferRepository, auditLogService, classificationService, Mockito.mock(BudgetBalanceCache.class),
+            Mockito.mock(DashboardCache.class), transactionManager,
             Clock.systemDefaultZone());
 
         processor.process(importId, TransactionImport.FileType.OFX, sample("nubank-conta.ofx").getBytes());  // not the proxy: runs right here
