@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { goalPace, goalProjection, monthsBetween, monthsToTarget } from '../goalPace'
+import { goalPace, goalProjection, monthsBetween, monthsToTarget, projectionText } from '../goalPace'
 import type { Goal } from '@/types/goal'
 
 const goal = (extra: Partial<Goal>): Goal => ({
@@ -129,4 +129,17 @@ describe('goalProjection', () => {
       )
     },
   )
+
+  it('projectionText cobre os quatro casos', () => {
+    expect(projectionText({ kind: 'reached' })).toBe('Valor-alvo atingido')
+    expect(projectionText({ kind: 'no-allocation', suggestion: null })).toBe(
+      'Defina alocação mensal para ver projeção',
+    )
+    expect(projectionText({ kind: 'too-far', suggestion: null })).toBe(
+      'Projeção de conclusão: daqui a mais de 100 anos',
+    )
+    expect(projectionText({ kind: 'month', month: '2027-09', suggestion: null })).toBe(
+      'Projeção de conclusão: setembro de 2027',
+    )
+  })
 })

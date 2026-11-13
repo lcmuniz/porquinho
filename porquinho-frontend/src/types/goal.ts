@@ -36,3 +36,9 @@ export interface GoalProgressPoint {
 export interface GoalProgress {
   points: GoalProgressPoint[]
 }
+
+/** Story 8.5: item do PUT /api/v1/goals/allocations. */
+export interface GoalAllocationItem {
+  goalId: string
+  monthlyAllocation: number
+}

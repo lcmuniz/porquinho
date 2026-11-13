@@ -1,5 +1,11 @@
 import { api } from './api'
-import type { CreateGoalInput, Goal, GoalProgress, GoalsSummary } from '@/types/goal'
+import type {
+  CreateGoalInput,
+  Goal,
+  GoalAllocationItem,
+  GoalProgress,
+  GoalsSummary,
+} from '@/types/goal'
 
 /** Story 3.8: metas ativas do usuário logado, da mais antiga para a mais nova. */
 export async function listGoals(): Promise<Goal[]> {
@@ -16,6 +22,15 @@ export async function createGoal(input: CreateGoalInput): Promise<Goal> {
 /** Story 8.2: muda o aporte mensal da meta e o alocado do mês corrente. 400 traz `errors.monthlyAllocation`. */
 export async function updateGoalAllocation(id: string, monthlyAllocation: number): Promise<Goal> {
   const response = await api.put<Goal>(`/api/v1/goals/${id}/allocation`, { monthlyAllocation })
+  return response.data
+}
+
+/**
+ * Story 8.5: muda a alocação de várias metas numa transação (tudo ou nada). 400 traz
+ * `errors["items[i].monthlyAllocation"]`; 404 se alguma meta não é do usuário.
+ */
+export async function updateGoalAllocations(items: GoalAllocationItem[]): Promise<Goal[]> {
+  const response = await api.put<Goal[]>('/api/v1/goals/allocations', { items })
   return response.data
 }
 

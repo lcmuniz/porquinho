@@ -402,6 +402,34 @@ describe('GoalsView', () => {
     })
   })
 
+  describe('Story 8.5: ajustar alocações', () => {
+    afterEach(() => window.history.replaceState(null, ''))
+
+    it('"Ajustar alocações" só aparece com 2 ou mais metas', async () => {
+      await mountView()
+      expect(wrapper!.find('[data-testid="adjust-allocations"]').exists()).toBe(false)
+      wrapper!.unmount()
+
+      mockList.mockResolvedValue([goal('g1', 'Viagem'), goal('g2', 'Carro')])
+      await mountView()
+      expect(
+        wrapper!.getComponent<typeof RouterLinkStub>('[data-testid="adjust-allocations"]').props('to'),
+      ).toBe('/metas/ajustar')
+    })
+
+    it('voltando do ajuste anuncia "Alocações atualizadas" e limpa o estado', async () => {
+      window.history.replaceState({ allocationsUpdated: true }, '')
+      await mountView()
+      expect(wrapper!.get('[data-testid="goals-success"]').text()).toBe('Alocações atualizadas')
+      expect(window.history.state.allocationsUpdated).toBeNull()
+    })
+
+    it('sem o estado não mostra a mensagem', async () => {
+      await mountView()
+      expect(wrapper!.get('[data-testid="goals-success"]').text()).toBe('')
+    })
+  })
+
   describe('Story 8.4: projeção de conclusão', () => {
     const text = (testid: string) =>
       plain(wrapper!.get(`[data-testid="goal-g1"] [data-testid="${testid}"]`).text())

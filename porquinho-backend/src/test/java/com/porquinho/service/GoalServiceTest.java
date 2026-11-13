@@ -2,9 +2,11 @@ package com.porquinho.service;
 
 import com.porquinho.dto.CreateGoalRequest;
 import com.porquinho.dto.GoalProgressResponse;
+import com.porquinho.dto.UpdateGoalAllocationsRequest.Item;
 import com.porquinho.entity.Account;
 import com.porquinho.entity.Goal;
 import com.porquinho.entity.GoalAllocation;
+import com.porquinho.exception.BadRequestException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.GoalAllocationRepository;
@@ -13,6 +15,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -141,8 +144,9 @@ class GoalServiceTest {
             allocation == null ? null : new BigDecimal(allocation));
         goal.setId(UUID.randomUUID());
         goal.setCurrentAmount(new BigDecimal(current));
-        when(goalRepository.findActiveByIdAndUserIdForUpdate(goal.getId(), userId)).thenReturn(Optional.of(goal));
-        when(goalRepository.save(any(Goal.class))).thenAnswer(inv -> inv.getArgument(0));
+        // lenient: a batch stubs several goals, and a 404 batch may stop before locking this one
+        lenient().when(goalRepository.findActiveByIdAndUserIdForUpdate(goal.getId(), userId)).thenReturn(Optional.of(goal));
+        lenient().when(goalRepository.save(any(Goal.class))).thenAnswer(inv -> inv.getArgument(0));
         return goal;
     }
 
@@ -182,6 +186,70 @@ class GoalServiceTest {
         assertSame(row, savedRow());
         assertEquals(new BigDecimal("700.00"), row.getAllocatedAmount());
         assertEquals(new BigDecimal("80.00"), row.getContributedAmount());
+    }
+
+    @Test
+    void updateAllocationsRedistributesAndWritesTheRowOfTheMonthOfEachGoal() {
+        Goal a = existing("0.00", "500.00");
+        Goal b = existing("0.00", "200.00");
+        GoalAllocation rowA = new GoalAllocation(userId, a.getId(), MONTH, new BigDecimal("500.00"));
+        rowA.setContributedAmount(new BigDecimal("80.00"));
+        when(goalAllocationRepository.findByUserIdAndGoalIdAndMonthYear(userId, a.getId(), MONTH)).thenReturn(Optional.of(rowA));
+        when(goalAllocationRepository.findByUserIdAndGoalIdAndMonthYear(userId, b.getId(), MONTH)).thenReturn(Optional.empty());
+
+        List<Goal> result = service.updateAllocations(userId, List.of(
+            new Item(a.getId(), new BigDecimal("300")), new Item(b.getId(), new BigDecimal("400"))));
+
+        assertEquals(List.of(a, b), result);
+        assertEquals(new BigDecimal("300.00"), a.getMonthlyAllocation());
+        assertEquals(new BigDecimal("400.00"), b.getMonthlyAllocation());
+        ArgumentCaptor<GoalAllocation> rows = ArgumentCaptor.forClass(GoalAllocation.class);
+        verify(goalAllocationRepository, times(2)).save(rows.capture());
+        assertSame(rowA, rows.getAllValues().get(0));
+        assertEquals(new BigDecimal("300.00"), rowA.getAllocatedAmount());
+        assertEquals(new BigDecimal("80.00"), rowA.getContributedAmount());
+        GoalAllocation rowB = rows.getAllValues().get(1);
+        assertEquals(b.getId(), rowB.getGoalId());
+        assertEquals(MONTH, rowB.getMonthYear());
+        assertEquals(new BigDecimal("400.00"), rowB.getAllocatedAmount());
+    }
+
+    @Test
+    void updateAllocationsWithAnotherUsersGoalIsNotFoundAndNothingIsWritten() {
+        Goal a = existing("0.00", "500.00");
+        UUID foreign = UUID.randomUUID();
+        when(goalRepository.findActiveByIdAndUserIdForUpdate(foreign, userId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> service.updateAllocations(userId, List.of(
+            new Item(a.getId(), new BigDecimal("300")), new Item(foreign, new BigDecimal("400")))));
+        verifyNoInteractions(goalAllocationRepository);
+        verify(goalRepository, never()).save(any());
+        assertEquals(new BigDecimal("500.00"), a.getMonthlyAllocation());
+    }
+
+    @Test
+    void updateAllocationsLocksTheGoalsInIdOrderWhateverTheRequestOrder() {
+        Goal x = existing("0.00", "500.00");
+        Goal y = existing("0.00", "200.00");
+        Goal low = x.getId().compareTo(y.getId()) < 0 ? x : y;
+        Goal high = low == x ? y : x;
+        when(goalAllocationRepository.findByUserIdAndGoalIdAndMonthYear(any(), any(), any())).thenReturn(Optional.empty());
+
+        service.updateAllocations(userId, List.of(
+            new Item(high.getId(), BigDecimal.ONE), new Item(low.getId(), BigDecimal.TEN)));
+
+        InOrder order = inOrder(goalRepository);
+        order.verify(goalRepository).findActiveByIdAndUserIdForUpdate(low.getId(), userId);
+        order.verify(goalRepository).findActiveByIdAndUserIdForUpdate(high.getId(), userId);
+    }
+
+    @Test
+    void updateAllocationsRejectsAnEmptyBatchAndARepeatedGoal() {
+        UUID id = UUID.randomUUID();
+        assertThrows(BadRequestException.class, () -> service.updateAllocations(userId, List.of()));
+        assertThrows(BadRequestException.class, () -> service.updateAllocations(userId, List.of(
+            new Item(id, BigDecimal.ONE), new Item(id, BigDecimal.TEN))));
+        verifyNoInteractions(goalRepository, goalAllocationRepository);
     }
 
     @Test

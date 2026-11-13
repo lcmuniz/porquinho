@@ -2,9 +2,11 @@ package com.porquinho.service;
 
 import com.porquinho.dto.CreateGoalRequest;
 import com.porquinho.dto.GoalProgressResponse;
+import com.porquinho.dto.UpdateGoalAllocationsRequest;
 import com.porquinho.entity.Account;
 import com.porquinho.entity.Goal;
 import com.porquinho.entity.GoalAllocation;
+import com.porquinho.exception.BadRequestException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.GoalAllocationRepository;
@@ -19,7 +21,11 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -77,7 +83,27 @@ public class GoalService {
      */
     @Transactional
     public Goal updateAllocation(UUID userId, UUID goalId, BigDecimal monthlyAllocation) {
-        Goal goal = lockedGoal(userId, goalId);
+        return applyAllocation(lockedGoal(userId, goalId), monthlyAllocation);
+    }
+
+    /**
+     * Story 8.5: the same rule as {@link #updateAllocation} for several goals, all or nothing. Every goal is locked
+     * (in id order, so two batches never deadlock) before anything is written; one missing goal is a 404 and
+     * nothing changes. A repeated goal id is a 400. Returns the goals in the request order.
+     */
+    @Transactional
+    public List<Goal> updateAllocations(UUID userId, List<UpdateGoalAllocationsRequest.Item> items) {
+        if (items.isEmpty()) throw new BadRequestException("Informe ao menos uma meta");
+        if (new HashSet<>(items.stream().map(UpdateGoalAllocationsRequest.Item::goalId).toList()).size() != items.size()) {
+            throw new BadRequestException("A mesma meta foi informada mais de uma vez");
+        }
+        Map<UUID, Goal> locked = new HashMap<>();
+        items.stream().map(UpdateGoalAllocationsRequest.Item::goalId).sorted(Comparator.naturalOrder())
+            .forEach(id -> locked.put(id, lockedGoal(userId, id)));
+        return items.stream().map(item -> applyAllocation(locked.get(item.goalId()), item.monthlyAllocation())).toList();
+    }
+
+    private Goal applyAllocation(Goal goal, BigDecimal monthlyAllocation) {
         BigDecimal amount = monthlyAllocation.setScale(2, RoundingMode.HALF_UP);
         goal.setMonthlyAllocation(amount);
         GoalAllocation row = monthRow(goal);

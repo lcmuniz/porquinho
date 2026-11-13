@@ -11,6 +11,14 @@
           </p>
         </div>
         <div class="flex flex-wrap justify-end gap-2">
+          <RouterLink
+            v-if="goals.length >= 2"
+            to="/metas/ajustar"
+            data-testid="adjust-allocations"
+            class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+          >
+            Ajustar alocações
+          </RouterLink>
           <Button
             ref="addButton"
             class="min-h-[44px]"
@@ -469,11 +477,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import GoalProgressChart from '@/components/goals/GoalProgressChart.vue'
-import { currentMonth, formatLocalDateBR, formatMonthBR } from '@/lib/date'
+import { currentMonth, formatLocalDateBR } from '@/lib/date'
 import {
   goalPace,
   goalProjection,
   PACE_LABEL,
+  projectionText,
   type GoalPace,
   type GoalProjection,
 } from '@/lib/goalPace'
@@ -504,6 +513,7 @@ import type { Goal, GoalProgressPoint, GoalsSummary } from '@/types/goal'
  * Story 8.2: editar a alocação mensal, aportar e o total alocado no topo, com aviso acima do disponível.
  * Story 8.3: barra com marcos e cor de ritmo; "Ver evolução" abre o gráfico no card e só então busca a série.
  * Story 8.4: projeção do mês de conclusão e aporte sugerido para o prazo, calculados no front a partir da meta.
+ * Story 8.5: "Ajustar alocações" (com 2+ metas) abre /metas/ajustar, que volta com "Alocações atualizadas".
  */
 const SUCCESS_TIMEOUT_MS = 5000
 const SAVE_FAILED = 'Não foi possível criar a meta. Verifique sua conexão e tente novamente.'
@@ -573,13 +583,6 @@ const PACE_STYLE: Record<GoalPace, { bar: string; text: string }> = {
   'very-late': { bar: 'bg-red-500', text: 'text-red-700' },
 }
 const thisMonth = currentMonth()
-
-function projectionText(projection: GoalProjection): string {
-  if (projection.kind === 'reached') return 'Valor-alvo atingido'
-  if (projection.kind === 'no-allocation') return 'Defina alocação mensal para ver projeção'
-  if (projection.kind === 'too-far') return 'Projeção de conclusão: daqui a mais de 100 anos'
-  return `Projeção de conclusão: ${formatMonthBR(projection.month)}`
-}
 
 function suggestionText(projection: GoalProjection): string | null {
   if (projection.kind === 'reached' || !projection.suggestion) return null
@@ -767,6 +770,11 @@ async function saveAmount() {
 
 onMounted(async () => {
   heading.value?.focus()
+  // Story 8.5: a tela de ajuste volta para cá com esse estado; limpo para não repetir ao recarregar
+  if (window.history.state?.allocationsUpdated) {
+    setSuccess('Alocações atualizadas')
+    window.history.replaceState({ ...window.history.state, allocationsUpdated: null }, '')
+  }
   await load()
 })
 

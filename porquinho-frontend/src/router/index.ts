@@ -123,6 +123,13 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      // Story 8.5: ajustar a alocação mensal de várias metas de uma vez
+      path: '/metas/ajustar',
+      name: 'goal-allocations',
+      component: () => import('../views/GoalAllocationsView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       // Story 6.3: orçamento mensal por categoria
       path: '/orcamento',
       name: 'budget',

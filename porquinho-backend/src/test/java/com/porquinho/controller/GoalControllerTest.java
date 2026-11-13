@@ -3,7 +3,9 @@ package com.porquinho.controller;
 import com.porquinho.config.TestWebSecurityConfig;
 import com.porquinho.dto.CreateGoalRequest;
 import com.porquinho.dto.GoalProgressResponse;
+import com.porquinho.dto.UpdateGoalAllocationsRequest;
 import com.porquinho.entity.Goal;
+import com.porquinho.exception.BadRequestException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.service.GoalService;
 import org.junit.jupiter.api.BeforeEach;
@@ -285,6 +287,65 @@ class GoalControllerTest {
             .andExpect(jsonPath("$.errors.monthlyAllocation").exists());
 
         verifyNoInteractions(goalService);
+    }
+
+    @Test
+    void putAllocationsReturns200WithTheGoals() throws Exception {
+        Goal a = goal("Viagem", "8000.00", null, "300.00");
+        Goal b = goal("Carro", "9000.00", null, "400.00");
+        when(goalService.updateAllocations(eq(userId), any())).thenReturn(List.of(a, b));
+
+        mockMvc.perform(put("/api/v1/goals/allocations").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"items\":[{\"goalId\":\"" + a.getId() + "\",\"monthlyAllocation\":300},"
+                    + "{\"goalId\":\"" + b.getId() + "\",\"monthlyAllocation\":400}]}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.length()").value(2))
+            .andExpect(jsonPath("$[1].monthlyAllocation").value(400.0));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<UpdateGoalAllocationsRequest.Item>> items = ArgumentCaptor.forClass(List.class);
+        verify(goalService).updateAllocations(eq(userId), items.capture());
+        assertThat(items.getValue()).containsExactly(
+            new UpdateGoalAllocationsRequest.Item(a.getId(), new BigDecimal("300")),
+            new UpdateGoalAllocationsRequest.Item(b.getId(), new BigDecimal("400")));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{\"items\":[]}", "{}", "{\"items\":[{\"goalId\":\"%s\",\"monthlyAllocation\":-1}]}",
+        "{\"items\":[{\"goalId\":\"%s\",\"monthlyAllocation\":1.001}]}", "{\"items\":[{\"goalId\":\"%s\"}]}",
+        "{\"items\":[{\"monthlyAllocation\":10}]}"})
+    void invalidAllocationsBatchIs400(String content) throws Exception {
+        mockMvc.perform(put("/api/v1/goals/allocations").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content(content.formatted(UUID.randomUUID())))
+            .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(goalService);
+    }
+
+    @Test
+    void invalidItemErrorIsKeyedByItsIndexForTheFrontend() throws Exception {
+        mockMvc.perform(put("/api/v1/goals/allocations").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"items\":[{\"goalId\":\"" + UUID.randomUUID() + "\",\"monthlyAllocation\":-1}]}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errors['items[0].monthlyAllocation']").value("O aporte mensal não pode ser negativo"));
+    }
+
+    @Test
+    void repeatedGoalInTheBatchIs400AndAnotherUsersGoalIs404() throws Exception {
+        UUID id = UUID.randomUUID();
+        String content = "{\"items\":[{\"goalId\":\"" + id + "\",\"monthlyAllocation\":10}]}";
+        when(goalService.updateAllocations(eq(userId), any()))
+            .thenThrow(new BadRequestException("A mesma meta foi informada mais de uma vez"))
+            .thenThrow(new ResourceNotFoundException("Meta não encontrada"));
+
+        mockMvc.perform(put("/api/v1/goals/allocations").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content(content))
+            .andExpect(status().isBadRequest());
+        mockMvc.perform(put("/api/v1/goals/allocations").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content(content))
+            .andExpect(status().isNotFound());
     }
 
     @Test

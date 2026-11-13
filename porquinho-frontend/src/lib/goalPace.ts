@@ -1,7 +1,7 @@
 /**
  * Story 8.3: ritmo da meta (verde/amarelo/vermelho), reaproveitado na 8.4. Meses são "AAAA-MM" em America/Sao_Paulo.
  */
-import { shiftMonth } from './date'
+import { formatMonthBR, shiftMonth } from './date'
 import { MAX_FORECAST_MONTHS } from './goalPlan'
 import type { Goal } from '@/types/goal'
 
@@ -75,4 +75,12 @@ export function goalProjection(goal: Goal, currentMonth: string): GoalProjection
   if (months === null) return { kind: 'no-allocation', suggestion }
   if (months > MAX_FORECAST_MONTHS) return { kind: 'too-far', suggestion }
   return { kind: 'month', month: shiftMonth(currentMonth, months), suggestion }
+}
+
+/** Story 8.4 (compartilhado na 8.5): texto da projeção de conclusão. */
+export function projectionText(projection: GoalProjection): string {
+  if (projection.kind === 'reached') return 'Valor-alvo atingido'
+  if (projection.kind === 'no-allocation') return 'Defina alocação mensal para ver projeção'
+  if (projection.kind === 'too-far') return 'Projeção de conclusão: daqui a mais de 100 anos'
+  return `Projeção de conclusão: ${formatMonthBR(projection.month)}`
 }

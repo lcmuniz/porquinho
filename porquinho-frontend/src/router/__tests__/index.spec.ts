@@ -24,6 +24,13 @@ describe('router', () => {
     expect(route.meta.requiresAuth).toBe(true)
   })
 
+  it('resolve o ajuste de alocações das metas, com autenticação (Story 8.5)', () => {
+    const route = router.resolve('/metas/ajustar')
+
+    expect(route.name).toBe('goal-allocations')
+    expect(route.meta.requiresAuth).toBe(true)
+  })
+
   it('resolve o orçamento, com autenticação (Story 6.3)', () => {
     const route = router.resolve('/orcamento')
 

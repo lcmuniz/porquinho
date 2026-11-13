@@ -6,6 +6,7 @@ import com.porquinho.dto.GoalProgressResponse;
 import com.porquinho.dto.GoalResponse;
 import com.porquinho.dto.GoalSummaryResponse;
 import com.porquinho.dto.UpdateGoalAllocationRequest;
+import com.porquinho.dto.UpdateGoalAllocationsRequest;
 import com.porquinho.service.GoalService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -66,6 +67,15 @@ public class GoalController {
                                                          @Valid @RequestBody UpdateGoalAllocationRequest request) {
         UUID userId = UUID.fromString(jwt.getSubject());
         return ResponseEntity.ok(GoalResponse.of(goalService.updateAllocation(userId, id, request.monthlyAllocation())));
+    }
+
+    /** 200 with the updated goals (Story 8.5), all or nothing. 400 for an invalid batch, 404 for another user's goal. */
+    @PutMapping("/allocations")
+    public ResponseEntity<List<GoalResponse>> updateAllocations(@AuthenticationPrincipal Jwt jwt,
+                                                                @Valid @RequestBody UpdateGoalAllocationsRequest request) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(goalService.updateAllocations(userId, request.items()).stream()
+            .map(GoalResponse::of).toList());
     }
 
     /** 201 with the goal after the contribution. 404 for another user's goal. */
