@@ -1,6 +1,7 @@
 package com.porquinho.service;
 
 import com.porquinho.dto.CreateGoalRequest;
+import com.porquinho.dto.GoalProgressResponse;
 import com.porquinho.entity.Account;
 import com.porquinho.entity.Goal;
 import com.porquinho.entity.GoalAllocation;
@@ -19,6 +20,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
@@ -250,5 +252,68 @@ class GoalServiceTest {
         when(accountRepository.findActiveByUserId(userId)).thenReturn(List.of(a, b));
 
         assertEquals(new BigDecimal("799.50"), service.totalAvailable(userId));
+    }
+
+    private Goal readable(String current, String createdAt) {
+        Goal goal = new Goal(userId, "Viagem", new BigDecimal("1000.00"), null, null);
+        goal.setId(UUID.randomUUID());
+        goal.setCurrentAmount(new BigDecimal(current));
+        goal.setCreatedAt(OffsetDateTime.parse(createdAt));
+        when(goalRepository.findActiveByIdAndUserId(goal.getId(), userId)).thenReturn(Optional.of(goal));
+        return goal;
+    }
+
+    private GoalAllocation contributed(Goal goal, String month, String amount) {
+        GoalAllocation row = new GoalAllocation(userId, goal.getId(), LocalDate.parse(month), BigDecimal.ZERO);
+        row.setContributedAmount(new BigDecimal(amount));
+        return row;
+    }
+
+    private List<String> series(GoalProgressResponse response) {
+        return response.points().stream().map(p -> p.month() + "=" + p.amount()).toList();
+    }
+
+    @Test
+    void progressOfANewGoalHasOnePointWithZero() {
+        Goal goal = readable("0.00", "2026-11-10T12:00:00Z");
+        when(goalAllocationRepository.findByUserIdAndGoalIdOrderByMonthYearAsc(userId, goal.getId())).thenReturn(List.of());
+
+        assertEquals(List.of("2026-11=0.00"), series(service.progress(userId, goal.getId())));
+    }
+
+    @Test
+    void progressAccumulatesContributionsMonthByMonthAndRepeatsMonthsWithout() {
+        Goal goal = readable("300.00", "2026-09-05T12:00:00Z");
+        when(goalAllocationRepository.findByUserIdAndGoalIdOrderByMonthYearAsc(userId, goal.getId())).thenReturn(List.of(
+            contributed(goal, "2026-09-01", "100.00"), contributed(goal, "2026-11-01", "200.00")));
+
+        assertEquals(List.of("2026-09=100.00", "2026-10=100.00", "2026-11=300.00"),
+            series(service.progress(userId, goal.getId())));
+    }
+
+    @Test
+    void progressUsesTheAmountFromBefore82AsBase() {
+        Goal goal = readable("500.00", "2026-10-01T12:00:00Z");
+        when(goalAllocationRepository.findByUserIdAndGoalIdOrderByMonthYearAsc(userId, goal.getId())).thenReturn(List.of());
+
+        assertEquals(List.of("2026-10=500.00", "2026-11=500.00"), series(service.progress(userId, goal.getId())));
+    }
+
+    @Test
+    void progressUsesTheCreationMonthInSaoPaulo() {
+        // 2026-10-01T01:00Z is still 30/09 in America/Sao_Paulo
+        Goal goal = readable("0.00", "2026-10-01T01:00:00Z");
+        when(goalAllocationRepository.findByUserIdAndGoalIdOrderByMonthYearAsc(userId, goal.getId())).thenReturn(List.of());
+
+        assertEquals("2026-09", service.progress(userId, goal.getId()).points().get(0).month());
+    }
+
+    @Test
+    void progressOfAnotherUsersRemovedOrMissingGoalIsNotFound() {
+        UUID goalId = UUID.randomUUID();
+        when(goalRepository.findActiveByIdAndUserId(goalId, userId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> service.progress(userId, goalId));
+        verifyNoInteractions(goalAllocationRepository);
     }
 }

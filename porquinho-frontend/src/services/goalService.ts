@@ -1,5 +1,5 @@
 import { api } from './api'
-import type { CreateGoalInput, Goal, GoalsSummary } from '@/types/goal'
+import type { CreateGoalInput, Goal, GoalProgress, GoalsSummary } from '@/types/goal'
 
 /** Story 3.8: metas ativas do usuário logado, da mais antiga para a mais nova. */
 export async function listGoals(): Promise<Goal[]> {
@@ -28,5 +28,11 @@ export async function contributeToGoal(id: string, amount: number): Promise<Goal
 /** Story 8.2: total disponível para comparar com a soma das alocações. */
 export async function getGoalsSummary(): Promise<GoalsSummary> {
   const response = await api.get<GoalsSummary>('/api/v1/goals/summary')
+  return response.data
+}
+
+/** Story 8.3: série mensal do valor acumulado da meta. 404 para meta de outro usuário. */
+export async function getGoalProgress(id: string): Promise<GoalProgress> {
+  const response = await api.get<GoalProgress>(`/api/v1/goals/${id}/progress`)
   return response.data
 }

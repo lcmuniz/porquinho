@@ -25,3 +25,14 @@ export interface CreateGoalInput {
 export interface GoalsSummary {
   totalAvailable: number
 }
+
+/** Story 8.3: valor acumulado da meta num mês ("AAAA-MM", America/Sao_Paulo). */
+export interface GoalProgressPoint {
+  month: string
+  amount: number
+}
+
+/** Story 8.3: GET /api/v1/goals/{id}/progress. Um ponto por mês, da criação até o mês corrente. */
+export interface GoalProgress {
+  points: GoalProgressPoint[]
+}

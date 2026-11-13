@@ -2,6 +2,7 @@ package com.porquinho.controller;
 
 import com.porquinho.config.TestWebSecurityConfig;
 import com.porquinho.dto.CreateGoalRequest;
+import com.porquinho.dto.GoalProgressResponse;
 import com.porquinho.entity.Goal;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.service.GoalService;
@@ -330,5 +331,28 @@ class GoalControllerTest {
         mockMvc.perform(get("/api/v1/goals/summary").with(authentication(authToken)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.totalAvailable").value(1234.56));
+    }
+
+    @Test
+    void getProgressReturnsTheMonthlySeries() throws Exception {
+        UUID goalId = UUID.randomUUID();
+        when(goalService.progress(userId, goalId)).thenReturn(new GoalProgressResponse(List.of(
+            new GoalProgressResponse.Point("2026-10", new BigDecimal("100.00")),
+            new GoalProgressResponse.Point("2026-11", new BigDecimal("300.00")))));
+
+        mockMvc.perform(get("/api/v1/goals/" + goalId + "/progress").with(authentication(authToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.points.length()").value(2))
+            .andExpect(jsonPath("$.points[0].month").value("2026-10"))
+            .andExpect(jsonPath("$.points[1].amount").value(300.0));
+    }
+
+    @Test
+    void getProgressOfAnotherUsersGoalIs404() throws Exception {
+        UUID goalId = UUID.randomUUID();
+        when(goalService.progress(userId, goalId)).thenThrow(new ResourceNotFoundException("Meta não encontrada"));
+
+        mockMvc.perform(get("/api/v1/goals/" + goalId + "/progress").with(authentication(authToken)))
+            .andExpect(status().isNotFound());
     }
 }

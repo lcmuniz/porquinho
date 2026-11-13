@@ -1,6 +1,7 @@
 package com.porquinho.service;
 
 import com.porquinho.dto.CreateGoalRequest;
+import com.porquinho.dto.GoalProgressResponse;
 import com.porquinho.entity.Account;
 import com.porquinho.entity.Goal;
 import com.porquinho.entity.GoalAllocation;
@@ -17,6 +18,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -104,6 +106,33 @@ public class GoalService {
     public BigDecimal totalAvailable(UUID userId) {
         return accountRepository.findActiveByUserId(userId).stream()
             .map(Account::getCurrentBalance).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /**
+     * Story 8.3: one point per month (America/Sao_Paulo) from the creation month to the current one. Each point is
+     * base + contributions up to that month, with base = currentAmount - all contributions (value from before 8.2),
+     * so the last point always equals currentAmount. Computed on read; no snapshot table.
+     */
+    @Transactional(readOnly = true)
+    public GoalProgressResponse progress(UUID userId, UUID goalId) {
+        Goal goal = goalRepository.findActiveByIdAndUserId(goalId, userId)
+            .orElseThrow(() -> new ResourceNotFoundException(NOT_FOUND_MESSAGE));
+        List<GoalAllocation> rows = goalAllocationRepository.findByUserIdAndGoalIdOrderByMonthYearAsc(userId, goalId);
+        BigDecimal amount = rows.stream().map(GoalAllocation::getContributedAmount)
+            .reduce(goal.getCurrentAmount(), BigDecimal::subtract);
+        YearMonth current = YearMonth.now(clock.withZone(SAO_PAULO));
+        YearMonth start = YearMonth.from(goal.getCreatedAt().atZoneSameInstant(SAO_PAULO));
+        if (start.isAfter(current)) start = current;
+        List<GoalProgressResponse.Point> points = new ArrayList<>();
+        int next = 0;
+        for (YearMonth month = start; !month.isAfter(current); month = month.plusMonths(1)) {
+            // Rows before the creation month (should not exist) fold into the first point
+            while (next < rows.size() && !YearMonth.from(rows.get(next).getMonthYear()).isAfter(month)) {
+                amount = amount.add(rows.get(next++).getContributedAmount());
+            }
+            points.add(new GoalProgressResponse.Point(month.toString(), amount));
+        }
+        return new GoalProgressResponse(points);
     }
 
     private Goal lockedGoal(UUID userId, UUID goalId) {

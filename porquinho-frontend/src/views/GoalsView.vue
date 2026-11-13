@@ -104,7 +104,7 @@
               {{ goal.description }}
             </p>
             <div
-              class="h-3 w-full overflow-hidden rounded-full bg-gray-100"
+              class="relative h-3 w-full overflow-hidden rounded-full bg-gray-100"
               role="progressbar"
               :aria-valuenow="percent(goal)"
               aria-valuemin="0"
@@ -112,15 +112,35 @@
               :aria-label="`Progresso de ${goal.name}: ${percent(goal)}%`"
             >
               <div
-                class="h-full rounded-full bg-green-500"
+                class="h-full rounded-full"
+                :class="PACE_STYLE[goalPace(goal, thisMonth)].bar"
                 :style="{ width: `${percent(goal)}%` }"
+                data-testid="goal-progress-fill"
+              />
+              <!-- Marcos de 25/50/75% -->
+              <span
+                v-for="mark in [25, 50, 75]"
+                :key="mark"
+                class="absolute inset-y-0 w-px bg-gray-400"
+                :style="{ left: `${mark}%` }"
+                aria-hidden="true"
+                data-testid="goal-progress-mark"
               />
             </div>
-            <p class="text-sm text-gray-700" data-testid="goal-progress-text">
-              {{ formatBRL(goal.currentAmount) }} de {{ formatBRL(goal.targetAmount) }} ({{
-                percent(goal)
-              }}%)
-            </p>
+            <div class="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <p class="text-gray-700" data-testid="goal-progress-text">
+                {{ formatBRL(goal.currentAmount) }} de {{ formatBRL(goal.targetAmount) }} ({{
+                  percent(goal)
+                }}%)
+              </p>
+              <p
+                class="font-medium"
+                :class="PACE_STYLE[goalPace(goal, thisMonth)].text"
+                data-testid="goal-pace"
+              >
+                {{ PACE_LABEL[goalPace(goal, thisMonth)] }}
+              </p>
+            </div>
             <p v-if="goal.targetDate" class="text-sm text-gray-600">
               Data-alvo: {{ formatLocalDateBR(goal.targetDate) }}
             </p>
@@ -146,6 +166,38 @@
               >
                 Aportar
               </Button>
+              <Button
+                variant="outline"
+                class="min-h-[44px]"
+                :aria-expanded="goal.id in progress ? 'true' : 'false'"
+                :aria-controls="`goal-chart-${goal.id}`"
+                data-testid="toggle-chart"
+                @click="toggleChart(goal.id)"
+              >
+                {{ goal.id in progress ? 'Ocultar evolução' : 'Ver evolução' }}
+              </Button>
+            </div>
+            <div v-if="goal.id in progress" :id="`goal-chart-${goal.id}`">
+              <p
+                v-if="progress[goal.id] === 'loading'"
+                class="py-6 text-center text-sm text-gray-600"
+                aria-busy="true"
+              >
+                Carregando evolução...
+              </p>
+              <p
+                v-else-if="progress[goal.id] === 'error'"
+                role="alert"
+                class="py-6 text-center text-sm text-gray-600"
+                data-testid="goal-chart-error"
+              >
+                Não foi possível carregar a evolução
+              </p>
+              <GoalProgressChart
+                v-else
+                :goal="goal"
+                :points="progress[goal.id] as GoalProgressPoint[]"
+              />
             </div>
           </li>
         </ul>
@@ -406,7 +458,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { formatLocalDateBR } from '@/lib/date'
+import GoalProgressChart from '@/components/goals/GoalProgressChart.vue'
+import { currentMonth, formatLocalDateBR } from '@/lib/date'
+import { goalPace, PACE_LABEL, type GoalPace } from '@/lib/goalPace'
 import {
   GOAL_FIELDS,
   monthsUntil,
@@ -421,16 +475,18 @@ import { formatBRL, formatBRLInput, parseBRL } from '@/lib/money'
 import {
   contributeToGoal,
   createGoal,
+  getGoalProgress,
   getGoalsSummary,
   listGoals,
   updateGoalAllocation,
 } from '@/services/goalService'
-import type { Goal, GoalsSummary } from '@/types/goal'
+import type { Goal, GoalProgressPoint, GoalsSummary } from '@/types/goal'
 
 /**
  * Story 8.1: metas ativas do usuário (ordem de criação) e criação de outra meta, sem limite. O aporte mensal é
  * sugerido pelo valor-alvo e pela data até o usuário editá-lo; a validação é a mesma do onboarding.
  * Story 8.2: editar a alocação mensal, aportar e o total alocado no topo, com aviso acima do disponível.
+ * Story 8.3: barra com marcos e cor de ritmo; "Ver evolução" abre o gráfico no card e só então busca a série.
  */
 const SUCCESS_TIMEOUT_MS = 5000
 const SAVE_FAILED = 'Não foi possível criar a meta. Verifique sua conexão e tente novamente.'
@@ -493,6 +549,33 @@ watch(
     )
   },
 )
+
+const PACE_STYLE: Record<GoalPace, { bar: string; text: string }> = {
+  'on-track': { bar: 'bg-green-500', text: 'text-green-700' },
+  late: { bar: 'bg-yellow-500', text: 'text-yellow-700' },
+  'very-late': { bar: 'bg-red-500', text: 'text-red-700' },
+}
+const thisMonth = currentMonth()
+
+/** Story 8.3: série dos gráficos abertos, por id da meta. Sem a chave, o gráfico está fechado. */
+const progress = reactive<Record<string, GoalProgressPoint[] | 'loading' | 'error'>>({})
+
+async function loadProgress(id: string) {
+  // Recarga com o gráfico aberto mantém a série antiga na tela até a nova chegar
+  if (!Array.isArray(progress[id])) progress[id] = 'loading'
+  try {
+    const { points } = await getGoalProgress(id)
+    // Fechado enquanto carregava: não reabre
+    if (id in progress) progress[id] = points
+  } catch {
+    if (id in progress) progress[id] = 'error'
+  }
+}
+
+function toggleChart(id: string) {
+  if (id in progress) delete progress[id]
+  else void loadProgress(id)
+}
 
 function percent(goal: Goal): number {
   if (!(goal.targetAmount > 0)) return 0
@@ -631,6 +714,8 @@ async function saveAmount() {
         ? await updateGoalAllocation(action.goal.id, value)
         : await contributeToGoal(action.goal.id, value)
     goals.value = goals.value.map((g) => (g.id === updated.id ? updated : g))
+    // A alocação só muda a projeção, que vem da prop goal; a série real só muda com aporte
+    if (action.kind === 'contribution' && updated.id in progress) void loadProgress(updated.id)
     amountOpen.value = false
     setSuccess(
       action.kind === 'allocation'

@@ -8,6 +8,7 @@ const mockCreate = vi.fn()
 const mockAllocation = vi.fn()
 const mockContribute = vi.fn()
 const mockSummary = vi.fn()
+const mockProgress = vi.fn()
 
 vi.mock('@/services/goalService', () => ({
   listGoals: () => mockList(),
@@ -15,6 +16,7 @@ vi.mock('@/services/goalService', () => ({
   updateGoalAllocation: (...a: unknown[]) => mockAllocation(...a),
   contributeToGoal: (...a: unknown[]) => mockContribute(...a),
   getGoalsSummary: () => mockSummary(),
+  getGoalProgress: (...a: unknown[]) => mockProgress(...a),
 }))
 
 function goal(id: string, name: string, extra: Partial<Goal> = {}): Goal {
@@ -397,6 +399,111 @@ describe('GoalsView', () => {
       await mountView()
       expect(wrapper!.find('[data-testid="goal-g1"]').exists()).toBe(true)
       expect(wrapper!.find('[data-testid="goals-over-available"]').exists()).toBe(false)
+    })
+  })
+
+  describe('Story 8.3: ritmo e evolução', () => {
+    it('barra tem marcos de 25/50/75% e fica verde "Em dia" sem data-alvo', async () => {
+      await mountView()
+      const card = wrapper!.get('[data-testid="goal-g1"]')
+      expect(card.findAll('[data-testid="goal-progress-mark"]')).toHaveLength(3)
+      expect(card.get('[data-testid="goal-progress-fill"]').classes()).toContain('bg-green-500')
+      expect(card.get('[data-testid="goal-pace"]').text()).toBe('Em dia')
+    })
+
+    it.each([
+      ['2027-07-13', 'bg-yellow-500', 'Atrasada'],
+      ['2027-04-13', 'bg-red-500', 'Muito atrasada'],
+    ])('alvo 1000, 0 acumulado, 100/mês, prazo %s → %s "%s"', async (targetDate, bar, label) => {
+      mockList.mockResolvedValue([
+        goal('g1', 'Viagem', { targetAmount: 1000, monthlyAllocation: 100, targetDate }),
+      ])
+      await mountView()
+      const card = wrapper!.get('[data-testid="goal-g1"]')
+      expect(card.get('[data-testid="goal-progress-fill"]').classes()).toContain(bar)
+      expect(card.get('[data-testid="goal-pace"]').text()).toBe(label)
+    })
+
+    it('"Ver evolução" só busca a série ao abrir; "Ocultar evolução" recolhe', async () => {
+      mockProgress.mockResolvedValue({ points: [{ month: '2026-11', amount: 0 }] })
+      await mountView()
+      expect(mockProgress).not.toHaveBeenCalled()
+      const toggle = wrapper!.get('[data-testid="goal-g1"] [data-testid="toggle-chart"]')
+      expect(toggle.attributes('aria-expanded')).toBe('false')
+
+      await toggle.trigger('click')
+      await flushPromises()
+      expect(mockProgress).toHaveBeenCalledWith('g1')
+      expect(toggle.attributes('aria-expanded')).toBe('true')
+      expect(toggle.text()).toBe('Ocultar evolução')
+      expect(wrapper!.find('[data-testid="goal-chart"]').exists()).toBe(true)
+
+      await toggle.trigger('click')
+      expect(toggle.attributes('aria-expanded')).toBe('false')
+      expect(wrapper!.find('[data-testid="goal-chart"]').exists()).toBe(false)
+    })
+
+    it('falha (ex.: 404) mostra a mensagem no lugar do gráfico', async () => {
+      mockProgress.mockRejectedValue({ response: { status: 404 } })
+      await mountView()
+      await wrapper!.get('[data-testid="toggle-chart"]').trigger('click')
+      await flushPromises()
+      expect(wrapper!.get('[data-testid="goal-chart-error"]').text()).toBe(
+        'Não foi possível carregar a evolução',
+      )
+    })
+
+    it('aporte com o gráfico aberto atualiza barra, texto e o último ponto sem recarregar a página', async () => {
+      mockList.mockResolvedValue([goal('g1', 'Viagem', { targetAmount: 1000 })])
+      mockProgress.mockResolvedValueOnce({ points: [{ month: '2026-11', amount: 0 }] })
+      mockProgress.mockResolvedValueOnce({ points: [{ month: '2026-11', amount: 200 }] })
+      mockContribute.mockResolvedValue(
+        goal('g1', 'Viagem', { targetAmount: 1000, currentAmount: 200 }),
+      )
+      await mountView()
+      await wrapper!.get('[data-testid="toggle-chart"]').trigger('click')
+      await flushPromises()
+
+      await wrapper!.get('[data-testid="goal-g1"] [data-testid="contribute"]').trigger('click')
+      await flushPromises()
+      await type('amount-input', '200')
+      inDialog<HTMLFormElement>('amount-form')!.dispatchEvent(new Event('submit'))
+      await flushPromises()
+
+      expect(mockProgress).toHaveBeenCalledTimes(2)
+      expect(mockList).toHaveBeenCalledTimes(1)
+      expect(plain(wrapper!.get('[data-testid="goal-progress-text"]').text())).toBe(
+        'R$ 200,00 de R$ 1.000,00 (20%)',
+      )
+      expect(wrapper!.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('20')
+      expect(
+        plain(wrapper!.get('[data-testid="goal-chart-point-0"]').attributes('aria-label')!),
+      ).toBe('novembro de 2026, R$ 200,00')
+    })
+
+    it('fechar enquanto a série carrega não reabre o gráfico quando ela chega', async () => {
+      let resolve!: (value: unknown) => void
+      mockProgress.mockReturnValue(new Promise((r) => (resolve = r)))
+      await mountView()
+      const toggle = wrapper!.get('[data-testid="toggle-chart"]')
+      await toggle.trigger('click')
+      await toggle.trigger('click')
+      resolve({ points: [{ month: '2026-11', amount: 0 }] })
+      await flushPromises()
+      expect(wrapper!.find('[data-testid="goal-chart"]').exists()).toBe(false)
+      expect(wrapper!.find('[data-testid="goal-chart-error"]').exists()).toBe(false)
+      expect(toggle.attributes('aria-expanded')).toBe('false')
+    })
+
+    it('aporte com o gráfico fechado não busca a série', async () => {
+      mockContribute.mockResolvedValue(goal('g1', 'Reserva de Emergência', { currentAmount: 10 }))
+      await mountView()
+      await wrapper!.get('[data-testid="contribute"]').trigger('click')
+      await flushPromises()
+      await type('amount-input', '10')
+      inDialog<HTMLFormElement>('amount-form')!.dispatchEvent(new Event('submit'))
+      await flushPromises()
+      expect(mockProgress).not.toHaveBeenCalled()
     })
   })
 })

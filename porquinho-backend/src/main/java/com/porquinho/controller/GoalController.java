@@ -2,6 +2,7 @@ package com.porquinho.controller;
 
 import com.porquinho.dto.CreateGoalRequest;
 import com.porquinho.dto.GoalContributionRequest;
+import com.porquinho.dto.GoalProgressResponse;
 import com.porquinho.dto.GoalResponse;
 import com.porquinho.dto.GoalSummaryResponse;
 import com.porquinho.dto.UpdateGoalAllocationRequest;
@@ -74,5 +75,12 @@ public class GoalController {
         UUID userId = UUID.fromString(jwt.getSubject());
         return ResponseEntity.status(HttpStatus.CREATED)
             .body(GoalResponse.of(goalService.contribute(userId, id, request.amount())));
+    }
+
+    /** Monthly series of the accumulated amount (Story 8.3). 404 for another user's, removed or missing goal. */
+    @GetMapping("/{id}/progress")
+    public ResponseEntity<GoalProgressResponse> progress(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(goalService.progress(userId, id));
     }
 }

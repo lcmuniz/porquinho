@@ -19,6 +19,9 @@ public interface GoalAllocationRepository extends JpaRepository<GoalAllocation, 
     /** The goal's row of the month ({@code monthYear} is day 1). */
     Optional<GoalAllocation> findByUserIdAndGoalIdAndMonthYear(UUID userId, UUID goalId, LocalDate monthYear);
 
+    /** The goal's rows, oldest month first (Story 8.3: progress series). */
+    List<GoalAllocation> findByUserIdAndGoalIdOrderByMonthYearAsc(UUID userId, UUID goalId);
+
     /** Every row of the user, oldest first (LGPD export). */
     @Query("SELECT a FROM GoalAllocation a WHERE a.userId = :userId ORDER BY a.createdAt ASC, a.id ASC")
     List<GoalAllocation> findByUserIdOrdered(@Param("userId") UUID userId);

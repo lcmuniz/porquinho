@@ -31,6 +31,10 @@ public interface GoalRepository extends JpaRepository<Goal, UUID> {
     @Query("SELECT g FROM Goal g WHERE g.id = :id AND g.userId = :userId AND g.deletedAt IS NULL")
     Optional<Goal> findActiveByIdAndUserIdForUpdate(@Param("id") UUID id, @Param("userId") UUID userId);
 
+    /** The user's active goal, without lock (Story 8.3: read-only progress series). */
+    @Query("SELECT g FROM Goal g WHERE g.id = :id AND g.userId = :userId AND g.deletedAt IS NULL")
+    Optional<Goal> findActiveByIdAndUserId(@Param("id") UUID id, @Param("userId") UUID userId);
+
     long countByUserIdAndDeletedAtIsNull(UUID userId);
 
     /** Every row of the user, removed ones included (LGPD export). */
