@@ -6,6 +6,7 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
@@ -17,7 +18,8 @@ import java.time.LocalDate;
  * at the edges, so an invisible-only name is blank. The target amount must be > 0 and fit DECIMAL(15,2);
  * the target date is optional and may not be before today in America/Sao_Paulo; the monthly allocation is
  * optional, >= 0 and fits DECIMAL(15,2). Story 8.1: the optional description (up to 500 characters) is cleaned
- * the same way and a blank one becomes null.
+ * the same way and a blank one becomes null. Story 8.6: the optional template records which front-end model the
+ * goal came from (null for a custom goal); an unknown value is a 400.
  */
 public record CreateGoalRequest(
     @NotBlank(message = "Informe o nome da meta")
@@ -39,8 +41,17 @@ public record CreateGoalRequest(
     BigDecimal monthlyAllocation,
 
     @Size(max = 500, message = "Use no máximo 500 caracteres na descrição")
-    String description
+    String description,
+
+    @Pattern(regexp = "EMERGENCY_FUND|VACATION|BIG_PURCHASE", message = "Modelo de meta inválido")
+    String template
 ) {
+    /** Shortcut without a template, used by the tests. */
+    public CreateGoalRequest(String name, BigDecimal targetAmount, LocalDate targetDate,
+                             BigDecimal monthlyAllocation, String description) {
+        this(name, targetAmount, targetDate, monthlyAllocation, description, null);
+    }
+
     public CreateGoalRequest {
         name = CategoryService.cleanName(name);
         description = CategoryService.cleanName(description);

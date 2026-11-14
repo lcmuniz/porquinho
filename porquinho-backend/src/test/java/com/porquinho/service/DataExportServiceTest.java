@@ -525,6 +525,7 @@ class DataExportServiceTest {
         Goal removed = new Goal(userId, "Viagem", new java.math.BigDecimal("8000.00"), null, null);
         removed.setId(UUID.randomUUID());
         removed.setDescription("Férias");
+        removed.setTemplate("VACATION");
         removed.setCreatedAt(created.plusMinutes(1));
         removed.setUpdatedAt(created.plusMinutes(2));
         removed.setDeletedAt(created.plusMinutes(2));
@@ -545,6 +546,7 @@ class DataExportServiceTest {
         assertEquals(userId.toString(), first.get("user_id"));
         assertEquals("Reserva de Emergência", first.get("goal_name"));
         assertNull(first.get("description"));
+        assertNull(first.get("template"));
         assertEquals(new java.math.BigDecimal("25000.00"), first.get("target_amount"));
         assertEquals(new java.math.BigDecimal("0.00"), first.get("current_amount"));
         assertEquals("2027-11-02", first.get("target_date"));
@@ -555,6 +557,7 @@ class DataExportServiceTest {
         Map<String, Object> second = rows.get(1);
         assertExportsEveryColumn(Goal.class, second);
         assertEquals("Férias", second.get("description"));
+        assertEquals("VACATION", second.get("template"));
         assertNull(second.get("target_date"));
         assertNull(second.get("monthly_allocation"));
         assertEquals(created.plusMinutes(2).toString(), second.get("deleted_at"));

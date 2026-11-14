@@ -63,6 +63,7 @@ public class GoalService {
             request.monthlyAllocation() == null ? null
                 : request.monthlyAllocation().setScale(2, RoundingMode.HALF_UP));
         goal.setDescription(request.description());
+        goal.setTemplate(request.template());
         return goalRepository.save(goal);
     }
 

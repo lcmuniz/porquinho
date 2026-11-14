@@ -94,6 +94,16 @@ class GoalServiceTest {
         assertNull(saved.getTargetDate());
         assertNull(saved.getMonthlyAllocation());
         assertEquals(new BigDecimal("8000.50"), saved.getTargetAmount());
+        assertNull(saved.getTemplate());
+    }
+
+    @Test
+    void createStoresTheTemplate() {
+        when(goalRepository.save(any(Goal.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.create(userId, new CreateGoalRequest("Férias", new BigDecimal("10000"), null, null, null, "VACATION"));
+
+        assertEquals("VACATION", savedGoal().getTemplate());
     }
 
     @Test

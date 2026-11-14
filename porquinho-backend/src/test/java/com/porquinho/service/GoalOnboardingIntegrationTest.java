@@ -266,6 +266,25 @@ class GoalOnboardingIntegrationTest {
     }
 
     @Test
+    void templateOutsideTheListIsRejectedByTheDatabase() {
+        assertThatThrownBy(() -> jdbc.update(
+            "INSERT INTO goals (user_id, goal_name, target_amount, template) VALUES (?, 'X', 1, 'FOO')", userId))
+            .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void everyTemplateAcceptedByTheRequestIsStoredByTheDatabase() {
+        // Story 8.6: the @Pattern of CreateGoalRequest and the CHECK of V35 must accept the same values
+        for (String template : List.of("EMERGENCY_FUND", "VACATION", "BIG_PURCHASE")) {
+            goalService.create(userId, new CreateGoalRequest(template, BigDecimal.TEN, null, null, null, template));
+        }
+        goalRepository.flush();
+
+        assertThat(jdbc.queryForList("SELECT template FROM goals WHERE user_id = ? ORDER BY goal_name", String.class, userId))
+            .containsExactly("BIG_PURCHASE", "EMERGENCY_FUND", "VACATION");
+    }
+
+    @Test
     void databaseDefaultsCurrentAmountToZeroAndNotCompleted() {
         jdbc.update("INSERT INTO goals (user_id, goal_name, target_amount) VALUES (?, 'X', 1)", userId);
 

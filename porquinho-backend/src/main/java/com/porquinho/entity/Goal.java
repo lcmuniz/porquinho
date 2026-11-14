@@ -56,6 +56,9 @@ public class Goal {
     @Column(name = "deleted_at")
     private OffsetDateTime deletedAt;
 
+    @Column(name = "template", length = 30)
+    private String template;
+
     public Goal() {
     }
 
@@ -117,4 +120,7 @@ public class Goal {
 
     public OffsetDateTime getDeletedAt() { return deletedAt; }
     public void setDeletedAt(OffsetDateTime deletedAt) { this.deletedAt = deletedAt; }
+
+    public String getTemplate() { return template; }
+    public void setTemplate(String template) { this.template = template; }
 }

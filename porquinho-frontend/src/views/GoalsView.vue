@@ -104,6 +104,13 @@
             <div class="flex items-center gap-2">
               <Target class="h-5 w-5 text-purple-600" aria-hidden="true" />
               <h2 class="min-w-0 font-medium break-words text-gray-900">{{ goal.name }}</h2>
+              <span
+                v-if="goal.template"
+                class="shrink-0 rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-800"
+                data-testid="goal-template-badge"
+              >
+                Template: {{ templateName(goal.template) }}
+              </span>
             </div>
             <p
               v-if="goal.description"
@@ -237,6 +244,32 @@
           {{ formError }}
         </p>
         <form class="space-y-4" novalidate data-testid="goal-form" @submit.prevent="save">
+          <fieldset class="space-y-2">
+            <legend class="text-sm font-medium text-gray-900">Usar modelo</legend>
+            <div class="grid grid-cols-2 gap-2">
+              <label
+                v-for="option in TEMPLATE_OPTIONS"
+                :key="option.code"
+                class="flex min-h-[44px] cursor-pointer items-center gap-2 rounded-md border px-3 text-sm"
+                :class="
+                  template === option.code
+                    ? 'border-purple-600 bg-purple-50 text-purple-900'
+                    : 'border-gray-200 text-gray-700'
+                "
+              >
+                <input
+                  type="radio"
+                  name="goal-template"
+                  class="accent-purple-600"
+                  :value="option.code"
+                  :checked="template === option.code"
+                  :data-testid="`goal-template-${option.code || 'CUSTOM'}`"
+                  @change="selectTemplate(option.code)"
+                />
+                {{ option.name }}
+              </label>
+            </div>
+          </fieldset>
           <div class="space-y-1">
             <label for="goal-name" class="text-sm font-medium text-gray-900">Nome da meta</label>
             <Input
@@ -487,7 +520,9 @@ import {
   type GoalProjection,
 } from '@/lib/goalPace'
 import {
+  addMonths,
   GOAL_FIELDS,
+  GOAL_TEMPLATES,
   monthsUntil,
   parseISODate,
   suggestedMonthlyAllocation,
@@ -505,7 +540,7 @@ import {
   listGoals,
   updateGoalAllocation,
 } from '@/services/goalService'
-import type { Goal, GoalProgressPoint, GoalsSummary } from '@/types/goal'
+import type { Goal, GoalProgressPoint, GoalsSummary, GoalTemplate } from '@/types/goal'
 
 /**
  * Story 8.1: metas ativas do usuário (ordem de criação) e criação de outra meta, sem limite. O aporte mensal é
@@ -514,6 +549,7 @@ import type { Goal, GoalProgressPoint, GoalsSummary } from '@/types/goal'
  * Story 8.3: barra com marcos e cor de ritmo; "Ver evolução" abre o gráfico no card e só então busca a série.
  * Story 8.4: projeção do mês de conclusão e aporte sugerido para o prazo, calculados no front a partir da meta.
  * Story 8.5: "Ajustar alocações" (com 2+ metas) abre /metas/ajustar, que volta com "Alocações atualizadas".
+ * Story 8.6: "Usar modelo" no diálogo preenche os campos; o modelo vai no POST mesmo editado e o card mostra o selo.
  */
 const SUCCESS_TIMEOUT_MS = 5000
 const SAVE_FAILED = 'Não foi possível criar a meta. Verifique sua conexão e tente novamente.'
@@ -535,6 +571,9 @@ const form = reactive({
   description: '',
 })
 const errors = reactive<Partial<Record<GoalField, string>>>({})
+/** Story 8.6: '' é "Personalizada" (sem modelo no POST). */
+const template = ref<GoalTemplate | ''>('')
+const TEMPLATE_OPTIONS = [{ code: '' as const, name: 'Personalizada' }, ...GOAL_TEMPLATES]
 /** Depois que o usuário mexe no aporte, mudar valor ou data não o sobrescreve mais. */
 const allocationEdited = ref(false)
 const formError = ref<string | null>(null)
@@ -651,18 +690,48 @@ function clearErrors() {
 }
 
 function openCreate() {
-  Object.assign(form, {
-    name: '',
-    targetAmount: '',
-    targetDate: '',
-    monthlyAllocation: '',
-    description: '',
-  })
+  template.value = ''
   today.value = todayInSaoPaulo()
-  allocationEdited.value = false
-  clearErrors()
+  applyTemplate()
   formError.value = null
   dialogOpen.value = true
+}
+
+function templateName(code: GoalTemplate): string {
+  return GOAL_TEMPLATES.find((t) => t.code === code)?.name ?? code
+}
+
+function selectTemplate(code: GoalTemplate | '') {
+  template.value = code
+  applyTemplate()
+}
+
+/** Story 8.6: o modelo substitui o que estava digitado; "Personalizada" limpa o formulário. */
+function applyTemplate() {
+  const chosen = GOAL_TEMPLATES.find((t) => t.code === template.value)
+  allocationEdited.value = false
+  clearErrors()
+  if (!chosen) {
+    Object.assign(form, {
+      name: '',
+      targetAmount: '',
+      targetDate: '',
+      monthlyAllocation: '',
+      description: '',
+    })
+    return
+  }
+  const date = addMonths(today.value, chosen.months)
+  // Calculado aqui: o watch do aporte não dispara se valor e data já forem os mesmos
+  Object.assign(form, {
+    name: chosen.name,
+    targetAmount: formatBRLInput(chosen.targetAmount),
+    targetDate: toISODate(date),
+    monthlyAllocation: formatBRLInput(
+      suggestedMonthlyAllocation(chosen.targetAmount, monthsUntil(today.value, date)),
+    ),
+    description: chosen.description,
+  })
 }
 
 /** Com o POST em andamento o diálogo não fecha: fechar pareceria cancelar uma criação que já vai acontecer. */
@@ -684,7 +753,9 @@ async function save() {
   if (result.values === null) return
   saving.value = true
   try {
-    const created = await createGoal(result.values)
+    const created = await createGoal(
+      template.value ? { ...result.values, template: template.value } : result.values,
+    )
     goals.value = [...goals.value, created]
     dialogOpen.value = false
     setSuccess('Meta criada')

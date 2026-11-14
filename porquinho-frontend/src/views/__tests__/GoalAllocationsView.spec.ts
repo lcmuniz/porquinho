@@ -30,6 +30,7 @@ function goal(id: string, name: string, extra: Partial<Goal> = {}): Goal {
     monthlyAllocation: null,
     completed: false,
     createdAt: '2026-11-13T12:00:00Z',
+    template: null,
     ...extra,
   }
 }

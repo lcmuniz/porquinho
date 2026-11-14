@@ -611,6 +611,7 @@ public class DataExportService {
             goalMap.put("user_id", goal.getUserId() != null ? goal.getUserId().toString() : null);
             goalMap.put("goal_name", goal.getGoalName());
             goalMap.put("description", goal.getDescription());
+            goalMap.put("template", goal.getTemplate());
             goalMap.put("target_amount", goal.getTargetAmount());
             goalMap.put("current_amount", goal.getCurrentAmount());
             goalMap.put("target_date", goal.getTargetDate() != null ? goal.getTargetDate().toString() : null);

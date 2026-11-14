@@ -30,6 +30,7 @@ function goal(id: string, name: string, extra: Partial<Goal> = {}): Goal {
     monthlyAllocation: null,
     completed: false,
     createdAt: '2026-11-13T12:00:00Z',
+    template: null,
     ...extra,
   }
 }
@@ -243,6 +244,104 @@ describe('GoalsView', () => {
     expect(error.textContent).toContain('Não foi possível criar a meta')
     expect(inDialog('goal-dialog')).not.toBeNull()
     expect(wrapper!.findAll('li')).toHaveLength(1)
+  })
+
+  describe('Story 8.6: modelos de meta', () => {
+    async function choose(code: string) {
+      const radio = inDialog<HTMLInputElement>(`goal-template-${code}`)!
+      radio.checked = true
+      radio.dispatchEvent(new Event('change'))
+      await flushPromises()
+    }
+    const value = (testId: string) => inDialog<HTMLInputElement>(testId)!.value
+
+    it('começa em "Personalizada" com o rótulo "Usar modelo"', async () => {
+      await mountView()
+      await openDialog()
+      expect(inDialog('goal-dialog')!.querySelector('legend')!.textContent?.trim()).toBe('Usar modelo')
+      expect(inDialog<HTMLInputElement>('goal-template-CUSTOM')!.checked).toBe(true)
+    })
+
+    it('"Férias" preenche os campos e o aporte sugerido; editado, o POST leva o modelo', async () => {
+      mockCreate.mockResolvedValue(
+        goal('g2', 'Férias', { targetAmount: 10000, template: 'VACATION' }),
+      )
+      await mountView()
+      await openDialog()
+      await type('goal-name-input', 'Outra')
+      await choose('VACATION')
+      expect(value('goal-name-input')).toBe('Férias')
+      expect(value('goal-target-amount-input')).toBe('8.000,00')
+      expect(value('goal-target-date-input')).toBe('2027-05-13')
+      expect(value('goal-description-input')).toBe('Viagem de férias')
+      expect(value('goal-monthly-allocation-input')).toBe('1.333,34')
+
+      await type('goal-target-amount-input', '10.000,00')
+      await submit()
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Férias', targetAmount: 10000, template: 'VACATION' }),
+      )
+      expect(
+        wrapper!.get('[data-testid="goal-g2"] [data-testid="goal-template-badge"]').text(),
+      ).toBe('Template: Férias')
+    })
+
+    it('"Reserva de Emergência" recalcula o aporte mesmo depois de editado', async () => {
+      await mountView()
+      await openDialog()
+      await choose('VACATION')
+      await type('goal-monthly-allocation-input', '10,00')
+      await choose('EMERGENCY_FUND')
+      expect(value('goal-target-amount-input')).toBe('25.000,00')
+      expect(value('goal-target-date-input')).toBe('2027-11-13')
+      expect(value('goal-description-input')).toBe('6 meses de despesas')
+      expect(value('goal-monthly-allocation-input')).toBe('2.083,34')
+    })
+
+    it('voltar a "Personalizada" limpa o formulário e o POST vai sem modelo', async () => {
+      mockCreate.mockResolvedValue(goal('g2', 'Viagem'))
+      await mountView()
+      await openDialog()
+      await choose('BIG_PURCHASE')
+      await choose('CUSTOM')
+      expect(value('goal-name-input')).toBe('')
+      expect(value('goal-target-amount-input')).toBe('')
+      expect(value('goal-target-date-input')).toBe('')
+      expect(value('goal-monthly-allocation-input')).toBe('')
+      expect(value('goal-description-input')).toBe('')
+
+      await type('goal-name-input', 'Viagem')
+      await type('goal-target-amount-input', '100')
+      await submit()
+      expect(mockCreate.mock.calls[0]![0]).not.toHaveProperty('template')
+    })
+
+    it('reabrir o diálogo volta para "Personalizada"', async () => {
+      mockCreate.mockResolvedValue(goal('g2', 'Férias', { template: 'VACATION' }))
+      await mountView()
+      await openDialog()
+      await choose('VACATION')
+      await submit()
+      await openDialog()
+      expect(inDialog<HTMLInputElement>('goal-template-CUSTOM')!.checked).toBe(true)
+      expect(value('goal-name-input')).toBe('')
+    })
+
+    it('400 com modelo inválido mostra a mensagem geral do diálogo', async () => {
+      mockCreate.mockRejectedValue({
+        response: { status: 400, data: { errors: { template: 'Modelo de meta inválido' } } },
+      })
+      await mountView()
+      await openDialog()
+      await choose('VACATION')
+      await submit()
+      expect(inDialog('goal-form-error')!.textContent).toContain('Não foi possível criar a meta')
+    })
+
+    it('meta sem modelo não mostra o selo', async () => {
+      await mountView()
+      expect(wrapper!.find('[data-testid="goal-template-badge"]').exists()).toBe(false)
+    })
   })
 
   describe('Story 8.2: alocação e aporte', () => {

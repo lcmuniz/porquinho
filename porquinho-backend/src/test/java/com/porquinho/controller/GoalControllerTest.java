@@ -244,7 +244,8 @@ class GoalControllerTest {
                 .content("{\"name\":\"Viagem\",\"targetAmount\":100,\"description\":\"  Viagem  \"}"))
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.description").value("Viagem"))
-            .andExpect(jsonPath("$.currentAmount").value(0.0));
+            .andExpect(jsonPath("$.currentAmount").value(0.0))
+            .andExpect(jsonPath("$.template").value(org.hamcrest.Matchers.nullValue()));
         mockMvc.perform(post("/api/v1/goals").with(authentication(authToken))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"name\":\"Viagem\",\"targetAmount\":100,\"description\":\"   \"}"))
@@ -254,6 +255,34 @@ class GoalControllerTest {
         verify(goalService, times(2)).create(eq(userId), captor.capture());
         assertThat(captor.getAllValues().get(0).description()).isEqualTo("Viagem");
         assertThat(captor.getAllValues().get(1).description()).isNull();
+    }
+
+    @Test
+    void postPassesTheTemplateAndReturnsIt() throws Exception {
+        Goal created = goal("Férias", "10000.00", null, null);
+        created.setTemplate("VACATION");
+        when(goalService.create(eq(userId), any(CreateGoalRequest.class))).thenReturn(created);
+
+        mockMvc.perform(post("/api/v1/goals").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Férias\",\"targetAmount\":10000,\"template\":\"VACATION\"}"))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.template").value("VACATION"));
+
+        ArgumentCaptor<CreateGoalRequest> captor = ArgumentCaptor.forClass(CreateGoalRequest.class);
+        verify(goalService).create(eq(userId), captor.capture());
+        assertThat(captor.getValue().template()).isEqualTo("VACATION");
+    }
+
+    @Test
+    void unknownTemplateIs400() throws Exception {
+        mockMvc.perform(post("/api/v1/goals").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Meta\",\"targetAmount\":100,\"template\":\"FOO\"}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errors.template").value("Modelo de meta inválido"));
+
+        verifyNoInteractions(goalService);
     }
 
     @Test

@@ -5,7 +5,7 @@
  */
 import { cleanCategoryName } from './categoryName'
 import { parseBRL } from './money'
-import type { CreateGoalInput } from '@/types/goal'
+import type { CreateGoalInput, GoalTemplate } from '@/types/goal'
 
 /** Acima disso a previsão fica longe demais para mostrar (e para o Date do navegador). */
 export const MAX_FORECAST_MONTHS = 1200
@@ -88,6 +88,31 @@ const MONTH_YEAR = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'nume
 export function formatMonthYear(date: Date): string {
   return MONTH_YEAR.format(date)
 }
+
+/** Story 8.6: modelos de meta (FR76). A data-alvo é hoje + `months`. */
+export const GOAL_TEMPLATES: {
+  code: GoalTemplate
+  name: string
+  targetAmount: number
+  months: number
+  description: string
+}[] = [
+  {
+    code: 'EMERGENCY_FUND',
+    name: 'Reserva de Emergência',
+    targetAmount: 25000,
+    months: 12,
+    description: '6 meses de despesas',
+  },
+  { code: 'VACATION', name: 'Férias', targetAmount: 8000, months: 6, description: 'Viagem de férias' },
+  {
+    code: 'BIG_PURCHASE',
+    name: 'Compra Grande',
+    targetAmount: 15000,
+    months: 12,
+    description: 'Eletrodoméstico, móvel, eletrônico',
+  },
+]
 
 export type GoalField = 'name' | 'targetAmount' | 'targetDate' | 'monthlyAllocation' | 'description'
 export const GOAL_FIELDS: GoalField[] = ['name', 'targetAmount', 'targetDate', 'monthlyAllocation', 'description']
