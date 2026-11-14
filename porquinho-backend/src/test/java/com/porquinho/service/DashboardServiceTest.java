@@ -247,6 +247,17 @@ class DashboardServiceTest {
     }
 
     @Test
+    void aCompletedGoalIsNeverBehind() {
+        // Story 8.7: completed below the target; on pace it would be behind (1000 missing at 100/month, target in 6)
+        budget(10, 0, 0);
+        Goal done = goal("1500", "500", TODAY.plusMonths(6), "100");
+        done.setCompleted(true);
+        goals.add(done);
+
+        assertEquals(0, service.health(userId).goalsBehind());
+    }
+
+    @Test
     void nothingBudgetedIsHealthyWhenAccountsAndGoalsAreFine() {
         budget(0, 0, 0);
         account("10.00");
@@ -358,6 +369,20 @@ class DashboardServiceTest {
         goals.add(newer);
 
         assertEquals(100, overview(LocalDate.of(2026, 11, 30), "0.00").mainGoal().percent());
+    }
+
+    @Test
+    void theMainGoalSkipsCompletedGoalsAndIsNullWhenAllAreCompleted() {
+        // Story 8.7
+        Goal done = goal("1000", "1000", null, null);
+        done.setCompleted(true);
+        goals.add(done);
+        assertNull(overview(LocalDate.of(2026, 11, 30), "0.00").mainGoal());
+
+        Goal active = goal("1000", "100", null, null);
+        active.setGoalName("Viagem");
+        goals.add(active);
+        assertEquals("Viagem", overview(LocalDate.of(2026, 11, 30), "0.00").mainGoal().name());
     }
 
     @Test

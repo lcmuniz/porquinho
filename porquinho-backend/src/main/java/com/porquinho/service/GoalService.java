@@ -7,6 +7,7 @@ import com.porquinho.entity.Account;
 import com.porquinho.entity.Goal;
 import com.porquinho.entity.GoalAllocation;
 import com.porquinho.exception.BadRequestException;
+import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.GoalAllocationRepository;
@@ -18,6 +19,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -36,18 +38,24 @@ import java.util.UUID;
 public class GoalService {
 
     static final String NOT_FOUND_MESSAGE = "Meta não encontrada";
+    static final String COMPLETED_MESSAGE = "Esta meta já foi concluída. Reabra a meta para alterá-la";
+    static final String NOT_COMPLETED_MESSAGE = "Esta meta não está concluída";
+    public static final String AUDIT_COMPLETED = "goal_completed";
+    public static final String AUDIT_REOPENED = "goal_reopened";
     private static final ZoneId SAO_PAULO = ZoneId.of("America/Sao_Paulo");
 
     private final GoalRepository goalRepository;
     private final GoalAllocationRepository goalAllocationRepository;
     private final AccountRepository accountRepository;
+    private final AuditLogService auditLogService;
     private final Clock clock;
 
     public GoalService(GoalRepository goalRepository, GoalAllocationRepository goalAllocationRepository,
-                       AccountRepository accountRepository, Clock clock) {
+                       AccountRepository accountRepository, AuditLogService auditLogService, Clock clock) {
         this.goalRepository = goalRepository;
         this.goalAllocationRepository = goalAllocationRepository;
         this.accountRepository = accountRepository;
+        this.auditLogService = auditLogService;
         this.clock = clock;
     }
 
@@ -105,6 +113,7 @@ public class GoalService {
     }
 
     private Goal applyAllocation(Goal goal, BigDecimal monthlyAllocation) {
+        requireNotCompleted(goal);
         BigDecimal amount = monthlyAllocation.setScale(2, RoundingMode.HALF_UP);
         goal.setMonthlyAllocation(amount);
         GoalAllocation row = monthRow(goal);
@@ -116,16 +125,55 @@ public class GoalService {
     /**
      * Adds the contribution to the goal's current_amount and to the month's contributed_amount. A month without a
      * row gets one with the goal's current allocation (0 when null). No transaction nor account balance changes.
+     * Story 8.7: 409 on a completed goal; reaching the target completes the goal ("auto":true in the audit).
      */
     @Transactional
-    public Goal contribute(UUID userId, UUID goalId, BigDecimal amount) {
+    public Goal contribute(UUID userId, UUID goalId, BigDecimal amount, String ipAddress) {
         Goal goal = lockedGoal(userId, goalId);
+        requireNotCompleted(goal);
         BigDecimal value = amount.setScale(2, RoundingMode.HALF_UP);
         goal.setCurrentAmount(goal.getCurrentAmount().add(value));
         GoalAllocation row = monthRow(goal);
         row.setContributedAmount(row.getContributedAmount().add(value));
         goalAllocationRepository.save(row);
+        if (goal.getCurrentAmount().compareTo(goal.getTargetAmount()) >= 0) {
+            markCompleted(goal, true, ipAddress);
+        }
         return goalRepository.save(goal);
+    }
+
+    /**
+     * Story 8.7: manual completion of an active goal, even below the target. The monthly allocation stays stored
+     * (it comes back on reopen) but completed goals leave the totals. 409 if already completed.
+     */
+    @Transactional
+    public Goal complete(UUID userId, UUID goalId, String ipAddress) {
+        Goal goal = lockedGoal(userId, goalId);
+        requireNotCompleted(goal);
+        markCompleted(goal, false, ipAddress);
+        return goalRepository.save(goal);
+    }
+
+    /** Story 8.7: back to the active goals with its previous allocation. 409 if the goal is not completed. */
+    @Transactional
+    public Goal reopen(UUID userId, UUID goalId, String ipAddress) {
+        Goal goal = lockedGoal(userId, goalId);
+        if (!goal.isCompleted()) throw new ConflictException(NOT_COMPLETED_MESSAGE);
+        goal.setCompleted(false);
+        goal.setCompletedAt(null);
+        auditLogService.log(AUDIT_REOPENED, userId, ipAddress, "{\"id\":\"" + goalId + "\"}");
+        return goalRepository.save(goal);
+    }
+
+    private void markCompleted(Goal goal, boolean auto, String ipAddress) {
+        goal.setCompleted(true);
+        goal.setCompletedAt(OffsetDateTime.now(clock));
+        auditLogService.log(AUDIT_COMPLETED, goal.getUserId(), ipAddress,
+            "{\"id\":\"" + goal.getId() + "\",\"auto\":" + auto + "}");
+    }
+
+    private static void requireNotCompleted(Goal goal) {
+        if (goal.isCompleted()) throw new ConflictException(COMPLETED_MESSAGE);
     }
 
     /** Sum of the active accounts' balances (cards excluded), the same totalAvailable as the budget page. */

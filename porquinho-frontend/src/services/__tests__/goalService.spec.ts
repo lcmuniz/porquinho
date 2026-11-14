@@ -13,10 +13,12 @@ vi.mock('../api', () => ({
 }))
 
 import {
+  completeGoal,
   contributeToGoal,
   createGoal,
   getGoalsSummary,
   listGoals,
+  reopenGoal,
   updateGoalAllocation,
 } from '../goalService'
 
@@ -63,6 +65,16 @@ describe('goalService', () => {
   it('contributeToGoal faz POST em /api/v1/goals/{id}/contributions', async () => {
     await expect(contributeToGoal('g1', 50)).resolves.toEqual(goal)
     expect(mockPost).toHaveBeenCalledWith('/api/v1/goals/g1/contributions', { amount: 50 })
+  })
+
+  it('completeGoal faz POST em /api/v1/goals/{id}/complete', async () => {
+    await expect(completeGoal('g1')).resolves.toEqual(goal)
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/goals/g1/complete')
+  })
+
+  it('reopenGoal faz POST em /api/v1/goals/{id}/reopen', async () => {
+    await expect(reopenGoal('g1')).resolves.toEqual(goal)
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/goals/g1/reopen')
   })
 
   it('getGoalsSummary faz GET em /api/v1/goals/summary', async () => {

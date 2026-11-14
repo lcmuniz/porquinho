@@ -59,6 +59,9 @@ public class Goal {
     @Column(name = "template", length = 30)
     private String template;
 
+    @Column(name = "completed_at")
+    private OffsetDateTime completedAt;
+
     public Goal() {
     }
 
@@ -123,4 +126,7 @@ public class Goal {
 
     public String getTemplate() { return template; }
     public void setTemplate(String template) { this.template = template; }
+
+    public OffsetDateTime getCompletedAt() { return completedAt; }
+    public void setCompletedAt(OffsetDateTime completedAt) { this.completedAt = completedAt; }
 }

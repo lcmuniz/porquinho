@@ -51,10 +51,16 @@
         class="rounded-lg border border-gray-200 bg-white p-4 text-center text-sm text-gray-600"
         data-testid="allocations-empty"
       >
-        Você ainda não tem metas.
+        Você não tem metas ativas.
       </p>
 
-      <form v-else class="space-y-4" novalidate data-testid="allocations-form" @submit.prevent="save">
+      <form
+        v-else
+        class="space-y-4"
+        novalidate
+        data-testid="allocations-form"
+        @submit.prevent="save"
+      >
         <p
           v-if="formError"
           role="alert"
@@ -75,7 +81,11 @@
             <div class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
               <p class="text-gray-700" data-testid="allocation-before">
                 Antes:
-                {{ goal.monthlyAllocation === null ? 'sem alocação' : `${formatBRL(goal.monthlyAllocation)}/mês` }}
+                {{
+                  goal.monthlyAllocation === null
+                    ? 'sem alocação'
+                    : `${formatBRL(goal.monthlyAllocation)}/mês`
+                }}
               </p>
               <div class="space-y-1">
                 <label :for="`allocation-input-${goal.id}`" class="font-medium text-gray-900">
@@ -107,7 +117,11 @@
               class="text-sm text-gray-700"
               data-testid="allocation-projection"
             >
-              {{ projectionText(goalProjection({ ...goal, monthlyAllocation: preview(goal) }, thisMonth)) }}
+              {{
+                projectionText(
+                  goalProjection({ ...goal, monthlyAllocation: preview(goal) }, thisMonth),
+                )
+              }}
             </p>
           </li>
         </ul>
@@ -133,7 +147,12 @@
         </div>
 
         <div class="flex justify-end">
-          <Button type="submit" class="min-h-[44px]" :disabled="saving" data-testid="allocations-save">
+          <Button
+            type="submit"
+            class="min-h-[44px]"
+            :disabled="saving"
+            data-testid="allocations-save"
+          >
             {{ saving ? 'Salvando...' : 'Salvar alterações' }}
           </Button>
         </div>
@@ -212,7 +231,8 @@ async function load() {
       (s) => (summary.value = s),
       () => (summary.value = null),
     )
-    goals.value = await listGoals()
+    // Story 8.7: concluídas são somente leitura e ficam fora dos totais
+    goals.value = (await listGoals()).filter((g) => !g.completed)
     for (const g of goals.value)
       texts[g.id] = g.monthlyAllocation === null ? '' : formatBRLInput(g.monthlyAllocation)
   } catch {
@@ -238,7 +258,10 @@ async function save() {
   for (const goal of goals.value) {
     const value = validate(goal)
     if (typeof value === 'string') errors[goal.id] = value
-    else if (value !== null && (goal.monthlyAllocation === null || cents(value) !== cents(goal.monthlyAllocation)))
+    else if (
+      value !== null &&
+      (goal.monthlyAllocation === null || cents(value) !== cents(goal.monthlyAllocation))
+    )
       items.push({ goalId: goal.id, monthlyAllocation: value })
   }
   if (Object.keys(errors).length > 0) return focusFirstError()

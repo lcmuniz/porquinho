@@ -617,6 +617,7 @@ public class DataExportService {
             goalMap.put("target_date", goal.getTargetDate() != null ? goal.getTargetDate().toString() : null);
             goalMap.put("monthly_allocation", goal.getMonthlyAllocation());
             goalMap.put("is_completed", goal.isCompleted());
+            goalMap.put("completed_at", goal.getCompletedAt() != null ? goal.getCompletedAt().toString() : null);
             goalMap.put("created_at", goal.getCreatedAt() != null ? goal.getCreatedAt().toString() : null);
             goalMap.put("updated_at", goal.getUpdatedAt() != null ? goal.getUpdatedAt().toString() : null);
             goalMap.put("deleted_at", goal.getDeletedAt() != null ? goal.getDeletedAt().toString() : null);

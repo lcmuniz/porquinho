@@ -7,6 +7,7 @@ import com.porquinho.entity.Account;
 import com.porquinho.entity.Goal;
 import com.porquinho.entity.GoalAllocation;
 import com.porquinho.exception.BadRequestException;
+import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.GoalAllocationRepository;
@@ -45,6 +46,9 @@ class GoalServiceTest {
     @Mock
     private AccountRepository accountRepository;
 
+    @Mock
+    private AuditLogService auditLogService;
+
     // 2026-12-01T02:00Z is still 2026-11-30 23:00 in America/Sao_Paulo: the month must be November
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-12-01T02:00:00Z"), ZoneOffset.UTC);
     private static final LocalDate MONTH = LocalDate.parse("2026-11-01");
@@ -54,7 +58,7 @@ class GoalServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new GoalService(goalRepository, goalAllocationRepository, accountRepository, CLOCK);
+        service = new GoalService(goalRepository, goalAllocationRepository, accountRepository, auditLogService, CLOCK);
         userId = UUID.randomUUID();
     }
 
@@ -270,7 +274,7 @@ class GoalServiceTest {
         when(goalAllocationRepository.findByUserIdAndGoalIdAndMonthYear(userId, goal.getId(), MONTH))
             .thenReturn(Optional.of(row));
 
-        Goal result = service.contribute(userId, goal.getId(), new BigDecimal("50"));
+        Goal result = service.contribute(userId, goal.getId(), new BigDecimal("50"), "ip");
 
         assertEquals(new BigDecimal("150.00"), result.getCurrentAmount());
         assertEquals(new BigDecimal("70.00"), savedRow().getContributedAmount());
@@ -283,7 +287,7 @@ class GoalServiceTest {
         when(goalAllocationRepository.findByUserIdAndGoalIdAndMonthYear(userId, goal.getId(), MONTH))
             .thenReturn(Optional.empty());
 
-        service.contribute(userId, goal.getId(), new BigDecimal("50.00"));
+        service.contribute(userId, goal.getId(), new BigDecimal("50.00"), "ip");
 
         GoalAllocation row = savedRow();
         assertEquals(new BigDecimal("300.00"), row.getAllocatedAmount());
@@ -297,7 +301,7 @@ class GoalServiceTest {
         when(goalAllocationRepository.findByUserIdAndGoalIdAndMonthYear(userId, goal.getId(), MONTH))
             .thenReturn(Optional.empty());
 
-        service.contribute(userId, goal.getId(), new BigDecimal("10.00"));
+        service.contribute(userId, goal.getId(), new BigDecimal("10.00"), "ip");
 
         assertEquals(new BigDecimal("0.00"), savedRow().getAllocatedAmount());
     }
@@ -307,7 +311,7 @@ class GoalServiceTest {
         Goal goal = existing("990.00", null);
         when(goalAllocationRepository.findByUserIdAndGoalIdAndMonthYear(any(), any(), any())).thenReturn(Optional.empty());
 
-        assertEquals(new BigDecimal("1040.00"), service.contribute(userId, goal.getId(), new BigDecimal("50")).getCurrentAmount());
+        assertEquals(new BigDecimal("1040.00"), service.contribute(userId, goal.getId(), new BigDecimal("50"), "ip").getCurrentAmount());
     }
 
     @Test
@@ -316,7 +320,7 @@ class GoalServiceTest {
         when(goalRepository.findActiveByIdAndUserIdForUpdate(goalId, userId)).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class, () -> service.updateAllocation(userId, goalId, BigDecimal.TEN));
-        assertThrows(ResourceNotFoundException.class, () -> service.contribute(userId, goalId, BigDecimal.TEN));
+        assertThrows(ResourceNotFoundException.class, () -> service.contribute(userId, goalId, BigDecimal.TEN, "ip"));
         verifyNoInteractions(goalAllocationRepository);
         verify(goalRepository, never()).save(any());
     }
@@ -393,5 +397,100 @@ class GoalServiceTest {
 
         assertThrows(ResourceNotFoundException.class, () -> service.progress(userId, goalId));
         verifyNoInteractions(goalAllocationRepository);
+    }
+
+    // Story 8.7
+
+    @Test
+    void contributeThatReachesTheTargetCompletesTheGoalWithAudit() {
+        Goal goal = existing("900.00", "100.00");
+        when(goalAllocationRepository.findByUserIdAndGoalIdAndMonthYear(any(), any(), any())).thenReturn(Optional.empty());
+
+        Goal result = service.contribute(userId, goal.getId(), new BigDecimal("100"), "ip");
+
+        assertTrue(result.isCompleted());
+        assertEquals(OffsetDateTime.now(CLOCK), result.getCompletedAt());
+        assertEquals(new BigDecimal("100.00"), result.getMonthlyAllocation());
+        verify(auditLogService).log("goal_completed", userId, "ip", "{\"id\":\"" + goal.getId() + "\",\"auto\":true}");
+    }
+
+    @Test
+    void contributeBeyondTheTargetCompletesWithTheWholeAmount() {
+        Goal goal = existing("900.00", null);
+        when(goalAllocationRepository.findByUserIdAndGoalIdAndMonthYear(any(), any(), any())).thenReturn(Optional.empty());
+
+        Goal result = service.contribute(userId, goal.getId(), new BigDecimal("300"), "ip");
+
+        assertTrue(result.isCompleted());
+        assertEquals(new BigDecimal("1200.00"), result.getCurrentAmount());
+    }
+
+    @Test
+    void contributeBelowTheTargetKeepsTheGoalActiveWithoutAudit() {
+        Goal goal = existing("100.00", null);
+        when(goalAllocationRepository.findByUserIdAndGoalIdAndMonthYear(any(), any(), any())).thenReturn(Optional.empty());
+
+        assertFalse(service.contribute(userId, goal.getId(), new BigDecimal("899.99"), "ip").isCompleted());
+        verifyNoInteractions(auditLogService);
+    }
+
+    @Test
+    void completeBelowTheTargetKeepsTheAmountAndTheAllocation() {
+        Goal goal = existing("400.00", "100.00");
+
+        Goal result = service.complete(userId, goal.getId(), "ip");
+
+        assertTrue(result.isCompleted());
+        assertEquals(OffsetDateTime.now(CLOCK), result.getCompletedAt());
+        assertEquals(new BigDecimal("400.00"), result.getCurrentAmount());
+        assertEquals(new BigDecimal("100.00"), result.getMonthlyAllocation());
+        verify(auditLogService).log("goal_completed", userId, "ip", "{\"id\":\"" + goal.getId() + "\",\"auto\":false}");
+    }
+
+    @Test
+    void reopenClearsTheCompletionAndKeepsTheAllocation() {
+        Goal goal = completed();
+
+        Goal result = service.reopen(userId, goal.getId(), "ip");
+
+        assertFalse(result.isCompleted());
+        assertNull(result.getCompletedAt());
+        assertEquals(new BigDecimal("100.00"), result.getMonthlyAllocation());
+        verify(auditLogService).log("goal_reopened", userId, "ip", "{\"id\":\"" + goal.getId() + "\"}");
+    }
+
+    @Test
+    void aCompletedGoalIsReadOnly() {
+        Goal goal = completed();
+        Goal active = existing("0.00", "50.00");
+
+        assertThrows(ConflictException.class, () -> service.contribute(userId, goal.getId(), BigDecimal.TEN, "ip"));
+        assertThrows(ConflictException.class, () -> service.updateAllocation(userId, goal.getId(), BigDecimal.TEN));
+        assertThrows(ConflictException.class, () -> service.updateAllocations(userId, List.of(
+            new Item(active.getId(), BigDecimal.ONE), new Item(goal.getId(), BigDecimal.TEN))));
+        assertThrows(ConflictException.class, () -> service.complete(userId, goal.getId(), "ip"));
+        verifyNoInteractions(auditLogService);
+        assertEquals(new BigDecimal("1000.00"), goal.getCurrentAmount());
+        assertEquals(new BigDecimal("100.00"), goal.getMonthlyAllocation());
+    }
+
+    @Test
+    void reopenOfAnActiveGoalIsAConflictAndOfAnotherUsersIsNotFound() {
+        Goal goal = existing("0.00", null);
+        UUID foreign = UUID.randomUUID();
+        when(goalRepository.findActiveByIdAndUserIdForUpdate(foreign, userId)).thenReturn(Optional.empty());
+
+        assertThrows(ConflictException.class, () -> service.reopen(userId, goal.getId(), "ip"));
+        assertThrows(ResourceNotFoundException.class, () -> service.reopen(userId, foreign, "ip"));
+        assertThrows(ResourceNotFoundException.class, () -> service.complete(userId, foreign, "ip"));
+        verify(goalRepository, never()).save(any());
+        verifyNoInteractions(auditLogService);
+    }
+
+    private Goal completed() {
+        Goal goal = existing("1000.00", "100.00");
+        goal.setCompleted(true);
+        goal.setCompletedAt(OffsetDateTime.now(CLOCK));
+        return goal;
     }
 }

@@ -14,6 +14,7 @@ const goal = (extra: Partial<Goal> = {}): Goal => ({
   completed: false,
   createdAt: '2026-09-05T12:00:00Z',
   template: null,
+  completedAt: null,
   ...extra,
 })
 
@@ -56,6 +57,14 @@ describe('GoalProgressChart', () => {
     const top = Number(w.get('[data-testid="goal-chart-milestone-100"] line').attributes('y1'))
     expect(last[1]).toBeCloseTo(top)
     expect(last[0]).toBeCloseTo(640 - 40)
+  })
+
+  it('Story 8.7: meta concluída abaixo do alvo, com alocação, não desenha a linha projetada', () => {
+    const w = render(
+      goal({ monthlyAllocation: 250, completed: true, completedAt: '2026-11-10T12:00:00Z' }),
+    )
+    expect(w.find('[data-testid="goal-chart-projected"]').exists()).toBe(false)
+    expect(count(w.get('[data-testid="goal-chart-real"]').attributes('points'))).toBe(3)
   })
 
   it('aumentar a alocação encurta a linha projetada', async () => {

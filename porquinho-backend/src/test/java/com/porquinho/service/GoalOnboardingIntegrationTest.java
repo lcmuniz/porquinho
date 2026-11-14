@@ -324,7 +324,7 @@ class GoalOnboardingIntegrationTest {
 
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0)).containsEntry("goal_name", "Reserva de Emergência").containsEntry("deleted_at", null)
-            .containsEntry("is_completed", false);
+            .containsEntry("is_completed", false).containsEntry("completed_at", null);
         assertThat((BigDecimal) rows.get(0).get("current_amount")).isEqualByComparingTo("0");
     }
 
@@ -333,9 +333,9 @@ class GoalOnboardingIntegrationTest {
         // Story 8.2: the real lock query, the upsert under UNIQUE (goal_id, month_year) and the FK to goals
         Goal goal = addGoal(userId, "Viagem");
         goalService.updateAllocation(userId, goal.getId(), new BigDecimal("500"));
-        goalService.contribute(userId, goal.getId(), new BigDecimal("50"));
+        goalService.contribute(userId, goal.getId(), new BigDecimal("50"), "127.0.0.1");
         goalService.updateAllocation(userId, goal.getId(), new BigDecimal("700"));
-        Goal after = goalService.contribute(userId, goal.getId(), new BigDecimal("25.50"));
+        Goal after = goalService.contribute(userId, goal.getId(), new BigDecimal("25.50"), "127.0.0.1");
         goalAllocationRepository.flush();
 
         assertThat(after.getCurrentAmount()).isEqualByComparingTo("75.50");
@@ -347,7 +347,7 @@ class GoalOnboardingIntegrationTest {
         assertThat(rows.get(0).getMonthYear().getDayOfMonth()).isEqualTo(1);
 
         UUID other = newUser();
-        assertThatThrownBy(() -> goalService.contribute(other, goal.getId(), BigDecimal.TEN))
+        assertThatThrownBy(() -> goalService.contribute(other, goal.getId(), BigDecimal.TEN, "127.0.0.1"))
             .isInstanceOf(ResourceNotFoundException.class);
 
         assertThatThrownBy(() -> goalRepository.deleteByUserId(userId)).isInstanceOf(DataIntegrityViolationException.class);
@@ -356,10 +356,42 @@ class GoalOnboardingIntegrationTest {
     @Test
     void purgeDeletesTheGoalAllocationsThenTheGoals() {
         Goal goal = addGoal(userId, "Viagem");
-        goalService.contribute(userId, goal.getId(), new BigDecimal("50"));
+        goalService.contribute(userId, goal.getId(), new BigDecimal("50"), "127.0.0.1");
         goalAllocationRepository.flush();
 
         assertThat(goalAllocationRepository.deleteByUserId(userId)).isEqualTo(1);
         assertThat(goalRepository.deleteByUserId(userId)).isEqualTo(1);
+    }
+
+    @Test
+    void reachingTheTargetCompletesTheGoalInTheDatabaseWithAuditAndReopenClearsIt() {
+        // Story 8.7: completed_at (V36) is stored and goal_completed / goal_reopened reach audit_logs
+        Goal goal = goalService.create(userId, new CreateGoalRequest("Viagem", new BigDecimal("1000"), null,
+            new BigDecimal("100"), null));
+        goalRepository.flush();
+        goalService.contribute(userId, goal.getId(), new BigDecimal("900"), "127.0.0.1");
+        goalService.contribute(userId, goal.getId(), new BigDecimal("100"), "127.0.0.1");
+        goalRepository.flush();
+
+        Map<String, Object> row = jdbc.queryForMap("SELECT is_completed, completed_at FROM goals WHERE id = ?", goal.getId());
+        assertThat(row).containsEntry("is_completed", true);
+        assertThat(row.get("completed_at")).isNotNull();
+        assertThat(jdbc.queryForList("SELECT metadata FROM audit_logs WHERE user_id = ? AND event_type = 'goal_completed'",
+            String.class, userId)).singleElement().asString().contains(goal.getId().toString()).contains("\"auto\":true");
+        assertThatThrownBy(() -> goalService.contribute(userId, goal.getId(), BigDecimal.TEN, "127.0.0.1"))
+            .isInstanceOf(ConflictException.class);
+
+        goalService.reopen(userId, goal.getId(), "127.0.0.1");
+        goalRepository.flush();
+        row = jdbc.queryForMap("SELECT is_completed, completed_at, monthly_allocation FROM goals WHERE id = ?", goal.getId());
+        assertThat(row).containsEntry("is_completed", false).containsEntry("completed_at", null);
+        assertThat((BigDecimal) row.get("monthly_allocation")).isEqualByComparingTo("100");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_logs WHERE user_id = ? AND event_type = 'goal_reopened'",
+            Long.class, userId)).isEqualTo(1);
+
+        goalService.complete(userId, goal.getId(), "127.0.0.1");
+        goalRepository.flush();
+        assertThat(jdbc.queryForList("SELECT metadata FROM audit_logs WHERE user_id = ? AND event_type = 'goal_completed'",
+            String.class, userId)).anyMatch(m -> m.contains("\"auto\":false"));
     }
 }

@@ -15,6 +15,8 @@ export interface Goal {
   createdAt: string
   /** Story 8.6: modelo usado ao criar; null em metas personalizadas, do onboarding ou antigas. */
   template: GoalTemplate | null
+  /** Story 8.7: quando a meta foi concluída (ISO); null enquanto ativa. */
+  completedAt: string | null
 }
 
 export interface CreateGoalInput {

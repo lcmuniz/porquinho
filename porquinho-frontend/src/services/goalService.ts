@@ -40,6 +40,18 @@ export async function contributeToGoal(id: string, amount: number): Promise<Goal
   return response.data
 }
 
+/** Story 8.7: conclui a meta manualmente (mesmo abaixo do alvo). 409 se já está concluída. */
+export async function completeGoal(id: string): Promise<Goal> {
+  const response = await api.post<Goal>(`/api/v1/goals/${id}/complete`)
+  return response.data
+}
+
+/** Story 8.7: reabre a meta concluída, com a alocação anterior. 409 se não está concluída. */
+export async function reopenGoal(id: string): Promise<Goal> {
+  const response = await api.post<Goal>(`/api/v1/goals/${id}/reopen`)
+  return response.data
+}
+
 /** Story 8.2: total disponível para comparar com a soma das alocações. */
 export async function getGoalsSummary(): Promise<GoalsSummary> {
   const response = await api.get<GoalsSummary>('/api/v1/goals/summary')

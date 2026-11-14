@@ -13,6 +13,7 @@ const goal = (extra: Partial<Goal>): Goal => ({
   completed: false,
   createdAt: '2026-11-01T12:00:00Z',
   template: null,
+  completedAt: null,
   ...extra,
 })
 

@@ -31,6 +31,7 @@ function goal(id: string, name: string, extra: Partial<Goal> = {}): Goal {
     completed: false,
     createdAt: '2026-11-13T12:00:00Z',
     template: null,
+    completedAt: null,
     ...extra,
   }
 }
@@ -170,9 +171,9 @@ describe('GoalAllocationsView', () => {
     await type('a', value)
     await save()
     expect(row('a', 'allocation-error').text()).toBe(message)
-    expect(wrapper!.find('[data-testid="allocation-b"] [data-testid="allocation-error"]').exists()).toBe(
-      false,
-    )
+    expect(
+      wrapper!.find('[data-testid="allocation-b"] [data-testid="allocation-error"]').exists(),
+    ).toBe(false)
     expect(mockAllocations).not.toHaveBeenCalled()
   })
 
@@ -219,6 +220,40 @@ describe('GoalAllocationsView', () => {
     await flushPromises()
     expect(mockList).toHaveBeenCalledTimes(2)
     expect(wrapper!.find('[data-testid="allocation-a"]').exists()).toBe(true)
+  })
+
+  it('Story 8.7: metas concluídas ficam fora da tela e dos totais', async () => {
+    mockList.mockResolvedValue([
+      goal('a', 'Viagem', { monthlyAllocation: 500 }),
+      goal('b', 'Carro', {
+        monthlyAllocation: 200,
+        completed: true,
+        completedAt: '2026-11-10T12:00:00Z',
+      }),
+    ])
+    mockAllocations.mockResolvedValue([])
+    await mountView()
+    expect(wrapper!.find('[data-testid="allocation-b"]').exists()).toBe(false)
+    expect(text('total-before')).toBe('Total antes: R$ 500,00/mês')
+    await type('a', '300')
+    await save()
+    expect(mockAllocations).toHaveBeenCalledWith([{ goalId: 'a', monthlyAllocation: 300 }])
+  })
+
+  it('Story 8.7: 409 (meta concluída em outra aba) mostra a mensagem geral', async () => {
+    mockAllocations.mockRejectedValue({
+      response: {
+        status: 409,
+        data: { detail: 'Esta meta já foi concluída. Reabra a meta para alterá-la' },
+      },
+    })
+    await mountView()
+    await type('a', '300')
+    await save()
+    expect(text('allocations-form-error')).toBe(
+      'Esta meta já foi concluída. Reabra a meta para alterá-la',
+    )
+    expect(mockPush).not.toHaveBeenCalled()
   })
 
   it('lista vazia mostra o estado vazio', async () => {

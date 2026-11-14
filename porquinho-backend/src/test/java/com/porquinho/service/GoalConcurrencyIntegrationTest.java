@@ -62,7 +62,7 @@ class GoalConcurrencyIntegrationTest {
         try {
             List<Future<Goal>> results = List.of("50.00", "25.50").stream().map(amount -> pool.submit(() -> {
                 start.await();
-                return goalService.contribute(userId, goal.getId(), new BigDecimal(amount));
+                return goalService.contribute(userId, goal.getId(), new BigDecimal(amount), "127.0.0.1");
             })).toList();
             start.countDown();
             for (Future<Goal> result : results) result.get(30, TimeUnit.SECONDS);

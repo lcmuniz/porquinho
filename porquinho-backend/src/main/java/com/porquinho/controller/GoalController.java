@@ -8,6 +8,7 @@ import com.porquinho.dto.GoalSummaryResponse;
 import com.porquinho.dto.UpdateGoalAllocationRequest;
 import com.porquinho.dto.UpdateGoalAllocationsRequest;
 import com.porquinho.service.GoalService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -78,13 +79,33 @@ public class GoalController {
             .map(GoalResponse::of).toList());
     }
 
-    /** 201 with the goal after the contribution. 404 for another user's goal. */
+    /**
+     * 201 with the goal after the contribution; completed: true when it reached the target (Story 8.7).
+     * 404 for another user's goal, 409 for a completed one.
+     */
     @PostMapping("/{id}/contributions")
     public ResponseEntity<GoalResponse> contribute(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
-                                                   @Valid @RequestBody GoalContributionRequest request) {
+                                                   @Valid @RequestBody GoalContributionRequest request,
+                                                   HttpServletRequest httpRequest) {
         UUID userId = UUID.fromString(jwt.getSubject());
         return ResponseEntity.status(HttpStatus.CREATED)
-            .body(GoalResponse.of(goalService.contribute(userId, id, request.amount())));
+            .body(GoalResponse.of(goalService.contribute(userId, id, request.amount(), httpRequest.getRemoteAddr())));
+    }
+
+    /** Story 8.7: 200 with the completed goal. 404 for another user's goal, 409 if already completed. */
+    @PostMapping("/{id}/complete")
+    public ResponseEntity<GoalResponse> complete(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
+                                                 HttpServletRequest request) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(GoalResponse.of(goalService.complete(userId, id, request.getRemoteAddr())));
+    }
+
+    /** Story 8.7: 200 with the reopened goal. 404 for another user's goal, 409 if it is not completed. */
+    @PostMapping("/{id}/reopen")
+    public ResponseEntity<GoalResponse> reopen(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id,
+                                               HttpServletRequest request) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(GoalResponse.of(goalService.reopen(userId, id, request.getRemoteAddr())));
     }
 
     /** Monthly series of the accumulated amount (Story 8.3). 404 for another user's, removed or missing goal. */

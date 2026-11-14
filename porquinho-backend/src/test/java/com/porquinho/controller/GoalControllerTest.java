@@ -6,6 +6,7 @@ import com.porquinho.dto.GoalProgressResponse;
 import com.porquinho.dto.UpdateGoalAllocationsRequest;
 import com.porquinho.entity.Goal;
 import com.porquinho.exception.BadRequestException;
+import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.service.GoalService;
 import org.junit.jupiter.api.BeforeEach;
@@ -381,7 +382,7 @@ class GoalControllerTest {
     void postContributionReturns201WithTheGoal() throws Exception {
         Goal updated = goal("Viagem", "8000.00", null, null);
         updated.setCurrentAmount(new BigDecimal("150.00"));
-        when(goalService.contribute(userId, updated.getId(), new BigDecimal("50"))).thenReturn(updated);
+        when(goalService.contribute(eq(userId), eq(updated.getId()), eq(new BigDecimal("50")), eq("127.0.0.1"))).thenReturn(updated);
 
         mockMvc.perform(post("/api/v1/goals/" + updated.getId() + "/contributions").with(authentication(authToken))
                 .contentType(MediaType.APPLICATION_JSON).content("{\"amount\":50}"))
@@ -403,7 +404,7 @@ class GoalControllerTest {
     @Test
     void anotherUsersGoalIs404() throws Exception {
         UUID goalId = UUID.randomUUID();
-        when(goalService.contribute(eq(userId), eq(goalId), any())).thenThrow(new ResourceNotFoundException("Meta não encontrada"));
+        when(goalService.contribute(eq(userId), eq(goalId), any(), eq("127.0.0.1"))).thenThrow(new ResourceNotFoundException("Meta não encontrada"));
         when(goalService.updateAllocation(eq(userId), eq(goalId), any())).thenThrow(new ResourceNotFoundException("Meta não encontrada"));
 
         mockMvc.perform(post("/api/v1/goals/" + goalId + "/contributions").with(authentication(authToken))
@@ -443,6 +444,65 @@ class GoalControllerTest {
         when(goalService.progress(userId, goalId)).thenThrow(new ResourceNotFoundException("Meta não encontrada"));
 
         mockMvc.perform(get("/api/v1/goals/" + goalId + "/progress").with(authentication(authToken)))
+            .andExpect(status().isNotFound());
+    }
+
+    // Story 8.7
+
+    @Test
+    void postContributionThatReachesTheTargetReturnsTheCompletedGoal() throws Exception {
+        Goal updated = goal("Viagem", "1000.00", null, null);
+        updated.setCurrentAmount(new BigDecimal("1000.00"));
+        updated.setCompleted(true);
+        updated.setCompletedAt(OffsetDateTime.parse("2026-11-14T12:00:00Z"));
+        when(goalService.contribute(eq(userId), eq(updated.getId()), any(), eq("127.0.0.1"))).thenReturn(updated);
+
+        mockMvc.perform(post("/api/v1/goals/" + updated.getId() + "/contributions").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"amount\":100}"))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.completed").value(true))
+            .andExpect(jsonPath("$.completedAt").exists());
+    }
+
+    @Test
+    void postCompleteAndReopenReturn200WithTheGoal() throws Exception {
+        Goal done = goal("Viagem", "1000.00", null, null);
+        done.setCompleted(true);
+        done.setCompletedAt(OffsetDateTime.parse("2026-11-14T12:00:00Z"));
+        Goal reopened = goal("Viagem", "1000.00", null, null);
+        when(goalService.complete(eq(userId), eq(done.getId()), eq("127.0.0.1"))).thenReturn(done);
+        when(goalService.reopen(eq(userId), eq(reopened.getId()), eq("127.0.0.1"))).thenReturn(reopened);
+
+        mockMvc.perform(post("/api/v1/goals/" + done.getId() + "/complete").with(authentication(authToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.completed").value(true))
+            .andExpect(jsonPath("$.completedAt").exists());
+        mockMvc.perform(post("/api/v1/goals/" + reopened.getId() + "/reopen").with(authentication(authToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.completed").value(false))
+            .andExpect(jsonPath("$.completedAt").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test
+    void completeAndReopenConflictsAre409AndAnotherUsersGoalIs404() throws Exception {
+        UUID goalId = UUID.randomUUID();
+        UUID foreign = UUID.randomUUID();
+        when(goalService.complete(eq(userId), eq(goalId), eq("127.0.0.1"))).thenThrow(new ConflictException("Esta meta já foi concluída"));
+        when(goalService.reopen(eq(userId), eq(goalId), eq("127.0.0.1"))).thenThrow(new ConflictException("Esta meta não está concluída"));
+        when(goalService.contribute(eq(userId), eq(goalId), any(), eq("127.0.0.1"))).thenThrow(new ConflictException("Esta meta já foi concluída"));
+        when(goalService.complete(eq(userId), eq(foreign), eq("127.0.0.1"))).thenThrow(new ResourceNotFoundException("Meta não encontrada"));
+        when(goalService.reopen(eq(userId), eq(foreign), eq("127.0.0.1"))).thenThrow(new ResourceNotFoundException("Meta não encontrada"));
+
+        mockMvc.perform(post("/api/v1/goals/" + goalId + "/complete").with(authentication(authToken)))
+            .andExpect(status().isConflict());
+        mockMvc.perform(post("/api/v1/goals/" + goalId + "/reopen").with(authentication(authToken)))
+            .andExpect(status().isConflict());
+        mockMvc.perform(post("/api/v1/goals/" + goalId + "/contributions").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"amount\":50}"))
+            .andExpect(status().isConflict());
+        mockMvc.perform(post("/api/v1/goals/" + foreign + "/complete").with(authentication(authToken)))
+            .andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/v1/goals/" + foreign + "/reopen").with(authentication(authToken)))
             .andExpect(status().isNotFound());
     }
 }

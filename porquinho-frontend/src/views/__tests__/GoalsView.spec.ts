@@ -9,6 +9,8 @@ const mockAllocation = vi.fn()
 const mockContribute = vi.fn()
 const mockSummary = vi.fn()
 const mockProgress = vi.fn()
+const mockComplete = vi.fn()
+const mockReopen = vi.fn()
 
 vi.mock('@/services/goalService', () => ({
   listGoals: () => mockList(),
@@ -17,6 +19,8 @@ vi.mock('@/services/goalService', () => ({
   contributeToGoal: (...a: unknown[]) => mockContribute(...a),
   getGoalsSummary: () => mockSummary(),
   getGoalProgress: (...a: unknown[]) => mockProgress(...a),
+  completeGoal: (...a: unknown[]) => mockComplete(...a),
+  reopenGoal: (...a: unknown[]) => mockReopen(...a),
 }))
 
 function goal(id: string, name: string, extra: Partial<Goal> = {}): Goal {
@@ -31,6 +35,7 @@ function goal(id: string, name: string, extra: Partial<Goal> = {}): Goal {
     completed: false,
     createdAt: '2026-11-13T12:00:00Z',
     template: null,
+    completedAt: null,
     ...extra,
   }
 }
@@ -258,7 +263,9 @@ describe('GoalsView', () => {
     it('começa em "Personalizada" com o rótulo "Usar modelo"', async () => {
       await mountView()
       await openDialog()
-      expect(inDialog('goal-dialog')!.querySelector('legend')!.textContent?.trim()).toBe('Usar modelo')
+      expect(inDialog('goal-dialog')!.querySelector('legend')!.textContent?.trim()).toBe(
+        'Usar modelo',
+      )
       expect(inDialog<HTMLInputElement>('goal-template-CUSTOM')!.checked).toBe(true)
     })
 
@@ -512,7 +519,9 @@ describe('GoalsView', () => {
       mockList.mockResolvedValue([goal('g1', 'Viagem'), goal('g2', 'Carro')])
       await mountView()
       expect(
-        wrapper!.getComponent<typeof RouterLinkStub>('[data-testid="adjust-allocations"]').props('to'),
+        wrapper!
+          .getComponent<typeof RouterLinkStub>('[data-testid="adjust-allocations"]')
+          .props('to'),
       ).toBe('/metas/ajustar')
     })
 
@@ -710,6 +719,178 @@ describe('GoalsView', () => {
       inDialog<HTMLFormElement>('amount-form')!.dispatchEvent(new Event('submit'))
       await flushPromises()
       expect(mockProgress).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('Story 8.7: metas concluídas', () => {
+    const done = (extra: Partial<Goal> = {}) =>
+      goal('g2', 'Carro', {
+        targetAmount: 1000,
+        currentAmount: 1200,
+        monthlyAllocation: 300,
+        completed: true,
+        completedAt: '2026-11-10T15:00:00Z',
+        ...extra,
+      })
+
+    it('mostra a concluída na seção própria, só leitura e fora dos totais', async () => {
+      mockList.mockResolvedValue([
+        goal('g1', 'Viagem', { monthlyAllocation: 500 }),
+        goal('g3', 'Casa', { monthlyAllocation: 100 }),
+        done(),
+      ])
+      await mountView()
+      expect(wrapper!.find('[data-testid="goal-g2"]').exists()).toBe(false)
+      const card = wrapper!.get('[data-testid="completed-goal-g2"]')
+      expect(wrapper!.get('[data-testid="completed-goals"]').text()).toContain('Metas concluídas')
+      expect(card.get('[data-testid="goal-completed-badge"]').text()).toBe('Concluída')
+      expect(card.get('[data-testid="goal-completed-at"]').text()).toBe('Concluída em 10/11/2026')
+      expect(plain(card.get('[data-testid="goal-final-amount"]').text())).toBe(
+        'Valor final guardado: R$ 1.200,00',
+      )
+      expect(card.find('svg.text-green-600').exists()).toBe(true)
+      for (const id of ['edit-allocation', 'contribute', 'complete-goal', 'goal-projection'])
+        expect(card.find(`[data-testid="${id}"]`).exists()).toBe(false)
+      expect(card.find('[data-testid="toggle-chart"]').exists()).toBe(true)
+      expect(plain(wrapper!.get('[data-testid="goals-total"]').text())).toContain('R$ 600,00/mês')
+    })
+
+    it('sem concluídas não mostra a seção; "Ajustar alocações" conta só as ativas', async () => {
+      mockList.mockResolvedValue([goal('g1', 'Viagem'), done()])
+      await mountView()
+      expect(wrapper!.find('[data-testid="adjust-allocations"]').exists()).toBe(false)
+      wrapper!.unmount()
+
+      mockList.mockResolvedValue([goal('g1', 'Viagem')])
+      await mountView()
+      expect(wrapper!.find('[data-testid="completed-goals"]').exists()).toBe(false)
+    })
+
+    it('aporte que atinge o alvo dá parabéns e move o card para as concluídas', async () => {
+      mockList.mockResolvedValue([goal('g2', 'Carro', { targetAmount: 1000, currentAmount: 900 })])
+      mockContribute.mockResolvedValue(done({ currentAmount: 1000 }))
+      await mountView()
+      await wrapper!.get('[data-testid="goal-g2"] [data-testid="contribute"]').trigger('click')
+      await flushPromises()
+      await type('amount-input', '100')
+      inDialog<HTMLFormElement>('amount-form')!.dispatchEvent(new Event('submit'))
+      await flushPromises()
+
+      expect(wrapper!.get('[role="status"]').text()).toBe('Parabéns! Você completou a meta Carro!')
+      expect(wrapper!.find('[data-testid="goal-g2"]').exists()).toBe(false)
+      expect(wrapper!.find('[data-testid="completed-goal-g2"]').exists()).toBe(true)
+    })
+
+    it('aporte em meta já concluída (409) mostra a mensagem do backend', async () => {
+      mockContribute.mockRejectedValue({
+        response: {
+          status: 409,
+          data: { detail: 'Esta meta já foi concluída. Reabra a meta para alterá-la' },
+        },
+      })
+      await mountView()
+      await wrapper!.get('[data-testid="contribute"]').trigger('click')
+      await flushPromises()
+      await type('amount-input', '10')
+      inDialog<HTMLFormElement>('amount-form')!.dispatchEvent(new Event('submit'))
+      await flushPromises()
+      expect(inDialog('amount-form-error')!.textContent).toContain('Esta meta já foi concluída')
+    })
+
+    it('"Marcar como concluída" pede confirmação; confirmar conclui mesmo abaixo do alvo', async () => {
+      mockList.mockResolvedValue([goal('g2', 'Carro', { targetAmount: 1000, currentAmount: 400 })])
+      mockComplete.mockResolvedValue(done({ currentAmount: 400 }))
+      await mountView()
+      await wrapper!.get('[data-testid="complete-goal"]').trigger('click')
+      await flushPromises()
+      expect(inDialog('complete-dialog')!.textContent).toContain(
+        'Tem certeza? Esta meta será arquivada',
+      )
+      expect(mockComplete).not.toHaveBeenCalled()
+
+      inDialog<HTMLButtonElement>('complete-confirm')!.click()
+      await flushPromises()
+      expect(mockComplete).toHaveBeenCalledWith('g2')
+      expect(inDialog('complete-dialog')).toBeNull()
+      expect(plain(wrapper!.get('[data-testid="goal-final-amount"]').text())).toBe(
+        'Valor final guardado: R$ 400,00',
+      )
+    })
+
+    it('cancelar a confirmação não muda nada', async () => {
+      await mountView()
+      await wrapper!.get('[data-testid="complete-goal"]').trigger('click')
+      await flushPromises()
+      inDialog<HTMLButtonElement>('complete-cancel')!.click()
+      await flushPromises()
+      expect(mockComplete).not.toHaveBeenCalled()
+      expect(inDialog('complete-dialog')).toBeNull()
+      expect(wrapper!.find('[data-testid="goal-g1"]').exists()).toBe(true)
+    })
+
+    it('falha ao concluir mantém o diálogo com o erro', async () => {
+      mockComplete.mockRejectedValue({
+        response: { status: 409, data: { detail: 'Esta meta já foi concluída' } },
+      })
+      await mountView()
+      await wrapper!.get('[data-testid="complete-goal"]').trigger('click')
+      await flushPromises()
+      inDialog<HTMLButtonElement>('complete-confirm')!.click()
+      await flushPromises()
+      expect(inDialog('complete-error')!.textContent).toContain('Esta meta já foi concluída')
+      expect(wrapper!.find('[data-testid="goal-g1"]').exists()).toBe(true)
+    })
+
+    it('"Reabrir meta" volta às ativas com a alocação anterior e anuncia "Meta reaberta"', async () => {
+      mockList.mockResolvedValue([done()])
+      mockReopen.mockResolvedValue(done({ completed: false, completedAt: null }))
+      await mountView()
+      expect(plain(wrapper!.get('[data-testid="goals-total"]').text())).toContain('R$ 0,00/mês')
+      await wrapper!.get('[data-testid="reopen-goal"]').trigger('click')
+      await flushPromises()
+
+      expect(mockReopen).toHaveBeenCalledWith('g2')
+      expect(wrapper!.find('[data-testid="completed-goals"]').exists()).toBe(false)
+      expect(plain(wrapper!.get('[data-testid="goal-g2"]').text())).toContain(
+        'Aporte mensal: R$ 300,00/mês',
+      )
+      expect(plain(wrapper!.get('[data-testid="goals-total"]').text())).toContain('R$ 300,00/mês')
+      expect(wrapper!.get('[role="status"]').text()).toBe('Meta reaberta')
+    })
+
+    it('com todas as metas concluídas mostra "Nenhuma meta ativa" e a seção de concluídas', async () => {
+      mockList.mockResolvedValue([done()])
+      await mountView()
+      expect(wrapper!.get('[data-testid="goals-no-active"]').text()).toContain('Nenhuma meta ativa')
+      expect(wrapper!.find('[data-testid="goals-empty"]').exists()).toBe(false)
+      expect(wrapper!.find('[data-testid="completed-goal-g2"]').exists()).toBe(true)
+    })
+
+    it('reabrir leva o foco ao título; com um reabrir pendente, todos os botões ficam desabilitados', async () => {
+      mockList.mockResolvedValue([done(), done({ id: 'g3', name: 'Casa' })])
+      let resolve!: (g: Goal) => void
+      mockReopen.mockReturnValue(new Promise<Goal>((r) => (resolve = r)))
+      await mountView()
+      const clicked = wrapper!.get('[data-testid="completed-goal-g2"] [data-testid="reopen-goal"]')
+      ;(clicked.element as HTMLElement).focus()
+      await clicked.trigger('click')
+      for (const button of wrapper!.findAll('[data-testid="reopen-goal"]'))
+        expect(button.attributes('disabled')).toBeDefined()
+
+      resolve(done({ completed: false, completedAt: null }))
+      await flushPromises()
+      expect(document.activeElement).toBe(wrapper!.get('h1').element)
+      expect(wrapper!.get('[data-testid="reopen-goal"]').attributes('disabled')).toBeUndefined()
+    })
+
+    it('falha ao reabrir mostra o erro e a meta fica nas concluídas', async () => {
+      mockList.mockResolvedValue([done()])
+      mockReopen.mockRejectedValue(new Error('rede'))
+      await mountView()
+      await wrapper!.get('[data-testid="reopen-goal"]').trigger('click')
+      await flushPromises()
+      expect(wrapper!.find('[data-testid="goals-action-error"]').exists()).toBe(true)
+      expect(wrapper!.find('[data-testid="completed-goal-g2"]').exists()).toBe(true)
     })
   })
 })

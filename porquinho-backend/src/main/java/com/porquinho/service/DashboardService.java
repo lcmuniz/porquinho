@@ -120,7 +120,8 @@ public class DashboardService {
         }
         int negativeAccounts = (int) accountService.listActive(userId).stream()
             .filter(a -> a.getCurrentBalance().signum() < 0).count();
-        int goalsBehind = (int) goalService.listActive(userId).stream().filter(g -> isBehind(g, today)).count();
+        int goalsBehind = (int) goalService.listActive(userId).stream()
+            .filter(g -> !g.isCompleted() && isBehind(g, today)).count();
 
         int budgeted = healthy + low + overspent;
         // healthy / budgeted < x  <=>  healthy * 100 < x * budgeted (integers, no rounding)
@@ -136,7 +137,7 @@ public class DashboardService {
     /**
      * Story 7.3. Projection (real money, with or without category): total available - (spent up to today / today's
      * day x days left) - debits dated after today in the month - the month's future installments. The spent card
-     * keeps the budget screen's number (whole month, categories only). The main goal is the oldest active one.
+     * keeps the budget screen's number (whole month, categories only). The main goal is the oldest active one not completed.
      */
     @Transactional(readOnly = true)
     public DashboardLayer1Response overview(UUID userId) {
@@ -173,8 +174,9 @@ public class DashboardService {
         BigDecimal projected = budget.totalAvailable().subtract(pace).subtract(scheduled).subtract(committed)
             .setScale(2, RoundingMode.HALF_EVEN);
 
-        List<Goal> goals = goalService.listActive(userId);
-        DashboardLayer1Response.MainGoal mainGoal = goals.isEmpty() ? null : mainGoal(goals.get(0));
+        // Story 8.7: the main goal is the oldest one not completed; none left hides the card
+        DashboardLayer1Response.MainGoal mainGoal = goalService.listActive(userId).stream()
+            .filter(g -> !g.isCompleted()).findFirst().map(DashboardService::mainGoal).orElse(null);
         return new DashboardLayer1Response(budget.totalAvailable(), categories, mainGoal, spent,
             budget.totalAllocated(), projected, wealthHistory(userId, today, budget.totalAvailable()));
     }

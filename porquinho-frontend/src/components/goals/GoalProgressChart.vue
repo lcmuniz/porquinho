@@ -182,8 +182,12 @@ const active = ref<number | null>(null)
 const start = computed(() => props.points[0]?.month ?? '')
 const currentIndex = computed(() => Math.max(props.points.length - 1, 0))
 
-/** Do mês corrente em diante (índice 0 = mês de criação), limitada ao alvo. Vazia sem alocação ou com o alvo atingido. */
+/**
+ * Do mês corrente em diante (índice 0 = mês de criação), limitada ao alvo. Vazia sem alocação, com o alvo atingido
+ * ou com a meta concluída (Story 8.7: concluída abaixo do alvo não projeta mais nada).
+ */
 const projection = computed(() => {
+  if (props.goal.completed) return []
   const target = props.goal.targetAmount
   const allocation = props.goal.monthlyAllocation ?? 0
   // Parte da meta, não do último ponto: enquanto a série recarrega, a projeção já bate com a barra

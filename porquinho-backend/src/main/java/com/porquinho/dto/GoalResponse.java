@@ -20,7 +20,8 @@ public record GoalResponse(
     BigDecimal monthlyAllocation,
     boolean completed,
     OffsetDateTime createdAt,
-    String template
+    String template,
+    OffsetDateTime completedAt
 ) {
     public static GoalResponse of(Goal goal) {
         return new GoalResponse(
@@ -33,7 +34,8 @@ public record GoalResponse(
             goal.getMonthlyAllocation(),
             goal.isCompleted(),
             goal.getCreatedAt(),
-            goal.getTemplate()
+            goal.getTemplate(),
+            goal.getCompletedAt()
         );
     }
 }

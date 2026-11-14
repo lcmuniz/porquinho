@@ -529,6 +529,8 @@ class DataExportServiceTest {
         removed.setCreatedAt(created.plusMinutes(1));
         removed.setUpdatedAt(created.plusMinutes(2));
         removed.setDeletedAt(created.plusMinutes(2));
+        removed.setCompleted(true);
+        removed.setCompletedAt(created.plusMinutes(1));
         when(goalRepository.findByUserIdOrderByCreatedAtAsc(userId)).thenReturn(List.of(active, removed));
 
         Map<String, Object> data = dataExportService.collectUserData(userId);
@@ -552,6 +554,7 @@ class DataExportServiceTest {
         assertEquals("2027-11-02", first.get("target_date"));
         assertEquals(new java.math.BigDecimal("2083.34"), first.get("monthly_allocation"));
         assertEquals(false, first.get("is_completed"));
+        assertNull(first.get("completed_at"));
         assertNull(first.get("deleted_at"));
 
         Map<String, Object> second = rows.get(1);
@@ -560,6 +563,8 @@ class DataExportServiceTest {
         assertEquals("VACATION", second.get("template"));
         assertNull(second.get("target_date"));
         assertNull(second.get("monthly_allocation"));
+        assertEquals(true, second.get("is_completed"));
+        assertEquals(created.plusMinutes(1).toString(), second.get("completed_at"));
         assertEquals(created.plusMinutes(2).toString(), second.get("deleted_at"));
     }
 

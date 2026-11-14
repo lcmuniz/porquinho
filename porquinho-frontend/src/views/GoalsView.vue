@@ -12,7 +12,7 @@
         </div>
         <div class="flex flex-wrap justify-end gap-2">
           <RouterLink
-            v-if="goals.length >= 2"
+            v-if="activeGoals.length >= 2"
             to="/metas/ajustar"
             data-testid="adjust-allocations"
             class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
@@ -49,6 +49,14 @@
         "
       >
         {{ successMessage }}
+      </p>
+      <p
+        v-if="actionError"
+        role="alert"
+        data-testid="goals-action-error"
+        class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+      >
+        {{ actionError }}
       </p>
 
       <div v-if="loading" class="space-y-2" aria-busy="true" data-testid="goals-skeleton">
@@ -94,9 +102,17 @@
           </p>
         </div>
 
+        <p
+          v-if="activeGoals.length === 0"
+          class="rounded-lg border border-gray-200 bg-white p-4 text-center text-sm text-gray-600"
+          data-testid="goals-no-active"
+        >
+          Nenhuma meta ativa. Use Criar meta para definir uma nova.
+        </p>
+
         <ul class="space-y-3">
           <li
-            v-for="goal in goals"
+            v-for="goal in activeGoals"
             :key="goal.id"
             class="space-y-3 rounded-lg border border-gray-200 bg-white p-4"
             :data-testid="`goal-${goal.id}`"
@@ -201,6 +217,15 @@
               >
                 {{ goal.id in progress ? 'Ocultar evolução' : 'Ver evolução' }}
               </Button>
+              <Button
+                variant="outline"
+                class="min-h-[44px]"
+                :aria-label="`Marcar ${goal.name} como concluída`"
+                data-testid="complete-goal"
+                @click="openComplete(goal, $event)"
+              >
+                Marcar como concluída
+              </Button>
             </div>
             <div v-if="goal.id in progress" :id="`goal-chart-${goal.id}`">
               <p
@@ -226,6 +251,80 @@
             </div>
           </li>
         </ul>
+
+        <!-- Story 8.7: somente leitura; só "Ver evolução" e "Reabrir meta" -->
+        <section v-if="completedGoals.length > 0" class="space-y-3" data-testid="completed-goals">
+          <h2 class="text-lg font-semibold text-gray-900">Metas concluídas</h2>
+          <ul class="space-y-3">
+            <li
+              v-for="goal in completedGoals"
+              :key="goal.id"
+              class="space-y-3 rounded-lg border border-gray-200 bg-white p-4"
+              :data-testid="`completed-goal-${goal.id}`"
+            >
+              <div class="flex items-center gap-2">
+                <CircleCheck class="h-5 w-5 text-green-600" aria-hidden="true" />
+                <h3 class="min-w-0 font-medium break-words text-gray-900">{{ goal.name }}</h3>
+                <span
+                  class="shrink-0 rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-800"
+                  data-testid="goal-completed-badge"
+                >
+                  Concluída
+                </span>
+              </div>
+              <p class="text-sm text-gray-700" data-testid="goal-completed-at">
+                Concluída em {{ formatDateBR(goal.completedAt) }}
+              </p>
+              <p class="text-sm text-gray-700" data-testid="goal-final-amount">
+                Valor final guardado: {{ formatBRL(goal.currentAmount) }}
+              </p>
+              <div class="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  class="min-h-[44px]"
+                  :aria-expanded="goal.id in progress ? 'true' : 'false'"
+                  :aria-controls="`goal-chart-${goal.id}`"
+                  data-testid="toggle-chart"
+                  @click="toggleChart(goal.id)"
+                >
+                  {{ goal.id in progress ? 'Ocultar evolução' : 'Ver evolução' }}
+                </Button>
+                <Button
+                  variant="outline"
+                  class="min-h-[44px]"
+                  :aria-label="`Reabrir meta ${goal.name}`"
+                  :disabled="reopening !== null"
+                  data-testid="reopen-goal"
+                  @click="reopen(goal)"
+                >
+                  Reabrir meta
+                </Button>
+              </div>
+              <div v-if="goal.id in progress" :id="`goal-chart-${goal.id}`">
+                <p
+                  v-if="progress[goal.id] === 'loading'"
+                  class="py-6 text-center text-sm text-gray-600"
+                  aria-busy="true"
+                >
+                  Carregando evolução...
+                </p>
+                <p
+                  v-else-if="progress[goal.id] === 'error'"
+                  role="alert"
+                  class="py-6 text-center text-sm text-gray-600"
+                  data-testid="goal-chart-error"
+                >
+                  Não foi possível carregar a evolução
+                </p>
+                <GoalProgressChart
+                  v-else
+                  :goal="goal"
+                  :points="progress[goal.id] as GoalProgressPoint[]"
+                />
+              </div>
+            </li>
+          </ul>
+        </section>
       </template>
     </div>
 
@@ -492,13 +591,51 @@
         </form>
       </DialogContent>
     </Dialog>
+
+    <Dialog :open="completeOpen" @update:open="onCompleteOpenChange">
+      <DialogContent data-testid="complete-dialog" @close-auto-focus="returnCompleteFocus">
+        <DialogHeader>
+          <DialogTitle>Marcar como concluída</DialogTitle>
+          <DialogDescription>Tem certeza? Esta meta será arquivada</DialogDescription>
+        </DialogHeader>
+        <p
+          v-if="completeError"
+          role="alert"
+          data-testid="complete-error"
+          class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+        >
+          {{ completeError }}
+        </p>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            class="min-h-[44px]"
+            :disabled="completeSaving"
+            data-testid="complete-cancel"
+            @click="completeOpen = false"
+          >
+            Cancelar
+          </Button>
+          <Button
+            type="button"
+            class="min-h-[44px]"
+            :disabled="completeSaving"
+            data-testid="complete-confirm"
+            @click="confirmComplete"
+          >
+            {{ completeSaving ? 'Salvando...' : 'Marcar como concluída' }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </main>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import { Target } from 'lucide-vue-next'
+import { CircleCheck, Target } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -510,7 +647,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import GoalProgressChart from '@/components/goals/GoalProgressChart.vue'
-import { currentMonth, formatLocalDateBR } from '@/lib/date'
+import { currentMonth, formatDateBR, formatLocalDateBR } from '@/lib/date'
 import {
   goalPace,
   goalProjection,
@@ -533,11 +670,13 @@ import {
 } from '@/lib/goalPlan'
 import { formatBRL, formatBRLInput, parseBRL } from '@/lib/money'
 import {
+  completeGoal,
   contributeToGoal,
   createGoal,
   getGoalProgress,
   getGoalsSummary,
   listGoals,
+  reopenGoal,
   updateGoalAllocation,
 } from '@/services/goalService'
 import type { Goal, GoalProgressPoint, GoalsSummary, GoalTemplate } from '@/types/goal'
@@ -550,6 +689,8 @@ import type { Goal, GoalProgressPoint, GoalsSummary, GoalTemplate } from '@/type
  * Story 8.4: projeção do mês de conclusão e aporte sugerido para o prazo, calculados no front a partir da meta.
  * Story 8.5: "Ajustar alocações" (com 2+ metas) abre /metas/ajustar, que volta com "Alocações atualizadas".
  * Story 8.6: "Usar modelo" no diálogo preenche os campos; o modelo vai no POST mesmo editado e o card mostra o selo.
+ * Story 8.7: concluídas (no aporte que atinge o alvo ou com confirmação) vão para "Metas concluídas", somente
+ * leitura e fora dos totais; "Reabrir meta" as devolve às ativas com a alocação anterior.
  */
 const SUCCESS_TIMEOUT_MS = 5000
 const SAVE_FAILED = 'Não foi possível criar a meta. Verifique sua conexão e tente novamente.'
@@ -594,10 +735,16 @@ const AMOUNT_FAILED = 'Não foi possível salvar. Verifique sua conexão e tente
 /** Story 8.2: null quando o GET falhou; aí só o aviso some, a lista continua. */
 const summary = ref<GoalsSummary | null>(null)
 
+const activeGoals = computed(() => goals.value.filter((g) => !g.completed))
+const completedGoals = computed(() => goals.value.filter((g) => g.completed))
+
 // Soma em centavos: em float, 0,10 + 0,20 passaria de 0,30 e acenderia o aviso à toa
 const totalAllocated = computed(
   () =>
-    goals.value.reduce((cents, g) => cents + Math.round((g.monthlyAllocation ?? 0) * 100), 0) / 100,
+    activeGoals.value.reduce(
+      (cents, g) => cents + Math.round((g.monthlyAllocation ?? 0) * 100),
+      0,
+    ) / 100,
 )
 const overAvailable = computed(
   () =>
@@ -819,14 +966,16 @@ async function saveAmount() {
       action.kind === 'allocation'
         ? await updateGoalAllocation(action.goal.id, value)
         : await contributeToGoal(action.goal.id, value)
-    goals.value = goals.value.map((g) => (g.id === updated.id ? updated : g))
+    replaceGoal(updated)
     // A alocação só muda a projeção, que vem da prop goal; a série real só muda com aporte
     if (action.kind === 'contribution' && updated.id in progress) void loadProgress(updated.id)
     amountOpen.value = false
     setSuccess(
       action.kind === 'allocation'
         ? `Alocação atualizada para ${updated.name}`
-        : `Aporte registrado em ${updated.name}`,
+        : updated.completed
+          ? `Parabéns! Você completou a meta ${updated.name}!`
+          : `Aporte registrado em ${updated.name}`,
     )
   } catch (err) {
     const response = (err as ApiError)?.response
@@ -836,6 +985,70 @@ async function saveAmount() {
     else amountFormError.value = response?.data?.detail ?? AMOUNT_FAILED
   } finally {
     amountSaving.value = false
+  }
+}
+
+function replaceGoal(updated: Goal) {
+  goals.value = goals.value.map((g) => (g.id === updated.id ? updated : g))
+}
+
+/** Story 8.7: confirmação antes de concluir manualmente (vale mesmo abaixo do alvo). */
+const completeTarget = ref<Goal | null>(null)
+const completeOpen = ref(false)
+const completeSaving = ref(false)
+const completeError = ref<string | null>(null)
+let completeTrigger: HTMLElement | null = null
+const actionError = ref<string | null>(null)
+const reopening = ref<string | null>(null)
+
+function openComplete(goal: Goal, event: Event) {
+  completeTrigger = event.currentTarget as HTMLElement | null
+  completeTarget.value = goal
+  completeError.value = null
+  actionError.value = null
+  completeOpen.value = true
+}
+
+function onCompleteOpenChange(open: boolean) {
+  if (!open && !completeSaving.value) completeOpen.value = false
+}
+
+function returnCompleteFocus(event: Event) {
+  event.preventDefault()
+  // Concluída, o botão sai da tela com o card: o foco vai para o título
+  void nextTick(() => (completeTrigger?.isConnected ? completeTrigger : heading.value)?.focus())
+}
+
+async function confirmComplete() {
+  const goal = completeTarget.value
+  if (!goal || completeSaving.value) return
+  completeSaving.value = true
+  completeError.value = null
+  try {
+    const updated = await completeGoal(goal.id)
+    replaceGoal(updated)
+    completeOpen.value = false
+    setSuccess(`Meta ${updated.name} concluída`)
+  } catch (err) {
+    completeError.value = (err as ApiError)?.response?.data?.detail ?? AMOUNT_FAILED
+  } finally {
+    completeSaving.value = false
+  }
+}
+
+async function reopen(goal: Goal) {
+  if (reopening.value) return
+  reopening.value = goal.id
+  actionError.value = null
+  try {
+    replaceGoal(await reopenGoal(goal.id))
+    setSuccess('Meta reaberta')
+    // O botão some com o card concluído: o foco não pode cair no body
+    void nextTick(() => heading.value?.focus())
+  } catch (err) {
+    actionError.value = (err as ApiError)?.response?.data?.detail ?? AMOUNT_FAILED
+  } finally {
+    reopening.value = null
   }
 }
 
