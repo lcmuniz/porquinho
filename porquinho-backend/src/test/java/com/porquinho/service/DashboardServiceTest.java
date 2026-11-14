@@ -32,8 +32,10 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
@@ -222,7 +224,20 @@ class DashboardServiceTest {
     }
 
     @Test
-    void aHugeProjectionCountsAsBehindWithoutOverflowingTheDate() {
+    void behindCountsByCalendarMonthLikeTheGoalsPage() {
+        // Retro Epic 8 A1: on 14/11, 1000 missing at 1000/month lands in December, the target's month: on track
+        LocalDate nov14 = LocalDate.of(2026, 11, 14);
+        assertFalse(DashboardService.isBehind(goal("1000", "0", LocalDate.of(2026, 12, 5), "1000"), nov14));
+        // 2 months would land in January, past the December target
+        assertTrue(DashboardService.isBehind(goal("2000", "0", LocalDate.of(2026, 12, 31), "1000"), nov14));
+        // Target in the current month with money still missing
+        assertTrue(DashboardService.isBehind(goal("1000", "0", LocalDate.of(2026, 11, 30), "1000"), nov14));
+        // Target already in a past month
+        assertTrue(DashboardService.isBehind(goal("1000", "0", LocalDate.of(2026, 10, 31), "1000"), nov14));
+    }
+
+    @Test
+    void aHugeProjectionCountsAsBehindWithoutOverflow() {
         budget(10, 0, 0);
         goals.add(goal("9999999999999.99", "0", TODAY.plusMonths(12), "0.01"));
 

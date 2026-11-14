@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { goalPace, goalProjection, monthsBetween, monthsToTarget, projectionText } from '../goalPace'
+import {
+  goalPace,
+  goalProjection,
+  monthsBetween,
+  monthsToTarget,
+  projectionText,
+} from '../goalPace'
 import type { Goal } from '@/types/goal'
 
 const goal = (extra: Partial<Goal>): Goal => ({
@@ -40,6 +46,25 @@ describe('goalPace', () => {
     ['2027-04-15', 5, 'very-late'],
   ] as const)('data-alvo %s (atraso %s) → %s', (targetDate, _delay, pace) => {
     expect(goalPace(goal({ targetDate }), '2026-11')).toBe(pace)
+  })
+
+  // Retro Epic 8 A1: mesmo caso do DashboardServiceTest (14/11, prazo 05/12, falta 1000 a 1000/mês)
+  it('conta por mês-calendário, como o dashboard', () => {
+    expect(goalPace(goal({ targetDate: '2026-12-05', monthlyAllocation: 1000 }), '2026-11')).toBe(
+      'on-track',
+    )
+    expect(
+      goalPace(
+        goal({ targetAmount: 2000, targetDate: '2026-12-31', monthlyAllocation: 1000 }),
+        '2026-11',
+      ),
+    ).toBe('late')
+    expect(goalPace(goal({ targetDate: '2026-11-30', monthlyAllocation: 1000 }), '2026-11')).toBe(
+      'late',
+    )
+    expect(goalPace(goal({ targetDate: '2026-10-31', monthlyAllocation: 1000 }), '2026-11')).toBe(
+      'late',
+    )
   })
 
   it('sem data-alvo, sem alocação ou com o alvo atingido fica em dia', () => {

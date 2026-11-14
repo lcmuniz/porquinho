@@ -481,15 +481,17 @@ public class DashboardService {
         return new DashboardLayer1Response.MainGoal(goal.getGoalName(), goal.getCurrentAmount(), target, percent);
     }
 
-    /** Story 8.4 rule: today + ceil(missing / monthly allocation) months past the target date. */
+    /**
+     * Story 8.4 rule, by calendar month (same as goalPace in the front): ceil(missing / monthly allocation) months
+     * from the current month past the target date's month.
+     */
     static boolean isBehind(Goal goal, LocalDate today) {
         BigDecimal allocation = goal.getMonthlyAllocation();
         if (goal.getTargetDate() == null || allocation == null || allocation.signum() <= 0) return false;
         BigDecimal missing = goal.getTargetAmount().subtract(goal.getCurrentAmount());
         if (missing.signum() <= 0) return false;
-        long months = missing.divide(allocation, 0, RoundingMode.CEILING).longValueExact();
-        // An absurd projection would overflow LocalDate; past the month bound (+1 for end-of-month clamping) it is late
-        if (months > ChronoUnit.MONTHS.between(today, goal.getTargetDate()) + 1) return true;
-        return today.plusMonths(months).isAfter(goal.getTargetDate());
+        BigDecimal months = missing.divide(allocation, 0, RoundingMode.CEILING);
+        long monthsLeft = YearMonth.from(today).until(YearMonth.from(goal.getTargetDate()), ChronoUnit.MONTHS);
+        return months.compareTo(BigDecimal.valueOf(monthsLeft)) > 0;
     }
 }
