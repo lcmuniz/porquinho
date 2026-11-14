@@ -27,7 +27,7 @@
         :viewBox="`0 0 ${WIDTH} ${HEIGHT}`"
         class="h-auto w-full overflow-visible"
         role="img"
-        :aria-label="`Gasto por mês das ${lines.length} maiores categorias nos últimos ${months} meses. Os totais estão na lista abaixo.`"
+        :aria-label="`Gasto por mês das ${lines.length} maiores categorias nos últimos ${months} meses. Os valores de cada mês estão na tabela abaixo.`"
         data-testid="trend-chart-svg"
       >
         <g v-for="(tick, i) in yTicks" :key="`y-${i}`">
@@ -94,6 +94,33 @@
           <span class="shrink-0 text-gray-700">{{ formatBRL(line.total) }} em {{ months }} meses</span>
         </li>
       </ul>
+
+      <!-- Os valores dos pontos só aparecem no hover; a tabela os leva ao teclado e ao leitor de tela (retro Epic 7 A3) -->
+      <details data-testid="trend-table">
+        <summary class="min-h-[44px] cursor-pointer py-2 text-sm font-medium text-purple-700">
+          Ver valores por mês
+        </summary>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-left text-gray-700">
+                <th scope="col" class="py-1 pr-4 font-medium">Categoria</th>
+                <th v-for="label in monthLabels" :key="label" scope="col" class="py-1 pr-4 text-right font-medium">
+                  {{ label }}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="line in lines" :key="line.key" class="border-t border-gray-100">
+                <th scope="row" class="py-1 pr-4 text-left font-normal text-gray-900">{{ line.name }}</th>
+                <td v-for="(v, i) in line.values" :key="i" class="py-1 pr-4 text-right whitespace-nowrap text-gray-700">
+                  {{ formatBRL(v) }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
     </template>
   </div>
 </template>

@@ -47,6 +47,18 @@ describe('TrendChart', () => {
     expect(w.findAll('[data-testid="trend-line-g"] circle')).toHaveLength(12)
   })
 
+  it('tabela de valores por mês acompanha o período e as linhas do gráfico', () => {
+    const w = mount(TrendChart, { props: { trends: [trend('a', 0, 60), trend('b', 0, 50)] } })
+
+    const table = w.get('[data-testid="trend-table"]')
+    expect(table.findAll('thead th')).toHaveLength(4)
+    const rows = table.findAll('tbody tr')
+    expect(rows.map((r) => r.get('th').text())).toEqual(['A', 'B'])
+    expect(rows[0]!.findAll('td').map((td) => td.text().replace(/\s/g, ' '))).toEqual(
+      Array(3).fill('R$ 60,00'),
+    )
+  })
+
   it('sem gasto no período mostra a mensagem', () => {
     const w = mount(TrendChart, { props: { trends: [trend('g', 1000, 0)] } })
 

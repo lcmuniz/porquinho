@@ -227,10 +227,11 @@ const trend = computed(() => {
   const first = s[0]!.balance
   const diff = s[s.length - 1]!.balance - first
   const label = `${formatSignedBRL(Math.round(diff * 100) / 100)} em ${months.value} meses`
+  // Texto text-sm precisa de 4,5:1 (WCAG 1.4.3): amarelo e verde 600 não chegam, o 700 sim (retro Epic 7 A3)
   if (diff === 0 || Math.abs(diff) < Math.abs(first) * 0.01)
-    return { icon: Minus, text: 'text-yellow-600', label }
+    return { icon: Minus, text: 'text-yellow-700', label }
   return diff > 0
-    ? { icon: ArrowUp, text: 'text-green-600', label }
+    ? { icon: ArrowUp, text: 'text-green-700', label }
     : { icon: ArrowDown, text: 'text-red-600', label }
 })
 

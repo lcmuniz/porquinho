@@ -37,7 +37,7 @@ describe('WealthChart', () => {
     // início 2026-08-30 vale 1000 (último ponto até lá), depois 1500, 2000 e 2000 hoje
     expect(wrapper.findAll('[data-testid^="wealth-point-"]')).toHaveLength(4)
     const trend = wrapper.get('[data-testid="wealth-trend"]')
-    expect(trend.classes()).toContain('text-green-600')
+    expect(trend.classes()).toContain('text-green-700')
     expect(plain(trend.text())).toBe('+R$ 1.000,00 em 3 meses')
     expect(wrapper.get('[data-testid="wealth-line"]').attributes('stroke')).toBe('#9333EA')
   })
@@ -74,7 +74,7 @@ describe('WealthChart', () => {
       { date: '2026-11-30', balance: 1005 },
     ])
     const trend = wrapper.get('[data-testid="wealth-trend"]')
-    expect(trend.classes()).toContain('text-yellow-600')
+    expect(trend.classes()).toContain('text-yellow-700')
     expect(plain(trend.text())).toBe('+R$ 5,00 em 3 meses')
   })
 
@@ -83,7 +83,7 @@ describe('WealthChart', () => {
       { date: '2025-11-30', balance: 0 },
       { date: '2026-11-30', balance: 0 },
     ])
-    expect(wrapper.get('[data-testid="wealth-trend"]').classes()).toContain('text-yellow-600')
+    expect(wrapper.get('[data-testid="wealth-trend"]').classes()).toContain('text-yellow-700')
   })
 
   it('sem histórico mostra o aviso no lugar da linha e esconde a tendência', () => {

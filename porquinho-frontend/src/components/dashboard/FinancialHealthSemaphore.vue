@@ -12,7 +12,7 @@
         class="inline-flex min-h-[44px] w-full items-center gap-2 text-left text-sm font-semibold text-gray-900"
         @click="open = !open"
       >
-        <component :is="look.icon" class="h-5 w-5 shrink-0" :style="{ color: look.color }" aria-hidden="true" />
+        <component :is="look.icon" class="h-5 w-5 shrink-0" :class="look.color" aria-hidden="true" />
         <span>Saúde Financeira: {{ look.label }}</span>
         <ChevronDown
           class="ml-auto h-4 w-4 shrink-0 transition-transform"
@@ -33,13 +33,14 @@ import { computed, onMounted, ref } from 'vue'
 import { ChevronDown, CircleCheck, OctagonAlert, TriangleAlert } from 'lucide-vue-next'
 import { getFinancialHealth } from '@/services/dashboardService'
 import { plural } from '@/lib/plural'
+import { STATUS } from '@/lib/budgetStatus'
 import type { FinancialHealth, HealthStatus } from '@/types/dashboard'
 
-// Story 7.2: Green/Yellow/Red 600, sempre com ícone e texto junto da cor
+// Story 7.2: sempre com ícone e texto junto da cor. A cor do ícone vem de STATUS (amarelo no 700, 3:1 pela WCAG 1.4.11)
 const LOOKS = {
-  HEALTHY: { label: 'Saudável', color: '#16A34A', icon: CircleCheck },
-  ATTENTION: { label: 'Atenção', color: '#CA8A04', icon: TriangleAlert },
-  CRITICAL: { label: 'Crítico', color: '#DC2626', icon: OctagonAlert },
+  HEALTHY: { label: 'Saudável', color: STATUS.HEALTHY.text, icon: CircleCheck },
+  ATTENTION: { label: 'Atenção', color: STATUS.LOW.text, icon: TriangleAlert },
+  CRITICAL: { label: 'Crítico', color: STATUS.OVERSPENT.text, icon: OctagonAlert },
 } satisfies Record<HealthStatus, unknown>
 
 const health = ref<FinancialHealth | null>(null)
