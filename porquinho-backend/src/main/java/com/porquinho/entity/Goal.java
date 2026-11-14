@@ -4,8 +4,11 @@ import jakarta.persistence.*;
 import org.hibernate.annotations.GenericGenerator;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.YearMonth;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 /**
@@ -129,4 +132,17 @@ public class Goal {
 
     public OffsetDateTime getCompletedAt() { return completedAt; }
     public void setCompletedAt(OffsetDateTime completedAt) { this.completedAt = completedAt; }
+
+    /**
+     * Story 8.4 rule, by calendar month (same as goalPace in the front): ceil(missing / monthly allocation) months
+     * from the current month past the target date's month.
+     */
+    public boolean isBehind(LocalDate today) {
+        if (targetDate == null || monthlyAllocation == null || monthlyAllocation.signum() <= 0) return false;
+        BigDecimal missing = targetAmount.subtract(currentAmount);
+        if (missing.signum() <= 0) return false;
+        BigDecimal months = missing.divide(monthlyAllocation, 0, RoundingMode.CEILING);
+        long monthsLeft = YearMonth.from(today).until(YearMonth.from(targetDate), ChronoUnit.MONTHS);
+        return months.compareTo(BigDecimal.valueOf(monthsLeft)) > 0;
+    }
 }

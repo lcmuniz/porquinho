@@ -3,7 +3,7 @@ package com.porquinho.service;
 import com.porquinho.dto.DashboardLayer3Response;
 import com.porquinho.dto.TransactionResponse;
 import com.porquinho.exception.BadRequestException;
-import com.porquinho.service.DashboardService.DetailsFilter;
+import com.porquinho.service.DashboardDetailsService.DetailsFilter;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,7 +35,7 @@ class DashboardDetailsIntegrationTest {
     private static final LocalDate DAY = TODAY.withDayOfMonth(1);
 
     @Autowired
-    private DashboardService dashboardService;
+    private DashboardDetailsService detailsService;
     @Autowired
     private BudgetBalanceCache balanceCache;
     @Autowired
@@ -126,13 +126,13 @@ class DashboardDetailsIntegrationTest {
         for (int i = 0; i < 120; i++) confirmed(account, null, food, DAY, "Compra " + i, "1.00");
         DetailsFilter all = filter(null, false, null, null, null, null);
 
-        DashboardLayer3Response first = dashboardService.details(userId, all, 0);
+        DashboardLayer3Response first = detailsService.details(userId, all, 0);
         assertThat(first.items()).hasSize(50);
         assertThat(first.totalItems()).isEqualTo(120);
         assertThat(first.totalPages()).isEqualTo(3);
-        assertThat(dashboardService.details(userId, all, 2).items()).hasSize(20);
-        assertThat(dashboardService.details(userId, all, 3).items()).isEmpty();
-        assertThatThrownBy(() -> dashboardService.details(userId, all, -1)).isInstanceOf(BadRequestException.class);
+        assertThat(detailsService.details(userId, all, 2).items()).hasSize(20);
+        assertThat(detailsService.details(userId, all, 3).items()).isEmpty();
+        assertThatThrownBy(() -> detailsService.details(userId, all, -1)).isInstanceOf(BadRequestException.class);
     }
 
     @Test
@@ -151,21 +151,21 @@ class DashboardDetailsIntegrationTest {
         jdbc.update("UPDATE transactions SET deleted_at = NOW() WHERE id = ?", removed);
         confirmed(account, null, food, DAY.minusMonths(1), "Mercado do mês passado", "1.00");
 
-        assertThat(descriptions(dashboardService.details(userId,
+        assertThat(descriptions(detailsService.details(userId,
             filter(List.of(food), false, List.of(account), null, "mercado", null), 0)))
             .containsExactly("Mercado Extra");
-        assertThat(descriptions(dashboardService.details(userId,
+        assertThat(descriptions(detailsService.details(userId,
             filter(List.of(food), false, List.of(account), List.of(card), "MERCADO", "amount,desc"), 0)))
             .containsExactly("MERCADO no cartão", "Mercado Extra");
-        assertThat(descriptions(dashboardService.details(userId, filter(null, true, null, null, null, null), 0)))
+        assertThat(descriptions(detailsService.details(userId, filter(null, true, null, null, null, null), 0)))
             .containsExactly("Mercadinho sem categoria");
-        assertThat(descriptions(dashboardService.details(userId, filter(List.of(fun), true, null, null, null,
+        assertThat(descriptions(detailsService.details(userId, filter(List.of(fun), true, null, null, null,
             "amount,asc"), 0))).containsExactly("Mercado do cinema", "Mercadinho sem categoria");
         // % and _ are plain text
-        assertThat(dashboardService.details(userId, filter(null, false, null, null, "%", null), 0).items()).isEmpty();
+        assertThat(detailsService.details(userId, filter(null, false, null, null, "%", null), 0).items()).isEmpty();
         // the period picks last month's row
         LocalDate lastMonth = DAY.minusMonths(1);
-        assertThat(descriptions(dashboardService.details(userId, new DetailsFilter(lastMonth.toString(),
+        assertThat(descriptions(detailsService.details(userId, new DetailsFilter(lastMonth.toString(),
             lastMonth.withDayOfMonth(lastMonth.lengthOfMonth()).toString(), null, false, null, null, null, null), 0)))
             .containsExactly("Mercado do mês passado");
     }
@@ -178,9 +178,9 @@ class DashboardDetailsIntegrationTest {
         row(other, otherAccount, null, otherCategory, DAY, "Do outro", "5.00", "DEBIT", "CONFIRMED", false);
         confirmed(account, null, food, DAY, "Minha", "5.00");
 
-        assertThat(dashboardService.details(userId, filter(List.of(otherCategory), false, List.of(otherAccount), null,
+        assertThat(detailsService.details(userId, filter(List.of(otherCategory), false, List.of(otherAccount), null,
             null, null), 0).items()).isEmpty();
-        assertThat(descriptions(dashboardService.details(userId, filter(null, false, null, null, null, null), 0)))
+        assertThat(descriptions(detailsService.details(userId, filter(null, false, null, null, null, null), 0)))
             .containsExactly("Minha");
     }
 
@@ -193,32 +193,32 @@ class DashboardDetailsIntegrationTest {
         // group "Casa" comes before "Essenciais" although "Zebra" comes after "Lazer"
         confirmed(account, null, newCategory(userId, "Zebra", newCategory(userId, "Casa", null)), DAY, "Zebra", "1.00");
 
-        assertThat(descriptions(dashboardService.details(userId, filter(null, false, null, null, null, null), 0)))
+        assertThat(descriptions(detailsService.details(userId, filter(null, false, null, null, null, null), 0)))
             .startsWith("Mercado 2", "Lazer");
-        assertThat(descriptions(dashboardService.details(userId, filter(null, false, null, null, null, "date,asc"), 0)))
+        assertThat(descriptions(detailsService.details(userId, filter(null, false, null, null, null, "date,asc"), 0)))
             .endsWith("Lazer", "Mercado 2");
-        assertThat(descriptions(dashboardService.details(userId, filter(null, false, null, null, null, "amount,desc"),
+        assertThat(descriptions(detailsService.details(userId, filter(null, false, null, null, null, "amount,desc"),
             0))).containsExactly("Mercado 1", "Sem categoria", "Lazer", "Mercado 2", "Zebra");
         // A-Z by group then category, same category newest first, uncategorized last
-        assertThat(descriptions(dashboardService.details(userId, filter(null, false, null, null, null, "category,asc"),
+        assertThat(descriptions(detailsService.details(userId, filter(null, false, null, null, null, "category,asc"),
             0))).containsExactly("Zebra", "Lazer", "Mercado 2", "Mercado 1", "Sem categoria");
 
-        List<UUID> twice = dashboardService.details(userId, filter(null, false, null, null, null, null), 0).items()
+        List<UUID> twice = detailsService.details(userId, filter(null, false, null, null, null, null), 0).items()
             .stream().map(TransactionResponse::id).toList();
-        assertThat(dashboardService.details(userId, filter(null, false, null, null, null, null), 0).items())
+        assertThat(detailsService.details(userId, filter(null, false, null, null, null, null), 0).items())
             .extracting(TransactionResponse::id).isEqualTo(twice);
     }
 
     @Test
     void anInvalidPeriodOrSortIsA400() {
-        assertThatThrownBy(() -> dashboardService.details(userId, new DetailsFilter("2026-11-30", "2026-11-01", null,
+        assertThatThrownBy(() -> detailsService.details(userId, new DetailsFilter("2026-11-30", "2026-11-01", null,
             false, null, null, null, null), 0)).isInstanceOf(BadRequestException.class);
-        assertThatThrownBy(() -> dashboardService.details(userId, new DetailsFilter("30/11/2026", null, null,
+        assertThatThrownBy(() -> detailsService.details(userId, new DetailsFilter("30/11/2026", null, null,
             false, null, null, null, null), 0)).isInstanceOf(BadRequestException.class)
             .extracting(e -> ((BadRequestException) e).getField()).isEqualTo("from");
-        assertThatThrownBy(() -> dashboardService.details(userId, new DetailsFilter(null, "x", null,
+        assertThatThrownBy(() -> detailsService.details(userId, new DetailsFilter(null, "x", null,
             false, null, null, null, null), 0)).extracting(e -> ((BadRequestException) e).getField()).isEqualTo("to");
-        assertThatThrownBy(() -> dashboardService.details(userId, filter(null, false, null, null, null, "name,asc"), 0))
+        assertThatThrownBy(() -> detailsService.details(userId, filter(null, false, null, null, null, "name,asc"), 0))
             .isInstanceOf(BadRequestException.class);
     }
 
@@ -237,7 +237,7 @@ class DashboardDetailsIntegrationTest {
         UUID payment = confirmed(account, null, null, DAY, "Fatura", "300.00");
         jdbc.update("UPDATE transactions SET kind = 'CARD_PAYMENT' WHERE id = ?", payment);
 
-        String csv = dashboardService.detailsCsv(userId, filter(null, false, null, null, null, "amount,desc"));
+        String csv = detailsService.detailsCsv(userId, filter(null, false, null, null, null, "amount,desc"));
 
         String[] lines = csv.split("\r\n");
         assertThat(lines[0]).isEqualTo("﻿Data;Descrição;Valor;Tipo;Categoria;Conta;Pix;Parcela;Origem");
@@ -262,14 +262,14 @@ class DashboardDetailsIntegrationTest {
             + "original_description, amount, transaction_type, kind, review_status, is_future_installment) "
             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'DEBIT', 'REGULAR', 'CONFIRMED', FALSE)", batch);
         DetailsFilter byCategory = filter(null, false, null, null, "compra", "category,asc");
-        dashboardService.details(userId, byCategory, 0); // warm-up
+        detailsService.details(userId, byCategory, 0); // warm-up
 
         // best of 3 runs: one slow run on a busy CI runner is noise, not the query
         long millis = Long.MAX_VALUE;
         DashboardLayer3Response response = null;
         for (int run = 0; run < 3; run++) {
             long start = System.nanoTime();
-            response = dashboardService.details(userId, byCategory, 100);
+            response = detailsService.details(userId, byCategory, 100);
             millis = Math.min(millis, (System.nanoTime() - start) / 1_000_000);
         }
 

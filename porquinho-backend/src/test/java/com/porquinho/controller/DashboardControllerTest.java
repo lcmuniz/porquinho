@@ -7,6 +7,7 @@ import com.porquinho.dto.DashboardLayer3Response;
 import com.porquinho.exception.BadRequestException;
 import com.porquinho.dto.FinancialHealthResponse;
 import com.porquinho.dto.FinancialHealthResponse.HealthStatus;
+import com.porquinho.service.DashboardDetailsService;
 import com.porquinho.service.DashboardService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -67,6 +68,8 @@ class DashboardControllerTest {
 
     @MockBean
     private DashboardService dashboardService;
+    @MockBean
+    private DashboardDetailsService detailsService;
 
     @Test
     void returnsTheHealthOfTheJwtUser() throws Exception {
@@ -185,9 +188,9 @@ class DashboardControllerTest {
         UUID category = UUID.randomUUID();
         UUID account = UUID.randomUUID();
         UUID card = UUID.randomUUID();
-        DashboardService.DetailsFilter expected = new DashboardService.DetailsFilter("2026-11-01", "2026-11-30",
+        DashboardDetailsService.DetailsFilter expected = new DashboardDetailsService.DetailsFilter("2026-11-01", "2026-11-30",
             List.of(category), true, List.of(account), List.of(card), "mercado", "amount,desc");
-        when(dashboardService.details(userId, expected, 2)).thenReturn(new DashboardLayer3Response(List.of(), 2, 120, 3));
+        when(detailsService.details(userId, expected, 2)).thenReturn(new DashboardLayer3Response(List.of(), 2, 120, 3));
 
         mockMvc.perform(get("/api/v1/dashboard/layer3").param("from", "2026-11-01").param("to", "2026-11-30")
                 .param("categoryIds", category.toString()).param("uncategorized", "true")
@@ -204,7 +207,7 @@ class DashboardControllerTest {
     @Test
     void layer3InvalidPeriodIs400() throws Exception {
         UUID userId = UUID.randomUUID();
-        when(dashboardService.details(eq(userId), any(), eq(0))).thenThrow(new BadRequestException("Período inválido"));
+        when(detailsService.details(eq(userId), any(), eq(0))).thenThrow(new BadRequestException("Período inválido"));
 
         mockMvc.perform(get("/api/v1/dashboard/layer3").param("from", "x")
                 .with(authentication(new TestingAuthenticationToken(jwt(userId), null, "ROLE_USER"))))
@@ -214,7 +217,7 @@ class DashboardControllerTest {
     @Test
     void layer3ExportIsACsvAttachment() throws Exception {
         UUID userId = UUID.randomUUID();
-        when(dashboardService.detailsCsv(eq(userId), any())).thenReturn("\uFEFFData;Descrição\r\n");
+        when(detailsService.detailsCsv(eq(userId), any())).thenReturn("\uFEFFData;Descrição\r\n");
 
         mockMvc.perform(get("/api/v1/dashboard/layer3/export").param("sort", "category,asc")
                 .with(authentication(new TestingAuthenticationToken(jwt(userId), null, "ROLE_USER"))))
@@ -222,7 +225,7 @@ class DashboardControllerTest {
             .andExpect(header().string("Content-Disposition", "attachment; filename=\"transacoes.csv\""))
             .andExpect(content().contentTypeCompatibleWith("text/csv"))
             .andExpect(content().string("\uFEFFData;Descrição\r\n"));
-        verify(dashboardService).detailsCsv(userId, new DashboardService.DetailsFilter(null, null, null, false, null,
+        verify(detailsService).detailsCsv(userId, new DashboardDetailsService.DetailsFilter(null, null, null, false, null,
             null, null, "category,asc"));
     }
 
@@ -232,7 +235,7 @@ class DashboardControllerTest {
         UUID category = UUID.randomUUID();
         UUID account = UUID.randomUUID();
         UUID card = UUID.randomUUID();
-        when(dashboardService.detailsCsv(eq(userId), any())).thenReturn("x");
+        when(detailsService.detailsCsv(eq(userId), any())).thenReturn("x");
 
         mockMvc.perform(get("/api/v1/dashboard/layer3/export").param("from", "2026-10-01").param("to", "2026-10-31")
                 .param("categoryIds", category.toString()).param("uncategorized", "true")
@@ -240,14 +243,14 @@ class DashboardControllerTest {
                 .param("q", "mercado").param("sort", "date,asc")
                 .with(authentication(new TestingAuthenticationToken(jwt(userId), null, "ROLE_USER"))))
             .andExpect(status().isOk());
-        verify(dashboardService).detailsCsv(userId, new DashboardService.DetailsFilter("2026-10-01", "2026-10-31",
+        verify(detailsService).detailsCsv(userId, new DashboardDetailsService.DetailsFilter("2026-10-01", "2026-10-31",
             List.of(category), true, List.of(account), List.of(card), "mercado", "date,asc"));
     }
 
     @Test
     void layer3ExportInvalidPeriodIs400() throws Exception {
         UUID userId = UUID.randomUUID();
-        when(dashboardService.detailsCsv(eq(userId), any())).thenThrow(new BadRequestException("Período inválido"));
+        when(detailsService.detailsCsv(eq(userId), any())).thenThrow(new BadRequestException("Período inválido"));
 
         mockMvc.perform(get("/api/v1/dashboard/layer3/export")
                 .with(authentication(new TestingAuthenticationToken(jwt(userId), null, "ROLE_USER"))))
@@ -258,7 +261,7 @@ class DashboardControllerTest {
     void layer3WithoutATokenIs401() throws Exception {
         mockMvc.perform(get("/api/v1/dashboard/layer3")).andExpect(status().isUnauthorized());
         mockMvc.perform(get("/api/v1/dashboard/layer3/export")).andExpect(status().isUnauthorized());
-        verifyNoInteractions(dashboardService);
+        verifyNoInteractions(detailsService);
     }
 
     @Test

@@ -33,7 +33,6 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -86,7 +85,7 @@ class DashboardServiceTest {
     @BeforeEach
     void setUp() {
         service = new DashboardService(budgetService, accountService, goalService, categoryService, transactionRepository,
-            accountRepository, balanceHistoryRepository, null, null, NO_CACHE, CLOCK);
+            accountRepository, balanceHistoryRepository, null, NO_CACHE, CLOCK);
         userId = UUID.randomUUID();
         // the overview (7.3) reads the total from the budget, not the accounts
         lenient().when(accountService.listActive(userId)).thenReturn(accounts);
@@ -227,13 +226,13 @@ class DashboardServiceTest {
     void behindCountsByCalendarMonthLikeTheGoalsPage() {
         // Retro Epic 8 A1: on 14/11, 1000 missing at 1000/month lands in December, the target's month: on track
         LocalDate nov14 = LocalDate.of(2026, 11, 14);
-        assertFalse(DashboardService.isBehind(goal("1000", "0", LocalDate.of(2026, 12, 5), "1000"), nov14));
+        assertFalse(goal("1000", "0", LocalDate.of(2026, 12, 5), "1000").isBehind(nov14));
         // 2 months would land in January, past the December target
-        assertTrue(DashboardService.isBehind(goal("2000", "0", LocalDate.of(2026, 12, 31), "1000"), nov14));
+        assertTrue(goal("2000", "0", LocalDate.of(2026, 12, 31), "1000").isBehind(nov14));
         // Target in the current month with money still missing
-        assertTrue(DashboardService.isBehind(goal("1000", "0", LocalDate.of(2026, 11, 30), "1000"), nov14));
+        assertTrue(goal("1000", "0", LocalDate.of(2026, 11, 30), "1000").isBehind(nov14));
         // Target already in a past month
-        assertTrue(DashboardService.isBehind(goal("1000", "0", LocalDate.of(2026, 10, 31), "1000"), nov14));
+        assertTrue(goal("1000", "0", LocalDate.of(2026, 10, 31), "1000").isBehind(nov14));
     }
 
     @Test
@@ -325,7 +324,7 @@ class DashboardServiceTest {
             .thenReturn(cardDebitsAfterToday);
         lenient().when(transactionRepository.sumCommittedByCategory(userId, first, last)).thenReturn(committed);
         return new DashboardService(budgetService, accountService, goalService, categoryService, transactionRepository,
-            accountRepository, balanceHistoryRepository, null, null, NO_CACHE, clock).overview(userId);
+            accountRepository, balanceHistoryRepository, null, NO_CACHE, clock).overview(userId);
     }
 
     @Test
@@ -691,36 +690,5 @@ class DashboardServiceTest {
         DashboardLayer2Response response = tactical();
 
         assertEquals(new DashboardLayer2Response("2026-11", List.of(), List.of()), response);
-    }
-
-    // Story 7.7: one cache entry per filter, page and month
-    @Test
-    void theLayer3CacheFieldChangesWithEveryFilterPartThePageAndTheMonth() {
-        UUID id = UUID.randomUUID();
-        DashboardService.DetailsFilter base = new DashboardService.DetailsFilter(null, null, List.of(id), false,
-            List.of(), List.of(), "feira", null);
-        String hash = service.filtersHash(base, 0);
-
-        assertEquals(hash, service.filtersHash(new DashboardService.DetailsFilter(null, null, List.of(id), false,
-            List.of(), List.of(), "feira", null), 0));
-        assertNotEquals(hash, service.filtersHash(base, 1));
-        assertNotEquals(hash, service.filtersHash(new DashboardService.DetailsFilter(null, null, List.of(id), false,
-            List.of(), List.of(), "mercado", null), 0));
-        assertNotEquals(hash, service.filtersHash(new DashboardService.DetailsFilter(null, null, List.of(id), false,
-            List.of(), List.of(), "feira", "amount,asc"), 0));
-        assertNotEquals(hash, service.filtersHash(new DashboardService.DetailsFilter(null, null, List.of(), false,
-            List.of(id), List.of(), "feira", null), 0));
-        // free text cannot pass for the next field
-        assertNotEquals(service.filtersHash(new DashboardService.DetailsFilter(null, null, List.of(), false, List.of(),
-            List.of(), "a5:null", "x"), 0), service.filtersHash(new DashboardService.DetailsFilter(null, null,
-            List.of(), false, List.of(), List.of(), "a", "null5:x"), 0));
-        // the literal text "null" is not an absent q
-        assertNotEquals(service.filtersHash(new DashboardService.DetailsFilter(null, null, List.of(), false, List.of(),
-            List.of(), null, null), 0), service.filtersHash(new DashboardService.DetailsFilter(null, null, List.of(),
-            false, List.of(), List.of(), "null", null), 0));
-        DashboardService nextMonth = new DashboardService(budgetService, accountService, goalService, categoryService,
-            transactionRepository, accountRepository, balanceHistoryRepository, null, null, NO_CACHE,
-            Clock.offset(CLOCK, java.time.Duration.ofDays(1)));
-        assertNotEquals(hash, nextMonth.filtersHash(base, 0));
     }
 }

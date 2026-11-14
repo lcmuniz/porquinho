@@ -5,6 +5,7 @@ import com.porquinho.dto.DashboardLayer2Response;
 import com.porquinho.dto.DashboardLayer3Response;
 import com.porquinho.dto.FinancialHealthResponse;
 import com.porquinho.dto.TransactionResponse;
+import com.porquinho.service.DashboardDetailsService;
 import com.porquinho.service.DashboardService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -25,9 +26,11 @@ import java.util.UUID;
 public class DashboardController {
 
     private final DashboardService dashboardService;
+    private final DashboardDetailsService detailsService;
 
-    public DashboardController(DashboardService dashboardService) {
+    public DashboardController(DashboardService dashboardService, DashboardDetailsService detailsService) {
         this.dashboardService = dashboardService;
+        this.detailsService = detailsService;
     }
 
     /** Story 7.2: the financial health traffic light of the current month. */
@@ -65,9 +68,9 @@ public class DashboardController {
             @RequestParam(required = false) List<UUID> creditCardIds,
             @RequestParam(required = false) String q, @RequestParam(required = false) String sort,
             @RequestParam(defaultValue = "0") int page) {
-        DashboardService.DetailsFilter filter = new DashboardService.DetailsFilter(from, to, categoryIds, uncategorized,
+        DashboardDetailsService.DetailsFilter filter = new DashboardDetailsService.DetailsFilter(from, to, categoryIds, uncategorized,
             accountIds, creditCardIds, q, sort);
-        return ResponseEntity.ok(dashboardService.details(UUID.fromString(jwt.getSubject()), filter, page));
+        return ResponseEntity.ok(detailsService.details(UUID.fromString(jwt.getSubject()), filter, page));
     }
 
     /** Story 7.6: the whole filtered list (not just a page), same order, as CSV. */
@@ -79,11 +82,11 @@ public class DashboardController {
             @RequestParam(required = false) List<UUID> accountIds,
             @RequestParam(required = false) List<UUID> creditCardIds,
             @RequestParam(required = false) String q, @RequestParam(required = false) String sort) {
-        DashboardService.DetailsFilter filter = new DashboardService.DetailsFilter(from, to, categoryIds, uncategorized,
+        DashboardDetailsService.DetailsFilter filter = new DashboardDetailsService.DetailsFilter(from, to, categoryIds, uncategorized,
             accountIds, creditCardIds, q, sort);
         return ResponseEntity.ok()
             .contentType(new MediaType("text", "csv", java.nio.charset.StandardCharsets.UTF_8))
             .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"transacoes.csv\"")
-            .body(dashboardService.detailsCsv(UUID.fromString(jwt.getSubject()), filter));
+            .body(detailsService.detailsCsv(UUID.fromString(jwt.getSubject()), filter));
     }
 }
