@@ -107,9 +107,22 @@ describe('FinancialHealthSemaphore', () => {
     const wrapper = mount(FinancialHealthSemaphore)
     await flushPromises()
 
-    expect(wrapper.get('[data-testid="health-error"]').text()).toBe(
+    expect(wrapper.get('[data-testid="health-error"]').text()).toContain(
       'Não foi possível carregar a saúde financeira',
     )
     expect(wrapper.find('[data-testid="health-toggle"]').exists()).toBe(false)
+  })
+
+  it('o carregando é um status; "Tentar de novo" busca de novo', async () => {
+    mockGetFinancialHealth.mockRejectedValueOnce(new Error('500')).mockResolvedValueOnce(health())
+    const wrapper = mount(FinancialHealthSemaphore)
+    expect(wrapper.get('[data-testid="health-loading"]').attributes('role')).toBe('status')
+    await flushPromises()
+
+    await wrapper.get('[data-testid="health-error-retry"]').trigger('click')
+    await flushPromises()
+
+    expect(mockGetFinancialHealth).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[data-testid="health-toggle"]').exists()).toBe(true)
   })
 })

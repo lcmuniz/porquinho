@@ -140,8 +140,21 @@ describe('DashboardLayer1', () => {
     const wrapper = mountIt()
     await flushPromises()
 
-    expect(wrapper.get('[data-testid="overview-error"]').text()).toBe('Não foi possível carregar a visão geral')
+    expect(wrapper.get('[data-testid="overview-error"]').text()).toContain('Não foi possível carregar a visão geral')
     expect(wrapper.find('[data-testid="card-balance"]').exists()).toBe(false)
+  })
+
+  it('"Tentar de novo" busca a visão geral de novo', async () => {
+    mockGetOverview.mockRejectedValueOnce(new Error('500')).mockResolvedValueOnce(overview())
+    const wrapper = mountIt()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="overview-error-retry"]').trigger('click')
+    await flushPromises()
+
+    expect(mockGetOverview).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[data-testid="overview-error"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="card-balance"]').exists()).toBe(true)
   })
 
   it('a curva do patrimônio ocupa 2/3 no desktop, com o card de saldo ao lado; no mobile, largura toda', async () => {

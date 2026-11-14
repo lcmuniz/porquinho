@@ -1,7 +1,13 @@
 <template>
-  <p v-if="error" role="alert" data-testid="overview-error" class="mt-4 text-sm text-gray-700">
-    Não foi possível carregar a visão geral
-  </p>
+  <div
+    v-if="error"
+    role="alert"
+    data-testid="overview-error"
+    class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+  >
+    <p class="text-sm text-gray-700">Não foi possível carregar a visão geral</p>
+    <Button variant="outline" class="min-h-[44px]" data-testid="overview-error-retry" @click="retry">Tentar de novo</Button>
+  </div>
   <div v-else-if="overview" class="mt-4 space-y-4">
     <!-- Story 7.4: no desktop, a curva em 2/3 e o card (1) ao lado; no mobile, um embaixo do outro -->
     <div data-testid="wealth-row" class="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -120,6 +126,7 @@
 </template>
 
 <script setup lang="ts">
+import { Button } from '@/components/ui/button'
 import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { getOverview } from '@/services/dashboardService'
@@ -149,6 +156,12 @@ async function load() {
   } catch {
     error.value = true
   }
+}
+
+/** Retro Epic 7 A6/F11: volta ao "Carregando…" e busca de novo. */
+function retry() {
+  error.value = false
+  void load()
 }
 
 onMounted(async () => {

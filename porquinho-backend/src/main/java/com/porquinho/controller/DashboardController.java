@@ -4,6 +4,7 @@ import com.porquinho.dto.DashboardLayer1Response;
 import com.porquinho.dto.DashboardLayer2Response;
 import com.porquinho.dto.DashboardLayer3Response;
 import com.porquinho.dto.FinancialHealthResponse;
+import com.porquinho.dto.TransactionResponse;
 import com.porquinho.service.DashboardService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -45,6 +46,13 @@ public class DashboardController {
     @GetMapping("/layer2")
     public ResponseEntity<DashboardLayer2Response> layer2(@AuthenticationPrincipal Jwt jwt) {
         return ResponseEntity.ok(dashboardService.tactical(UUID.fromString(jwt.getSubject())));
+    }
+
+    /** Story 7.5: the current month's transactions of one slice of the layer 2 (no {@code categoryId} = uncategorized). */
+    @GetMapping("/layer2/drilldown")
+    public ResponseEntity<List<TransactionResponse>> layer2Drilldown(@AuthenticationPrincipal Jwt jwt,
+            @RequestParam(required = false) UUID categoryId) {
+        return ResponseEntity.ok(dashboardService.drilldown(UUID.fromString(jwt.getSubject()), categoryId));
     }
 
     /** Story 7.6: page {@code page} (0-based, 50 rows) of the filtered transaction list. */

@@ -260,4 +260,31 @@ class DashboardControllerTest {
         mockMvc.perform(get("/api/v1/dashboard/layer3/export")).andExpect(status().isUnauthorized());
         verifyNoInteractions(dashboardService);
     }
+
+    @Test
+    void theDrilldownIsOfTheJwtUserAndWithoutCategoryIsUncategorized() throws Exception {
+        UUID userId = UUID.randomUUID();
+        UUID categoryId = UUID.randomUUID();
+        Jwt jwt = Jwt.withTokenValue("test-token").header("alg", "ES256").subject(userId.toString())
+            .issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(3600)).build();
+        when(dashboardService.drilldown(any(), any())).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/v1/dashboard/layer2/drilldown").param("categoryId", categoryId.toString())
+                .with(authentication(new TestingAuthenticationToken(jwt, null, "ROLE_USER"))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$").isArray());
+        mockMvc.perform(get("/api/v1/dashboard/layer2/drilldown")
+                .with(authentication(new TestingAuthenticationToken(jwt, null, "ROLE_USER"))))
+            .andExpect(status().isOk());
+
+        verify(dashboardService).drilldown(userId, categoryId);
+        verify(dashboardService).drilldown(eq(userId), eq(null));
+    }
+
+    @Test
+    void drilldownWithoutATokenIs401() throws Exception {
+        mockMvc.perform(get("/api/v1/dashboard/layer2/drilldown"))
+            .andExpect(status().isUnauthorized());
+        verifyNoInteractions(dashboardService);
+    }
 }

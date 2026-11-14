@@ -6,6 +6,7 @@ import type {
   DetailsFilter,
   FinancialHealth,
 } from '@/types/dashboard'
+import type { Transaction } from '@/types/transaction'
 
 /** Story 7.2: semáforo de saúde financeira do mês corrente. */
 export async function getFinancialHealth(): Promise<FinancialHealth> {
@@ -22,6 +23,13 @@ export async function getOverview(): Promise<DashboardOverview> {
 /** Story 7.5: gasto por categoria do mês corrente e tendências dos últimos 12 meses (Camada 2). */
 export async function getTactical(): Promise<DashboardTactical> {
   const response = await api.get<DashboardTactical>('/api/v1/dashboard/layer2')
+  return response.data
+}
+
+/** Story 7.5: as transações de uma fatia da Camada 2 no mês corrente, pela regra de gasto do backend (null = sem categoria). */
+export async function getDrilldown(categoryId: string | null): Promise<Transaction[]> {
+  const params = categoryId ? { categoryId } : {}
+  const response = await api.get<Transaction[]>('/api/v1/dashboard/layer2/drilldown', { params })
   return response.data
 }
 

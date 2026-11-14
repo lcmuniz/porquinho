@@ -295,6 +295,22 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID>,
                                               @Param("to") LocalDate to);
 
     /**
+     * The rows behind one slice of {@link #sumSpentByCategoryAndMonth} (retro Epic 7 A6/F9): same WHERE, one category
+     * ({@code categoryId} null = uncategorized) in [{@code from}, {@code to}], newest first. The drill-down lists these,
+     * so its total always matches the slice.
+     */
+    @Query("SELECT t FROM Transaction t "
+        + "WHERE t.userId = :userId "
+        + "AND t.reviewStatus = com.porquinho.entity.Transaction.ReviewStatus.CONFIRMED AND t.futureInstallment = false "
+        + "AND t.deletedAt IS NULL AND t.kind = com.porquinho.entity.Transaction.Kind.REGULAR "
+        + "AND t.transactionType = com.porquinho.entity.Transaction.Type.DEBIT "
+        + "AND t.transactionDate BETWEEN :from AND :to "
+        + "AND (t.categoryId = :categoryId OR (:categoryId IS NULL AND t.categoryId IS NULL)) "
+        + "ORDER BY t.transactionDate DESC, t.createdAt DESC, t.id DESC")
+    List<Transaction> findSpentInCategory(@Param("userId") UUID userId, @Param("categoryId") UUID categoryId,
+                                          @Param("from") LocalDate from, @Param("to") LocalDate to);
+
+    /**
      * Committed per category in [{@code from}, {@code to}] (Story 6.3): active confirmed future installments (an import
      * still in review is left out), those of a removed
      * card left out (they count again once the card is restored). Each row is {categoryId, sum}.

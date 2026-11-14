@@ -35,16 +35,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { listTransactions } from '@/services/transactionService'
+import { getDrilldown } from '@/services/dashboardService'
 import { formatLocalDateBR, formatMonthBR } from '@/lib/date'
 import { formatBRL } from '@/lib/money'
 import type { CategorySpending } from '@/types/dashboard'
 import type { Transaction } from '@/types/transaction'
 
 /**
- * Story 7.5 (decisão Q1=A): transações da categoria no mês corrente, pelo GET /transactions?month= filtrado aqui com a
- * regra de gasto do Epic 6 (débito REGULAR, sem parcela futura). `categoryId` null lista as sem categoria. O Dialog
- * fecha com Esc e devolve o foco a quem o abriu.
+ * Story 7.5 (decisão Q1=A): transações da categoria no mês corrente. A regra de gasto do Epic 6 fica no backend, na mesma
+ * query da soma da fatia (retro Epic 7 A6/F9), então os totais sempre batem. `categoryId` null lista as sem categoria.
+ * O Dialog fecha com Esc e devolve o foco a quem o abriu.
  */
 const props = defineProps<{ category: CategorySpending | null; month: string }>()
 const emit = defineEmits<{ close: [] }>()
@@ -60,15 +60,9 @@ watch(
     rows.value = null
     error.value = false
     try {
-      const all = await listTransactions(props.month)
+      const list = await getDrilldown(category.categoryId)
       if (props.category !== category) return
-      rows.value = all.filter(
-        (t) =>
-          t.type === 'DEBIT' &&
-          t.kind === 'REGULAR' &&
-          !t.isFutureInstallment &&
-          (t.category?.id ?? null) === category.categoryId,
-      )
+      rows.value = list
     } catch {
       if (props.category === category) error.value = true
     }

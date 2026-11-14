@@ -243,6 +243,17 @@ public class DashboardService {
     }
 
     /**
+     * Story 7.5 drill-down (retro Epic 7 A6/F9): the current month's transactions behind a slice of the layer 2, by the
+     * same spending rule ({@code categoryId} null = uncategorized). Not cached: it is opened one slice at a time.
+     */
+    @Transactional(readOnly = true)
+    public List<TransactionResponse> drilldown(UUID userId, UUID categoryId) {
+        YearMonth current = YearMonth.from(LocalDate.now(clock.withZone(SAO_PAULO)));
+        return transactionService.toResponses(userId,
+            transactionRepository.findSpentInCategory(userId, categoryId, current.atDay(1), current.atEndOfMonth()));
+    }
+
+    /**
      * Story 7.6, the filters of the layer 3. {@code from}/{@code to} are "YYYY-MM-DD" (blank = the current month's bound
      * in São Paulo). A transaction matches the categories when it is in {@code categoryIds} or, with
      * {@code uncategorized}, has none; the same for {@code accountIds}/{@code creditCardIds}; an empty pair is no filter.

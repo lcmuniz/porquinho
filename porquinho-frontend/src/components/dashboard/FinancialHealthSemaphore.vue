@@ -1,8 +1,14 @@
 <template>
   <div class="sticky top-0 z-10 rounded-lg border border-gray-200 bg-white px-4 py-3 shadow-sm">
-    <p v-if="error" role="alert" data-testid="health-error" class="text-sm text-gray-700">
-      Não foi possível carregar a saúde financeira
-    </p>
+    <div
+      v-if="error"
+      role="alert"
+      data-testid="health-error"
+      class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <p class="text-sm text-gray-700">Não foi possível carregar a saúde financeira</p>
+      <Button variant="outline" class="min-h-[44px]" data-testid="health-error-retry" @click="retry">Tentar de novo</Button>
+    </div>
     <template v-else-if="health">
       <button
         type="button"
@@ -24,11 +30,12 @@
         <li v-for="line in detail" :key="line">{{ line }}</li>
       </ul>
     </template>
-    <p v-else data-testid="health-loading" class="text-sm text-gray-600">Carregando saúde financeira…</p>
+    <p v-else role="status" data-testid="health-loading" class="text-sm text-gray-600">Carregando saúde financeira…</p>
   </div>
 </template>
 
 <script setup lang="ts">
+import { Button } from '@/components/ui/button'
 import { computed, onMounted, ref, watch } from 'vue'
 import { ChevronDown, CircleCheck, OctagonAlert, TriangleAlert } from 'lucide-vue-next'
 import { getFinancialHealth } from '@/services/dashboardService'
@@ -79,6 +86,12 @@ async function load() {
   } catch {
     error.value = true
   }
+}
+
+/** Retro Epic 7 A6/F11: volta ao "Carregando…" e busca de novo. */
+function retry() {
+  error.value = false
+  void load()
 }
 
 onMounted(async () => {

@@ -1,6 +1,7 @@
 package com.porquinho.service;
 
 import com.porquinho.dto.DashboardLayer2Response;
+import com.porquinho.dto.TransactionResponse;
 import com.porquinho.repository.TransactionRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -144,5 +145,29 @@ class DashboardTacticalIntegrationTest {
         assertThat(trend.months().get(0).spent()).isEqualByComparingTo("30.00");
         assertThat(trend.months().get(1).spent()).isEqualByComparingTo("0");
         assertThat(trend.months().get(11).spent()).isEqualByComparingTo("120.00");
+    }
+
+    @Test
+    void theDrilldownListsExactlyTheRowsBehindTheSlice() {
+        spent(food, CURRENT, "100.00");
+        spent(food, CURRENT, "20.00");
+        spent(food, CURRENT.minusMonths(1), "30.00");
+        spent(null, CURRENT, "5.00");
+        row(userId, account, food, CURRENT, "1.00", "DEBIT", "REGULAR", "PENDING", false);
+        row(userId, account, food, CURRENT, "2.00", "DEBIT", "REGULAR", "CONFIRMED", true);
+        row(userId, account, food, CURRENT, "3.00", "CREDIT", "REGULAR", "CONFIRMED", false);
+        row(userId, account, null, CURRENT, "4.00", "DEBIT", "CARD_PAYMENT", "CONFIRMED", false);
+        UUID other = newUser();
+        row(other, newAccount(other), null, CURRENT, "777.00", "DEBIT", "REGULAR", "CONFIRMED", false);
+
+        DashboardLayer2Response tactical = dashboardService.tactical(userId);
+        for (DashboardLayer2Response.CategorySpending slice : tactical.categories()) {
+            BigDecimal listed = dashboardService.drilldown(userId, slice.categoryId()).stream()
+                .map(TransactionResponse::amount).reduce(BigDecimal.ZERO, BigDecimal::add);
+            assertThat(listed).as(slice.name()).isEqualByComparingTo(slice.spent());
+        }
+        assertThat(dashboardService.drilldown(userId, food)).hasSize(2);
+        assertThat(dashboardService.drilldown(userId, null)).extracting(TransactionResponse::amount)
+            .containsExactly(new BigDecimal("5.00"));
     }
 }

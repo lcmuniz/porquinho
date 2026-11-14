@@ -5,12 +5,10 @@ import type { CategorySpending, CategoryTrend, DashboardTactical } from '@/types
 import type { Transaction } from '@/types/transaction'
 
 const mockGetTactical = vi.fn()
+const mockList = vi.fn()
 vi.mock('@/services/dashboardService', () => ({
   getTactical: () => mockGetTactical(),
-}))
-const mockList = vi.fn()
-vi.mock('@/services/transactionService', () => ({
-  listTransactions: (month: string) => mockList(month),
+  getDrilldown: (categoryId: string | null) => mockList(categoryId),
 }))
 
 // formatBRL usa espaço não separável entre "R$" e o número
@@ -167,7 +165,19 @@ describe('DashboardLayer2', () => {
     wrapper = mount(DashboardLayer2)
     await flushPromises()
 
-    expect(wrapper.get('[role="alert"]').text()).toBe('Não foi possível carregar a visão tática')
+    expect(wrapper.get('[role="alert"]').text()).toContain('Não foi possível carregar a visão tática')
+  })
+
+  it('"Tentar de novo" busca a visão tática de novo', async () => {
+    mockGetTactical.mockRejectedValueOnce(new Error('500')).mockResolvedValueOnce(tactical())
+    wrapper = mount(DashboardLayer2)
+    await flushPromises()
+
+    await wrapper.get('[data-testid="tactical-error-retry"]').trigger('click')
+    await flushPromises()
+
+    expect(mockGetTactical).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[data-testid="tactical-grid"]').exists()).toBe(true)
   })
 
   it('trocar 3 → 12 meses não faz nova chamada', async () => {
@@ -179,20 +189,14 @@ describe('DashboardLayer2', () => {
     expect(w.findAll('[data-testid="trend-line-c1"] circle')).toHaveLength(12)
   })
 
-  it('clicar numa barra abre o drill-down do mês com só as transações de gasto da categoria', async () => {
-    mockList.mockResolvedValue([
-      tx('t1', 'c1'),
-      tx('t2', 'c2'),
-      tx('t3', 'c1', { type: 'CREDIT' }),
-      tx('t4', 'c1', { isFutureInstallment: true }),
-      tx('t5', 'c1', { kind: 'CARD_PAYMENT' }),
-    ])
+  it('clicar numa barra abre o drill-down do mês com as transações que o backend dá para a categoria', async () => {
+    mockList.mockResolvedValue([tx('t1', 'c1')])
     const w = await mountWith(tactical())
 
     await w.get('[data-testid="top5-c1"]').trigger('click')
     await flushPromises()
 
-    expect(mockList).toHaveBeenCalledWith('2026-11')
+    expect(mockList).toHaveBeenCalledWith('c1')
     expect(inDialog('drilldown-dialog')?.textContent).toContain('Lazer')
     expect(inDialog('drilldown-dialog')?.textContent).toContain('novembro de 2026')
     expect(inDialog('drilldown-list')?.querySelectorAll('li')).toHaveLength(1)
@@ -211,7 +215,7 @@ describe('DashboardLayer2', () => {
   })
 
   it('Enter numa fatia do "Não classificado" lista as sem categoria; Esc fecha e devolve o foco', async () => {
-    mockList.mockResolvedValue([tx('t1', null), tx('t2', 'c1')])
+    mockList.mockResolvedValue([tx('t1', null)])
     const w = await mountWith(tactical())
     const slice = w.get('[data-testid="donut-slice-uncategorized"]')
     ;(slice.element as SVGElement).focus()
@@ -219,8 +223,8 @@ describe('DashboardLayer2', () => {
     await slice.trigger('keydown', { key: 'Enter' })
     await flushPromises()
 
+    expect(mockList).toHaveBeenCalledWith(null)
     expect(inDialog('drilldown-list')?.textContent).toContain('Compra t1')
-    expect(inDialog('drilldown-list')?.textContent).not.toContain('Compra t2')
 
     inDialog('drilldown-dialog')!.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
