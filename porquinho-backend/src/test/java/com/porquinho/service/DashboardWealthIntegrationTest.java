@@ -23,8 +23,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Story 7.4: the two per-user queries of the wealth curve against the real schema (PostgreSQL via Testcontainers):
- * the last snapshot before the cutoff per account (DISTINCT ON), removed accounts included, another user's snapshots
- * left out, and the overview ending on the total balance. Not @Transactional; cleans up after each test.
+ * the last snapshot before the cutoff per account (one LATERAL lookup each), removed accounts included, another user's
+ * snapshots left out, and the overview ending on the total balance. Not @Transactional; cleans up after each test.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -107,6 +107,31 @@ class DashboardWealthIntegrationTest {
         assertThat(before).extracting(h -> h.getBalanceSnapshot().toPlainString())
             .containsExactlyInAnyOrder("1100.00", "50.00", "70.00");
         assertThat(since).extracting(h -> h.getBalanceSnapshot().toPlainString()).containsExactly("1300.00");
+    }
+
+    private void snapshot(String id, UUID accountId, String balance, OffsetDateTime date, OffsetDateTime createdAt) {
+        jdbc.update("INSERT INTO account_balance_history (id, account_id, user_id, balance_snapshot, snapshot_date, "
+            + "created_by_event, created_at) VALUES (?, ?, ?, ?, ?, 'edit', ?)", UUID.fromString(id), accountId, userId,
+            new BigDecimal(balance), date, createdAt);
+    }
+
+    @Test
+    void anAccountIdleForThreeYearsAndASameDateTieBeforeTheCutoff() {
+        UUID idle = add(userId, "Parada", "10.00");
+        moveHistoryBack(idle, 3 * 365);
+        UUID tied = add(userId, "Empate", "20.00");
+        moveHistoryBack(tied, 500);
+        OffsetDateTime day = OffsetDateTime.now().minusDays(400);
+        // same snapshot_date: the later created_at wins over the bigger id, then the bigger id breaks the rest
+        snapshot("ffffffff-ffff-ffff-ffff-ffffffffffff", tied, "30.00", day, day);
+        snapshot("00000000-0000-0000-0000-000000000001", tied, "40.00", day, day.plusSeconds(1));
+        snapshot("00000000-0000-0000-0000-000000000002", tied, "50.00", day, day.plusSeconds(1));
+
+        List<AccountBalanceHistory> before = repository.findLastPerAccountBefore(userId,
+            OffsetDateTime.now().minusDays(365));
+
+        assertThat(before).extracting(h -> h.getBalanceSnapshot().toPlainString())
+            .containsExactlyInAnyOrder("10.00", "50.00");
     }
 
     @Test

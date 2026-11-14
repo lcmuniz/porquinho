@@ -48,8 +48,11 @@ public interface AccountBalanceHistoryRepository extends JpaRepository<AccountBa
     List<AccountBalanceHistory> findByUserSince(@Param("userId") UUID userId, @Param("from") OffsetDateTime from);
 
     /** The last snapshot before {@code from} of each of the user's accounts, removed ones included (Story 7.4). */
-    @Query(value = "SELECT DISTINCT ON (account_id) * FROM account_balance_history WHERE user_id = :userId "
-        + "AND snapshot_date < :from ORDER BY account_id, snapshot_date DESC, created_at DESC, id DESC",
+    // one LIMIT 1 lookup per account on (account_id, snapshot_date): the cost is per account, not per history
+    // (retro Epic 7 A2); no lower bound, an account idle for years still has its old snapshot
+    @Query(value = "SELECT h.* FROM accounts a CROSS JOIN LATERAL (SELECT * FROM account_balance_history x "
+        + "WHERE x.account_id = a.id AND x.user_id = :userId AND x.snapshot_date < :from "
+        + "ORDER BY x.snapshot_date DESC, x.created_at DESC, x.id DESC LIMIT 1) h WHERE a.user_id = :userId",
         nativeQuery = true)
     List<AccountBalanceHistory> findLastPerAccountBefore(@Param("userId") UUID userId,
                                                          @Param("from") OffsetDateTime from);

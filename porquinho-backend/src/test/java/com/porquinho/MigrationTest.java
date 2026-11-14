@@ -331,7 +331,8 @@ class MigrationTest {
             assertThat(count).withFailMessage("Constraint '%s' should exist", check).isEqualTo(1);
         }
 
-        for (String index : new String[] {"idx_transactions_user_id", "idx_transactions_import_id",
+        // V38 replaced idx_transactions_user_id with (user_id, transaction_date) (retro Epic 7 A2)
+        for (String index : new String[] {"idx_transactions_user_date", "idx_transactions_import_id",
             "idx_transactions_account_date", "idx_transactions_credit_card_date"}) {
             Integer count = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM pg_indexes WHERE tablename = 'transactions' AND indexname = ?",
