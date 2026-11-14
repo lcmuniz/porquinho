@@ -217,6 +217,14 @@
               >
                 {{ goal.id in progress ? 'Ocultar evolução' : 'Ver evolução' }}
               </Button>
+              <RouterLink
+                :to="`/metas/${goal.id}/historico`"
+                :aria-label="`Histórico de ${goal.name}`"
+                data-testid="goal-history-link"
+                class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+              >
+                Histórico
+              </RouterLink>
               <Button
                 variant="outline"
                 class="min-h-[44px]"
@@ -289,6 +297,14 @@
                 >
                   {{ goal.id in progress ? 'Ocultar evolução' : 'Ver evolução' }}
                 </Button>
+                <RouterLink
+                  :to="`/metas/${goal.id}/historico`"
+                  :aria-label="`Histórico de ${goal.name}`"
+                  data-testid="goal-history-link"
+                  class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                >
+                  Histórico
+                </RouterLink>
                 <Button
                   variant="outline"
                   class="min-h-[44px]"

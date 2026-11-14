@@ -31,6 +31,14 @@ describe('router', () => {
     expect(route.meta.requiresAuth).toBe(true)
   })
 
+  it('resolve o histórico da meta, com autenticação (Story 8.8)', () => {
+    const route = router.resolve('/metas/g1/historico')
+
+    expect(route.name).toBe('goal-history')
+    expect(route.params.id).toBe('g1')
+    expect(route.meta.requiresAuth).toBe(true)
+  })
+
   it('resolve o orçamento, com autenticação (Story 6.3)', () => {
     const route = router.resolve('/orcamento')
 

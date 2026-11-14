@@ -3,6 +3,7 @@ import type {
   CreateGoalInput,
   Goal,
   GoalAllocationItem,
+  GoalHistory,
   GoalProgress,
   GoalsSummary,
 } from '@/types/goal'
@@ -61,5 +62,11 @@ export async function getGoalsSummary(): Promise<GoalsSummary> {
 /** Story 8.3: série mensal do valor acumulado da meta. 404 para meta de outro usuário. */
 export async function getGoalProgress(id: string): Promise<GoalProgress> {
   const response = await api.get<GoalProgress>(`/api/v1/goals/${id}/progress`)
+  return response.data
+}
+
+/** Story 8.8: histórico de snapshots da meta (também concluída). 404 para meta removida ou de outro usuário. */
+export async function getGoalHistory(id: string): Promise<GoalHistory> {
+  const response = await api.get<GoalHistory>(`/api/v1/goals/${id}/history`)
   return response.data
 }

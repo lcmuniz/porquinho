@@ -16,6 +16,7 @@ import com.porquinho.entity.Category;
 import com.porquinho.entity.CreditCard;
 import com.porquinho.entity.Goal;
 import com.porquinho.entity.GoalAllocation;
+import com.porquinho.entity.GoalProgressHistory;
 import com.porquinho.entity.Reconciliation;
 import com.porquinho.entity.Transaction;
 import com.porquinho.entity.TransactionImport;
@@ -33,6 +34,7 @@ import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.AiClassificationHistoryRepository;
 import com.porquinho.repository.BudgetAllocationRepository;
 import com.porquinho.repository.GoalAllocationRepository;
+import com.porquinho.repository.GoalProgressHistoryRepository;
 import com.porquinho.repository.BudgetReallocationRepository;
 import com.porquinho.repository.UserClassificationPatternRepository;
 import com.porquinho.repository.CategoryRepository;
@@ -99,6 +101,7 @@ public class DataExportService {
     private final BudgetAllocationRepository budgetAllocationRepository;
     private final BudgetReallocationRepository budgetReallocationRepository;
     private final GoalAllocationRepository goalAllocationRepository;
+    private final GoalProgressHistoryRepository goalProgressHistoryRepository;
     private final ObjectMapper objectMapper;
 
     @Value("${app.export.directory:./exports}")
@@ -134,7 +137,8 @@ public class DataExportService {
             UserClassificationPatternRepository userClassificationPatternRepository,
             BudgetAllocationRepository budgetAllocationRepository,
             BudgetReallocationRepository budgetReallocationRepository,
-            GoalAllocationRepository goalAllocationRepository) {
+            GoalAllocationRepository goalAllocationRepository,
+            GoalProgressHistoryRepository goalProgressHistoryRepository) {
         this.dataExportRepository = dataExportRepository;
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -159,6 +163,7 @@ public class DataExportService {
         this.budgetAllocationRepository = budgetAllocationRepository;
         this.budgetReallocationRepository = budgetReallocationRepository;
         this.goalAllocationRepository = goalAllocationRepository;
+        this.goalProgressHistoryRepository = goalProgressHistoryRepository;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
         this.objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
@@ -237,7 +242,7 @@ public class DataExportService {
         metadata.put("user_id", userId.toString());
         metadata.put("data_version", "1.0");
         metadata.put("exported_tables", List.of("users", "user_sessions", "audit_logs", "subscriptions",
-            "billing_transactions", "onboarding_progress", "accounts", "account_balance_history", "transfers", "reconciliation_history", "credit_cards", "transaction_imports", "transactions", "ai_classification_history", "user_classification_patterns", "budget_allocations", "budget_reallocations", "categories", "goals", "goal_allocations"));
+            "billing_transactions", "onboarding_progress", "accounts", "account_balance_history", "transfers", "reconciliation_history", "credit_cards", "transaction_imports", "transactions", "ai_classification_history", "user_classification_patterns", "budget_allocations", "budget_reallocations", "categories", "goals", "goal_allocations", "goal_progress_history"));
         data.put("metadata", metadata);
 
         // User profile (sanitized)
@@ -640,6 +645,21 @@ public class DataExportService {
             goalAllocationList.add(allocationMap);
         }
         data.put("goal_allocations", goalAllocationList);
+
+        // Goal progress history (Story 8.8) - every stored column, oldest first; money as JSON numbers
+        List<Map<String, Object>> goalHistoryList = new ArrayList<>();
+        for (GoalProgressHistory history : goalProgressHistoryRepository.findByUserIdOrdered(userId)) {
+            Map<String, Object> historyMap = new LinkedHashMap<>();
+            historyMap.put("id", history.getId() != null ? history.getId().toString() : null);
+            historyMap.put("goal_id", history.getGoalId() != null ? history.getGoalId().toString() : null);
+            historyMap.put("user_id", history.getUserId() != null ? history.getUserId().toString() : null);
+            historyMap.put("amount_snapshot", history.getAmountSnapshot());
+            historyMap.put("snapshot_date", history.getSnapshotDate() != null ? history.getSnapshotDate().toString() : null);
+            historyMap.put("contribution_amount", history.getContributionAmount());
+            historyMap.put("created_at", history.getCreatedAt() != null ? history.getCreatedAt().toString() : null);
+            goalHistoryList.add(historyMap);
+        }
+        data.put("goal_progress_history", goalHistoryList);
 
         return data;
     }

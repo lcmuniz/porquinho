@@ -46,6 +46,24 @@ export interface GoalProgress {
   points: GoalProgressPoint[]
 }
 
+/** Story 8.8: entrada do histórico; contributionAmount null na criação e no snapshot mensal. */
+export interface GoalHistoryEntry {
+  /** Data ISO (AAAA-MM-DD, America/Sao_Paulo). */
+  date: string
+  contributionAmount: number | null
+  /** Acumulado depois da entrada. */
+  amount: number
+}
+
+/** Story 8.8: GET /api/v1/goals/{id}/history. Entradas da mais antiga para a mais nova. */
+export interface GoalHistory {
+  goalName: string
+  targetAmount: number
+  createdAt: string
+  completedAt: string | null
+  entries: GoalHistoryEntry[]
+}
+
 /** Story 8.5: item do PUT /api/v1/goals/allocations. */
 export interface GoalAllocationItem {
   goalId: string

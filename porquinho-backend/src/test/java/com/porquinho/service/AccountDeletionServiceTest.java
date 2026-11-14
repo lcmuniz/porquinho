@@ -20,6 +20,7 @@ import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.AiClassificationHistoryRepository;
 import com.porquinho.repository.BudgetAllocationRepository;
 import com.porquinho.repository.GoalAllocationRepository;
+import com.porquinho.repository.GoalProgressHistoryRepository;
 import com.porquinho.repository.BudgetReallocationRepository;
 import com.porquinho.repository.UserClassificationPatternRepository;
 import com.porquinho.repository.CategoryRepository;
@@ -117,6 +118,9 @@ class AccountDeletionServiceTest {
     @Mock
     private GoalAllocationRepository goalAllocationRepository;
 
+    @Mock
+    private GoalProgressHistoryRepository goalProgressHistoryRepository;
+
     private AccountDeletionService service;
 
     private UUID userId;
@@ -141,13 +145,13 @@ class AccountDeletionServiceTest {
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
             supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService,
             billingTransactionRepository, subscriptionService, onboardingProgressRepository, accountRepository,
-            creditCardRepository, categoryRepository, goalRepository, accountBalanceHistoryRepository, transferRepository, reconciliationRepository, transactionImportRepository, transactionRepository, aiClassificationHistoryRepository, userClassificationPatternRepository, budgetAllocationRepository, budgetReallocationRepository, goalAllocationRepository, null);
+            creditCardRepository, categoryRepository, goalRepository, accountBalanceHistoryRepository, transferRepository, reconciliationRepository, transactionImportRepository, transactionRepository, aiClassificationHistoryRepository, userClassificationPatternRepository, budgetAllocationRepository, budgetReallocationRepository, goalAllocationRepository, goalProgressHistoryRepository, null);
         service = new AccountDeletionService(
             userRepository, userSessionRepository, auditLogRepository, dataExportRepository,
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
             supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService,
             billingTransactionRepository, subscriptionService, onboardingProgressRepository, accountRepository,
-            creditCardRepository, categoryRepository, goalRepository, accountBalanceHistoryRepository, transferRepository, reconciliationRepository, transactionImportRepository, transactionRepository, aiClassificationHistoryRepository, userClassificationPatternRepository, budgetAllocationRepository, budgetReallocationRepository, goalAllocationRepository, temp);
+            creditCardRepository, categoryRepository, goalRepository, accountBalanceHistoryRepository, transferRepository, reconciliationRepository, transactionImportRepository, transactionRepository, aiClassificationHistoryRepository, userClassificationPatternRepository, budgetAllocationRepository, budgetReallocationRepository, goalAllocationRepository, goalProgressHistoryRepository, temp);
         // After construction, swap in the real reference so self == service (recursive ref ok
         // for tests because Spring's proxy would similarly route the call into this same bean).
         try {
@@ -440,6 +444,12 @@ class AccountDeletionServiceTest {
         goalAllocationsOrder.verify(goalAllocationRepository).deleteByUserId(userId);
         goalAllocationsOrder.verify(goalRepository).deleteByUserId(userId);
         goalAllocationsOrder.verify(userRepository).deleteByIdNative(userId);
+
+        // Story 8.8: the goal history deleted BEFORE goals and user (FKs to both)
+        InOrder goalHistoryOrder = inOrder(goalProgressHistoryRepository, goalRepository, userRepository);
+        goalHistoryOrder.verify(goalProgressHistoryRepository).deleteByUserId(userId);
+        goalHistoryOrder.verify(goalRepository).deleteByUserId(userId);
+        goalHistoryOrder.verify(userRepository).deleteByIdNative(userId);
 
         // Supabase admin called
         verify(supabaseAdminClient).deleteUser(userId);

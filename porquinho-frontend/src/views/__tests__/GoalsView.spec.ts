@@ -752,6 +752,16 @@ describe('GoalsView', () => {
       for (const id of ['edit-allocation', 'contribute', 'complete-goal', 'goal-projection'])
         expect(card.find(`[data-testid="${id}"]`).exists()).toBe(false)
       expect(card.find('[data-testid="toggle-chart"]').exists()).toBe(true)
+      // Story 8.8: o histórico abre também para a concluída
+      expect(card.getComponent<typeof RouterLinkStub>('[data-testid="goal-history-link"]').props('to')).toBe(
+        '/metas/g2/historico',
+      )
+      expect(
+        wrapper!
+          .get('[data-testid="goal-g1"]')
+          .getComponent<typeof RouterLinkStub>('[data-testid="goal-history-link"]')
+          .props('to'),
+      ).toBe('/metas/g1/historico')
       expect(plain(wrapper!.get('[data-testid="goals-total"]').text())).toContain('R$ 600,00/mês')
     })
 

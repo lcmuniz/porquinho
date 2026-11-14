@@ -1,16 +1,19 @@
 package com.porquinho.service;
 
 import com.porquinho.dto.CreateGoalRequest;
+import com.porquinho.dto.GoalHistoryResponse;
 import com.porquinho.dto.GoalProgressResponse;
 import com.porquinho.dto.UpdateGoalAllocationsRequest.Item;
 import com.porquinho.entity.Account;
 import com.porquinho.entity.Goal;
 import com.porquinho.entity.GoalAllocation;
+import com.porquinho.entity.GoalProgressHistory;
 import com.porquinho.exception.BadRequestException;
 import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.GoalAllocationRepository;
+import com.porquinho.repository.GoalProgressHistoryRepository;
 import com.porquinho.repository.GoalRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,6 +47,9 @@ class GoalServiceTest {
     private GoalAllocationRepository goalAllocationRepository;
 
     @Mock
+    private GoalProgressHistoryRepository historyRepository;
+
+    @Mock
     private AccountRepository accountRepository;
 
     @Mock
@@ -58,7 +64,7 @@ class GoalServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new GoalService(goalRepository, goalAllocationRepository, accountRepository, auditLogService, CLOCK);
+        service = new GoalService(goalRepository, goalAllocationRepository, historyRepository, accountRepository, auditLogService, CLOCK);
         userId = UUID.randomUUID();
     }
 
@@ -492,5 +498,127 @@ class GoalServiceTest {
         goal.setCompleted(true);
         goal.setCompletedAt(OffsetDateTime.now(CLOCK));
         return goal;
+    }
+
+    // Story 8.8
+
+    private static final LocalDate TODAY = LocalDate.parse("2026-11-30");  // CLOCK in America/Sao_Paulo
+
+    private GoalProgressHistory savedSnapshot() {
+        ArgumentCaptor<GoalProgressHistory> captor = ArgumentCaptor.forClass(GoalProgressHistory.class);
+        verify(historyRepository).save(captor.capture());
+        return captor.getValue();
+    }
+
+    @Test
+    void createWritesTheFirstSnapshotWithZeroAndNoContribution() {
+        when(goalRepository.save(any(Goal.class))).thenAnswer(inv -> {
+            Goal goal = inv.getArgument(0);
+            goal.setId(UUID.randomUUID());
+            return goal;
+        });
+
+        Goal goal = service.create(userId, new CreateGoalRequest("Viagem", new BigDecimal("1000"), null, null, null));
+
+        GoalProgressHistory snapshot = savedSnapshot();
+        assertEquals(userId, snapshot.getUserId());
+        assertEquals(goal.getId(), snapshot.getGoalId());
+        assertEquals(new BigDecimal("0.00"), snapshot.getAmountSnapshot());
+        assertEquals(TODAY, snapshot.getSnapshotDate());
+        assertNull(snapshot.getContributionAmount());
+    }
+
+    @Test
+    void contributeWritesASnapshotWithTheAmountAfterAndTheContribution() {
+        Goal goal = existing("100.00", null);
+        when(goalAllocationRepository.findByUserIdAndGoalIdAndMonthYear(any(), any(), any())).thenReturn(Optional.empty());
+
+        service.contribute(userId, goal.getId(), new BigDecimal("200"), "ip");
+
+        GoalProgressHistory snapshot = savedSnapshot();
+        assertEquals(goal.getId(), snapshot.getGoalId());
+        assertEquals(userId, snapshot.getUserId());
+        assertEquals(new BigDecimal("300.00"), snapshot.getAmountSnapshot());
+        assertEquals(new BigDecimal("200.00"), snapshot.getContributionAmount());
+        assertEquals(TODAY, snapshot.getSnapshotDate());
+    }
+
+    @Test
+    void contributeToAnotherUsersOrACompletedGoalWritesNoSnapshot() {
+        Goal goal = completed();
+        UUID foreign = UUID.randomUUID();
+        when(goalRepository.findActiveByIdAndUserIdForUpdate(foreign, userId)).thenReturn(Optional.empty());
+
+        assertThrows(ConflictException.class, () -> service.contribute(userId, goal.getId(), BigDecimal.TEN, "ip"));
+        assertThrows(ResourceNotFoundException.class, () -> service.contribute(userId, foreign, BigDecimal.TEN, "ip"));
+        verifyNoInteractions(historyRepository);
+    }
+
+    @Test
+    void historyReturnsTheGoalAndItsEntriesInOrderEvenWhenCompleted() {
+        Goal goal = readable("300.00", "2026-01-10T12:00:00Z");
+        goal.setCompleted(true);
+        goal.setCompletedAt(OffsetDateTime.parse("2026-03-20T12:00:00Z"));
+        when(historyRepository.findByUserIdAndGoalIdOrdered(userId, goal.getId())).thenReturn(List.of(
+            new GoalProgressHistory(userId, goal.getId(), new BigDecimal("0.00"), LocalDate.parse("2026-01-10"), null),
+            new GoalProgressHistory(userId, goal.getId(), new BigDecimal("100.00"), LocalDate.parse("2026-01-15"), new BigDecimal("100.00")),
+            new GoalProgressHistory(userId, goal.getId(), new BigDecimal("300.00"), LocalDate.parse("2026-03-02"), new BigDecimal("200.00"))));
+
+        GoalHistoryResponse history = service.history(userId, goal.getId());
+
+        assertEquals("Viagem", history.goalName());
+        assertEquals(new BigDecimal("1000.00"), history.targetAmount());
+        assertEquals(goal.getCreatedAt(), history.createdAt());
+        assertEquals(goal.getCompletedAt(), history.completedAt());
+        assertEquals(List.of(
+            new GoalHistoryResponse.Entry(LocalDate.parse("2026-01-10"), null, new BigDecimal("0.00")),
+            new GoalHistoryResponse.Entry(LocalDate.parse("2026-01-15"), new BigDecimal("100.00"), new BigDecimal("100.00")),
+            new GoalHistoryResponse.Entry(LocalDate.parse("2026-03-02"), new BigDecimal("200.00"), new BigDecimal("300.00"))),
+            history.entries());
+    }
+
+    @Test
+    void historyOfAnotherUsersRemovedOrMissingGoalIsNotFound() {
+        UUID goalId = UUID.randomUUID();
+        when(goalRepository.findActiveByIdAndUserId(goalId, userId)).thenReturn(Optional.empty());
+
+        assertThrows(ResourceNotFoundException.class, () -> service.history(userId, goalId));
+        verifyNoInteractions(historyRepository);
+    }
+
+    @Test
+    void monthlyJobWritesOneSnapshotPerGoalWithoutOneTodayAndSkipsTheOthers() {
+        Goal fresh = new Goal(userId, "Viagem", new BigDecimal("1000.00"), null, null);
+        fresh.setId(UUID.randomUUID());
+        fresh.setCurrentAmount(new BigDecimal("250.00"));
+        Goal done = new Goal(userId, "Carro", new BigDecimal("1000.00"), null, null);
+        done.setId(UUID.randomUUID());
+        when(goalRepository.findByDeletedAtIsNullAndCompletedFalse()).thenReturn(List.of(fresh, done));
+        when(historyRepository.existsByUserIdAndGoalIdAndSnapshotDateAndContributionAmountIsNull(userId, fresh.getId(), TODAY))
+            .thenReturn(false);
+        when(historyRepository.existsByUserIdAndGoalIdAndSnapshotDateAndContributionAmountIsNull(userId, done.getId(), TODAY))
+            .thenReturn(true);
+
+        assertEquals(1, service.takeMonthlySnapshots());
+
+        GoalProgressHistory snapshot = savedSnapshot();
+        assertEquals(fresh.getId(), snapshot.getGoalId());
+        assertEquals(new BigDecimal("250.00"), snapshot.getAmountSnapshot());
+        assertNull(snapshot.getContributionAmount());
+        assertEquals(TODAY, snapshot.getSnapshotDate());
+    }
+
+    @Test
+    void monthlyJobKeepsGoingWhenOneGoalFails() {
+        Goal a = new Goal(userId, "A", new BigDecimal("1000.00"), null, null);
+        a.setId(UUID.randomUUID());
+        Goal b = new Goal(userId, "B", new BigDecimal("1000.00"), null, null);
+        b.setId(UUID.randomUUID());
+        when(goalRepository.findByDeletedAtIsNullAndCompletedFalse()).thenReturn(List.of(a, b));
+        when(historyRepository.existsByUserIdAndGoalIdAndSnapshotDateAndContributionAmountIsNull(userId, a.getId(), TODAY))
+            .thenThrow(new RuntimeException("boom"));
+
+        assertEquals(1, service.takeMonthlySnapshots());
+        assertEquals(b.getId(), savedSnapshot().getGoalId());
     }
 }

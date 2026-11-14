@@ -47,6 +47,7 @@ class GoalConcurrencyIntegrationTest {
 
     @AfterEach
     void tearDown() {
+        jdbc.update("DELETE FROM goal_progress_history WHERE user_id = ?", userId);
         jdbc.update("DELETE FROM goal_allocations WHERE user_id = ?", userId);
         jdbc.update("DELETE FROM goals WHERE user_id = ?", userId);
         jdbc.update("DELETE FROM users WHERE id = ?", userId);

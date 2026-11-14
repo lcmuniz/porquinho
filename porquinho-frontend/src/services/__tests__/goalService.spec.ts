@@ -16,6 +16,7 @@ import {
   completeGoal,
   contributeToGoal,
   createGoal,
+  getGoalHistory,
   getGoalsSummary,
   listGoals,
   reopenGoal,
@@ -81,5 +82,12 @@ describe('goalService', () => {
     mockGet.mockResolvedValue({ data: { totalAvailable: 1000 } })
     await expect(getGoalsSummary()).resolves.toEqual({ totalAvailable: 1000 })
     expect(mockGet).toHaveBeenCalledWith('/api/v1/goals/summary')
+  })
+
+  it('getGoalHistory faz GET em /api/v1/goals/{id}/history', async () => {
+    const history = { goalName: 'Viagem', targetAmount: 1000, createdAt: 'x', completedAt: null, entries: [] }
+    mockGet.mockResolvedValue({ data: history })
+    await expect(getGoalHistory('g1')).resolves.toEqual(history)
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/goals/g1/history')
   })
 })

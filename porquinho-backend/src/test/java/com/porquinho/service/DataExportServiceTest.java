@@ -3,6 +3,7 @@ package com.porquinho.service;
 import com.porquinho.entity.AiClassificationHistory;
 import com.porquinho.entity.BudgetAllocation;
 import com.porquinho.entity.GoalAllocation;
+import com.porquinho.entity.GoalProgressHistory;
 import com.porquinho.entity.BudgetReallocation;
 import com.porquinho.entity.UserClassificationPattern;
 import com.porquinho.entity.Account;
@@ -28,6 +29,7 @@ import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AiClassificationHistoryRepository;
 import com.porquinho.repository.BudgetAllocationRepository;
 import com.porquinho.repository.GoalAllocationRepository;
+import com.porquinho.repository.GoalProgressHistoryRepository;
 import com.porquinho.repository.BudgetReallocationRepository;
 import com.porquinho.repository.UserClassificationPatternRepository;
 import com.porquinho.repository.AccountBalanceHistoryRepository;
@@ -142,6 +144,9 @@ class DataExportServiceTest {
 
     @Mock
     private GoalAllocationRepository goalAllocationRepository;
+
+    @Mock
+    private GoalProgressHistoryRepository goalProgressHistoryRepository;
 
     @InjectMocks
     private DataExportService dataExportService;
@@ -1031,6 +1036,36 @@ class DataExportServiceTest {
         assertEquals("2026-11-01", first.get("month_year"));
         assertEquals(new java.math.BigDecimal("300.00"), first.get("allocated_amount"));
         assertEquals(new java.math.BigDecimal("50.00"), first.get("contributed_amount"));
+    }
+
+    @Test
+    void collectUserDataShouldExportTheGoalProgressHistory() {
+        // Story 8.8: every stored column, contribution null for a snapshot without contribution
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        UUID goal = UUID.randomUUID();
+        GoalProgressHistory history = new GoalProgressHistory(userId, goal, new java.math.BigDecimal("150.00"),
+            java.time.LocalDate.parse("2026-11-02"), new java.math.BigDecimal("50.00"));
+        history.setId(UUID.randomUUID());
+        history.setCreatedAt(OffsetDateTime.parse("2026-11-02T12:00:00Z"));
+        GoalProgressHistory monthly = new GoalProgressHistory(userId, goal, new java.math.BigDecimal("150.00"),
+            java.time.LocalDate.parse("2026-12-01"), null);
+        when(goalProgressHistoryRepository.findByUserIdOrdered(userId)).thenReturn(List.of(history, monthly));
+
+        Map<String, Object> data = dataExportService.collectUserData(userId);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
+        assertTrue(((List<?>) metadata.get("exported_tables")).contains("goal_progress_history"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("goal_progress_history");
+        Map<String, Object> first = rows.get(0);
+        assertExportsEveryColumn(GoalProgressHistory.class, first);
+        assertEquals(goal.toString(), first.get("goal_id"));
+        assertEquals("2026-11-02", first.get("snapshot_date"));
+        assertEquals(new java.math.BigDecimal("150.00"), first.get("amount_snapshot"));
+        assertEquals(new java.math.BigDecimal("50.00"), first.get("contribution_amount"));
+        assertEquals("2026-11-02T12:00Z", first.get("created_at"));
+        assertNull(rows.get(1).get("contribution_amount"));
     }
 
     @Test

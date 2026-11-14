@@ -2,6 +2,7 @@ package com.porquinho.controller;
 
 import com.porquinho.config.TestWebSecurityConfig;
 import com.porquinho.dto.CreateGoalRequest;
+import com.porquinho.dto.GoalHistoryResponse;
 import com.porquinho.dto.GoalProgressResponse;
 import com.porquinho.dto.UpdateGoalAllocationsRequest;
 import com.porquinho.entity.Goal;
@@ -444,6 +445,38 @@ class GoalControllerTest {
         when(goalService.progress(userId, goalId)).thenThrow(new ResourceNotFoundException("Meta não encontrada"));
 
         mockMvc.perform(get("/api/v1/goals/" + goalId + "/progress").with(authentication(authToken)))
+            .andExpect(status().isNotFound());
+    }
+
+    // Story 8.8
+
+    @Test
+    void getHistoryReturnsTheGoalAndItsEntries() throws Exception {
+        UUID goalId = UUID.randomUUID();
+        when(goalService.history(userId, goalId)).thenReturn(new GoalHistoryResponse("Viagem", new BigDecimal("1000.00"),
+            OffsetDateTime.parse("2026-01-10T12:00:00Z"), null, List.of(
+                new GoalHistoryResponse.Entry(LocalDate.parse("2026-01-10"), null, new BigDecimal("0.00")),
+                new GoalHistoryResponse.Entry(LocalDate.parse("2026-01-15"), new BigDecimal("100.00"), new BigDecimal("100.00")))));
+
+        mockMvc.perform(get("/api/v1/goals/" + goalId + "/history").with(authentication(authToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.goalName").value("Viagem"))
+            .andExpect(jsonPath("$.targetAmount").value(1000.0))
+            .andExpect(jsonPath("$.createdAt").exists())
+            .andExpect(jsonPath("$.completedAt").doesNotExist())
+            .andExpect(jsonPath("$.entries.length()").value(2))
+            .andExpect(jsonPath("$.entries[0].date").value("2026-01-10"))
+            .andExpect(jsonPath("$.entries[0].contributionAmount").doesNotExist())
+            .andExpect(jsonPath("$.entries[1].contributionAmount").value(100.0))
+            .andExpect(jsonPath("$.entries[1].amount").value(100.0));
+    }
+
+    @Test
+    void getHistoryOfAnotherUsersGoalIs404() throws Exception {
+        UUID goalId = UUID.randomUUID();
+        when(goalService.history(userId, goalId)).thenThrow(new ResourceNotFoundException("Meta não encontrada"));
+
+        mockMvc.perform(get("/api/v1/goals/" + goalId + "/history").with(authentication(authToken)))
             .andExpect(status().isNotFound());
     }
 

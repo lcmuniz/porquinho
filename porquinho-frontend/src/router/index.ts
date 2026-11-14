@@ -130,6 +130,13 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      // Story 8.8: histórico de progresso de uma meta (ativa ou concluída)
+      path: '/metas/:id/historico',
+      name: 'goal-history',
+      component: () => import('../views/GoalHistoryView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       // Story 6.3: orçamento mensal por categoria
       path: '/orcamento',
       name: 'budget',

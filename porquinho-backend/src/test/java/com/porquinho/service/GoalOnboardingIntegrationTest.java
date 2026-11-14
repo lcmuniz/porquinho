@@ -6,6 +6,7 @@ import com.porquinho.entity.Goal;
 import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.GoalAllocationRepository;
+import com.porquinho.repository.GoalProgressHistoryRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.CategoryRepository;
 import com.porquinho.repository.GoalRepository;
@@ -72,6 +73,9 @@ class GoalOnboardingIntegrationTest {
 
     @Autowired
     private GoalAllocationRepository goalAllocationRepository;
+
+    @Autowired
+    private GoalProgressHistoryRepository goalProgressHistoryRepository;
 
     private UUID userId;
 
@@ -302,6 +306,7 @@ class GoalOnboardingIntegrationTest {
         UUID other = newUser();
         addGoal(other, "De outra pessoa");
 
+        assertThat(goalProgressHistoryRepository.deleteByUserId(userId)).isEqualTo(2);
         assertThat(goalRepository.deleteByUserId(userId)).isEqualTo(2);
         assertThat(userRepository.deleteByIdNative(userId)).isEqualTo(1);
         assertThat(goalService.countActive(other)).isEqualTo(1);
@@ -359,8 +364,64 @@ class GoalOnboardingIntegrationTest {
         goalService.contribute(userId, goal.getId(), new BigDecimal("50"), "127.0.0.1");
         goalAllocationRepository.flush();
 
+        assertThat(goalProgressHistoryRepository.deleteByUserId(userId)).isEqualTo(2);
         assertThat(goalAllocationRepository.deleteByUserId(userId)).isEqualTo(1);
         assertThat(goalRepository.deleteByUserId(userId)).isEqualTo(1);
+    }
+
+    @Test
+    void historyRecordsTheCreationAndEachContributionAndTheMonthlyJobIsIdempotent() {
+        // Story 8.8: V37 against the real schema, ordering, the job's idempotency and scoping by user
+        Goal goal = addGoal(userId, "Viagem");
+        goalService.contribute(userId, goal.getId(), new BigDecimal("100"), "127.0.0.1");
+        goalService.contribute(userId, goal.getId(), new BigDecimal("200"), "127.0.0.1");
+        goalProgressHistoryRepository.flush();
+
+        var entries = goalService.history(userId, goal.getId()).entries();
+        assertThat(entries).hasSize(3);
+        assertThat(entries.get(0).contributionAmount()).isNull();
+        assertThat(entries.get(0).amount()).isEqualByComparingTo("0");
+        assertThat(entries.get(1).contributionAmount()).isEqualByComparingTo("100");
+        assertThat(entries.get(1).amount()).isEqualByComparingTo("100");
+        assertThat(entries.get(2).amount()).isEqualByComparingTo("300");
+        assertThat(entries.get(0).date()).isEqualTo(LocalDate.now(ZoneId.of("America/Sao_Paulo")));
+
+        // Today already has the creation snapshot (no contribution): the job writes nothing for this goal, twice
+        goalService.takeMonthlySnapshots();
+        goalService.takeMonthlySnapshots();
+        goalProgressHistoryRepository.flush();
+        assertThat(goalService.history(userId, goal.getId()).entries()).hasSize(3);
+
+        UUID other = newUser();
+        assertThatThrownBy(() -> goalService.history(other, goal.getId())).isInstanceOf(ResourceNotFoundException.class);
+
+        @SuppressWarnings("unchecked")
+        var exported = (List<Map<String, Object>>) dataExportService.collectUserData(userId).get("goal_progress_history");
+        assertThat(exported).hasSize(3);
+    }
+
+    @Test
+    void monthlyJobWritesOneSnapshotPerActiveGoalOnlyOnce() {
+        Goal goal = addGoal(userId, "Viagem");
+        jdbc.update("DELETE FROM goal_progress_history WHERE goal_id = ?", goal.getId());
+        Goal completed = addGoal(userId, "Concluída");
+        completed.setCompleted(true);
+        goalRepository.saveAndFlush(completed);
+        Goal removed = addGoal(userId, "Removida");
+        removed.setDeletedAt(java.time.OffsetDateTime.now());
+        goalRepository.saveAndFlush(removed);
+        jdbc.update("DELETE FROM goal_progress_history WHERE goal_id = ?", removed.getId());
+
+        goalService.takeMonthlySnapshots();
+        goalService.takeMonthlySnapshots();
+        goalProgressHistoryRepository.flush();
+
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM goal_progress_history WHERE goal_id = ? AND contribution_amount IS NULL",
+            Integer.class, goal.getId())).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM goal_progress_history WHERE goal_id = ?",
+            Integer.class, completed.getId())).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM goal_progress_history WHERE goal_id = ? AND contribution_amount IS NULL",
+            Integer.class, removed.getId())).isZero();
     }
 
     @Test

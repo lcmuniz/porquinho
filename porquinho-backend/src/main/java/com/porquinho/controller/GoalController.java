@@ -2,6 +2,7 @@ package com.porquinho.controller;
 
 import com.porquinho.dto.CreateGoalRequest;
 import com.porquinho.dto.GoalContributionRequest;
+import com.porquinho.dto.GoalHistoryResponse;
 import com.porquinho.dto.GoalProgressResponse;
 import com.porquinho.dto.GoalResponse;
 import com.porquinho.dto.GoalSummaryResponse;
@@ -113,5 +114,12 @@ public class GoalController {
     public ResponseEntity<GoalProgressResponse> progress(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
         UUID userId = UUID.fromString(jwt.getSubject());
         return ResponseEntity.ok(goalService.progress(userId, id));
+    }
+
+    /** Story 8.8: the goal's history, completed goals included. 404 for another user's, removed or missing goal. */
+    @GetMapping("/{id}/history")
+    public ResponseEntity<GoalHistoryResponse> history(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
+        UUID userId = UUID.fromString(jwt.getSubject());
+        return ResponseEntity.ok(goalService.history(userId, id));
     }
 }

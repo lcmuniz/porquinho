@@ -15,6 +15,7 @@ import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.AiClassificationHistoryRepository;
 import com.porquinho.repository.BudgetAllocationRepository;
 import com.porquinho.repository.GoalAllocationRepository;
+import com.porquinho.repository.GoalProgressHistoryRepository;
 import com.porquinho.repository.BudgetReallocationRepository;
 import com.porquinho.repository.UserClassificationPatternRepository;
 import com.porquinho.repository.CategoryRepository;
@@ -63,7 +64,7 @@ import java.util.UUID;
  *   failure does not block the queue.
  * - Hard-deletes data_exports, user_sessions, audit_logs, billing_transactions, subscriptions,
  *   onboarding_progress, ai_classification_history, user_classification_patterns, budget_allocations, budget_reallocations, transactions, transaction_imports, transfers, reconciliation_history,
- *   account_balance_history, accounts, credit_cards, categories, goals, users
+ *   account_balance_history, accounts, credit_cards, categories, goal_progress_history, goal_allocations, goals, users
  *   (in that order, native SQL to bypass @Where filters on User and UserSession; billing_transactions
  *   has FKs to subscriptions and users, so it goes before both).
  * - Calls Supabase Admin API best-effort.
@@ -106,6 +107,7 @@ public class AccountDeletionService {
     private final BudgetAllocationRepository budgetAllocationRepository;
     private final BudgetReallocationRepository budgetReallocationRepository;
     private final GoalAllocationRepository goalAllocationRepository;
+    private final GoalProgressHistoryRepository goalProgressHistoryRepository;
 
     @Value("${app.export.directory:./exports}")
     private String exportDirectory;
@@ -148,6 +150,7 @@ public class AccountDeletionService {
             BudgetAllocationRepository budgetAllocationRepository,
             BudgetReallocationRepository budgetReallocationRepository,
             GoalAllocationRepository goalAllocationRepository,
+            GoalProgressHistoryRepository goalProgressHistoryRepository,
             @Lazy AccountDeletionService self) {
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -178,6 +181,7 @@ public class AccountDeletionService {
         this.budgetAllocationRepository = budgetAllocationRepository;
         this.budgetReallocationRepository = budgetReallocationRepository;
         this.goalAllocationRepository = goalAllocationRepository;
+        this.goalProgressHistoryRepository = goalProgressHistoryRepository;
         this.self = self;
     }
 
@@ -396,6 +400,7 @@ public class AccountDeletionService {
         accountRepository.deleteByUserId(userId);  // Story 3.2: FK to users (removed accounts too)
         creditCardRepository.deleteByUserId(userId);  // Story 3.3: FK to users (removed cards too)
         categoryRepository.deleteByUserId(userId);  // Story 3.4: FK to users; one statement, so parent FK does not block
+        goalProgressHistoryRepository.deleteByUserId(userId);  // Story 8.8: FKs to goals and users
         goalAllocationRepository.deleteByUserId(userId);  // Story 8.2: FKs to goals and users
         goalRepository.deleteByUserId(userId);  // Story 3.8: FK to users (removed goals too)
         userRepository.deleteByIdNative(userId);
