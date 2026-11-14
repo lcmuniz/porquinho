@@ -185,7 +185,7 @@
           <select
             id="delete-target"
             v-model="deleteTarget"
-            class="flex min-h-[44px] w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:outline-none"
+            :class="SELECT_CLASS"
             data-testid="delete-target"
             :disabled="deleting"
           >
@@ -220,6 +220,7 @@
 </template>
 
 <script setup lang="ts">
+import { SELECT_CLASS } from '@/lib/formField'
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'

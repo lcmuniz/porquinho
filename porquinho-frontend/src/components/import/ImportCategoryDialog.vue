@@ -72,6 +72,7 @@
 </template>
 
 <script setup lang="ts">
+import { SELECT_CLASS } from '@/lib/formField'
 import { computed, ref } from 'vue'
 import { Button } from '@/components/ui/button'
 import {
@@ -94,9 +95,6 @@ import type { ImportTransaction } from '@/types/transactionImport'
 /** "Editar" de uma linha e "Alterar categoria" das selecionadas na revisão da importação (Story 5.10). */
 const props = defineProps<{ importId: string }>()
 const emit = defineEmits<{ saved: [affected: number, ids: string[]]; failed: [err: unknown] }>()
-
-const SELECT_CLASS =
-  'flex min-h-[44px] w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:outline-none'
 
 const dialogOpen = ref(false)
 /** A linha do "Editar"; null no "Alterar categoria" das selecionadas. */

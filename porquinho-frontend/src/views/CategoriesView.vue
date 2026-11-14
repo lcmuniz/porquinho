@@ -142,12 +142,12 @@
         <form class="space-y-4" novalidate data-testid="category-form" @submit.prevent="save">
           <div class="space-y-1">
             <label for="category-name" class="text-sm font-medium text-gray-900">Nome</label>
-            <input
+            <Input
               id="category-name"
               v-model="form.name"
               maxlength="50"
               placeholder="Ex.: Pets"
-              :class="FIELD_CLASS"
+              class="min-h-[44px]"
               :aria-invalid="nameError ? 'true' : undefined"
               :aria-describedby="nameError ? 'category-name-error' : undefined"
               data-testid="category-name"
@@ -165,7 +165,7 @@
 
           <div class="space-y-1">
             <label for="category-group" class="text-sm font-medium text-gray-900">Grupo</label>
-            <select id="category-group" v-model="form.parentId" :class="FIELD_CLASS" data-testid="category-group">
+            <select id="category-group" v-model="form.parentId" :class="SELECT_CLASS" data-testid="category-group">
               <option value="">Nenhum (criar como grupo)</option>
               <option v-for="group in groups" :key="group.parent.id" :value="group.parent.id">
                 {{ group.parent.categoryName }}
@@ -272,7 +272,7 @@
         <form class="space-y-4" novalidate data-testid="move-form" @submit.prevent="move">
           <div class="space-y-1">
             <label for="move-group" class="text-sm font-medium text-gray-900">Grupo</label>
-            <select id="move-group" v-model="moveTarget" :class="FIELD_CLASS" data-testid="move-group">
+            <select id="move-group" v-model="moveTarget" :class="SELECT_CLASS" data-testid="move-group">
               <option v-for="group in moveTargets" :key="group.parent.id" :value="group.parent.id">
                 {{ group.parent.categoryName }}
               </option>
@@ -300,6 +300,8 @@
 </template>
 
 <script setup lang="ts">
+import { SELECT_CLASS } from '@/lib/formField'
+import { Input } from '@/components/ui/input'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { Check, ChevronDown, ChevronRight } from 'lucide-vue-next'
@@ -321,10 +323,7 @@ import type { Category, CategoryOptions } from '@/types/category'
  * Story 6.1: categorias do usuário agrupadas (grupo → filhas, por nome) e criação de uma categoria filha.
  * Cor e ícone são opcionais: vazios não são enviados e o backend usa a cor do grupo e o ícone `folder`.
  * Story 6.2: criar grupo (sem `parentId`), mover uma filha para outro grupo e recolher/expandir os grupos.
- */
-const FIELD_CLASS =
-  'flex min-h-[44px] w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:outline-none'
-const SUCCESS_TIMEOUT_MS = 5000
+ */const SUCCESS_TIMEOUT_MS = 5000
 const NAME_REQUIRED = 'Informe o nome da categoria'
 const SAVE_FAILED = 'Não foi possível criar a categoria. Verifique sua conexão e tente novamente.'
 const MOVE_FAILED = 'Não foi possível mover a categoria. Verifique sua conexão e tente novamente.'

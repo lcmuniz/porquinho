@@ -241,6 +241,7 @@ describe('DashboardLayer3', () => {
     expect(amount.value).toBe('100,00')
     amount.value = '150,50'
     amount.dispatchEvent(new Event('input'))
+    await flushPromises() // o ui/input emite o v-model no flush do watcher
     mockUpdate.mockResolvedValue(transaction('t1', { amount: 150.5 }))
     mockGetDetails.mockResolvedValue(page([transaction('t1', { amount: 150.5 })]))
     document.body.querySelector<HTMLFormElement>('[data-testid="edit-form"]')!.dispatchEvent(new Event('submit'))

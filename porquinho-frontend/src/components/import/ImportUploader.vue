@@ -152,6 +152,7 @@
 </template>
 
 <script setup lang="ts">
+import { SELECT_CLASS } from '@/lib/formField'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { Button } from '@/components/ui/button'
@@ -171,9 +172,6 @@ import type { BankCode, ImportTarget, TransactionImport, TransactionImportStatus
 const emit = defineEmits<{
   'imports-change': [imports: TransactionImport[]]
 }>()
-
-const SELECT_CLASS =
-  'flex min-h-[44px] w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:outline-none'
 
 /** Mesmo limite do backend (Spring multipart e nginx). */
 const MAX_FILE_SIZE = 10 * 1024 * 1024

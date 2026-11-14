@@ -75,6 +75,7 @@
 </template>
 
 <script setup lang="ts">
+import { SELECT_CLASS } from '@/lib/formField'
 import { computed, reactive, ref } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -106,9 +107,6 @@ const emit = defineEmits<{
 }>()
 
 const submitting = defineModel<boolean>('submitting', { default: false })
-
-const SELECT_CLASS =
-  'flex min-h-[44px] w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:outline-none'
 
 type Field = 'fromCategoryId' | 'toCategoryId' | 'amount'
 const FIELDS: Field[] = ['fromCategoryId', 'toCategoryId', 'amount']

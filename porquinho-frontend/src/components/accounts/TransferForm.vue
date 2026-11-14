@@ -74,12 +74,12 @@
 
     <div class="space-y-1">
       <label for="transfer-date" class="text-sm font-medium text-gray-900">Data</label>
-      <input
+      <Input
         id="transfer-date"
         v-model="form.transferDate"
         type="date"
         :max="todayISO()"
-        :class="SELECT_CLASS"
+        class="min-h-[44px]"
         data-testid="transfer-date-input"
         :aria-invalid="errors.transferDate ? 'true' : undefined"
         :aria-describedby="errors.transferDate ? 'transfer-date-error' : undefined"
@@ -131,6 +131,7 @@
 </template>
 
 <script setup lang="ts">
+import { SELECT_CLASS } from '@/lib/formField'
 import { reactive, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -170,9 +171,6 @@ const emit = defineEmits<{
 
 /** Envio em andamento; o pai pode acompanhar com `v-model:submitting`. */
 const submitting = defineModel<boolean>('submitting', { default: false })
-
-const SELECT_CLASS =
-  'flex min-h-[44px] w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:outline-none'
 
 const SAME_ACCOUNT_MESSAGE = 'Escolha contas diferentes'
 

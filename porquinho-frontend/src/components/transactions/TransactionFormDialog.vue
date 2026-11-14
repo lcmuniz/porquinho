@@ -22,11 +22,11 @@
       <form class="space-y-4" novalidate data-testid="edit-form" @submit.prevent="save">
         <div class="space-y-1">
           <label for="transaction-date" class="text-sm font-medium text-gray-900">Data</label>
-          <input
+          <Input
             id="transaction-date"
             v-model="form.date"
             type="date"
-            :class="FIELD_CLASS"
+            class="min-h-[44px]"
             :aria-describedby="isFutureDate ? 'transaction-date-warning' : undefined"
             data-testid="edit-date"
           />
@@ -41,21 +41,21 @@
         </div>
         <div class="space-y-1">
           <label for="transaction-description" class="text-sm font-medium text-gray-900">Descrição</label>
-          <input
+          <Input
             id="transaction-description"
             v-model="form.description"
             maxlength="500"
-            :class="FIELD_CLASS"
+            class="min-h-[44px]"
             data-testid="edit-description"
           />
         </div>
         <div class="space-y-1">
           <label for="transaction-amount" class="text-sm font-medium text-gray-900">Valor (R$)</label>
-          <input
+          <Input
             id="transaction-amount"
             v-model="form.amount"
             inputmode="decimal"
-            :class="FIELD_CLASS"
+            class="min-h-[44px]"
             data-testid="edit-amount"
           />
         </div>
@@ -64,7 +64,7 @@
           <select
             id="transaction-type"
             v-model="form.type"
-            :class="FIELD_CLASS"
+            :class="SELECT_CLASS"
             :disabled="isInstallment"
             :aria-describedby="isInstallment ? 'installment-locked' : undefined"
             data-testid="edit-type"
@@ -78,7 +78,7 @@
           <select
             id="transaction-category"
             v-model="form.categoryId"
-            :class="FIELD_CLASS"
+            :class="SELECT_CLASS"
             :disabled="optionsLoading"
             data-testid="edit-category"
           >
@@ -95,7 +95,7 @@
           <select
             id="transaction-target"
             v-model="form.target"
-            :class="FIELD_CLASS"
+            :class="SELECT_CLASS"
             :disabled="optionsLoading || isInstallment"
             :aria-describedby="isInstallment ? 'installment-locked' : undefined"
             data-testid="edit-target"
@@ -145,6 +145,8 @@
 </template>
 
 <script setup lang="ts">
+import { SELECT_CLASS } from '@/lib/formField'
+import { Input } from '@/components/ui/input'
 import { computed, reactive, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { Button } from '@/components/ui/button'
@@ -192,9 +194,6 @@ const emit = defineEmits<{
   stale: []
   'close-auto-focus': [event: Event]
 }>()
-
-const FIELD_CLASS =
-  'flex min-h-[44px] w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:outline-none'
 
 const ACTION_FAILED = 'Não foi possível concluir a ação. Tente de novo.'
 const OPTIONS_FAILED = 'Não foi possível carregar suas contas, cartões e categorias.'
