@@ -29,7 +29,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ChevronDown, CircleCheck, OctagonAlert, TriangleAlert } from 'lucide-vue-next'
 import { getFinancialHealth } from '@/services/dashboardService'
 import { plural } from '@/lib/plural'
@@ -43,6 +43,9 @@ const LOOKS = {
   CRITICAL: { label: 'Crítico', color: STATUS.OVERSPENT.text, icon: OctagonAlert },
 } satisfies Record<HealthStatus, unknown>
 
+// Retro Epic 7 A4: `refresh` busca de novo sem voltar ao "Carregando…"; `loaded` avisa a primeira carga (a view restaura o scroll)
+const props = defineProps<{ refresh?: number }>()
+const emit = defineEmits<{ loaded: [] }>()
 const health = ref<FinancialHealth | null>(null)
 const error = ref(false)
 const open = ref(false)
@@ -69,11 +72,18 @@ const detail = computed(() => {
 })
 
 // Sem keep-alive: cada volta ao dashboard remonta e busca de novo
-onMounted(async () => {
+async function load() {
   try {
     health.value = await getFinancialHealth()
+    error.value = false
   } catch {
     error.value = true
   }
+}
+
+onMounted(async () => {
+  await load()
+  emit('loaded')
 })
+watch(() => props.refresh, load)
 </script>

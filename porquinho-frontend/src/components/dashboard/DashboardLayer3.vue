@@ -293,7 +293,8 @@ import type { Transaction } from '@/types/transaction'
  * Story 7.6: a Camada 3, a lista completa das transações confirmadas com filtros (guardados por usuário no
  * localStorage), ordenação, páginas de 50, edição pelo diálogo de /transacoes e export CSV do resultado inteiro.
  */
-const emit = defineEmits<{ 'transaction-saved': [] }>()
+// Retro Epic 7 A4: `loaded` avisa a primeira carga (a view restaura o scroll)
+const emit = defineEmits<{ 'transaction-saved': []; loaded: [] }>()
 
 const FIELD_CLASS =
   'flex min-h-[44px] w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:outline-none'
@@ -536,6 +537,7 @@ async function exportCsv() {
 onMounted(async () => {
   // As opções primeiro: o filtro salvo é limpo antes da primeira consulta
   await loadOptions()
-  void load()
+  await load()
+  emit('loaded')
 })
 </script>

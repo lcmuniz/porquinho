@@ -25,9 +25,9 @@
         <h2 :id="`${layer.id}-heading`" class="text-lg font-semibold text-gray-900">
           {{ layer.title }}
         </h2>
-        <DashboardLayer1 v-if="layer.id === 'layer-overview'" :key="`overview-${refresh}`" />
-        <DashboardLayer2 v-else-if="layer.id === 'layer-tactical'" :key="`tactical-${refresh}`" />
-        <DashboardLayer3 v-else @transaction-saved="onTransactionSaved" />
+        <DashboardLayer1 v-if="layer.id === 'layer-overview'" :refresh="refresh" @loaded="onLoaded" />
+        <DashboardLayer2 v-else-if="layer.id === 'layer-tactical'" :refresh="refresh" @loaded="onLoaded" />
+        <DashboardLayer3 v-else @transaction-saved="onTransactionSaved" @loaded="onLoaded" />
       </section>
     </div>
   </div>
@@ -39,13 +39,20 @@ import DashboardLayer1 from './DashboardLayer1.vue'
 import DashboardLayer2 from './DashboardLayer2.vue'
 import DashboardLayer3 from './DashboardLayer3.vue'
 
-const emit = defineEmits<{ 'transaction-saved': [] }>()
+const emit = defineEmits<{ 'transaction-saved': []; loaded: [] }>()
 
-// Story 7.6 (Q1=B): uma edição na Camada 3 remonta as Camadas 1 e 2, que buscam de novo; o semáforo fica com a view
+// Story 7.6 (Q1=B): uma edição na Camada 3 faz as Camadas 1 e 2 buscarem de novo; o semáforo fica com a view.
+// Retro Epic 7 A4: sem remontar, os dados antigos ficam na tela até os novos chegarem
 const refresh = ref(0)
 function onTransactionSaved() {
   refresh.value++
   emit('transaction-saved')
+}
+
+// Retro Epic 7 A4: `loaded` só depois da primeira carga das 3 camadas
+let pendingLayers = 3
+function onLoaded() {
+  if (--pendingLayers === 0) emit('loaded')
 }
 
 // Story 7.1: as 3 camadas do Dashboard GPS; o conteúdo real chega nas stories 7.2–7.6

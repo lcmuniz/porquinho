@@ -12,13 +12,13 @@ let leaveGuard: (() => void) | undefined
 
 const mockGetFinancialHealth = vi.fn()
 const mockGetOverview = vi.fn()
+const mockGetDetails = vi.fn()
 vi.mock('@/services/dashboardService', () => ({
   getFinancialHealth: () => mockGetFinancialHealth(),
   getOverview: () => mockGetOverview(),
-  // Camada 2 (Story 7.5): fica carregando, coberta no DashboardLayer2.spec
-  getTactical: () => new Promise(() => {}),
-  // Camada 3 (Story 7.6): fica carregando, coberta no DashboardLayer3.spec
-  getDetails: () => new Promise(() => {}),
+  // Camadas 2 (Story 7.5) e 3 (Story 7.6): vazias, cobertas nos próprios specs; terminar de carregar libera o scroll
+  getTactical: async () => ({ month: '2026-11', categories: [], trends: [] }),
+  getDetails: () => mockGetDetails(),
   exportDetails: vi.fn(),
 }))
 vi.mock('@/services/accountService', () => ({ listAccounts: async () => [] }))
@@ -79,6 +79,7 @@ describe('DashboardView', () => {
       projectedBalance: 1500,
       wealthHistory: [],
     })
+    mockGetDetails.mockReset().mockResolvedValue({ items: [], page: 0, totalItems: 0, totalPages: 0 })
     mockPush.mockReset()
     mockReplace.mockReset()
     mockRoute = { path: '/dashboard', query: {} }
@@ -432,6 +433,8 @@ describe('DashboardView', () => {
       await flushPromises()
 
       expect(mockGetFinancialHealth).toHaveBeenCalledTimes(2)
+      // Retro Epic 7 A4: o semáforo antigo fica na tela, sem voltar ao "Carregando…"
+      expect(wrapper.find('[data-testid="health-loading"]').exists()).toBe(false)
     })
   })
 
@@ -499,6 +502,20 @@ describe('DashboardView', () => {
       await flushPromises()
 
       expect(window.scrollTo).toHaveBeenLastCalledWith({ top: 800, behavior: 'instant' })
+    })
+
+    it('só restaura o scroll quando as camadas terminam de carregar (retro Epic 7 A4)', async () => {
+      mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
+      let finishDetails!: (value: unknown) => void
+      mockGetDetails.mockReturnValue(new Promise((resolve) => (finishDetails = resolve)))
+
+      mountView()
+      await flushPromises()
+      expect(window.scrollTo).not.toHaveBeenCalled()
+
+      finishDetails({ items: [], page: 0, totalItems: 0, totalPages: 0 })
+      await flushPromises()
+      expect(window.scrollTo).toHaveBeenCalledTimes(1)
     })
 
     it('Sair zera a posição: o próximo login abre no topo', async () => {

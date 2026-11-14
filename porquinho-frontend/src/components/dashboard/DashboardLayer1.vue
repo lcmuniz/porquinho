@@ -120,7 +120,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { getOverview } from '@/services/dashboardService'
 import { STATUS } from '@/lib/budgetStatus'
@@ -129,6 +129,9 @@ import WealthChart from './WealthChart.vue'
 import type { DashboardOverview } from '@/types/dashboard'
 
 // Story 7.3: as 5 métricas da Camada 1; Story 7.4: a curva do patrimônio
+// Retro Epic 7 A4: `refresh` busca de novo sem voltar ao "Carregando…"; `loaded` avisa a primeira carga (a view restaura o scroll)
+const props = defineProps<{ refresh?: number }>()
+const emit = defineEmits<{ loaded: [] }>()
 const overview = ref<DashboardOverview | null>(null)
 const error = ref(false)
 
@@ -139,11 +142,18 @@ const overspentCount = computed(
   () => overview.value!.categories.filter((c) => c.status === 'OVERSPENT').length,
 )
 
-onMounted(async () => {
+async function load() {
   try {
     overview.value = await getOverview()
+    error.value = false
   } catch {
     error.value = true
   }
+}
+
+onMounted(async () => {
+  await load()
+  emit('loaded')
 })
+watch(() => props.refresh, load)
 </script>

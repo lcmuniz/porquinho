@@ -9,11 +9,12 @@ vi.mock('@/services/transactionService', () => ({ listTransactions: vi.fn(), upd
 
 const mockGetOverview = vi.fn()
 const mockGetTactical = vi.fn()
+const mockGetDetails = vi.fn()
 vi.mock('@/services/dashboardService', () => ({
   getOverview: () => mockGetOverview(),
   getTactical: () => mockGetTactical(),
-  // Camada 3 (Story 7.6): fica carregando, coberta no DashboardLayer3.spec
-  getDetails: () => new Promise(() => {}),
+  // Camada 3 (Story 7.6): coberta no DashboardLayer3.spec
+  getDetails: () => mockGetDetails(),
   exportDetails: vi.fn(),
 }))
 vi.mock('@/services/accountService', () => ({ listAccounts: async () => [] }))
@@ -27,6 +28,7 @@ describe('DashboardGps', () => {
     setActivePinia(createPinia())
     mockGetOverview.mockReset().mockReturnValue(new Promise(() => {}))
     mockGetTactical.mockReset().mockReturnValue(new Promise(() => {}))
+    mockGetDetails.mockReset().mockReturnValue(new Promise(() => {}))
   })
 
   afterEach(() => {
@@ -90,5 +92,40 @@ describe('DashboardGps', () => {
     expect(mockGetOverview).toHaveBeenCalledTimes(2)
     expect(mockGetTactical).toHaveBeenCalledTimes(2)
     expect(wrapper.emitted('transaction-saved')).toHaveLength(1)
+  })
+
+  it('a recarga pós-edição mantém as Camadas 1 e 2 na tela, sem "Carregando…" (retro Epic 7 A4)', async () => {
+    mockGetOverview.mockRejectedValue(new Error('rede'))
+    mockGetTactical.mockRejectedValue(new Error('rede'))
+    const wrapper = mount(DashboardGps, { global })
+    await flushPromises()
+    mockGetOverview.mockReturnValue(new Promise(() => {}))
+    mockGetTactical.mockReturnValue(new Promise(() => {}))
+
+    wrapper.findComponent({ name: 'DashboardLayer3' }).vm.$emit('transaction-saved')
+    await flushPromises()
+
+    expect(mockGetOverview).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[data-testid="overview-loading"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="tactical-loading"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="overview-error"]').exists()).toBe(true)
+  })
+
+  it('avisa "loaded" só quando as 3 camadas terminam a primeira carga (retro Epic 7 A4)', async () => {
+    mockGetOverview.mockRejectedValue(new Error('rede'))
+    mockGetTactical.mockRejectedValue(new Error('rede'))
+    let finishDetails!: (value: unknown) => void
+    mockGetDetails.mockReturnValue(new Promise((resolve) => (finishDetails = resolve)))
+    const wrapper = mount(DashboardGps, { global })
+    await flushPromises()
+    expect(wrapper.emitted('loaded')).toBeUndefined()
+
+    finishDetails({ items: [], page: 0, totalItems: 0, totalPages: 0 })
+    await flushPromises()
+    expect(wrapper.emitted('loaded')).toHaveLength(1)
+
+    wrapper.findComponent({ name: 'DashboardLayer3' }).vm.$emit('transaction-saved')
+    await flushPromises()
+    expect(wrapper.emitted('loaded')).toHaveLength(1)
   })
 })

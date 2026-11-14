@@ -87,7 +87,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { getTactical } from '@/services/dashboardService'
 import { formatBRL } from '@/lib/money'
 import SpendingDonut from './SpendingDonut.vue'
@@ -97,6 +97,9 @@ import { CHART_COLORS, OTHERS_COLOR } from './chartColors'
 import type { CategorySpending, DashboardTactical, DonutSlice } from '@/types/dashboard'
 
 // Story 7.5: a Camada 2 (donut, top 5, planejado × real, tendências e drill-down) com uma chamada só
+// Retro Epic 7 A4: `refresh` busca de novo sem voltar ao "Carregando…"; `loaded` avisa a primeira carga (a view restaura o scroll)
+const props = defineProps<{ refresh?: number }>()
+const emit = defineEmits<{ loaded: [] }>()
 const tactical = ref<DashboardTactical | null>(null)
 const error = ref(false)
 const selected = ref<CategorySpending | null>(null)
@@ -135,11 +138,18 @@ function open(category: CategorySpending) {
   selected.value = category
 }
 
-onMounted(async () => {
+async function load() {
   try {
     tactical.value = await getTactical()
+    error.value = false
   } catch {
     error.value = true
   }
+}
+
+onMounted(async () => {
+  await load()
+  emit('loaded')
 })
+watch(() => props.refresh, load)
 </script>

@@ -1,7 +1,7 @@
 <template>
   <main class="min-h-screen bg-gray-50 px-4 py-8">
     <div class="mx-auto max-w-6xl space-y-8">
-      <FinancialHealthSemaphore :key="healthKey" />
+      <FinancialHealthSemaphore :refresh="healthKey" @loaded="onLoaded" />
 
       <div class="flex items-start justify-between gap-4">
         <div>
@@ -86,7 +86,7 @@
       </div>
 
       <!-- Story 7.6 (Q1=B): editar na Camada 3 recarrega o semáforo -->
-      <DashboardGps @transaction-saved="healthKey++" />
+      <DashboardGps @transaction-saved="healthKey++" @loaded="onLoaded" />
 
       <section aria-labelledby="account-settings-heading" class="space-y-3">
         <h2
@@ -259,8 +259,15 @@ onMounted(async () => {
     // AC5: falha ou 404 esconde o badge, o dashboard continua funcionando
     subscription.value = null
   }
-  // Restaura depois do banner de pagamento, que muda a altura da página
+  void onLoaded()
+})
+
+// Retro Epic 7 A4: restaura só quando a página tem a altura final (assinatura com o banner de pagamento,
+// semáforo e as 3 camadas); antes disso o navegador corta a posição numa página curta
+let pendingLoads = 3
+async function onLoaded() {
+  if (--pendingLoads > 0) return
   await nextTick()
   window.scrollTo({ top: savedScrollY, behavior: 'instant' })
-})
+}
 </script>
