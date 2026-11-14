@@ -159,6 +159,7 @@ import {
 import { todaySaoPaulo } from '@/lib/date'
 import { formatBRLInput, parseBRL } from '@/lib/money'
 import { plural } from '@/lib/plural'
+import { categoryOptionGroups } from '@/lib/transactionLabels'
 import { createTransaction, updateTransaction } from '@/services/transactionService'
 import type { Account } from '@/types/account'
 import type { Category } from '@/types/category'
@@ -219,19 +220,7 @@ const removedTargetLabel = computed(() => {
 
 const isFutureDate = computed(() => !!form.date && form.date > todaySaoPaulo())
 
-/** Grupos sem categoria filha ficam de fora: grupo não é categoria de transação. */
-const categoryGroups = computed(() => {
-  const byName = (a: Category, b: Category) => a.categoryName.localeCompare(b.categoryName, 'pt-BR')
-  return props.categories
-    .filter((category) => category.parentCategoryId === null)
-    .sort(byName)
-    .map((parent) => ({
-      id: parent.id,
-      name: parent.categoryName,
-      children: props.categories.filter((category) => category.parentCategoryId === parent.id).sort(byName),
-    }))
-    .filter((group) => group.children.length > 0)
-})
+const categoryGroups = computed(() => categoryOptionGroups(props.categories))
 
 // Ao abrir, o formulário recomeça com a linha (ou vazio, ao adicionar)
 watch(

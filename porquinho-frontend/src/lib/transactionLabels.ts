@@ -1,5 +1,6 @@
 import { plural } from '@/lib/plural'
 import type { Account } from '@/types/account'
+import type { Category } from '@/types/category'
 import type { CreditCard } from '@/types/creditCard'
 import type { Transaction } from '@/types/transaction'
 import type { PixDetails } from '@/types/transactionImport'
@@ -51,4 +52,21 @@ export function targetName(
 ): string {
   if (row.accountId) return accounts.find((a) => a.id === row.accountId)?.accountName ?? 'Conta removida'
   return cards.find((c) => c.id === row.creditCardId)?.cardName ?? 'Cartão removido'
+}
+
+/**
+ * Grupos do select de categoria da transação, em ordem alfabética (Stories 5.10 e 5.13). Grupos sem categoria filha
+ * ficam de fora: grupo não é categoria de transação.
+ */
+export function categoryOptionGroups(categories: Category[]): { id: string; name: string; children: Category[] }[] {
+  const byName = (a: Category, b: Category) => a.categoryName.localeCompare(b.categoryName, 'pt-BR')
+  return categories
+    .filter((category) => category.parentCategoryId === null)
+    .sort(byName)
+    .map((parent) => ({
+      id: parent.id,
+      name: parent.categoryName,
+      children: categories.filter((category) => category.parentCategoryId === parent.id).sort(byName),
+    }))
+    .filter((group) => group.children.length > 0)
 }
