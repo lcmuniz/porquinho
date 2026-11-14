@@ -277,7 +277,7 @@ class DashboardServiceTest {
     private final List<Category> categories = new ArrayList<>();
     private final List<BudgetResponse.CategoryBudget> budgetCategories = new ArrayList<>();
     private final List<Object[]> spentToDate = new ArrayList<>();
-    private final List<Object[]> spentAfterToday = new ArrayList<>();
+    private BigDecimal cardDebitsAfterToday = BigDecimal.ZERO;
     private final List<Object[]> committed = new ArrayList<>();
 
     /** A {categoryId, sum} row of the repository; a null id is an uncategorized transaction. */
@@ -306,8 +306,8 @@ class DashboardServiceTest {
             ZoneOffset.UTC);
         LocalDate first = day.withDayOfMonth(1), last = day.withDayOfMonth(day.lengthOfMonth());
         lenient().when(transactionRepository.sumSpentByCategory(userId, first, day)).thenReturn(spentToDate);
-        lenient().when(transactionRepository.sumSpentByCategory(userId, day.plusDays(1), last))
-            .thenReturn(spentAfterToday);
+        lenient().when(transactionRepository.sumCardDebits(userId, day.plusDays(1), last))
+            .thenReturn(cardDebitsAfterToday);
         lenient().when(transactionRepository.sumCommittedByCategory(userId, first, last)).thenReturn(committed);
         return new DashboardService(budgetService, accountService, goalService, categoryService, transactionRepository,
             accountRepository, balanceHistoryRepository, null, null, NO_CACHE, clock).overview(userId);
@@ -414,10 +414,10 @@ class DashboardServiceTest {
     }
 
     @Test
-    void aDebitDatedLaterInTheMonthIsNotPaceButIsSubtracted() {
-        // 3000 - 1000 / 10 x 20 - 300 (on the 25th) = 700
+    void aCardDebitDatedLaterInTheMonthIsNotPaceButIsSubtracted() {
+        // 3000 - 1000 / 10 x 20 - 300 (card, on the 25th) = 700
         spentToDate.add(row(UUID.randomUUID(), "1000.00"));
-        spentAfterToday.add(row(null, "300.00"));
+        cardDebitsAfterToday = new BigDecimal("300.00");
         assertEquals(new BigDecimal("700.00"), overview(LocalDate.of(2026, 11, 10), "3000.00").projectedBalance());
     }
 
@@ -467,7 +467,7 @@ class DashboardServiceTest {
 
         assertEquals(new BigDecimal("2950.00"), service.overview(userId).projectedBalance());
         verify(budgetService).get(userId, "2026-11");
-        verify(transactionRepository, never()).sumSpentByCategory(eq(userId), eq(TODAY.plusDays(1)), any());
+        verify(transactionRepository, never()).sumCardDebits(eq(userId), eq(TODAY.plusDays(1)), any());
     }
 
     // ---- Story 7.4: wealth history ----

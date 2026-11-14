@@ -136,7 +136,8 @@ public class DashboardService {
 
     /**
      * Story 7.3. Projection (real money, with or without category): total available - (spent up to today / today's
-     * day x days left) - debits dated after today in the month - the month's future installments. The spent card
+     * day x days left) - card debits dated after today in the month - the month's future installments. Account debits
+     * dated after today are already in the balance (decision D3, retro Epic 7 A1). The spent card
      * keeps the budget screen's number (whole month, categories only). The main goal is the oldest active one not completed.
      */
     @Transactional(readOnly = true)
@@ -166,7 +167,7 @@ public class DashboardService {
         LocalDate first = today.withDayOfMonth(1), last = today.withDayOfMonth(today.lengthOfMonth());
         BigDecimal spentToDate = total(transactionRepository.sumSpentByCategory(userId, first, today));
         BigDecimal scheduled = today.isBefore(last)
-            ? total(transactionRepository.sumSpentByCategory(userId, today.plusDays(1), last)) : BigDecimal.ZERO;
+            ? transactionRepository.sumCardDebits(userId, today.plusDays(1), last) : BigDecimal.ZERO;
         BigDecimal committed = total(transactionRepository.sumCommittedByCategory(userId, first, last));
         int daysLeft = today.lengthOfMonth() - today.getDayOfMonth();
         BigDecimal pace = spentToDate.multiply(BigDecimal.valueOf(daysLeft))

@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.Collection;
@@ -250,6 +251,19 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID>,
         + "AND t.transactionDate BETWEEN :from AND :to GROUP BY t.categoryId")
     List<Object[]> sumSpentByCategory(@Param("userId") UUID userId, @Param("from") LocalDate from,
                                       @Param("to") LocalDate to);
+
+    /**
+     * Card debits in [{@code from}, {@code to}], with or without category, same base as {@link #sumSpentByCategory};
+     * debits of a removed card are left out (as in {@link #sumCommittedByCategory}). Retro Epic 7 A1: account debits are
+     * left out because decision D3 already puts them in the account balance when they are recorded.
+     */
+    @Query("SELECT COALESCE(SUM(t.amount), 0) FROM Transaction t JOIN CreditCard c ON c.id = t.creditCardId "
+        + "WHERE t.userId = :userId AND c.deletedAt IS NULL "
+        + "AND t.reviewStatus = com.porquinho.entity.Transaction.ReviewStatus.CONFIRMED AND t.futureInstallment = false "
+        + "AND t.deletedAt IS NULL AND t.kind = com.porquinho.entity.Transaction.Kind.REGULAR "
+        + "AND t.transactionType = com.porquinho.entity.Transaction.Type.DEBIT "
+        + "AND t.transactionDate BETWEEN :from AND :to")
+    BigDecimal sumCardDebits(@Param("userId") UUID userId, @Param("from") LocalDate from, @Param("to") LocalDate to);
 
     /**
      * Spent of category {@code categoryId} per month in [{@code from}, {@code to}] (Story 6.8), same base as
