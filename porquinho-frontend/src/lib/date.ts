@@ -21,9 +21,21 @@ export function formatLocalDateBR(date: string | null | undefined): string {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : ''
 }
 
-/** "AAAA-MM" do mês atual em São Paulo (en-CA formata a data como AAAA-MM-DD). */
+const SAO_PAULO_DATE = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' })
+
+/** "AAAA-MM-DD" do instante em São Paulo (en-CA formata assim), qualquer que seja o fuso do aparelho. */
+export function dateInSaoPaulo(instant: Date | string = new Date()): string {
+  return SAO_PAULO_DATE.format(typeof instant === 'string' ? new Date(instant) : instant)
+}
+
+/** "AAAA-MM-DD" de hoje em São Paulo. */
+export function todaySaoPaulo(): string {
+  return dateInSaoPaulo()
+}
+
+/** "AAAA-MM" do mês atual em São Paulo. */
 export function currentMonth(): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date()).slice(0, 7)
+  return todaySaoPaulo().slice(0, 7)
 }
 
 /** "AAAA-MM" deslocado em `delta` meses. */

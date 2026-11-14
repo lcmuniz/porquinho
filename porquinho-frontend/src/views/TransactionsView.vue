@@ -217,7 +217,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import TransactionFormDialog from '@/components/transactions/TransactionFormDialog.vue'
-import { formatLocalDateBR } from '@/lib/date'
+import { currentMonth, formatLocalDateBR } from '@/lib/date'
 import { formatSignedBRL } from '@/lib/money'
 import { plural } from '@/lib/plural'
 import { categoryLabel, installmentLabel, pixLabel, signedAmount, targetName } from '@/lib/transactionLabels'
@@ -242,15 +242,10 @@ interface ApiError {
   response?: { status?: number; data?: { detail?: string } }
 }
 
-/** "AAAA-MM-DD" de hoje em São Paulo (en-CA formata assim). */
-function todaySaoPaulo(): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())
-}
-
 const heading = ref<HTMLElement | null>(null)
 const addButton = ref<{ $el: HTMLElement } | null>(null)
 const list = ref<HTMLElement | null>(null)
-const month = ref(todaySaoPaulo().slice(0, 7))
+const month = ref(currentMonth())
 const transactions = ref<Transaction[]>([])
 const accounts = ref<Account[]>([])
 const cards = ref<Card[]>([])

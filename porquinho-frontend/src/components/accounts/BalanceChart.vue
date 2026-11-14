@@ -146,6 +146,7 @@ import {
   markerOf,
   markerPath,
 } from '@/lib/balanceEvents'
+import { LINE_CHART, balanceDomain, movePointFocus, valueTicks, yOf as chartY } from '@/lib/chart'
 import { formatDateBR } from '@/lib/date'
 import { formatBRL } from '@/lib/money'
 import type { BalancePoint } from '@/types/account'
@@ -162,9 +163,7 @@ const props = defineProps<{
   now?: string
 }>()
 
-const WIDTH = 640
-const HEIGHT = 280
-const PAD = { top: 16, right: 16, bottom: 32, left: 104 }
+const { WIDTH, HEIGHT, PAD } = LINE_CHART
 const Y_TICKS = 4
 const X_TICKS = 4
 
@@ -198,17 +197,7 @@ const xDomain = computed<[number, number]>(() => {
   return [start, Math.max(now, last, start)]
 })
 
-/** Faixa do eixo Y; com saldo negativo, o zero entra para a linha aparecer abaixo dele. */
-const yDomain = computed(() => {
-  let [lo, hi] = minMax(props.points.map((p) => p.balance))
-  if (lo < 0) hi = Math.max(hi, 0)
-  if (lo === hi) {
-    const pad = Math.max(Math.abs(lo) * 0.1, 1)
-    lo -= pad
-    hi += pad
-  }
-  return [lo, hi] as const
-})
+const yDomain = computed(() => balanceDomain(props.points.map((p) => p.balance)))
 
 function xOf(time: number): number {
   const [min, max] = xDomain.value
@@ -218,9 +207,7 @@ function xOf(time: number): number {
 }
 
 function yOf(value: number): number {
-  const [lo, hi] = yDomain.value
-  const inner = HEIGHT - PAD.top - PAD.bottom
-  return PAD.top + ((hi - value) / (hi - lo)) * inner
+  return chartY(value, yDomain.value, HEIGHT, PAD)
 }
 
 interface PlottedPoint {
@@ -256,15 +243,7 @@ const stepPath = computed(() => {
 
 const activePoint = computed(() => (active.value === null ? null : plotted.value[active.value]))
 
-/** Faixas pequenas arredondam para os mesmos centavos: um rótulo por valor. */
-const yTicks = computed(() => {
-  const [lo, hi] = yDomain.value
-  const values = new Set<number>()
-  for (let i = 0; i <= Y_TICKS; i++) {
-    values.add(Math.round((lo + ((hi - lo) * i) / Y_TICKS) * 100) / 100)
-  }
-  return [...values].map((value) => ({ value, y: yOf(value) }))
-})
+const yTicks = computed(() => valueTicks(yDomain.value, Y_TICKS).map((value) => ({ value, y: yOf(value) })))
 
 const zeroY = computed(() => {
   const [lo, hi] = yDomain.value
@@ -304,21 +283,7 @@ const legendEvents = computed(() =>
 
 /** Setas e Home/End movem o tabindex e o foco entre os pontos. */
 function onKeydown(event: KeyboardEvent, index: number) {
-  const last = plotted.value.length - 1
-  const next =
-    event.key === 'ArrowRight'
-      ? Math.min(index + 1, last)
-      : event.key === 'ArrowLeft'
-        ? Math.max(index - 1, 0)
-        : event.key === 'Home'
-          ? 0
-          : event.key === 'End'
-            ? last
-            : null
-  if (next === null) return
-  event.preventDefault()
-  focusIndex.value = next
-  const svg = (event.currentTarget as SVGElement).ownerSVGElement
-  svg?.querySelector<SVGElement>(`[data-testid="chart-point-${next}"]`)?.focus()
+  const next = movePointFocus(event, index, plotted.value.length - 1, 'chart-point')
+  if (next !== null) focusIndex.value = next
 }
 </script>

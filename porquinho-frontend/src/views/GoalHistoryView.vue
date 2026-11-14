@@ -114,7 +114,8 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import GoalHistoryChart from '@/components/goals/GoalHistoryChart.vue'
 import { Button } from '@/components/ui/button'
-import { currentMonth, formatLocalDateBR } from '@/lib/date'
+import { currentMonth, dateInSaoPaulo, formatLocalDateBR } from '@/lib/date'
+import { downloadCsv, fileSlug } from '@/lib/download'
 import { formatBRL, formatBRLInput } from '@/lib/money'
 import { getGoalHistory } from '@/services/goalService'
 import type { GoalHistory } from '@/types/goal'
@@ -133,9 +134,6 @@ const loading = ref(true)
 const loadFailed = ref(false)
 const notFound = ref(false)
 
-/** Data AAAA-MM-DD de um instante ISO em São Paulo (en-CA formata como AAAA-MM-DD). */
-const SP_DATE = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' })
-const spDate = (iso: string) => SP_DATE.format(new Date(iso))
 
 /** Meses-calendário de "AAAA-MM" a "AAAA-MM" (b - a). */
 function monthDiff(a: string, b: string): number {
@@ -158,8 +156,8 @@ const monthsLabel = (n: number) => (n === 1 ? '1 mês' : `${n} meses`)
  */
 const stats = computed(() => {
   const h = history.value!
-  const start = spDate(h.createdAt).slice(0, 7)
-  const end = h.completedAt ? spDate(h.completedAt).slice(0, 7) : currentMonth()
+  const start = dateInSaoPaulo(h.createdAt).slice(0, 7)
+  const end = h.completedAt ? dateInSaoPaulo(h.completedAt).slice(0, 7) : currentMonth()
   const periodMonths = Math.max(1, monthDiff(start, end) + 1)
   const contributions = h.entries.filter((e) => e.contributionAmount !== null)
   const months = new Set(
@@ -169,24 +167,13 @@ const stats = computed(() => {
     avgContribution: contributions.reduce((total, e) => total + e.contributionAmount!, 0) / periodMonths,
     monthsWithContribution: months.size,
     periodMonths,
-    timeToComplete: h.completedAt ? fullMonths(spDate(h.createdAt), spDate(h.completedAt)) : null,
+    timeToComplete: h.completedAt ? fullMonths(dateInSaoPaulo(h.createdAt), dateInSaoPaulo(h.completedAt)) : null,
   }
 })
 
 /** % do alvo arredondado para baixo: 99,6% ainda não é 100%. */
 function percentOf(amount: number): number {
   return Math.floor((amount / history.value!.targetAmount) * 100)
-}
-
-/** "Reserva de Emergência" → "reserva-de-emergencia". */
-function slug(name: string): string {
-  const s = name
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-  return s || 'meta'
 }
 
 /** Excel pt-BR (padrão da 6.8): `;` como separador, vírgula decimal, CRLF e BOM. Aporte vazio quando não houve. */
@@ -202,14 +189,7 @@ function exportCsv() {
       ].join(';'),
     ),
   ]
-  const blob = new Blob(['﻿' + lines.join('\r\n') + '\r\n'], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `historico-meta-${slug(history.value!.goalName)}.csv`
-  link.click()
-  // revogar na hora pode abortar o download em alguns navegadores (Firefox)
-  setTimeout(() => URL.revokeObjectURL(url), 0)
+  downloadCsv(lines, `historico-meta-${fileSlug(history.value!.goalName, 'meta')}.csv`)
 }
 
 /** Sequência das cargas: só a resposta da carga mais recente é aplicada. */

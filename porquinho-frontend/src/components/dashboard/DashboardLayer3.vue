@@ -273,7 +273,8 @@ import { useLocalStorage, watchDebounced } from '@vueuse/core'
 import { ArrowLeftRight, CreditCard, Download } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import TransactionFormDialog from '@/components/transactions/TransactionFormDialog.vue'
-import { formatLocalDateBR } from '@/lib/date'
+import { formatLocalDateBR, todaySaoPaulo } from '@/lib/date'
+import { downloadBlob } from '@/lib/download'
 import { formatSignedBRL } from '@/lib/money'
 import { plural } from '@/lib/plural'
 import { categoryLabel, installmentLabel, pixLabel, signedAmount, targetName } from '@/lib/transactionLabels'
@@ -341,11 +342,6 @@ const exportError = ref(false)
 const successMessage = ref<string | null>(null)
 const current = ref<Transaction | null>(null)
 const editOpen = ref(false)
-
-/** "AAAA-MM-DD" de hoje em São Paulo (en-CA formata assim). */
-function todaySaoPaulo(): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())
-}
 
 /** Primeiro e último dia do mês `delta` meses a partir do atual (São Paulo). */
 function monthBounds(delta: number): [string, string] {
@@ -519,14 +515,7 @@ async function exportCsv() {
   exporting.value = true
   exportError.value = false
   try {
-    const blob = await exportDetails(f)
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `transacoes-${f.from}-a-${f.to}.csv`
-    link.click()
-    // revogar na hora pode abortar o download em alguns navegadores (Firefox)
-    setTimeout(() => URL.revokeObjectURL(url), 0)
+    downloadBlob(await exportDetails(f), `transacoes-${f.from}-a-${f.to}.csv`)
   } catch {
     exportError.value = true
   } finally {

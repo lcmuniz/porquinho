@@ -128,6 +128,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { Button } from '@/components/ui/button'
+import { valueTicks, yOf as chartY } from '@/lib/chart'
 import { formatBRL } from '@/lib/money'
 import type { CategoryTrend } from '@/types/dashboard'
 import { CHART_COLORS } from './chartColors'
@@ -181,13 +182,8 @@ function xOf(i: number): number {
 }
 
 function yOf(value: number): number {
-  return PAD.top + (1 - value / max.value) * (HEIGHT - PAD.top - PAD.bottom)
+  return chartY(value, [0, max.value], HEIGHT, PAD)
 }
 
-const yTicks = computed(() =>
-  Array.from({ length: Y_TICKS + 1 }, (_, i) => {
-    const value = Math.round(((max.value * i) / Y_TICKS) * 100) / 100
-    return { value, y: yOf(value) }
-  }),
-)
+const yTicks = computed(() => valueTicks([0, max.value], Y_TICKS).map((value) => ({ value, y: yOf(value) })))
 </script>

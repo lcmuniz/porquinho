@@ -156,6 +156,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { todaySaoPaulo } from '@/lib/date'
 import { formatBRLInput, parseBRL } from '@/lib/money'
 import { plural } from '@/lib/plural'
 import { createTransaction, updateTransaction } from '@/services/transactionService'
@@ -199,11 +200,6 @@ const OPTIONS_FAILED = 'Não foi possível carregar suas contas, cartões e cate
 
 interface ApiError {
   response?: { status?: number; data?: { detail?: string } }
-}
-
-/** "AAAA-MM-DD" de hoje em São Paulo (en-CA formata assim). */
-function todaySaoPaulo(): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())
 }
 
 const saving = ref(false)

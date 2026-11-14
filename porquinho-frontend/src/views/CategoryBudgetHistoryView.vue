@@ -188,6 +188,7 @@ import AllocationHistoryChart from '@/components/budget/AllocationHistoryChart.v
 import { Button } from '@/components/ui/button'
 import { STATUS } from '@/lib/budgetStatus'
 import { currentMonth, formatMonthBR, shiftMonth } from '@/lib/date'
+import { downloadCsv, fileSlug } from '@/lib/download'
 import { formatBRL, formatBRLInput } from '@/lib/money'
 import { getCategoryBudgetHistory } from '@/services/budgetService'
 import type { CategoryBudgetHistory } from '@/types/budget'
@@ -243,17 +244,6 @@ const stats = computed(() => {
   }
 })
 
-/** "Alimentação & Casa" → "alimentacao-casa". */
-function slug(name: string): string {
-  const s = name
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-  return s || 'categoria'
-}
-
 /** Excel pt-BR: `;` como separador, vírgula decimal e BOM para abrir os acentos certos. */
 function exportCsv() {
   const lines = [
@@ -268,14 +258,7 @@ function exportCsv() {
       ].join(';'),
     ),
   ]
-  const blob = new Blob(['\uFEFF' + lines.join('\r\n') + '\r\n'], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `historico-${slug(history.value!.categoryName)}.csv`
-  link.click()
-  // revogar na hora pode abortar o download em alguns navegadores (Firefox)
-  setTimeout(() => URL.revokeObjectURL(url), 0)
+  downloadCsv(lines, `historico-${fileSlug(history.value!.categoryName, 'categoria')}.csv`)
 }
 
 /** Sequência das cargas: só a resposta da carga mais recente é aplicada. */

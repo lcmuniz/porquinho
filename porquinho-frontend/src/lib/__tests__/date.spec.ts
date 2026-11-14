@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatLocalDateBR } from '../date'
+import { dateInSaoPaulo, formatLocalDateBR } from '../date'
 
 describe('formatLocalDateBR', () => {
   it('mostra o mesmo dia do texto, sem conversão de fuso', () => {
@@ -12,5 +12,12 @@ describe('formatLocalDateBR', () => {
     expect(formatLocalDateBR(undefined)).toBe('')
     expect(formatLocalDateBR('')).toBe('')
     expect(formatLocalDateBR('03/11/2026')).toBe('')
+  })
+})
+
+describe('dateInSaoPaulo', () => {
+  it('converte o instante para o dia em São Paulo', () => {
+    expect(dateInSaoPaulo('2026-11-14T02:30:00Z')).toBe('2026-11-13')
+    expect(dateInSaoPaulo(new Date('2026-11-14T03:00:00Z'))).toBe('2026-11-14')
   })
 })

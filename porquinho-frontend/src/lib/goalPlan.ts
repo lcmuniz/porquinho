@@ -4,6 +4,7 @@
  * o mesmo critério do backend (NotPastInSaoPaulo).
  */
 import { cleanCategoryName } from './categoryName'
+import { dateInSaoPaulo } from './date'
 import { parseBRL } from './money'
 import type { CreateGoalInput, GoalTemplate } from '@/types/goal'
 
@@ -28,16 +29,9 @@ export function parseISODate(text: string | null | undefined): Date | null {
   return date
 }
 
-const SAO_PAULO_DATE = new Intl.DateTimeFormat('en-CA', {
-  timeZone: 'America/Sao_Paulo',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-})
-
 /** Hoje em America/Sao_Paulo (meia-noite local com esse dia), qualquer que seja o fuso do aparelho. */
 export function todayInSaoPaulo(now: Date = new Date()): Date {
-  return parseISODate(SAO_PAULO_DATE.format(now))!
+  return parseISODate(dateInSaoPaulo(now))!
 }
 
 /** Soma meses de calendário; o dia é limitado ao último do mês (31/01 + 1 mês = 28 ou 29/02). */

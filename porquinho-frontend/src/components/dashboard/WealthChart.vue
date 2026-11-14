@@ -168,6 +168,7 @@
 import { computed, ref, watch } from 'vue'
 import { ArrowDown, ArrowUp, Minus } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
+import { LINE_CHART, balanceDomain, movePointFocus, valueTicks, yOf as chartY } from '@/lib/chart'
 import { formatLocalDateBR } from '@/lib/date'
 import { formatBRL, formatSignedBRL } from '@/lib/money'
 import type { WealthPoint } from '@/types/dashboard'
@@ -179,9 +180,7 @@ import type { WealthPoint } from '@/types/dashboard'
 const props = defineProps<{ points: WealthPoint[] }>()
 
 const RANGES = [3, 6, 12] as const
-const WIDTH = 640
-const HEIGHT = 280
-const PAD = { top: 16, right: 16, bottom: 32, left: 104 }
+const { WIDTH, HEIGHT, PAD } = LINE_CHART
 const Y_TICKS = 4
 const X_TICKS = 4
 const DAY = 86_400_000
@@ -240,20 +239,7 @@ const xDomain = computed<[number, number]>(() => {
   return s.length ? [toTime(s[0]!.date), toTime(s[s.length - 1]!.date)] : [0, DAY]
 })
 
-/** Com saldo negativo, o zero entra para a linha aparecer abaixo dele. */
-const yDomain = computed<[number, number]>(() => {
-  const values = series.value.map((p) => p.balance)
-  let lo = Math.min(...values, Infinity)
-  let hi = Math.max(...values, -Infinity)
-  if (!values.length) [lo, hi] = [0, 0]
-  if (lo < 0) hi = Math.max(hi, 0)
-  if (lo === hi) {
-    const pad = Math.max(Math.abs(lo) * 0.1, 1)
-    lo -= pad
-    hi += pad
-  }
-  return [lo, hi]
-})
+const yDomain = computed(() => balanceDomain(series.value.map((p) => p.balance)))
 
 function xOf(time: number): number {
   const [min, max] = xDomain.value
@@ -261,8 +247,7 @@ function xOf(time: number): number {
 }
 
 function yOf(value: number): number {
-  const [lo, hi] = yDomain.value
-  return PAD.top + ((hi - value) / (hi - lo)) * (HEIGHT - PAD.top - PAD.bottom)
+  return chartY(value, yDomain.value, HEIGHT, PAD)
 }
 
 const plotted = computed(() =>
@@ -313,13 +298,7 @@ const tooltipAlign = computed(() => {
   return ratio > 0.8 ? '-translate-x-full' : '-translate-x-1/2'
 })
 
-const yTicks = computed(() => {
-  const [lo, hi] = yDomain.value
-  const values = new Set<number>()
-  for (let i = 0; i <= Y_TICKS; i++)
-    values.add(Math.round((lo + ((hi - lo) * i) / Y_TICKS) * 100) / 100)
-  return [...values].map((value) => ({ value, y: yOf(value) }))
-})
+const yTicks = computed(() => valueTicks(yDomain.value, Y_TICKS).map((value) => ({ value, y: yOf(value) })))
 
 const zeroY = computed(() => (yDomain.value[0] < 0 ? yOf(0) : null))
 
@@ -337,22 +316,8 @@ function onFocus(i: number) {
 }
 
 function onKeydown(event: KeyboardEvent, index: number) {
-  const last = plotted.value.length - 1
-  const next =
-    event.key === 'ArrowRight'
-      ? Math.min(index + 1, last)
-      : event.key === 'ArrowLeft'
-        ? Math.max(index - 1, 0)
-        : event.key === 'Home'
-          ? 0
-          : event.key === 'End'
-            ? last
-            : null
-  if (next === null) return
-  event.preventDefault()
-  focusIndex.value = next
-  const svg = (event.currentTarget as SVGElement).ownerSVGElement
-  svg?.querySelector<SVGElement>(`[data-testid="wealth-point-${next}"]`)?.focus()
+  const next = movePointFocus(event, index, plotted.value.length - 1, 'wealth-point')
+  if (next !== null) focusIndex.value = next
 }
 </script>
 

@@ -287,6 +287,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { STATUS, computeStatus } from '@/lib/budgetStatus'
 import { currentMonth, formatMonthBR, shiftMonth } from '@/lib/date'
+import { downloadCsv } from '@/lib/download'
 import { formatBRL, formatBRLInput } from '@/lib/money'
 import { getBudget } from '@/services/budgetService'
 import { listCategories } from '@/services/categoryService'
@@ -564,16 +565,7 @@ function exportCsv() {
   ]
   const list = months.value!
   const suffix = list.length === 1 ? list[0] : `${list[0]}_${list[list.length - 1]}`
-  const blob = new Blob(['\uFEFF' + lines.join('\r\n') + '\r\n'], {
-    type: 'text/csv;charset=utf-8',
-  })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `planejado-x-real-${suffix}.csv`
-  link.click()
-  // revogar na hora pode abortar o download em alguns navegadores (Firefox)
-  setTimeout(() => URL.revokeObjectURL(url), 0)
+  downloadCsv(lines, `planejado-x-real-${suffix}.csv`)
 }
 
 /** Sequência das cargas: só a resposta da carga mais recente é aplicada. */
