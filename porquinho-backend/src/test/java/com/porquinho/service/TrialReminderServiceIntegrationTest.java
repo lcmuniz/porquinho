@@ -9,12 +9,14 @@ import com.porquinho.entity.User.AuthProvider;
 import com.porquinho.repository.AuditLogRepository;
 import com.porquinho.repository.SubscriptionRepository;
 import com.porquinho.repository.UserRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
 import javax.sql.DataSource;
@@ -34,7 +36,9 @@ import static org.mockito.Mockito.*;
 
 /**
  * Story 2.3 through the real Spring proxies, the real candidate query and PostgreSQL. The mocked
- * e-mail checks, when called, that it runs after commit (sent_at already committed in the DB).
+ * e-mail checks, when called, that it runs after commit (sent_at already committed in the DB). Not @Transactional:
+ * cleans up its users (and the audit_logs the job writes for them) after each test, so a later
+ * {@code userRepository.deleteAll()} elsewhere does not hit the audit_logs foreign key.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -51,12 +55,24 @@ class TrialReminderServiceIntegrationTest {
     private AuditLogRepository auditLogRepository;
     @Autowired
     private DataSource dataSource;
+    @Autowired
+    private JdbcTemplate jdbc;
 
     @MockBean
     private EmailService emailService;
 
     /** Problems seen inside the e-mail call; asserted after the job (exceptions there would be swallowed). */
     private final List<String> afterCommitViolations = new CopyOnWriteArrayList<>();
+    private final List<UUID> users = new CopyOnWriteArrayList<>();
+
+    @AfterEach
+    void tearDown() {
+        for (UUID id : users) {
+            jdbc.update("DELETE FROM audit_logs WHERE user_id = ?", id);
+            jdbc.update("DELETE FROM subscriptions WHERE user_id = ?", id);
+            jdbc.update("DELETE FROM users WHERE id = ?", id);
+        }
+    }
 
     @BeforeEach
     void checkEmailRunsAfterCommit() {
@@ -84,6 +100,7 @@ class TrialReminderServiceIntegrationTest {
     private User userWithSubscription(PlanType plan, OffsetDateTime end, OffsetDateTime sevenDaySentAt) {
         String email = "trial-reminder-" + UUID.randomUUID() + "@example.com";
         User user = userRepository.save(new User(email, AuthProvider.EMAIL, null));
+        users.add(user.getId());
         Subscription s = new Subscription(user.getId(), plan, Status.ACTIVE, end.minusDays(30), end);
         s.setTrialReminder7dSentAt(sevenDaySentAt);
         subscriptionRepository.save(s);
