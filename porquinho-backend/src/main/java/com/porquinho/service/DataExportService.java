@@ -50,9 +50,17 @@ import com.porquinho.repository.TransactionRepository;
 import com.porquinho.repository.TransferRepository;
 import com.porquinho.repository.UserRepository;
 import com.porquinho.repository.UserSessionRepository;
+import net.lingala.zip4j.ZipFile;
+import net.lingala.zip4j.model.ZipParameters;
+import net.lingala.zip4j.model.enums.AesKeyStrength;
+import net.lingala.zip4j.model.enums.EncryptionMethod;
+import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.MigrationInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.scheduling.annotation.Async;
@@ -60,6 +68,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -76,6 +85,26 @@ import java.util.*;
 public class DataExportService {
 
     private static final Logger log = LoggerFactory.getLogger(DataExportService.class);
+
+    static final String DATA_VERSION = "2.0";
+
+    /** Story 9.3: ZIP file -> tables it holds. Covers every table of {@link #collectUserData} exactly once. */
+    static final Map<String, List<String>> EXPORT_FILES = new LinkedHashMap<>();
+    static {
+        EXPORT_FILES.put("user_profile.json",
+            List.of("users", "user_sessions", "subscriptions", "billing_transactions", "onboarding_progress"));
+        EXPORT_FILES.put("accounts.json",
+            List.of("accounts", "account_balance_history", "transfers", "reconciliation_history", "credit_cards"));
+        EXPORT_FILES.put("transactions.json",
+            List.of("transactions", "transaction_imports", "ai_classification_history"));
+        EXPORT_FILES.put("categories.json", List.of("categories", "user_classification_patterns"));
+        EXPORT_FILES.put("budgets.json", List.of("budget_allocations", "budget_reallocations"));
+        EXPORT_FILES.put("goals.json", List.of("goals", "goal_allocations", "goal_progress_history"));
+        EXPORT_FILES.put("audit_log.json", List.of("audit_logs"));
+    }
+
+    /** Tables whose key in the export differs from the table name (kept from the Story 1-6 format). */
+    private static final Map<String, String> TABLE_KEYS = Map.of("users", "user_profile", "user_sessions", "sessions");
 
     private final DataExportRepository dataExportRepository;
     private final UserRepository userRepository;
@@ -103,6 +132,8 @@ public class DataExportService {
     private final GoalAllocationRepository goalAllocationRepository;
     private final GoalProgressHistoryRepository goalProgressHistoryRepository;
     private final ObjectMapper objectMapper;
+    private final ObjectProvider<Flyway> flywayProvider;
+    private final DataExportService self;
 
     @Value("${app.export.directory:./exports}")
     private String exportDirectory;
@@ -138,7 +169,9 @@ public class DataExportService {
             BudgetAllocationRepository budgetAllocationRepository,
             BudgetReallocationRepository budgetReallocationRepository,
             GoalAllocationRepository goalAllocationRepository,
-            GoalProgressHistoryRepository goalProgressHistoryRepository) {
+            GoalProgressHistoryRepository goalProgressHistoryRepository,
+            ObjectProvider<Flyway> flywayProvider,
+            @Lazy DataExportService self) {
         this.dataExportRepository = dataExportRepository;
         this.userRepository = userRepository;
         this.userSessionRepository = userSessionRepository;
@@ -164,6 +197,8 @@ public class DataExportService {
         this.budgetReallocationRepository = budgetReallocationRepository;
         this.goalAllocationRepository = goalAllocationRepository;
         this.goalProgressHistoryRepository = goalProgressHistoryRepository;
+        this.flywayProvider = flywayProvider;
+        this.self = self;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
         this.objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
@@ -172,10 +207,12 @@ public class DataExportService {
 
     /**
      * Request a new data export for the user.
-     * Rate limited to 1 export per hour per user.
+     * Rate limited to 1 export per hour per user. The job runs in the background after the commit.
+     * The password is never stored, logged or audited; the job's char[] copy is zeroed when it ends
+     * (the request String itself stays on the heap until GC).
      */
     @Transactional
-    public DataExportResponse requestExport(UUID userId, String ipAddress) {
+    public DataExportResponse requestExport(UUID userId, String ipAddress, String password) {
         if (!rateLimitService.allowRequest("data_export:" + userId, 1, 3600)) {
             throw new RateLimitExceededException("Data export rate limit exceeded. Maximum 1 export per hour.");
         }
@@ -185,37 +222,44 @@ public class DataExportService {
         export.setExpiresAt(LocalDateTime.now().plusHours(expirationHours));
         export = dataExportRepository.save(export);
 
-        processExport(export.getId());
+        UUID exportId = export.getId();
+        char[] secret = password.toCharArray();
+        SubscriptionService.afterCommit(() -> self.processExport(exportId, secret, ipAddress));
 
         return DataExportResponse.fromEntity(export);
     }
 
     /**
-     * Process the data export asynchronously.
-     * Collects user data, generates JSON file, updates status.
+     * Process the data export in the background (called through the proxy, so @Async applies).
+     * Collects user data, writes the AES-256 ZIP (one JSON per domain + export_metadata.json), updates status.
+     * Any failure leaves the export FAILED.
      */
     @Async
-    public void processExport(UUID exportId) {
-        DataExport export = dataExportRepository.findById(exportId)
-                .orElseThrow(() -> new ResourceNotFoundException("Export not found: " + exportId));
+    public void processExport(UUID exportId, char[] password, String ipAddress) {
+        DataExport export = dataExportRepository.findById(exportId).orElse(null);
+        if (export == null) {
+            log.error("Data export {} not found", exportId);
+            Arrays.fill(password, '\0');
+            return;
+        }
 
+        Path filePath = null;
         try {
-            Map<String, Object> userData = collectUserData(export.getUserId());
-            String json = objectMapper.writeValueAsString(userData);
+            Map<String, Object> files = buildExportFiles(export.getUserId());
 
             Path exportDir = Paths.get(exportDirectory);
             Files.createDirectories(exportDir);
-
-            String filename = "export_" + export.getUserId() + "_" +
-                    LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")) + ".json";
-            Path filePath = exportDir.resolve(filename);
-            Files.writeString(filePath, json);
+            filePath = exportDir.resolve("export_" + export.getUserId() + "_" +
+                    LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss")) + ".zip");
+            writeZip(filePath, files, password);
 
             export.setFilePath(filePath.toString());
             export.setStatus(ExportStatus.READY);
             dataExportRepository.save(export);
 
-            // Send email notification (best-effort)
+            auditLogService.log("complete_data_export", export.getUserId(), ipAddress);
+
+            // Send email notification (best-effort: EmailService swallows its own failures)
             User user = userRepository.findById(export.getUserId()).orElse(null);
             if (user != null) {
                 String downloadUrl = baseUrl + "/api/v1/data-export/download/" + export.getDownloadToken();
@@ -223,27 +267,90 @@ public class DataExportService {
             }
 
             log.info("Data export completed for user {}: {}", export.getUserId(), filePath);
-        } catch (IOException e) {
+        } catch (Exception e) {
             log.error("Failed to process data export {}: {}", exportId, e.getMessage());
+            if (filePath != null) {
+                try {
+                    Files.deleteIfExists(filePath);
+                } catch (IOException ignored) {
+                    // best-effort: a FAILED row is never downloadable, the partial file holds no usable link
+                }
+            }
+            export.setFilePath(null);
             export.setStatus(ExportStatus.FAILED);
             dataExportRepository.save(export);
+            // a failed job does not count against the 1-per-hour limit: "Tentar de novo" works right away
+            rateLimitService.reset("data_export:" + export.getUserId());
+        } finally {
+            Arrays.fill(password, '\0');
         }
     }
 
     /**
-     * Collect all user data for export, sanitizing sensitive fields.
+     * Story 9.3: the 8 files of the ZIP. Each domain file is an object with one key per table (the same keys
+     * as {@link #collectUserData}); {@code export_metadata.json} lists the tables of each file.
      */
-    public Map<String, Object> collectUserData(UUID userId) {
-        Map<String, Object> data = new LinkedHashMap<>();
+    Map<String, Object> buildExportFiles(UUID userId) {
+        Map<String, Object> data = self.collectUserData(userId);
 
-        // Metadata
+        Map<String, Object> files = new LinkedHashMap<>();
+        List<Map<String, Object>> fileList = new ArrayList<>();
+        EXPORT_FILES.forEach((name, tables) -> {
+            Map<String, Object> content = new LinkedHashMap<>();
+            for (String table : tables) {
+                content.put(dataKey(table), data.get(dataKey(table)));
+            }
+            files.put(name, content);
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("name", name);
+            entry.put("tables", tables);
+            fileList.add(entry);
+        });
+
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("export_date", LocalDateTime.now().toString());
         metadata.put("user_id", userId.toString());
-        metadata.put("data_version", "1.0");
-        metadata.put("exported_tables", List.of("users", "user_sessions", "audit_logs", "subscriptions",
-            "billing_transactions", "onboarding_progress", "accounts", "account_balance_history", "transfers", "reconciliation_history", "credit_cards", "transaction_imports", "transactions", "ai_classification_history", "user_classification_patterns", "budget_allocations", "budget_reallocations", "categories", "goals", "goal_allocations", "goal_progress_history"));
-        data.put("metadata", metadata);
+        metadata.put("data_version", DATA_VERSION);
+        metadata.put("schema_version", schemaVersion());
+        metadata.put("files", fileList);
+        files.put("export_metadata.json", metadata);
+        return files;
+    }
+
+    private void writeZip(Path filePath, Map<String, Object> files, char[] password) throws IOException {
+        try (ZipFile zip = new ZipFile(filePath.toFile(), password)) {
+            for (Map.Entry<String, Object> file : files.entrySet()) {
+                ZipParameters params = new ZipParameters();
+                params.setEncryptFiles(true);
+                params.setEncryptionMethod(EncryptionMethod.AES);
+                params.setAesKeyStrength(AesKeyStrength.KEY_STRENGTH_256);
+                params.setFileNameInZip(file.getKey());
+                zip.addStream(new ByteArrayInputStream(objectMapper.writeValueAsBytes(file.getValue())), params);
+            }
+        }
+    }
+
+    /** Current Flyway version (null when Flyway is off, e.g. in some tests). */
+    private String schemaVersion() {
+        Flyway flyway = flywayProvider != null ? flywayProvider.getIfAvailable() : null;
+        if (flyway == null) {
+            return null;
+        }
+        MigrationInfo current = flyway.info().current();
+        return current != null && current.getVersion() != null ? current.getVersion().getVersion() : null;
+    }
+
+    static String dataKey(String table) {
+        return TABLE_KEYS.getOrDefault(table, table);
+    }
+
+    /**
+     * Collect all user data for export, sanitizing sensitive fields. One key per table (see {@link #EXPORT_FILES}).
+     * Read-only transaction of its own: the background job calls it through the proxy.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> collectUserData(UUID userId) {
+        Map<String, Object> data = new LinkedHashMap<>();
 
         // User profile (sanitized)
         User user = userRepository.findById(userId)

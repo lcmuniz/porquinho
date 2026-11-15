@@ -19,6 +19,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -64,10 +66,12 @@ class DataExportControllerTest {
                 UUID.randomUUID(), "PROCESSING", LocalDateTime.now(),
                 LocalDateTime.now().plusHours(24), null);
 
-        when(dataExportService.requestExport(eq(userId), anyString())).thenReturn(response);
+        when(dataExportService.requestExport(eq(userId), anyString(), eq("senha-forte-123"))).thenReturn(response);
 
         mockMvc.perform(post("/api/v1/data-export")
-                .with(authentication(authToken)))
+                .with(authentication(authToken))
+                .contentType("application/json")
+                .content("{\"password\": \"senha-forte-123\"}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("PROCESSING"));
 
@@ -76,11 +80,13 @@ class DataExportControllerTest {
 
     @Test
     void requestExportShouldReturn429WhenRateLimited() throws Exception {
-        when(dataExportService.requestExport(eq(userId), anyString()))
+        when(dataExportService.requestExport(eq(userId), anyString(), eq("senha-forte-123")))
                 .thenThrow(new RateLimitExceededException("Rate limit exceeded"));
 
         mockMvc.perform(post("/api/v1/data-export")
-                .with(authentication(authToken)))
+                .with(authentication(authToken))
+                .contentType("application/json")
+                .content("{\"password\": \"senha-forte-123\"}"))
                 .andExpect(status().isTooManyRequests());
     }
 
@@ -118,8 +124,9 @@ class DataExportControllerTest {
 
         mockMvc.perform(get("/api/v1/data-export/download/" + token))
                 .andExpect(status().isOk())
-                .andExpect(header().string("Content-Disposition", "attachment; filename=\"porquinho-data-export.json\""))
-                .andExpect(content().contentType("application/json"));
+                .andExpect(header().string("Content-Disposition",
+                        "attachment; filename=\"porquinho-dados-" + LocalDate.now(ZoneId.of("America/Sao_Paulo")) + ".zip\""))
+                .andExpect(content().contentType("application/zip"));
     }
 
     @Test
@@ -130,6 +137,23 @@ class DataExportControllerTest {
 
         mockMvc.perform(get("/api/v1/data-export/download/" + token))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void requestExportShouldReturn400WithoutAValidPassword() throws Exception {
+        for (String body : new String[] {"{\"password\": \"curta\"}", "{\"password\": \"\"}", "{\"password\": \"          \"}",
+                "{\"password\": \"" + "a".repeat(129) + "\"}", "{}"}) {
+            mockMvc.perform(post("/api/v1/data-export")
+                    .with(authentication(authToken))
+                    .contentType("application/json")
+                    .content(body))
+                    .andExpect(status().isBadRequest());
+        }
+        mockMvc.perform(post("/api/v1/data-export")
+                .with(authentication(authToken)))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(dataExportService, auditLogService);
     }
 
 }

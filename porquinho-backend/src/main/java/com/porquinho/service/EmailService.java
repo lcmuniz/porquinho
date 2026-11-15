@@ -58,10 +58,11 @@ public class EmailService {
         }
 
         try {
-            SimpleMailMessage message = newMessage(email, "Porquinho - Sua exportação de dados está pronta");
+            SimpleMailMessage message = newMessage(email, "Seu export de dados está pronto");
             message.setText(
                 "Olá!\n\n" +
                 "Sua exportação de dados do Porquinho está pronta para download.\n\n" +
+                "O arquivo é um ZIP protegido pela senha que você definiu. Abra no 7-Zip, WinRAR ou Keka.\n\n" +
                 "Link de download: " + downloadUrl + "\n\n" +
                 "IMPORTANTE: Este link expira em 24 horas e só pode ser usado uma vez.\n\n" +
                 "Se você não solicitou esta exportação, por favor ignore este email.\n\n" +

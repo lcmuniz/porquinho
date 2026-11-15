@@ -66,11 +66,11 @@ describe('DataExportView', () => {
     const wrapper = mount(DataExportView)
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.find('[aria-label="Carregando status da exportacao"]').exists()).toBe(true)
+    expect(wrapper.find('[aria-label="Carregando status da exportação"]').exists()).toBe(true)
 
     resolvePromise!(null)
     await flushPromises()
-    expect(wrapper.find('[aria-label="Carregando status da exportacao"]').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="Carregando status da exportação"]').exists()).toBe(false)
   })
 
   it('should render idle state when no previous export', async () => {
@@ -78,7 +78,7 @@ describe('DataExportView', () => {
     const wrapper = mount(DataExportView)
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Solicitar exportacao')
+    expect(wrapper.text()).toContain('Solicitar exportação')
     expect(wrapper.text()).toContain('Exportar Meus Dados')
   })
 
@@ -87,7 +87,7 @@ describe('DataExportView', () => {
     const wrapper = mount(DataExportView)
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Solicitar exportacao')
+    expect(wrapper.text()).toContain('Solicitar exportação')
     expect(wrapper.text()).toContain('Exportar Meus Dados')
   })
 
@@ -96,10 +96,10 @@ describe('DataExportView', () => {
     const wrapper = mount(DataExportView, { attachTo: document.body })
     await flushPromises()
 
-    await wrapper.find('[aria-label="Solicitar exportacao de dados"]').trigger('click')
+    await wrapper.find('[aria-label="Solicitar exportação de dados"]').trigger('click')
     await flushPromises()
 
-    expect(document.body.textContent).toContain('Confirmar exportacao de dados')
+    expect(document.body.textContent).toContain('Confirmar exportação de dados')
     wrapper.unmount()
   })
 
@@ -108,8 +108,8 @@ describe('DataExportView', () => {
     const wrapper = mount(DataExportView)
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Exportacao em andamento')
-    expect(wrapper.text()).toContain('Seus dados estao sendo coletados')
+    expect(wrapper.text()).toContain('Exportação em andamento')
+    expect(wrapper.text()).toContain('Seus dados estão sendo coletados')
   })
 
   it('should render ready state with download button', async () => {
@@ -117,7 +117,7 @@ describe('DataExportView', () => {
     const wrapper = mount(DataExportView)
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Exportacao pronta!')
+    expect(wrapper.text()).toContain('Exportação pronta!')
     expect(wrapper.text()).toContain('Baixar arquivo')
   })
 
@@ -126,7 +126,138 @@ describe('DataExportView', () => {
     const wrapper = mount(DataExportView)
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Nao foi possivel carregar o status da exportacao')
+    expect(wrapper.text()).toContain('Não foi possível carregar o status da exportação')
+  })
+
+  async function openDialogAndFill(wrapper: ReturnType<typeof mount>, pwd: string, confirm: string) {
+    await wrapper.find('[aria-label="Solicitar exportação de dados"]').trigger('click')
+    await flushPromises()
+    const pwdInput = document.getElementById('export-password') as HTMLInputElement
+    const confirmInput = document.getElementById('export-password-confirm') as HTMLInputElement
+    pwdInput.value = pwd
+    pwdInput.dispatchEvent(new Event('input'))
+    confirmInput.value = confirm
+    confirmInput.dispatchEvent(new Event('input'))
+    await flushPromises()
+  }
+
+  function exportButton() {
+    return Array.from(document.querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === 'Exportar',
+    ) as HTMLButtonElement
+  }
+
+  it('should ask for confirmation before any request', async () => {
+    mockGetExportStatus.mockResolvedValue(null)
+    const wrapper = mount(DataExportView, { attachTo: document.body })
+    await flushPromises()
+
+    await wrapper.find('[aria-label="Solicitar exportação de dados"]').trigger('click')
+    await flushPromises()
+
+    expect(document.body.textContent).toContain('Isso vai exportar TODOS os seus dados. Continuar?')
+    expect(document.body.textContent).toContain('7-Zip, WinRAR ou Keka')
+    expect(mockRequestExport).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('should keep Exportar disabled with a short password', async () => {
+    mockGetExportStatus.mockResolvedValue(null)
+    const wrapper = mount(DataExportView, { attachTo: document.body })
+    await flushPromises()
+
+    await openDialogAndFill(wrapper, 'curta', 'curta')
+
+    expect(exportButton().disabled).toBe(true)
+    expect(document.body.textContent).toContain('A senha precisa ter pelo menos 8 caracteres.')
+    wrapper.unmount()
+  })
+
+  it('should keep Exportar disabled when the confirmation differs', async () => {
+    mockGetExportStatus.mockResolvedValue(null)
+    const wrapper = mount(DataExportView, { attachTo: document.body })
+    await flushPromises()
+
+    await openDialogAndFill(wrapper, 'senha-forte-123', 'senha-forte-124')
+
+    expect(exportButton().disabled).toBe(true)
+    expect(document.body.textContent).toContain('As senhas não conferem.')
+    wrapper.unmount()
+  })
+
+  it('should keep Exportar disabled with only spaces and mark the fields invalid', async () => {
+    mockGetExportStatus.mockResolvedValue(null)
+    const wrapper = mount(DataExportView, { attachTo: document.body })
+    await flushPromises()
+
+    await openDialogAndFill(wrapper, '          ', '          ')
+
+    expect(exportButton().disabled).toBe(true)
+    expect(document.getElementById('export-password')?.getAttribute('aria-invalid')).toBe('true')
+    expect(document.getElementById('export-password-confirm')?.getAttribute('aria-invalid')).toBe('true')
+    expect(document.getElementById('export-password')?.getAttribute('maxlength')).toBe('128')
+    wrapper.unmount()
+  })
+
+  it('should clear both password fields when the dialog is cancelled', async () => {
+    mockGetExportStatus.mockResolvedValue(null)
+    const wrapper = mount(DataExportView, { attachTo: document.body })
+    await flushPromises()
+
+    await openDialogAndFill(wrapper, 'senha-forte-123', 'senha-forte-123')
+    expect(exportButton().disabled).toBe(false)
+    const cancel = Array.from(document.querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === 'Cancelar',
+    ) as HTMLButtonElement
+    cancel.click()
+    await flushPromises()
+
+    await wrapper.find('[aria-label="Solicitar exportação de dados"]').trigger('click')
+    await flushPromises()
+    expect((document.getElementById('export-password') as HTMLInputElement).value).toBe('')
+    expect((document.getElementById('export-password-confirm') as HTMLInputElement).value).toBe('')
+    expect(exportButton().disabled).toBe(true)
+    expect(mockRequestExport).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('should open the dialog from Tentar de novo on the failed card', async () => {
+    mockGetExportStatus.mockResolvedValue({ ...mockExportProcessing, status: 'FAILED' as const })
+    const wrapper = mount(DataExportView, { attachTo: document.body })
+    await flushPromises()
+
+    const retry = wrapper.findAll('button').find((b) => b.text() === 'Tentar de novo')!
+    await retry.trigger('click')
+    await flushPromises()
+
+    expect(document.body.textContent).toContain('Isso vai exportar TODOS os seus dados. Continuar?')
+    expect(mockRequestExport).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('should send the password and show processing', async () => {
+    mockGetExportStatus.mockResolvedValue(null)
+    mockRequestExport.mockResolvedValue(mockExportProcessing)
+    const wrapper = mount(DataExportView, { attachTo: document.body })
+    await flushPromises()
+
+    await openDialogAndFill(wrapper, 'senha-forte-123', 'senha-forte-123')
+    expect(exportButton().disabled).toBe(false)
+    exportButton().click()
+    await flushPromises()
+
+    expect(mockRequestExport).toHaveBeenCalledWith('senha-forte-123')
+    expect(wrapper.text()).toContain('Exportação em andamento')
+    wrapper.unmount()
+  })
+
+  it('should render failed state with a retry', async () => {
+    mockGetExportStatus.mockResolvedValue({ ...mockExportProcessing, status: 'FAILED' as const })
+    const wrapper = mount(DataExportView)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Não foi possível gerar o export. Tente de novo.')
+    expect(wrapper.text()).toContain('Tentar de novo')
   })
 
   it('should show rate limit error when requesting too frequently', async () => {
@@ -135,17 +266,11 @@ describe('DataExportView', () => {
     const wrapper = mount(DataExportView, { attachTo: document.body })
     await flushPromises()
 
-    // Open dialog
-    await wrapper.find('[aria-label="Solicitar exportacao de dados"]').trigger('click')
+    await openDialogAndFill(wrapper, 'senha-forte-123', 'senha-forte-123')
+    exportButton().click()
     await flushPromises()
 
-    // Click confirm in the teleported dialog
-    const allButtons = document.querySelectorAll('button')
-    const confirmBtn = Array.from(allButtons).find((b) => b.textContent?.trim() === 'Confirmar')
-    confirmBtn?.click()
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('Limite de exportacao atingido')
+    expect(wrapper.text()).toContain('Limite de exportação atingido')
     wrapper.unmount()
   })
 })

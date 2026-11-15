@@ -41,4 +41,9 @@ public class RateLimitService {
         // Check if count exceeds max attempts
         return count <= maxAttempts;
     }
+
+    /** Story 9.3: frees the slot again (e.g. a data export that ended FAILED can be retried at once). */
+    public void reset(String key) {
+        redisTemplate.delete("rate_limit:" + key);
+    }
 }

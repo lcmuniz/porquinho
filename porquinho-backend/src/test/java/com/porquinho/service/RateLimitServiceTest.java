@@ -14,6 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -34,7 +35,7 @@ class RateLimitServiceTest {
 
     @BeforeEach
     void setUp() {
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);  // reset() does not use it
         rateLimitService = new RateLimitService(redisTemplate);
     }
 
@@ -76,5 +77,12 @@ class RateLimitServiceTest {
 
         // Assert
         assertFalse(allowed);
+    }
+
+    @Test
+    void resetDeletesTheKey() {
+        rateLimitService.reset("data_export:u1");
+
+        verify(redisTemplate).delete("rate_limit:data_export:u1");
     }
 }

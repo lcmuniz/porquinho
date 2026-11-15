@@ -165,6 +165,7 @@ class DataExportServiceTest {
         ReflectionTestUtils.setField(dataExportService, "exportDirectory", System.getProperty("java.io.tmpdir") + "/porquinho-test-exports");
         ReflectionTestUtils.setField(dataExportService, "expirationHours", 24);
         ReflectionTestUtils.setField(dataExportService, "baseUrl", "http://localhost:8080");
+        ReflectionTestUtils.setField(dataExportService, "self", dataExportService);
     }
 
     @Test
@@ -181,7 +182,7 @@ class DataExportServiceTest {
         when(userSessionRepository.findAllByUserId(userId)).thenReturn(List.of());
         when(auditLogRepository.findByUserIdOrderByTimestampDesc(userId)).thenReturn(List.of());
 
-        var response = dataExportService.requestExport(userId, "127.0.0.1");
+        var response = dataExportService.requestExport(userId, "127.0.0.1", PASSWORD);
 
         assertNotNull(response);
         assertNotNull(response.getId());
@@ -194,7 +195,7 @@ class DataExportServiceTest {
         when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(false);
 
         assertThrows(RateLimitExceededException.class, () ->
-            dataExportService.requestExport(userId, "127.0.0.1"));
+            dataExportService.requestExport(userId, "127.0.0.1", PASSWORD));
 
         verify(dataExportRepository, never()).save(any());
     }
@@ -216,12 +217,6 @@ class DataExportServiceTest {
         when(auditLogRepository.findByUserIdOrderByTimestampDesc(userId)).thenReturn(List.of(log));
 
         Map<String, Object> data = dataExportService.collectUserData(userId);
-
-        // Verify metadata
-        @SuppressWarnings("unchecked")
-        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
-        assertEquals("1.0", metadata.get("data_version"));
-        assertEquals(userId.toString(), metadata.get("user_id"));
 
         // Verify user profile - sensitive fields excluded
         @SuppressWarnings("unchecked")
@@ -266,9 +261,7 @@ class DataExportServiceTest {
 
         Map<String, Object> data = dataExportService.collectUserData(userId);
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
-        assertTrue(((List<?>) metadata.get("exported_tables")).contains("subscriptions"));
+        assertTrue(exportedTables().contains("subscriptions"));
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> subs = (List<Map<String, Object>>) data.get("subscriptions");
@@ -336,9 +329,7 @@ class DataExportServiceTest {
 
         Map<String, Object> data = dataExportService.collectUserData(userId);
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
-        assertTrue(((List<?>) metadata.get("exported_tables")).contains("onboarding_progress"));
+        assertTrue(exportedTables().contains("onboarding_progress"));
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("onboarding_progress");
@@ -381,9 +372,7 @@ class DataExportServiceTest {
 
         Map<String, Object> data = dataExportService.collectUserData(userId);
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
-        assertTrue(((List<?>) metadata.get("exported_tables")).contains("accounts"));
+        assertTrue(exportedTables().contains("accounts"));
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("accounts");
@@ -436,9 +425,7 @@ class DataExportServiceTest {
 
         Map<String, Object> data = dataExportService.collectUserData(userId);
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
-        assertTrue(((List<?>) metadata.get("exported_tables")).contains("credit_cards"));
+        assertTrue(exportedTables().contains("credit_cards"));
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("credit_cards");
@@ -486,9 +473,7 @@ class DataExportServiceTest {
 
         Map<String, Object> data = dataExportService.collectUserData(userId);
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
-        assertTrue(((List<?>) metadata.get("exported_tables")).contains("categories"));
+        assertTrue(exportedTables().contains("categories"));
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("categories");
@@ -540,9 +525,7 @@ class DataExportServiceTest {
 
         Map<String, Object> data = dataExportService.collectUserData(userId);
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
-        assertTrue(((List<?>) metadata.get("exported_tables")).contains("goals"));
+        assertTrue(exportedTables().contains("goals"));
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("goals");
@@ -600,9 +583,7 @@ class DataExportServiceTest {
 
         Map<String, Object> data = dataExportService.collectUserData(userId);
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
-        assertTrue(((List<?>) metadata.get("exported_tables")).contains("account_balance_history"));
+        assertTrue(exportedTables().contains("account_balance_history"));
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("account_balance_history");
@@ -650,9 +631,7 @@ class DataExportServiceTest {
 
         Map<String, Object> data = dataExportService.collectUserData(userId);
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
-        assertTrue(((List<?>) metadata.get("exported_tables")).contains("transfers"));
+        assertTrue(exportedTables().contains("transfers"));
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("transfers");
@@ -700,9 +679,7 @@ class DataExportServiceTest {
 
         Map<String, Object> data = dataExportService.collectUserData(userId);
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
-        assertTrue(((List<?>) metadata.get("exported_tables")).contains("reconciliation_history"));
+        assertTrue(exportedTables().contains("reconciliation_history"));
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("reconciliation_history");
         assertEquals(2, rows.size());
@@ -752,9 +729,7 @@ class DataExportServiceTest {
 
         Map<String, Object> data = dataExportService.collectUserData(userId);
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
-        assertTrue(((List<?>) metadata.get("exported_tables")).contains("transaction_imports"));
+        assertTrue(exportedTables().contains("transaction_imports"));
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("transaction_imports");
         assertEquals(2, rows.size());
@@ -811,9 +786,7 @@ class DataExportServiceTest {
 
         Map<String, Object> data = dataExportService.collectUserData(userId);
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
-        assertTrue(((List<?>) metadata.get("exported_tables")).contains("transactions"));
+        assertTrue(exportedTables().contains("transactions"));
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("transactions");
         assertEquals(1, rows.size());
@@ -932,9 +905,7 @@ class DataExportServiceTest {
 
         Map<String, Object> data = dataExportService.collectUserData(userId);
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
-        assertTrue(((List<?>) metadata.get("exported_tables")).contains("ai_classification_history"));
+        assertTrue(exportedTables().contains("ai_classification_history"));
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("ai_classification_history");
         assertEquals(2, rows.size());
@@ -968,9 +939,7 @@ class DataExportServiceTest {
 
         Map<String, Object> data = dataExportService.collectUserData(userId);
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
-        assertTrue(((List<?>) metadata.get("exported_tables")).contains("user_classification_patterns"));
+        assertTrue(exportedTables().contains("user_classification_patterns"));
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("user_classification_patterns");
         Map<String, Object> first = rows.get(0);
@@ -997,9 +966,7 @@ class DataExportServiceTest {
 
         Map<String, Object> data = dataExportService.collectUserData(userId);
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
-        assertTrue(((List<?>) metadata.get("exported_tables")).contains("budget_allocations"));
+        assertTrue(exportedTables().contains("budget_allocations"));
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("budget_allocations");
         Map<String, Object> first = rows.get(0);
@@ -1025,9 +992,7 @@ class DataExportServiceTest {
 
         Map<String, Object> data = dataExportService.collectUserData(userId);
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
-        assertTrue(((List<?>) metadata.get("exported_tables")).contains("goal_allocations"));
+        assertTrue(exportedTables().contains("goal_allocations"));
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("goal_allocations");
         Map<String, Object> first = rows.get(0);
@@ -1053,9 +1018,7 @@ class DataExportServiceTest {
 
         Map<String, Object> data = dataExportService.collectUserData(userId);
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
-        assertTrue(((List<?>) metadata.get("exported_tables")).contains("goal_progress_history"));
+        assertTrue(exportedTables().contains("goal_progress_history"));
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("goal_progress_history");
         Map<String, Object> first = rows.get(0);
@@ -1082,9 +1045,7 @@ class DataExportServiceTest {
 
         Map<String, Object> data = dataExportService.collectUserData(userId);
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
-        assertTrue(((List<?>) metadata.get("exported_tables")).contains("budget_reallocations"));
+        assertTrue(exportedTables().contains("budget_reallocations"));
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("budget_reallocations");
         Map<String, Object> first = rows.get(0);
@@ -1236,9 +1197,7 @@ class DataExportServiceTest {
 
         Map<String, Object> data = dataExportService.collectUserData(userId);
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> metadata = (Map<String, Object>) data.get("metadata");
-        assertTrue(((List<?>) metadata.get("exported_tables")).contains("billing_transactions"));
+        assertTrue(exportedTables().contains("billing_transactions"));
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> payments = (List<Map<String, Object>>) data.get("billing_transactions");
@@ -1266,5 +1225,118 @@ class DataExportServiceTest {
         Map<String, Object> data = dataExportService.collectUserData(userId);
 
         assertEquals(List.of(), data.get("billing_transactions"));
+    }
+
+    // ---- Story 9.3: ZIP with one JSON per domain, AES-256 password, background job ----
+
+    private static final String PASSWORD = "senha-forte-123";
+
+    private static final List<String> ZIP_FILES = List.of("user_profile.json", "accounts.json", "transactions.json",
+        "categories.json", "budgets.json", "goals.json", "audit_log.json", "export_metadata.json");
+
+    private static List<String> exportedTables() {
+        return DataExportService.EXPORT_FILES.values().stream().flatMap(List::stream).toList();
+    }
+
+    @Test
+    void exportFilesCoverEveryCollectedTableExactlyOnce() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+
+        Set<String> collectedKeys = dataExportService.collectUserData(userId).keySet();
+        List<String> tables = exportedTables();
+
+        assertEquals(21, tables.size());
+        assertEquals(tables.size(), new HashSet<>(tables).size(), "a table appears in more than one file");
+        assertEquals(collectedKeys, new HashSet<>(tables.stream().map(DataExportService::dataKey).toList()));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void processExportShouldWriteAnEncryptedZipWithTheEightFiles() throws Exception {
+        DataExport export = createTestExport();
+        when(dataExportRepository.findById(export.getId())).thenReturn(Optional.of(export));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        Transaction removed = new Transaction();
+        removed.setId(UUID.randomUUID());
+        removed.setUserId(userId);
+        removed.setDeletedAt(OffsetDateTime.parse("2026-11-01T10:00:00Z"));
+        when(transactionRepository.findByUserIdOrdered(userId)).thenReturn(List.of(removed));
+        char[] password = PASSWORD.toCharArray();
+
+        dataExportService.processExport(export.getId(), password, "10.0.0.1");
+
+        assertEquals(ExportStatus.READY, export.getStatus());
+        assertTrue(export.getFilePath().endsWith(".zip"));
+        var order = inOrder(dataExportRepository, auditLogService);
+        order.verify(dataExportRepository).save(export);
+        order.verify(auditLogService).log("complete_data_export", userId, "10.0.0.1");
+        verify(rateLimitService, never()).reset(anyString());
+        verify(emailService).sendDataExportReady(eq("test@example.com"), contains(export.getDownloadToken().toString()));
+        assertArrayEquals(new char[PASSWORD.length()], password, "password must not outlive the job");
+
+        Path zipPath = Path.of(export.getFilePath());
+        try {
+            try (var zip = new net.lingala.zip4j.ZipFile(zipPath.toFile(), PASSWORD.toCharArray())) {
+                assertEquals(ZIP_FILES, zip.getFileHeaders().stream().map(h -> h.getFileName()).toList());
+                assertTrue(zip.getFileHeaders().stream().allMatch(h -> h.isEncrypted()
+                    && h.getEncryptionMethod() == net.lingala.zip4j.model.enums.EncryptionMethod.AES));
+
+                var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                Map<String, Object> transactions;
+                try (var in = zip.getInputStream(zip.getFileHeader("transactions.json"))) {
+                    transactions = mapper.readValue(in, Map.class);
+                }
+                assertEquals(Set.of("transactions", "transaction_imports", "ai_classification_history"), transactions.keySet());
+                assertEquals("2026-11-01T10:00Z",
+                    ((List<Map<String, Object>>) transactions.get("transactions")).get(0).get("deleted_at"));
+
+                Map<String, Object> userProfile;
+                try (var in = zip.getInputStream(zip.getFileHeader("user_profile.json"))) {
+                    userProfile = mapper.readValue(in, Map.class);
+                }
+                assertEquals("test@example.com", ((Map<String, Object>) userProfile.get("user_profile")).get("email"));
+                assertEquals(List.of(), userProfile.get("sessions"));
+
+                Map<String, Object> metadata;
+                try (var in = zip.getInputStream(zip.getFileHeader("export_metadata.json"))) {
+                    metadata = mapper.readValue(in, Map.class);
+                }
+                assertEquals("2.0", metadata.get("data_version"));
+                assertEquals(userId.toString(), metadata.get("user_id"));
+                assertNotNull(metadata.get("export_date"));
+                assertTrue(metadata.containsKey("schema_version"));
+                List<Map<String, Object>> files = (List<Map<String, Object>>) metadata.get("files");
+                assertEquals(ZIP_FILES.subList(0, 7), files.stream().map(f -> f.get("name")).toList());
+                assertEquals(List.of("audit_logs"), files.get(6).get("tables"));
+            }
+
+            // without the password (or with a wrong one) the content does not open
+            Path out = Files.createTempDirectory("porquinho-unzip");
+            assertThrows(net.lingala.zip4j.exception.ZipException.class, () ->
+                new net.lingala.zip4j.ZipFile(zipPath.toFile()).extractFile("accounts.json", out.toString()));
+            assertThrows(net.lingala.zip4j.exception.ZipException.class, () ->
+                new net.lingala.zip4j.ZipFile(zipPath.toFile(), "senha-errada".toCharArray())
+                    .extractFile("accounts.json", out.toString()));
+        } finally {
+            Files.deleteIfExists(zipPath);
+        }
+    }
+
+    @Test
+    void processExportShouldMarkFailedOnAnyError() {
+        DataExport export = createTestExport();
+        when(dataExportRepository.findById(export.getId())).thenReturn(Optional.of(export));
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());  // ResourceNotFoundException, not an IOException
+        char[] password = PASSWORD.toCharArray();
+
+        dataExportService.processExport(export.getId(), password, "10.0.0.1");
+
+        assertEquals(ExportStatus.FAILED, export.getStatus());
+        assertNull(export.getFilePath());
+        verify(dataExportRepository).save(export);
+        verify(auditLogService, never()).log(eq("complete_data_export"), any(), any());
+        verify(emailService, never()).sendDataExportReady(any(), any());
+        assertArrayEquals(new char[PASSWORD.length()], password);
+        verify(rateLimitService).reset("data_export:" + userId);
     }
 }

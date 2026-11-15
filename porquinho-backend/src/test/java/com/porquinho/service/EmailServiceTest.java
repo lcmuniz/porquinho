@@ -50,6 +50,22 @@ class EmailServiceTest {
     }
 
     @Test
+    void dataExportReadySubjectAndLink() {
+        // Story 9.3: fixed subject; the text points to the link and to the password-protected ZIP
+        JavaMailSender sender = mock(JavaMailSender.class);
+        EmailService service = serviceWith(sender, "x@example.com");
+
+        service.sendDataExportReady("user@example.com", "https://api.example.com/api/v1/data-export/download/abc");
+
+        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(sender).send(captor.capture());
+        assertThat(captor.getValue().getSubject()).isEqualTo("Seu export de dados está pronto");
+        assertThat(captor.getValue().getText())
+            .contains("https://api.example.com/api/v1/data-export/download/abc")
+            .contains("senha");
+    }
+
+    @Test
     void trialReminderSevenDaysText() {
         JavaMailSender sender = mock(JavaMailSender.class);
         EmailService service = serviceWith(sender, "x@example.com");
