@@ -208,18 +208,16 @@ describe('DashboardLayer3', () => {
 
     expect(mockGetDetails).toHaveBeenCalledTimes(1)
     expect(w.find('[data-testid="details-period-error"]').exists()).toBe(true)
-    expect(w.get('[data-testid="details-export"]').attributes('disabled')).toBeDefined()
 
     await w.get('[data-testid="details-to"]').setValue('2026-12-15')
     await flushPromises()
     expect(lastFilter()).toMatchObject({ from: '2026-11-30', to: '2026-12-15' })
   })
 
-  it('sem resultado mostra a mensagem e desabilita o export', async () => {
+  it('sem resultado mostra a mensagem', async () => {
     mockGetDetails.mockResolvedValue(page([]))
     const w = await mountLayer()
     expect(w.get('[data-testid="details-empty"]').text()).toBe('Nenhuma transação encontrada')
-    expect(w.get('[data-testid="details-export"]').attributes('disabled')).toBeDefined()
   })
 
   it('falha da API mostra o erro só na Camada 3 e tenta de novo', async () => {
@@ -266,20 +264,33 @@ describe('DashboardLayer3', () => {
     expect(w.emitted('transaction-saved')).toBeUndefined()
   })
 
-  it('exporta o CSV com os mesmos filtros e baixa o arquivo', async () => {
+  it('o export abre o diálogo com o filtro da tela, sem a busca, e avisa quantas transações saíram', async () => {
     const blob = new Blob(['x'])
-    mockExport.mockResolvedValue(blob)
+    mockExport.mockResolvedValue({ blob, count: 1 })
     const createObjectURL = vi.fn(() => 'blob:csv')
     vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL: vi.fn() })
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    localStorage.setItem(
+      KEY,
+      JSON.stringify({ preset: 'last-month', categoryIds: ['c1'], targets: ['card:k1'], q: 'mercado', sort: 'amount', dir: 'asc' }),
+    )
     const w = await mountLayer()
 
     await w.get('[data-testid="details-export"]').trigger('click')
     await flushPromises()
+    expect(document.body.querySelector<HTMLSelectElement>('[data-testid="export-period"]')!.value).toBe('custom')
+    expect(document.body.querySelector<HTMLInputElement>('[data-testid="export-from"]')!.value).toBe('2026-10-01')
+    document.body.querySelector<HTMLFormElement>('[data-testid="export-form"]')!.dispatchEvent(new Event('submit'))
+    await flushPromises()
 
-    expect(mockExport).toHaveBeenCalledExactlyOnceWith(THIS_MONTH)
+    expect(mockExport).toHaveBeenCalledExactlyOnceWith(
+      { from: '2026-10-01', to: '2026-10-31', categoryIds: ['c1'], targets: ['card:k1'], q: '', sort: 'date', dir: 'desc' },
+      { includeFutureInstallments: false, includeDeleted: false },
+    )
     expect(createObjectURL).toHaveBeenCalledWith(blob)
     expect(click).toHaveBeenCalledOnce()
+    expect(w.get('[data-testid="details-success"]').text()).toBe('Relatório exportado: 1 transação')
+    expect(document.body.querySelector('[data-testid="export-dialog"]')).toBeNull()
     click.mockRestore()
     vi.unstubAllGlobals()
   })

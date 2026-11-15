@@ -6,8 +6,11 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.cors.CorsConfiguration;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -61,5 +64,18 @@ class SecurityConfigTest {
         mockMvc.perform(get("/actuator/health")
                 .header("Origin", "http://localhost:5173"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void corsExposesTheExportCountToTheFrontend() {
+        // SecurityConfig is @Profile("!test"), so its CORS source is checked directly: without the exposed header the
+        // cross-origin frontend reads no X-Export-Count and shows "0 transações" (Story 9.1)
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/dashboard/layer3/export");
+        request.addHeader("Origin", "http://localhost:5173");
+        CorsConfiguration config = new SecurityConfig(null, null).corsConfigurationSource().getCorsConfiguration(request);
+
+        assertThat(config).isNotNull();
+        assertThat(config.checkOrigin("http://localhost:5173")).isEqualTo("http://localhost:5173");
+        assertThat(config.getExposedHeaders()).contains("X-Export-Count");
     }
 }

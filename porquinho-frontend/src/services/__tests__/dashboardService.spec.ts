@@ -57,14 +57,25 @@ describe('dashboardService', () => {
     )
   })
 
-  it('exportDetails pede o CSV como blob, sem página', async () => {
+  it('exportDetails pede o CSV como blob, sem página, e devolve a contagem do cabeçalho', async () => {
     const blob = new Blob(['x'])
-    mockGet.mockResolvedValue({ data: blob })
+    mockGet.mockResolvedValue({ data: blob, headers: { 'x-export-count': '42' } })
     const filter = { from: '2026-11-01', to: '2026-11-30', categoryIds: [], targets: [], q: '', sort: 'date' as const, dir: 'desc' as const }
-    await expect(exportDetails(filter)).resolves.toBe(blob)
+    await expect(exportDetails(filter)).resolves.toEqual({ blob, count: 42 })
     const [url, config] = mockGet.mock.calls[0]!
     expect(url).toBe('/api/v1/dashboard/layer3/export')
     expect(config.responseType).toBe('blob')
     expect((config.params as URLSearchParams).toString()).toBe('from=2026-11-01&to=2026-11-30&sort=date%2Cdesc')
+  })
+
+  it('exportDetails manda as opções de parcelas futuras e excluídas só quando ligadas', async () => {
+    mockGet.mockResolvedValue({ data: new Blob(['x']), headers: { 'x-export-count': '0' } })
+    const filter = { from: '0001-01-01', to: '9999-12-31', categoryIds: [], targets: [], q: '', sort: 'date' as const, dir: 'desc' as const }
+    await expect(exportDetails(filter, { includeFutureInstallments: true, includeDeleted: true })).resolves.toMatchObject({
+      count: 0,
+    })
+    expect((mockGet.mock.calls[0]![1].params as URLSearchParams).toString()).toBe(
+      'from=0001-01-01&to=9999-12-31&sort=date%2Cdesc&includeFutureInstallments=true&includeDeleted=true',
+    )
   })
 })

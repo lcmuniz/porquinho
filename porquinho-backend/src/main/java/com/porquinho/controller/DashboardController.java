@@ -6,7 +6,9 @@ import com.porquinho.dto.DashboardLayer3Response;
 import com.porquinho.dto.FinancialHealthResponse;
 import com.porquinho.dto.TransactionResponse;
 import com.porquinho.service.DashboardDetailsService;
+import com.porquinho.service.AuditLogService;
 import com.porquinho.service.DashboardService;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +19,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 
@@ -27,10 +31,13 @@ public class DashboardController {
 
     private final DashboardService dashboardService;
     private final DashboardDetailsService detailsService;
+    private final AuditLogService auditLogService;
 
-    public DashboardController(DashboardService dashboardService, DashboardDetailsService detailsService) {
+    public DashboardController(DashboardService dashboardService, DashboardDetailsService detailsService,
+                               AuditLogService auditLogService) {
         this.dashboardService = dashboardService;
         this.detailsService = detailsService;
+        this.auditLogService = auditLogService;
     }
 
     /** Story 7.2: the financial health traffic light of the current month. */
@@ -73,7 +80,11 @@ public class DashboardController {
         return ResponseEntity.ok(detailsService.details(UUID.fromString(jwt.getSubject()), filter, page));
     }
 
-    /** Story 7.6: the whole filtered list (not just a page), same order, as CSV. */
+    /**
+     * Story 7.6: the whole filtered list (not just a page), same order, as CSV. Story 9.1: the flags add future
+     * installments and deleted rows; each export is audited ("transaction_export") and its row count goes in
+     * X-Export-Count.
+     */
     @GetMapping(value = "/layer3/export", produces = "text/csv")
     public ResponseEntity<String> layer3Export(@AuthenticationPrincipal Jwt jwt,
             @RequestParam(required = false) String from, @RequestParam(required = false) String to,
@@ -81,12 +92,21 @@ public class DashboardController {
             @RequestParam(defaultValue = "false") boolean uncategorized,
             @RequestParam(required = false) List<UUID> accountIds,
             @RequestParam(required = false) List<UUID> creditCardIds,
-            @RequestParam(required = false) String q, @RequestParam(required = false) String sort) {
+            @RequestParam(required = false) String q, @RequestParam(required = false) String sort,
+            @RequestParam(defaultValue = "false") boolean includeFutureInstallments,
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
+            HttpServletRequest request) {
+        UUID userId = UUID.fromString(jwt.getSubject());
         DashboardDetailsService.DetailsFilter filter = new DashboardDetailsService.DetailsFilter(from, to, categoryIds, uncategorized,
             accountIds, creditCardIds, q, sort);
+        DashboardDetailsService.CsvExport export = detailsService.detailsCsv(userId, filter,
+            new DashboardDetailsService.ExportOptions(includeFutureInstallments, includeDeleted));
+        auditLogService.log("transaction_export", userId, request.getRemoteAddr(), "{\"count\":" + export.count() + "}");
+        LocalDate today = LocalDate.now(ZoneId.of("America/Sao_Paulo"));
         return ResponseEntity.ok()
             .contentType(new MediaType("text", "csv", java.nio.charset.StandardCharsets.UTF_8))
-            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"transacoes.csv\"")
-            .body(detailsService.detailsCsv(UUID.fromString(jwt.getSubject()), filter));
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"transacoes_" + today + ".csv\"")
+            .header("X-Export-Count", String.valueOf(export.count()))
+            .body(export.csv());
     }
 }

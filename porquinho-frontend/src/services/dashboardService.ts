@@ -56,11 +56,20 @@ export async function getDetails(filter: DetailsFilter, page: number): Promise<D
   return response.data
 }
 
-/** Story 7.6: o CSV de todo o resultado filtrado, na mesma ordem. */
-export async function exportDetails(filter: DetailsFilter): Promise<Blob> {
-  const response = await api.get<Blob>('/api/v1/dashboard/layer3/export', {
-    params: detailsParams(filter),
-    responseType: 'blob',
-  })
-  return response.data
+/**
+ * Story 7.6: o CSV de todo o resultado filtrado, na mesma ordem. Story 9.1: as opções incluem parcelas futuras e
+ * excluídas; `count` é o número de transações do arquivo (cabeçalho X-Export-Count).
+ */
+export async function exportDetails(
+  filter: DetailsFilter,
+  options: { includeFutureInstallments: boolean; includeDeleted: boolean } = {
+    includeFutureInstallments: false,
+    includeDeleted: false,
+  },
+): Promise<{ blob: Blob; count: number }> {
+  const params = detailsParams(filter)
+  if (options.includeFutureInstallments) params.set('includeFutureInstallments', 'true')
+  if (options.includeDeleted) params.set('includeDeleted', 'true')
+  const response = await api.get<Blob>('/api/v1/dashboard/layer3/export', { params, responseType: 'blob' })
+  return { blob: response.data, count: Number(response.headers?.['x-export-count'] ?? 0) }
 }

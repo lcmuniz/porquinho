@@ -83,6 +83,17 @@ public class DashboardDetailsService {
         }
     }
 
+    /**
+     * Story 9.1: what the CSV may add to the base of /transacoes. Each flag only lifts its own rule (future installments,
+     * deleted rows); both off is the same list as the layer 3.
+     */
+    public record ExportOptions(boolean futureInstallments, boolean deleted) {
+        public static final ExportOptions NONE = new ExportOptions(false, false);
+    }
+
+    /** Story 9.1: the CSV text and how many transactions it has (header not counted). */
+    public record CsvExport(String csv, int count) {}
+
     /** Story 7.6: page {@code page} (0-based, 50 rows) of the filtered list, same base as /transacoes. */
     @Transactional(readOnly = true)
     public DashboardLayer3Response details(UUID userId, DetailsFilter filter, int page) {
@@ -92,7 +103,7 @@ public class DashboardDetailsService {
     }
 
     private DashboardLayer3Response computeDetails(UUID userId, DetailsFilter filter, int page) {
-        Page<Transaction> rows = transactionRepository.findAll(detailsSpec(userId, filter),
+        Page<Transaction> rows = transactionRepository.findAll(detailsSpec(userId, filter, ExportOptions.NONE),
             PageRequest.of(page, DETAILS_PAGE_SIZE));
         return new DashboardLayer3Response(transactionService.toResponses(userId, rows.getContent()), page,
             rows.getTotalElements(), rows.getTotalPages());
@@ -118,17 +129,18 @@ public class DashboardDetailsService {
 
     /**
      * Story 7.6: every row of the filtered list in the same order, as CSV for Excel pt-BR (BOM, ";", decimal comma).
-     * The value is signed (debit negative); origin is the import or a manual entry.
+     * The value is signed (debit negative); origin is the import or a manual entry. Story 9.1: {@code options} may add
+     * future installments and deleted rows, flagged in the columns Parcelado and Excluída.
      */
     @Transactional(readOnly = true)
-    public String detailsCsv(UUID userId, DetailsFilter filter) {
-        List<Transaction> rows = transactionRepository.findAll(detailsSpec(userId, filter));
+    public CsvExport detailsCsv(UUID userId, DetailsFilter filter, ExportOptions options) {
+        List<Transaction> rows = transactionRepository.findAll(detailsSpec(userId, filter, options));
         List<TransactionResponse> responses = transactionService.toResponses(userId, rows);
         Map<UUID, String> targets = new HashMap<>();
         accountRepository.findByUserIdOrderByCreatedAtAsc(userId).forEach(a -> targets.put(a.getId(), a.getAccountName()));
         creditCardRepository.findByUserIdOrderByCreatedAtAsc(userId).forEach(c -> targets.put(c.getId(), c.getCardName()));
 
-        StringBuilder csv = new StringBuilder("﻿Data;Descrição;Valor;Tipo;Categoria;Conta;Pix;Parcela;Origem\r\n");
+        StringBuilder csv = new StringBuilder("﻿Data;Descrição;Valor;Tipo;Categoria;Conta;Pix;Parcelado;Parcela;Origem;Excluída\r\n");
         for (int i = 0; i < rows.size(); i++) {
             Transaction row = rows.get(i);
             TransactionResponse r = responses.get(i);
@@ -142,11 +154,13 @@ public class DashboardDetailsService {
                 csvText(categoryLabel(row, r.category())),
                 csvText(targets.getOrDefault(target, "")),
                 row.isPix() ? "Sim" : "Não",
+                row.isInstallment() ? "Sim" : "Não",
                 row.isInstallment() && row.getInstallmentNumber() != null && row.getInstallmentTotal() != null
                     ? row.getInstallmentNumber() + "/" + row.getInstallmentTotal() : "",
-                row.getImportId() != null ? "Importação" : "Manual")).append("\r\n");
+                row.getImportId() != null ? "Importação" : "Manual",
+                row.getDeletedAt() != null ? "Sim" : "Não")).append("\r\n");
         }
-        return csv.toString();
+        return new CsvExport(csv.toString(), rows.size());
     }
 
     /** Same label as /transacoes: "Grupo › Categoria", card payments and uncategorized by name. */
@@ -167,7 +181,7 @@ public class DashboardDetailsService {
     }
 
     /** Base of /transacoes (findConfirmedBetween) plus the optional filters; the order is skipped on the count query. */
-    private Specification<Transaction> detailsSpec(UUID userId, DetailsFilter f) {
+    private Specification<Transaction> detailsSpec(UUID userId, DetailsFilter f, ExportOptions options) {
         LocalDate today = LocalDate.now(clock.withZone(SAO_PAULO));
         LocalDate from = date(f.from(), today.withDayOfMonth(1), "from");
         LocalDate to = date(f.to(), today.withDayOfMonth(today.lengthOfMonth()), "to");
@@ -185,8 +199,8 @@ public class DashboardDetailsService {
             List<Predicate> where = new ArrayList<>();
             where.add(cb.equal(root.get("userId"), userId));
             where.add(cb.equal(root.get("reviewStatus"), Transaction.ReviewStatus.CONFIRMED));
-            where.add(cb.isFalse(root.get("futureInstallment")));
-            where.add(cb.isNull(root.get("deletedAt")));
+            if (!options.futureInstallments()) where.add(cb.isFalse(root.get("futureInstallment")));
+            if (!options.deleted()) where.add(cb.isNull(root.get("deletedAt")));
             where.add(cb.between(root.get("transactionDate"), from, to));
             List<Predicate> categories = new ArrayList<>();
             if (!f.categoryIds().isEmpty()) categories.add(root.get("categoryId").in(f.categoryIds()));

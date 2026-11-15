@@ -3,7 +3,9 @@ package com.porquinho.service;
 import com.porquinho.dto.DashboardLayer3Response;
 import com.porquinho.dto.TransactionResponse;
 import com.porquinho.exception.BadRequestException;
+import com.porquinho.service.DashboardDetailsService.CsvExport;
 import com.porquinho.service.DashboardDetailsService.DetailsFilter;
+import com.porquinho.service.DashboardDetailsService.ExportOptions;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -237,17 +239,91 @@ class DashboardDetailsIntegrationTest {
         UUID payment = confirmed(account, null, null, DAY, "Fatura", "300.00");
         jdbc.update("UPDATE transactions SET kind = 'CARD_PAYMENT' WHERE id = ?", payment);
 
-        String csv = detailsService.detailsCsv(userId, filter(null, false, null, null, null, "amount,desc"));
+        CsvExport export = detailsService.detailsCsv(userId, filter(null, false, null, null, null, "amount,desc"),
+            ExportOptions.NONE);
 
-        String[] lines = csv.split("\r\n");
-        assertThat(lines[0]).isEqualTo("﻿Data;Descrição;Valor;Tipo;Categoria;Conta;Pix;Parcela;Origem");
+        String[] lines = export.csv().split("\r\n");
+        assertThat(lines[0]).isEqualTo("﻿Data;Descrição;Valor;Tipo;Categoria;Conta;Pix;Parcelado;Parcela;Origem;Excluída");
         assertThat(lines).hasSize(65);
+        assertThat(export.count()).isEqualTo(64);
         String date = DAY.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"));
-        assertThat(lines[1]).isEqualTo(date + ";\"Loja; \"\"Boa\"\"\";-1234,50;Saída;Não classificado;Roxinho;Sim;2/5;Manual");
-        assertThat(lines[2]).isEqualTo(date + ";Importada;-500,00;Saída;Essenciais › Mercado;Nubank;Não;;Importação");
-        assertThat(lines[3]).isEqualTo(date + ";Fatura;-300,00;Saída;Pagamento de fatura;Nubank;Não;;Manual");
-        assertThat(lines[4]).isEqualTo(date + ";'=HYPERLINK(1);7,00;Entrada;Essenciais › Lazer;Nubank;Não;;Manual");
+        assertThat(lines[1]).isEqualTo(date + ";\"Loja; \"\"Boa\"\"\";-1234,50;Saída;Não classificado;Roxinho;Sim;Sim;2/5;Manual;Não");
+        assertThat(lines[2]).isEqualTo(date + ";Importada;-500,00;Saída;Essenciais › Mercado;Nubank;Não;Não;;Importação;Não");
+        assertThat(lines[3]).isEqualTo(date + ";Fatura;-300,00;Saída;Pagamento de fatura;Nubank;Não;Não;;Manual;Não");
+        assertThat(lines[4]).isEqualTo(date + ";'=HYPERLINK(1);7,00;Entrada;Essenciais › Lazer;Nubank;Não;Não;;Manual;Não");
         assertThat(lines[5]).startsWith(date + ";Compra ").contains(";-1,00;Saída;Essenciais › Mercado;Nubank;");
+    }
+
+    @Test
+    void theExportFlagsOnlyLiftTheirOwnRule() {
+        confirmed(account, null, food, DAY, "Normal", "1.00");
+        UUID future = row(userId, null, card, food, DAY.plusMonths(2), "Parcelada", "10.00", "DEBIT", "CONFIRMED", true);
+        jdbc.update("UPDATE transactions SET is_installment = TRUE, installment_number = 3, installment_total = 10 "
+            + "WHERE id = ?", future);
+        UUID removed = confirmed(account, null, food, DAY, "Removida", "2.00");
+        jdbc.update("UPDATE transactions SET deleted_at = NOW() WHERE id = ?", removed);
+        row(userId, account, null, food, DAY, "Pendente", "3.00", "DEBIT", "PENDING", false);
+        UUID other = newUser();
+        UUID otherAccount = newAccount(other, "Itaú");
+        UUID otherRemoved = row(other, otherAccount, null, null, DAY, "Do outro", "4.00", "DEBIT", "CONFIRMED", true);
+        jdbc.update("UPDATE transactions SET deleted_at = NOW() WHERE id = ?", otherRemoved);
+        // "Tudo": the widest dates LocalDate and PostgreSQL take
+        DetailsFilter all = new DetailsFilter("0001-01-01", "9999-12-31", null, false, null, null, null, null);
+
+        CsvExport none = detailsService.detailsCsv(userId, all, ExportOptions.NONE);
+        assertThat(none.count()).isEqualTo(1);
+        assertThat(none.csv()).contains(";Normal;").doesNotContain("Parcelada", "Removida", "Pendente", "Do outro");
+
+        CsvExport futures = detailsService.detailsCsv(userId, all, new ExportOptions(true, false));
+        assertThat(futures.count()).isEqualTo(2);
+        String date = DAY.plusMonths(2).format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"));
+        assertThat(futures.csv()).contains(date + ";Parcelada;-10,00;Saída;Essenciais › Mercado;Roxinho;Não;Sim;3/10;Manual;Não\r\n")
+            .doesNotContain("Removida");
+
+        CsvExport deleted = detailsService.detailsCsv(userId, all, new ExportOptions(false, true));
+        assertThat(deleted.count()).isEqualTo(2);
+        assertThat(deleted.csv()).contains(";Removida;-2,00;Saída;Essenciais › Mercado;Nubank;Não;Não;;Manual;Sim\r\n")
+            .doesNotContain("Parcelada");
+
+        CsvExport both = detailsService.detailsCsv(userId, all, new ExportOptions(true, true));
+        assertThat(both.count()).isEqualTo(3);
+        assertThat(both.csv()).doesNotContain("Pendente", "Do outro");
+    }
+
+    @Test
+    void anEmptyPeriodIsJustTheHeader() {
+        CsvExport export = detailsService.detailsCsv(userId, filter(null, false, null, null, null, null),
+            new ExportOptions(true, true));
+
+        assertThat(export.count()).isZero();
+        assertThat(export.csv()).isEqualTo("﻿Data;Descrição;Valor;Tipo;Categoria;Conta;Pix;Parcelado;Parcela;Origem;Excluída\r\n");
+    }
+
+    @Test
+    void tenThousandRowsExportEverythingInUnderFiveSeconds() {
+        List<Object[]> batch = new ArrayList<>();
+        for (int i = 0; i < 10_000; i++) {
+            batch.add(new Object[] {UUID.randomUUID(), userId, account, i % 2 == 0 ? food : fun,
+                DAY.minusDays(i % 700), "Compra " + i, "Compra " + i, BigDecimal.valueOf(i + 1, 2)});
+        }
+        jdbc.batchUpdate("INSERT INTO transactions (id, user_id, account_id, category_id, transaction_date, description, "
+            + "original_description, amount, transaction_type, kind, review_status, is_future_installment) "
+            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'DEBIT', 'REGULAR', 'CONFIRMED', FALSE)", batch);
+        DetailsFilter all = new DetailsFilter("0001-01-01", "9999-12-31", null, false, null, null, null, null);
+        ExportOptions flags = new ExportOptions(true, true);
+        detailsService.detailsCsv(userId, all, flags); // warm-up
+
+        // best of 3 runs: one slow run on a busy CI runner is noise, not the query
+        long millis = Long.MAX_VALUE;
+        CsvExport export = null;
+        for (int run = 0; run < 3; run++) {
+            long start = System.nanoTime();
+            export = detailsService.detailsCsv(userId, all, flags);
+            millis = Math.min(millis, (System.nanoTime() - start) / 1_000_000);
+        }
+
+        assertThat(export.count()).isEqualTo(10_000);
+        assertThat(millis).isLessThan(5000);
     }
 
     @Test

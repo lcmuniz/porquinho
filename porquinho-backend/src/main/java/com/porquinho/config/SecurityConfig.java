@@ -82,6 +82,8 @@ public class SecurityConfig {
         ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
+        // Story 9.1: the frontend is cross-origin and reads the CSV row count from this header
+        config.setExposedHeaders(List.of("X-Export-Count"));
         config.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

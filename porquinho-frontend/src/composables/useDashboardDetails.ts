@@ -1,12 +1,12 @@
 import { computed, ref, watch } from 'vue'
 import { useLocalStorage, watchDebounced } from '@vueuse/core'
 import type { MultiSelectOption } from '@/components/common/MultiSelect.vue'
-import { todaySaoPaulo } from '@/lib/date'
-import { downloadBlob } from '@/lib/download'
+import { monthBounds } from '@/lib/date'
+import { categoryFilterOptions, targetFilterOptions } from '@/lib/transactionLabels'
 import { listAccounts } from '@/services/accountService'
 import { listCards } from '@/services/cardService'
 import { listCategories } from '@/services/categoryService'
-import { exportDetails, getDetails } from '@/services/dashboardService'
+import { getDetails } from '@/services/dashboardService'
 import { useAuthStore } from '@/stores/auth'
 import type { Account } from '@/types/account'
 import type { Category } from '@/types/category'
@@ -15,21 +15,13 @@ import type { DashboardDetails, DetailsFilter, DetailsSortField } from '@/types/
 
 /**
  * Story 7.6 (retro Epic 7 A6/F5): filtros da Camada 3 guardados por usuário no localStorage, opções dos filtros,
- * carga paginada com ordenação e export CSV do resultado inteiro.
+ * carga paginada com ordenação. O export CSV é o TransactionExportDialog (Story 9.1).
  */
 export type Preset = 'this-month' | 'last-month' | 'last-3-months' | 'custom'
 
 /** Direção do primeiro clique em cada cabeçalho. */
 const DEFAULT_DIR: Record<DetailsSortField, 'asc' | 'desc'> = { date: 'desc', amount: 'desc', category: 'asc' }
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
-
-/** Primeiro e último dia do mês `delta` meses a partir do atual (São Paulo). */
-function monthBounds(delta: number): [string, string] {
-  const [year, month] = todaySaoPaulo().split('-').map(Number)
-  const first = new Date(Date.UTC(year!, month! - 1 + delta, 1))
-  const last = new Date(Date.UTC(year!, month! + delta, 0))
-  return [first.toISOString().slice(0, 10), last.toISOString().slice(0, 10)]
-}
 
 export function useDashboardDetails() {
   const authStore = useAuthStore()
@@ -63,8 +55,6 @@ export function useDashboardDetails() {
   const loading = ref(false)
   const error = ref(false)
   const page = ref(0)
-  const exporting = ref(false)
-  const exportError = ref(false)
 
   /** O período do filtro, ou null quando o personalizado é inválido (não consulta). */
   const period = computed<{ from: string; to: string } | null>(() => {
@@ -82,8 +72,6 @@ export function useDashboardDetails() {
     return { ...period.value, categoryIds: s.categoryIds, targets: s.targets, q: s.q, sort: s.sort, dir: s.dir }
   })
 
-  const canExport = computed(() => !!filter.value && !!details.value && details.value.totalItems > 0)
-
   const sortChoice = computed({
     get: () => `${stored.value.sort},${stored.value.dir}`,
     set: (value: string) => {
@@ -93,24 +81,8 @@ export function useDashboardDetails() {
     },
   })
 
-  const categoryOptions = computed<MultiSelectOption[]>(() => {
-    const byName = (a: Category, b: Category) => a.categoryName.localeCompare(b.categoryName, 'pt-BR')
-    const parents = categories.value.filter((c) => c.parentCategoryId === null).sort(byName)
-    return [
-      { value: 'uncategorized', label: 'Não classificado' },
-      ...parents.flatMap((parent) =>
-        categories.value
-          .filter((c) => c.parentCategoryId === parent.id)
-          .sort(byName)
-          .map((c) => ({ value: c.id, label: c.categoryName, group: parent.categoryName })),
-      ),
-    ]
-  })
-
-  const targetOptions = computed<MultiSelectOption[]>(() => [
-    ...accounts.value.map((a) => ({ value: `account:${a.id}`, label: a.accountName, group: 'Contas' })),
-    ...cards.value.map((c) => ({ value: `card:${c.id}`, label: c.cardName, group: 'Cartões' })),
-  ])
+  const categoryOptions = computed<MultiSelectOption[]>(() => categoryFilterOptions(categories.value))
+  const targetOptions = computed<MultiSelectOption[]>(() => targetFilterOptions(accounts.value, cards.value))
 
   function ariaSort(field: DetailsSortField) {
     if (stored.value.sort !== field) return 'none'
@@ -191,21 +163,6 @@ export function useDashboardDetails() {
     }
   }
 
-  /** Excel pt-BR: o backend já manda `;`, vírgula decimal e BOM; aqui só baixa. */
-  async function exportCsv() {
-    const f = filter.value
-    if (!f || exporting.value) return
-    exporting.value = true
-    exportError.value = false
-    try {
-      downloadBlob(await exportDetails(f), `transacoes-${f.from}-a-${f.to}.csv`)
-    } catch {
-      exportError.value = true
-    } finally {
-      exporting.value = false
-    }
-  }
-
   return {
     stored,
     qInput,
@@ -218,11 +175,8 @@ export function useDashboardDetails() {
     loading,
     error,
     page,
-    exporting,
-    exportError,
     period,
     filter,
-    canExport,
     sortChoice,
     categoryOptions,
     targetOptions,
@@ -232,6 +186,5 @@ export function useDashboardDetails() {
     load,
     goTo,
     loadOptions,
-    exportCsv,
   }
 }

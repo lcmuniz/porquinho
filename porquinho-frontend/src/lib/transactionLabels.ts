@@ -1,3 +1,4 @@
+import type { MultiSelectOption } from '@/components/common/MultiSelect.vue'
 import { plural } from '@/lib/plural'
 import type { Account } from '@/types/account'
 import type { Category } from '@/types/category'
@@ -69,4 +70,27 @@ export function categoryOptionGroups(categories: Category[]): { id: string; name
       children: categories.filter((category) => category.parentCategoryId === parent.id).sort(byName),
     }))
     .filter((group) => group.children.length > 0)
+}
+
+/** Story 7.6/9.1: opções de categoria dos filtros, "Não classificado" primeiro e as filhas sob o grupo, A-Z. */
+export function categoryFilterOptions(categories: Category[]): MultiSelectOption[] {
+  const byName = (a: Category, b: Category) => a.categoryName.localeCompare(b.categoryName, 'pt-BR')
+  const parents = categories.filter((c) => c.parentCategoryId === null).sort(byName)
+  return [
+    { value: 'uncategorized', label: 'Não classificado' },
+    ...parents.flatMap((parent) =>
+      categories
+        .filter((c) => c.parentCategoryId === parent.id)
+        .sort(byName)
+        .map((c) => ({ value: c.id, label: c.categoryName, group: parent.categoryName })),
+    ),
+  ]
+}
+
+/** Story 7.6/9.1: opções de conta e cartão dos filtros ("account:id" / "card:id"). */
+export function targetFilterOptions(accounts: Account[], cards: CreditCard[]): MultiSelectOption[] {
+  return [
+    ...accounts.map((a) => ({ value: `account:${a.id}`, label: a.accountName, group: 'Contas' })),
+    ...cards.map((c) => ({ value: `card:${c.id}`, label: c.cardName, group: 'Cartões' })),
+  ]
 }

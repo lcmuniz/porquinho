@@ -33,6 +33,14 @@ export function todaySaoPaulo(): string {
   return dateInSaoPaulo()
 }
 
+/** Primeiro e último dia ("AAAA-MM-DD") do mês `delta` meses a partir do atual (São Paulo). */
+export function monthBounds(delta: number): [string, string] {
+  const [year, month] = todaySaoPaulo().split('-').map(Number)
+  const first = new Date(Date.UTC(year!, month! - 1 + delta, 1))
+  const last = new Date(Date.UTC(year!, month! + delta, 0))
+  return [first.toISOString().slice(0, 10), last.toISOString().slice(0, 10)]
+}
+
 /** "AAAA-MM" do mês atual em São Paulo. */
 export function currentMonth(): string {
   return todaySaoPaulo().slice(0, 7)

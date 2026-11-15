@@ -7,6 +7,10 @@
           <p class="mt-1 text-sm text-gray-600">Confira e corrija o que já entrou nas suas contas e cartões</p>
         </div>
         <div class="flex flex-wrap justify-end gap-2">
+          <Button variant="outline" class="min-h-[44px]" data-testid="export-transactions" @click="exportOpen = true">
+            <Download class="size-4" aria-hidden="true" />
+            Exportar CSV
+          </Button>
           <Button ref="addButton" class="min-h-[44px]" data-testid="add-transaction" @click="openCreate">
             Adicionar transação
           </Button>
@@ -157,6 +161,15 @@
       @close-auto-focus="returnFocus"
     />
 
+    <TransactionExportDialog
+      v-model:open="exportOpen"
+      :accounts="accounts"
+      :cards="cards"
+      :categories="categories"
+      :initial="exportInitial"
+      @exported="setSuccess(`Relatório exportado: ${plural($event, 'transação', 'transações')}`)"
+    />
+
     <Dialog :open="confirmOpen" @update:open="onConfirmOpenChange">
       <DialogContent data-testid="confirm-dialog" @close-auto-focus="returnFocus">
         <DialogHeader>
@@ -206,7 +219,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
-import { ArrowLeftRight, CreditCard } from 'lucide-vue-next'
+import { ArrowLeftRight, CreditCard, Download } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -216,6 +229,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import TransactionExportDialog, { type ExportInitial } from '@/components/transactions/TransactionExportDialog.vue'
 import TransactionFormDialog from '@/components/transactions/TransactionFormDialog.vue'
 import { currentMonth, formatLocalDateBR } from '@/lib/date'
 import { formatSignedBRL } from '@/lib/money'
@@ -264,6 +278,14 @@ const creating = ref(false)
 const confirmOpen = ref(false)
 const confirmMode = ref<'delete' | 'futures'>('delete')
 const confirming = ref(false)
+const exportOpen = ref(false)
+
+/** Story 9.1: o export abre no mês mostrado, como personalizado. */
+const exportInitial = computed<ExportInitial>(() => {
+  const [year, monthNumber] = month.value.split('-').map(Number)
+  const last = new Date(Date.UTC(year!, monthNumber!, 0)).toISOString().slice(0, 10)
+  return { preset: 'custom', from: `${month.value}-01`, to: last, categoryIds: [], targets: [] }
+})
 
 const monthLabel = computed(() => {
   const [year, monthNumber] = month.value.split('-').map(Number)

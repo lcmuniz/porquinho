@@ -87,15 +87,9 @@
           <option value="category,desc">Categoria: Z-A</option>
         </select>
       </div>
-      <Button
-        variant="outline"
-        class="ml-auto min-h-[44px]"
-        :disabled="!canExport || exporting"
-        data-testid="details-export"
-        @click="exportCsv"
-      >
+      <Button variant="outline" class="ml-auto min-h-[44px]" data-testid="details-export" @click="exportOpen = true">
         <Download class="size-4" aria-hidden="true" />
-        {{ exporting ? 'Exportando...' : 'Exportar CSV' }}
+        Exportar CSV
       </Button>
     </div>
 
@@ -106,14 +100,6 @@
       :class="successMessage ? 'rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800' : 'sr-only'"
     >
       {{ successMessage }}
-    </p>
-    <p
-      v-if="exportError"
-      role="alert"
-      data-testid="details-export-error"
-      class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
-    >
-      Não foi possível exportar o CSV. Tente de novo.
     </p>
 
     <div
@@ -264,16 +250,25 @@
       @stale="load"
       @close-auto-focus="returnFocus"
     />
+    <TransactionExportDialog
+      v-model:open="exportOpen"
+      :accounts="accounts"
+      :cards="cards"
+      :categories="categories"
+      :initial="exportInitial"
+      @exported="showSuccess(`Relatório exportado: ${plural($event, 'transação', 'transações')}`)"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { SELECT_CLASS } from '@/lib/formField'
 import { Input } from '@/components/ui/input'
-import { nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { ArrowLeftRight, CreditCard, Download } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import MultiSelect from '@/components/common/MultiSelect.vue'
+import TransactionExportDialog, { type ExportInitial } from '@/components/transactions/TransactionExportDialog.vue'
 import TransactionFormDialog from '@/components/transactions/TransactionFormDialog.vue'
 import { useDashboardDetails } from '@/composables/useDashboardDetails'
 import { formatLocalDateBR } from '@/lib/date'
@@ -284,7 +279,8 @@ import type { Transaction } from '@/types/transaction'
 
 /**
  * Story 7.6: a Camada 3, a lista completa das transações confirmadas com filtros (guardados por usuário no
- * localStorage), ordenação, páginas de 50, edição pelo diálogo de /transacoes e export CSV do resultado inteiro.
+ * localStorage), ordenação, páginas de 50 e edição pelo diálogo de /transacoes. Story 9.1: "Exportar CSV" abre o
+ * diálogo de export com o filtro da tela (sem a busca textual).
  */
 // Retro Epic 7 A4: `loaded` avisa a primeira carga (a view restaura o scroll)
 const emit = defineEmits<{ 'transaction-saved': []; loaded: [] }>()
@@ -302,11 +298,8 @@ const {
   loading,
   error,
   page,
-  exporting,
-  exportError,
   period,
   filter,
-  canExport,
   sortChoice,
   categoryOptions,
   targetOptions,
@@ -316,13 +309,26 @@ const {
   load,
   goTo,
   loadOptions,
-  exportCsv,
 } = useDashboardDetails()
 
 const root = ref<HTMLElement | null>(null)
 const successMessage = ref<string | null>(null)
 const current = ref<Transaction | null>(null)
 const editOpen = ref(false)
+const exportOpen = ref(false)
+
+/** O diálogo herda o período (o atalho equivalente ou como personalizado), as categorias e as contas/cartões. */
+const exportInitial = computed<ExportInitial>(() => {
+  const s = stored.value
+  const preset = s.preset === 'this-month' || s.preset === 'last-3-months' ? s.preset : 'custom'
+  return {
+    preset,
+    from: period.value?.from ?? s.from,
+    to: period.value?.to ?? s.to,
+    categoryIds: s.categoryIds,
+    targets: s.targets,
+  }
+})
 
 function openEdit(row: Transaction) {
   current.value = row
@@ -346,12 +352,16 @@ function returnFocus(event: Event) {
 
 let successTimer: ReturnType<typeof setTimeout> | undefined
 
-async function onSaved({ message }: { message: string }) {
-  emit('transaction-saved')
-  await load()
+function showSuccess(message: string) {
   clearTimeout(successTimer)
   successMessage.value = message
   successTimer = setTimeout(() => (successMessage.value = null), SUCCESS_TIMEOUT_MS)
+}
+
+async function onSaved({ message }: { message: string }) {
+  emit('transaction-saved')
+  await load()
+  showSuccess(message)
 }
 
 onMounted(async () => {

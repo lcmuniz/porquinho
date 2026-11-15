@@ -17,6 +17,10 @@ vi.mock('@/services/transactionService', () => ({
   deleteTransaction: (...a: unknown[]) => mockDelete(...a),
   removeFutureInstallments: (...a: unknown[]) => mockRemoveFutures(...a),
 }))
+const mockExport = vi.fn()
+vi.mock('@/services/dashboardService', () => ({
+  exportDetails: (...a: unknown[]) => mockExport(...a),
+}))
 vi.mock('@/services/accountService', () => ({
   listAccounts: () => mockAccounts(),
 }))
@@ -114,6 +118,29 @@ describe('TransactionsView', () => {
     await w.get('[data-testid="next-month"]').trigger('click')
     await flushPromises()
     expect(mockList).toHaveBeenLastCalledWith('2026-12')
+  })
+
+  it('"Exportar CSV" abre o diálogo no mês mostrado, como personalizado, e avisa a contagem', async () => {
+    mockExport.mockResolvedValue({ blob: new Blob(['x']), count: 12 })
+    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:csv'), revokeObjectURL: vi.fn() })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    const w = await mountView([transaction('t1')])
+    await w.get('[data-testid="previous-month"]').trigger('click')
+    await flushPromises()
+
+    await w.get('[data-testid="export-transactions"]').trigger('click')
+    await flushPromises()
+    expect(inDialog<HTMLSelectElement>('export-period')!.value).toBe('custom')
+    inDialog<HTMLFormElement>('export-form')!.dispatchEvent(new Event('submit'))
+    await flushPromises()
+
+    expect(mockExport).toHaveBeenCalledExactlyOnceWith(
+      { from: '2026-10-01', to: '2026-10-31', categoryIds: [], targets: [], q: '', sort: 'date', dir: 'desc' },
+      { includeFutureInstallments: false, includeDeleted: false },
+    )
+    expect(w.get('[data-testid="transactions-success"]').text()).toBe('Relatório exportado: 12 transações')
+    click.mockRestore()
+    vi.unstubAllGlobals()
   })
 
   it('edita e mostra "Transação atualizada" numa região de status', async () => {
