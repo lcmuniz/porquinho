@@ -7,6 +7,14 @@
           <p class="mt-1 text-sm text-gray-600">Quanto você pretende gastar em cada categoria no mês</p>
         </div>
         <div class="flex flex-wrap justify-end gap-2">
+          <Button
+            variant="outline"
+            class="min-h-[44px]"
+            data-testid="budget-export"
+            @click="exportOpen = true"
+          >
+            Exportar relatório de orçamento
+          </Button>
           <RouterLink
             to="/orcamento/comparativo"
             data-testid="comparison-link"
@@ -299,12 +307,19 @@
         </Button>
       </DialogContent>
     </Dialog>
+
+    <BudgetExportDialog
+      v-model:open="exportOpen"
+      :initial-month="month"
+      @exported="setSuccess('Relatório de orçamento exportado')"
+    />
   </main>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import BudgetExportDialog from '@/components/budget/BudgetExportDialog.vue'
 import ReallocateForm from '@/components/budget/ReallocateForm.vue'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -349,6 +364,7 @@ const actionError = ref<string | null>(null)
 const successMessage = ref<string | null>(null)
 const notice = ref<string | null>(null)
 const reallocateOpen = ref(false)
+const exportOpen = ref(false)
 const reallocating = ref(false)
 const reallocateError = ref<string | null>(null)
 const reallocateForm = ref<InstanceType<typeof ReallocateForm> | null>(null)

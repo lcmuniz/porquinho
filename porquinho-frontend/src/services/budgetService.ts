@@ -32,3 +32,17 @@ export async function getCategoryBudgetHistory(categoryId: string): Promise<Cate
   const response = await api.get<CategoryBudgetHistory>(`/api/v1/budgets/categories/${categoryId}/history`)
   return response.data
 }
+
+/**
+ * Story 9.2: relatório de orçamento por categoria filha em CSV, de `from` a `to` (AAAA-MM, 1 a 12 meses). As opções
+ * acrescentam a linha de total por grupo e as colunas de média e tendência. 400 período inválido.
+ */
+export async function exportBudgetReport(params: {
+  from: string
+  to: string
+  hierarchy: boolean
+  averages: boolean
+}): Promise<Blob> {
+  const response = await api.get<Blob>('/api/v1/budgets/export', { params, responseType: 'blob' })
+  return response.data
+}

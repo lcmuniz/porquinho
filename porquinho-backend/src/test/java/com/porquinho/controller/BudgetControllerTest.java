@@ -8,6 +8,8 @@ import com.porquinho.dto.ReallocateBudgetRequest;
 import com.porquinho.dto.SaveBudgetRequest;
 import com.porquinho.exception.BadRequestException;
 import com.porquinho.exception.ResourceNotFoundException;
+import com.porquinho.service.AuditLogService;
+import com.porquinho.service.BudgetReportService;
 import com.porquinho.service.CategoryService;
 import com.porquinho.service.BudgetService;
 import com.porquinho.service.TransactionService;
@@ -36,6 +38,8 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -50,6 +54,12 @@ class BudgetControllerTest {
 
     @MockBean
     private BudgetService budgetService;
+
+    @MockBean
+    private BudgetReportService budgetReportService;
+
+    @MockBean
+    private AuditLogService auditLogService;
 
     private UUID userId;
     private TestingAuthenticationToken authToken;
@@ -187,5 +197,41 @@ class BudgetControllerTest {
         mockMvc.perform(get("/api/v1/budgets/categories/not-a-uuid/history").with(authentication(authToken)))
             .andExpect(status().isBadRequest());
         verifyNoInteractions(budgetService);
+    }
+
+    @Test
+    void exportOfOneMonthIsACsvAttachmentAndIsAudited() throws Exception {
+        when(budgetReportService.csv(userId, "2026-11", "2026-11", false, false)).thenReturn("\uFEFFCategoria\r\n");
+
+        mockMvc.perform(get("/api/v1/budgets/export").param("from", "2026-11").param("to", "2026-11")
+                .with(request -> { request.setRemoteAddr("10.0.0.7"); return request; })
+                .with(authentication(authToken)))
+            .andExpect(status().isOk())
+            .andExpect(header().string("Content-Disposition", "attachment; filename=\"orcamento_2026-11.csv\""))
+            .andExpect(content().contentTypeCompatibleWith("text/csv"))
+            .andExpect(content().string("\uFEFFCategoria\r\n"));
+        verify(auditLogService).log("budget_export", userId, "10.0.0.7", "{\"from\":\"2026-11\",\"to\":\"2026-11\"}");
+        verifyNoInteractions(budgetService);
+    }
+
+    @Test
+    void exportOfARangePassesTheFlagsAndNamesTheFileWithBothMonths() throws Exception {
+        when(budgetReportService.csv(userId, "2026-09", "2026-11", true, true)).thenReturn("x");
+
+        mockMvc.perform(get("/api/v1/budgets/export").param("from", "2026-09").param("to", "2026-11")
+                .param("hierarchy", "true").param("averages", "true").with(authentication(authToken)))
+            .andExpect(status().isOk())
+            .andExpect(header().string("Content-Disposition", "attachment; filename=\"orcamento_2026-09_2026-11.csv\""));
+    }
+
+    @Test
+    void exportWithAnInvalidRangeIs400AndNotAudited() throws Exception {
+        when(budgetReportService.csv(userId, "2026-12", "2026-11", false, false))
+            .thenThrow(new BadRequestException(BudgetReportService.INVALID_RANGE_MESSAGE, "from"));
+
+        mockMvc.perform(get("/api/v1/budgets/export").param("from", "2026-12").param("to", "2026-11")
+                .with(authentication(authToken)))
+            .andExpect(status().isBadRequest());
+        verifyNoInteractions(auditLogService);
     }
 }

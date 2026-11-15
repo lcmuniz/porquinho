@@ -6,12 +6,16 @@ import type { Category } from '@/types/category'
 const mockList = vi.fn()
 const mockCreate = vi.fn()
 const mockUpdate = vi.fn()
+const mockExport = vi.fn()
 
 vi.mock('@/services/categoryService', () => ({
   listCategories: () => mockList(),
   getCategoryOptions: async () => ({ colors: ['#2563EB', '#EC4899'], icons: ['house', 'plane', 'folder'] }),
   createCategory: (...a: unknown[]) => mockCreate(...a),
   updateCategory: (...a: unknown[]) => mockUpdate(...a),
+}))
+vi.mock('@/services/budgetService', () => ({
+  exportBudgetReport: (...a: unknown[]) => mockExport(...a),
 }))
 
 function category(id: string, name: string, parentCategoryId: string | null, colorHex = '#2563EB'): Category {
@@ -264,5 +268,43 @@ describe('CategoriesView', () => {
     await wrapper!.get('[data-testid="retry-button"]').trigger('click')
     await flushPromises()
     expect(wrapper!.get('[data-testid="group-g1"]').text()).toContain('Moradia')
+  })
+})
+
+describe('CategoriesView: exportar relatório de orçamento (Story 9.2)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockList.mockResolvedValue(LIST)
+    mockExport.mockResolvedValue(new Blob(['x']))
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-09T15:00:00Z'))
+    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:csv'), revokeObjectURL: vi.fn() })
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    wrapper?.unmount()
+    wrapper = null
+    document.body.innerHTML = ''
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('abre o diálogo no mês atual e, ao exportar, avisa na região de status', async () => {
+    const w = await mountView()
+    await w.get('[data-testid="budget-export"]').trigger('click')
+    await flushPromises()
+
+    expect(inDialog<HTMLInputElement>('budget-export-from')!.value).toBe('2026-11')
+    expect(inDialog<HTMLInputElement>('budget-export-to')!.value).toBe('2026-11')
+    inDialog('budget-export-form')!.dispatchEvent(new Event('submit'))
+    await flushPromises()
+
+    expect(mockExport).toHaveBeenCalledExactlyOnceWith({ from: '2026-11', to: '2026-11', hierarchy: false, averages: false })
+    expect(inDialog('budget-export-dialog')).toBeNull()
+    const status = w.get('[data-testid="categories-success"]')
+    expect(status.attributes('role')).toBe('status')
+    expect(status.text()).toBe('Relatório de orçamento exportado')
   })
 })
