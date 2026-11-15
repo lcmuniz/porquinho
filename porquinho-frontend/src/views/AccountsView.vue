@@ -254,7 +254,7 @@
                 {{ transfer.fromAccountName ?? 'Conta' }} → {{ transfer.toAccountName ?? 'Conta' }}
               </p>
               <p class="truncate text-xs text-gray-500">
-                <span data-testid="transfer-date">{{ formatISODateBR(transfer.transferDate) }}</span
+                <span data-testid="transfer-date">{{ formatLocalDateBR(transfer.transferDate) }}</span
                 ><template v-if="transfer.description">
                   ·
                   <span data-testid="transfer-description">{{
@@ -533,7 +533,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { nextTick, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import {
   ArrowLeftRight,
@@ -556,17 +556,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { useAccountList } from '@/composables/useAccountList'
+import { useFeedback } from '@/composables/useFeedback'
+import { useFormDialog } from '@/composables/useFormDialog'
+import { useSequencedList } from '@/composables/useSequencedList'
 import { ACCOUNT_TYPE_LABEL } from '@/lib/accountTypes'
+import { formatDateBR, formatLocalDateBR } from '@/lib/date'
 import { formatBRL } from '@/lib/money'
-import {
-  deleteAccount,
-  listAccounts,
-  listDeletedAccounts,
-  restoreAccount,
-} from '@/services/accountService'
+import { deleteAccount, listDeletedAccounts, restoreAccount } from '@/services/accountService'
 import { listTransfers } from '@/services/transferService'
 import type { Account, ReconciliationResult } from '@/types/account'
-import type { Transfer } from '@/types/transfer'
 
 /**
  * Story 4.1: contas ativas, saldo total e cadastro de conta nova pelo diálogo.
@@ -576,112 +575,98 @@ import type { Transfer } from '@/types/transfer'
  * recentes" lista as transferências registradas.
  * Story 4.6: "Reconciliar" de cada conta abre o diálogo de reconciliação com o banco; a conta mostra a data da última.
  * Retro do Epic 4: as cargas de contas têm guarda de sequência, o 404 de qualquer ação passa por `onAccountNotFound`
- * e o 409 da edição (a conta mudou em outra tela) fecha o diálogo, avisa e recarrega as contas.
+ * e o 409 da edição (a conta mudou em outra tela) fecha o diálogo, avisa e recarrega as contas. Item 19: listas,
+ * avisos e a máquina de diálogo vêm de composables (`useAccountList`, `useSequencedList`, `useFeedback`,
+ * `useFormDialog`); aqui ficam só os fluxos.
  */
-const accounts = ref<Account[]>([])
-const loading = ref(true)
-const loadFailed = ref(false)
-const dialogOpen = ref(false)
-const saving = ref(false)
-const dialogError = ref<string | null>(null)
-const successMessage = ref<string | null>(null)
-/** Story 4.3: aviso de item que não existe mais (404) ou que mudou em outra tela (409); some na próxima ação. */
-const notice = ref<string | null>(null)
-const accountForm = ref<InstanceType<typeof AccountForm> | null>(null)
-const heading = ref<HTMLElement | null>(null)
-const list = ref<HTMLElement | null>(null)
-/** Story 4.3: item em edição (null no diálogo de adicionar). Continua definido depois de fechar, para o foco voltar ao botão dele. */
-const editing = ref<Account | null>(null)
-const headerAddButton = ref<{ $el?: HTMLElement } | null>(null)
-
 interface ApiError {
   response?: { status?: number; data?: { detail?: string } }
 }
 
-/** Story 4.4: conta em remoção. Continua definida depois de fechar, para o foco voltar ao botão dela. */
+const loading = ref(true)
+const loadFailed = ref(false)
+const accountForm = ref<InstanceType<typeof AccountForm> | null>(null)
+const transferForm = ref<InstanceType<typeof TransferForm> | null>(null)
+const reconcileForm = ref<InstanceType<typeof ReconcileForm> | null>(null)
+const heading = ref<HTMLElement | null>(null)
+const list = ref<HTMLElement | null>(null)
+const headerAddButton = ref<{ $el?: HTMLElement } | null>(null)
+const transferButton = ref<{ $el?: HTMLElement } | null>(null)
+/** Conta do diálogo (null no de adicionar). Continua definida depois de fechar, para o foco voltar ao botão dela. */
+const editing = ref<Account | null>(null)
 const removing = ref<Account | null>(null)
-const removeDialogOpen = ref(false)
-const removeSubmitting = ref(false)
-const removeError = ref<string | null>(null)
+const reconciling = ref<Account | null>(null)
+const restoringId = ref<string | null>(null)
 /** Story 4.4: seção de removidas (carregada ao marcar o seletor). */
 const showRemoved = ref(false)
-const removed = ref<Account[]>([])
-const removedLoading = ref(false)
-const removedLoadFailed = ref(false)
-const restoringId = ref<string | null>(null)
-/** Story 4.5: diálogo e seção de transferências. */
-const transferDialogOpen = ref(false)
-const transferSubmitting = ref(false)
-const transferError = ref<string | null>(null)
-const transferForm = ref<InstanceType<typeof TransferForm> | null>(null)
-const transferButton = ref<{ $el?: HTMLElement } | null>(null)
-const transfers = ref<Transfer[]>([])
-const transfersLoading = ref(false)
-const transfersLoadFailed = ref(false)
-/** Story 4.6: conta em reconciliação. Continua definida depois de fechar, para o foco voltar ao botão dela. */
-const reconciling = ref<Account | null>(null)
-const reconcileDialogOpen = ref(false)
-const reconcileSubmitting = ref(false)
-const reconcileError = ref<string | null>(null)
-const reconcileForm = ref<InstanceType<typeof ReconcileForm> | null>(null)
 
-/** A mensagem de sucesso some sozinha depois de alguns segundos. */
-const SUCCESS_TIMEOUT_MS = 5000
-let successTimer: ReturnType<typeof setTimeout> | undefined
+const { accounts, totalCents, fetchAccounts, discardPendingAccountLoads, insertByCreation } = useAccountList()
+const { successMessage, notice, setSuccess, clearFeedback } = useFeedback()
+const {
+  items: removed,
+  loading: removedLoading,
+  loadFailed: removedLoadFailed,
+  load: loadRemoved,
+  discard: discardPendingRemovedLoad,
+} = useSequencedList(listDeletedAccounts)
+const {
+  items: transfers,
+  loading: transfersLoading,
+  loadFailed: transfersLoadFailed,
+  load: loadTransfers,
+} = useSequencedList(listTransfers)
 
-function setSuccess(message: string | null) {
-  clearTimeout(successTimer)
-  successMessage.value = message
-  if (message) {
-    successTimer = setTimeout(() => (successMessage.value = null), SUCCESS_TIMEOUT_MS)
-  }
-}
+/** Alvo que sempre existe: o botão do topo (há contas) ou o título. */
+const fallbackFocus = () => headerAddButton.value?.$el ?? heading.value
+/** O botão `prefix` da conta, se ela ainda estiver na lista. */
+const accountButton = (prefix: string, account: Account | null) =>
+  account ? list.value?.querySelector<HTMLElement>(`[data-testid="${prefix}-${account.id}"]`) : null
 
-/** Soma em centavos inteiros: 0,10 + 0,20 dá exatamente 0,30. */
-const totalCents = computed(() =>
-  accounts.value.reduce((sum, account) => sum + Math.round(account.currentBalance * 100), 0),
-)
-
-/**
- * Sequência das cargas de contas (`load`, `refreshAccounts`, `refreshAfterNotFound`): só a resposta da carga mais
- * recente é aplicada. Uma mudança local da lista (`splice`, `filter`, `push`) feita depois de a carga começar
- * invalida a resposta, que leu o servidor antes dela: a carga é descartada e refeita, para não perder a mudança
- * local nem os dados novos.
- */
-let accountsRequest = 0
-let accountsChange = 0
-
-/** Mudança local da lista: a carga de contas em andamento descarta a resposta e busca de novo. */
-function discardPendingAccountLoads() {
-  accountsChange++
-}
-
-/** Lê as contas ativas. A resposta de uma carga substituída por outra não é aplicada, e a falha dela é ignorada. */
-async function fetchAccounts() {
-  const request = ++accountsRequest
-  for (;;) {
-    const change = accountsChange
-    try {
-      const result = await listAccounts()
-      if (request !== accountsRequest) return
-      // Leu o servidor antes de uma mudança local: busca de novo
-      if (change !== accountsChange) continue
-      accounts.value = result
-      return
-    } catch (err) {
-      if (request === accountsRequest) throw err
-      return
-    }
-  }
-}
+const {
+  open: dialogOpen,
+  submitting: saving,
+  error: dialogError,
+  onOpenChange: onDialogOpenChange,
+  onOpenAutoFocus,
+  onCloseAutoFocus,
+} = useFormDialog({
+  form: () => accountForm.value,
+  // Na edição, o foco volta para o "Editar" da conta
+  returnFocus: () => accountButton('edit-account', editing.value) ?? fallbackFocus(),
+})
+const {
+  open: removeDialogOpen,
+  submitting: removeSubmitting,
+  error: removeError,
+  onOpenChange: onRemoveDialogOpenChange,
+  onCloseAutoFocus: onRemoveCloseAutoFocus,
+} = useFormDialog({ returnFocus: () => accountButton('remove-account', removing.value) ?? fallbackFocus() })
+const {
+  open: transferDialogOpen,
+  submitting: transferSubmitting,
+  error: transferError,
+  onOpenChange: onTransferDialogOpenChange,
+  onOpenAutoFocus: onTransferOpenAutoFocus,
+  onCloseAutoFocus: onTransferCloseAutoFocus,
+} = useFormDialog({ form: () => transferForm.value, returnFocus: () => transferButton.value?.$el ?? fallbackFocus() })
+const {
+  open: reconcileDialogOpen,
+  submitting: reconcileSubmitting,
+  error: reconcileError,
+  onOpenChange: onReconcileDialogOpenChange,
+  onOpenAutoFocus: onReconcileOpenAutoFocus,
+  onCloseAutoFocus: onReconcileCloseAutoFocus,
+} = useFormDialog({
+  form: () => reconcileForm.value,
+  returnFocus: () => accountButton('reconcile-account', reconciling.value) ?? fallbackFocus(),
+})
 
 /** Sequência das cargas da página inteira (montagem e "Tentar de novo"). */
 let loadRequest = 0
 
 async function load() {
   const request = ++loadRequest
-  setSuccess(null)
-  notice.value = null
+  clearFeedback()
   loading.value = true
   loadFailed.value = false
   try {
@@ -696,71 +681,6 @@ async function load() {
   if (!loadFailed.value) void loadTransfers()
 }
 
-/** AAAA-MM-DD → dd/mm/aaaa (data de calendário, sem fuso). */
-function formatISODateBR(iso: string): string {
-  const [year, month, day] = iso.split('-')
-  return year && month && day ? `${day}/${month}/${year}` : iso
-}
-
-const DATE_BR = new Intl.DateTimeFormat('pt-BR', {
-  timeZone: 'America/Sao_Paulo',
-  day: '2-digit',
-  month: '2-digit',
-  year: 'numeric',
-})
-
-/** Instante ISO → dd/mm/aaaa no fuso de São Paulo. */
-function formatDateBR(iso: string): string {
-  const date = new Date(iso)
-  return Number.isNaN(date.getTime()) ? iso : DATE_BR.format(date)
-}
-
-/** Sequência das cargas de transferências: só a resposta da carga mais recente é aplicada. */
-let transfersRequest = 0
-
-/** Story 4.5: carrega a seção. `quiet` recarrega sem trocar a lista pelo "Carregando...". */
-async function loadTransfers(quiet = false) {
-  const request = ++transfersRequest
-  if (!quiet) transfersLoading.value = true
-  transfersLoadFailed.value = false
-  try {
-    const result = await listTransfers()
-    if (request === transfersRequest) transfers.value = result
-  } catch {
-    if (request === transfersRequest) transfersLoadFailed.value = true
-  } finally {
-    if (request === transfersRequest) transfersLoading.value = false
-  }
-}
-
-/** Story 4.5: abre o diálogo "Nova transferência". */
-function openTransfer() {
-  transferError.value = null
-  setSuccess(null)
-  notice.value = null
-  transferDialogOpen.value = true
-}
-
-function onTransferDialogOpenChange(open: boolean) {
-  // Não fecha no meio do envio (Esc ou clique fora)
-  if (!open && transferSubmitting.value) return
-  transferDialogOpen.value = open
-}
-
-function onTransferOpenAutoFocus(event: Event) {
-  event.preventDefault()
-  if (transferForm.value) transferForm.value.focus()
-  else void nextTick(() => transferForm.value?.focus())
-}
-
-/** Ao fechar, o foco volta ao "Transferir" (se ainda visível) ou ao botão do topo/título. */
-function onTransferCloseAutoFocus(event: Event) {
-  event.preventDefault()
-  void nextTick(() => {
-    ;(transferButton.value?.$el ?? headerAddButton.value?.$el ?? heading.value)?.focus()
-  })
-}
-
 /**
  * Story 4.5: recarrega as contas do servidor (saldos depois de uma transferência, ou uma conta que sumiu). Uma
  * falha mantém a lista atual e avisa, sem esconder a página.
@@ -773,124 +693,39 @@ async function refreshAccounts() {
   }
 }
 
-/** Story 4.5: fecha o diálogo e recarrega os saldos das contas e a seção (o total não muda). */
-function onTransferCreated() {
-  transferDialogOpen.value = false
-  setSuccess('Transferência registrada')
-  void refreshAccounts()
-  void loadTransfers(true)
-}
-
 /**
- * 404 "Conta não encontrada" e outras falhas ficam no diálogo, que continua aberto. No 404 as listas são
- * recarregadas pelo caminho comum, para a conta removida sair das opções.
+ * Retro do Epic 4: caminho único do 404 de editar, remover, restaurar, transferir e reconciliar — a conta mudou em
+ * outra aba ou sessão. Tira a conta das duas listas (quando se sabe qual é), mostra o aviso (quando há; a
+ * transferência mostra o erro no próprio diálogo) e recarrega as listas sem esconder a página (uma falha na recarga
+ * mantém o que já está na tela). Quem chama fecha o próprio diálogo.
  */
-function onTransferFailed(detail: string | undefined, status?: number) {
-  transferError.value = detail ?? 'Não foi possível registrar a transferência. Tente novamente.'
-  if (status === 404) onAccountNotFound()
-}
-
-/** Story 4.6: abre o diálogo "Reconciliar <nome>". */
-function openReconcile(account: Account) {
-  reconciling.value = account
-  reconcileError.value = null
-  setSuccess(null)
-  notice.value = null
-  reconcileDialogOpen.value = true
-}
-
-function onReconcileDialogOpenChange(open: boolean) {
-  // Não fecha no meio do envio (Esc ou clique fora)
-  if (!open && reconcileSubmitting.value) return
-  reconcileDialogOpen.value = open
-}
-
-function onReconcileOpenAutoFocus(event: Event) {
-  event.preventDefault()
-  if (reconcileForm.value) reconcileForm.value.focus()
-  else void nextTick(() => reconcileForm.value?.focus())
-}
-
-/** Ao fechar, o foco volta ao "Reconciliar" da conta (se ela continua na lista) ou ao botão do topo/título. */
-function onReconcileCloseAutoFocus(event: Event) {
-  event.preventDefault()
-  void nextTick(() => {
-    const reconcileButton = reconciling.value
-      ? list.value?.querySelector<HTMLElement>(
-          `[data-testid="reconcile-account-${reconciling.value.id}"]`,
-        )
-      : null
-    ;(reconcileButton ?? headerAddButton.value?.$el ?? heading.value)?.focus()
-  })
-}
-
-/**
- * Story 4.6: aplica a conta devolvida pelo servidor (saldo e data novos), fecha o diálogo e recarrega as contas do
- * servidor; o total é recalculado pelo computed.
- */
-function onReconciled(result: ReconciliationResult) {
-  const index = accounts.value.findIndex((x) => x.id === result.account.id)
-  if (index >= 0) {
+function onAccountNotFound(id?: string, message?: string) {
+  if (id) {
     discardPendingAccountLoads()
-    accounts.value.splice(index, 1, result.account)
+    accounts.value = accounts.value.filter((x) => x.id !== id)
+    // Uma carga de removidas em andamento leu o servidor antes do 404: é descartada (e recarregada abaixo)
+    discardPendingRemovedLoad()
+    removed.value = removed.value.filter((x) => x.id !== id)
   }
-  reconcileDialogOpen.value = false
-  setSuccess('Saldo reconciliado')
-  void refreshAccounts()
+  if (message) {
+    setSuccess(null)
+    notice.value = message
+  }
+  if (showRemoved.value) void loadRemoved(true)
+  fetchAccounts().catch(() => {})
 }
 
-/**
- * 404: a conta foi removida ou não é do usuário; o diálogo fecha e o resto segue o caminho comum do 404.
- * Outras falhas ficam no diálogo, que continua aberto.
- */
-function onReconcileFailed(detail: string | undefined, status?: number) {
-  if (status === 404) {
-    reconcileDialogOpen.value = false
-    onAccountNotFound(reconciling.value?.id, 'Esta conta não existe mais')
-    return
-  }
-  reconcileError.value = detail ?? 'Não foi possível reconciliar a conta. Tente novamente.'
-}
+// --- Adicionar e editar (Stories 4.1 e 4.3) ---
 
 function openDialog() {
-  editing.value = null
-  dialogError.value = null
-  setSuccess(null)
-  notice.value = null
-  dialogOpen.value = true
+  openEdit(null)
 }
 
-/** Story 4.3: abre o diálogo em modo edição, com o formulário preenchido. */
-function openEdit(account: Account) {
+function openEdit(account: Account | null) {
   editing.value = account
   dialogError.value = null
-  setSuccess(null)
-  notice.value = null
+  clearFeedback()
   dialogOpen.value = true
-}
-
-function onDialogOpenChange(open: boolean) {
-  // Não fecha no meio do envio (Esc ou clique fora)
-  if (!open && saving.value) return
-  dialogOpen.value = open
-}
-
-function onOpenAutoFocus(event: Event) {
-  event.preventDefault()
-  if (accountForm.value) accountForm.value.focus()
-  else void nextTick(() => accountForm.value?.focus())
-}
-
-/** Ao fechar, o foco vai para um alvo que sempre existe: o botão do topo (há contas) ou o título. */
-function onCloseAutoFocus(event: Event) {
-  event.preventDefault()
-  void nextTick(() => {
-    // Na edição, o foco volta para o botão "Editar" do item (se ele ainda estiver na lista)
-    const editButton = editing.value
-      ? list.value?.querySelector<HTMLElement>(`[data-testid="edit-account-${editing.value.id}"]`)
-      : null
-    ;(editButton ?? headerAddButton.value?.$el ?? heading.value)?.focus()
-  })
 }
 
 function onCreated(created: Account) {
@@ -941,41 +776,20 @@ async function onConflict(detail: string | undefined) {
   if (accounts.value.some((x) => x.id === id)) return
   await nextTick()
   const active = document.activeElement
-  if (!active || active === document.body) {
-    ;(headerAddButton.value?.$el ?? heading.value)?.focus()
-  }
+  if (!active || active === document.body) fallbackFocus()?.focus()
 }
 
 function onFailed(detail: string | undefined) {
   dialogError.value = detail ?? 'Não foi possível salvar a conta. Tente novamente.'
 }
 
-/** Story 4.4: abre a confirmação da remoção. */
+// --- Remover e restaurar (Story 4.4) ---
+
 function openRemove(account: Account) {
   removing.value = account
   removeError.value = null
-  setSuccess(null)
-  notice.value = null
+  clearFeedback()
   removeDialogOpen.value = true
-}
-
-function onRemoveDialogOpenChange(open: boolean) {
-  // Não fecha no meio do envio (Esc ou clique fora)
-  if (!open && removeSubmitting.value) return
-  removeDialogOpen.value = open
-}
-
-/** Ao fechar, o foco volta ao "Remover" da conta (se ela continua na lista) ou ao botão do topo/título. */
-function onRemoveCloseAutoFocus(event: Event) {
-  event.preventDefault()
-  void nextTick(() => {
-    const removeButton = removing.value
-      ? list.value?.querySelector<HTMLElement>(
-          `[data-testid="remove-account-${removing.value.id}"]`,
-        )
-      : null
-    ;(removeButton ?? headerAddButton.value?.$el ?? heading.value)?.focus()
-  })
 }
 
 async function confirmRemove() {
@@ -1007,75 +821,15 @@ async function confirmRemove() {
   }
 }
 
-/** Sequência das cargas: só a resposta da carga mais recente é aplicada. */
-let removedRequest = 0
-
-/** Story 4.4: carrega a seção de removidas. `quiet` recarrega sem trocar a lista pelo "Carregando...". */
-async function loadRemoved(quiet = false) {
-  const request = ++removedRequest
-  if (!quiet) removedLoading.value = true
-  removedLoadFailed.value = false
-  try {
-    const result = await listDeletedAccounts()
-    if (request === removedRequest) removed.value = result
-  } catch {
-    if (request === removedRequest) removedLoadFailed.value = true
-  } finally {
-    if (request === removedRequest) removedLoading.value = false
-  }
-}
-
-/**
- * Story 4.4: recarrega as listas ativa e de removidas (se a seção estiver aberta) sem esconder a página; uma falha
- * aqui mantém o que já está na tela.
- */
-async function refreshAfterNotFound() {
-  if (showRemoved.value) void loadRemoved(true)
-  try {
-    await fetchAccounts()
-  } catch {
-    // Mantém a lista atual; o aviso já foi mostrado
-  }
-}
-
-/**
- * Retro do Epic 4: caminho único do 404 de editar, remover, restaurar, transferir e reconciliar — a conta mudou em
- * outra aba ou sessão. Tira a conta das duas listas (quando se sabe qual é), mostra o aviso (quando há; a
- * transferência mostra o erro no próprio diálogo) e recarrega as listas. Quem chama fecha o próprio diálogo.
- */
-function onAccountNotFound(id?: string, message?: string) {
-  if (id) {
-    discardPendingAccountLoads()
-    accounts.value = accounts.value.filter((x) => x.id !== id)
-    // Uma carga de removidas em andamento leu o servidor antes do 404: é descartada (refreshAfterNotFound recarrega)
-    removedRequest++
-    removed.value = removed.value.filter((x) => x.id !== id)
-  }
-  if (message) {
-    setSuccess(null)
-    notice.value = message
-  }
-  void refreshAfterNotFound()
-}
-
 watch(showRemoved, (show) => {
   if (show) void loadRemoved()
 })
 
-/** Volta para a lista ativa na posição da criação (a API ordena da mais antiga para a mais nova). */
-function insertByCreation(account: Account) {
-  const created = Date.parse(account.createdAt)
-  const index = accounts.value.findIndex((x) => Date.parse(x.createdAt) > created)
-  if (index < 0) accounts.value.push(account)
-  else accounts.value.splice(index, 0, account)
-}
-
-/** Story 4.4: restaura a conta; ela sai da seção de removidas e volta à lista e ao total. */
+/** Restaura a conta; ela sai da seção de removidas e volta à lista e ao total. */
 async function restore(account: Account) {
   if (restoringId.value) return
   restoringId.value = account.id
-  setSuccess(null)
-  notice.value = null
+  clearFeedback()
   try {
     const restored = await restoreAccount(account.id)
     removed.value = removed.value.filter((x) => x.id !== account.id)
@@ -1084,11 +838,7 @@ async function restore(account: Account) {
     setSuccess('Conta restaurada')
     void loadTransfers(true)
     // O botão "Restaurar" some: o foco vai para o "Editar" da conta restaurada
-    void nextTick(() =>
-      list.value
-        ?.querySelector<HTMLElement>(`[data-testid="edit-account-${restored.id}"]`)
-        ?.focus(),
-    )
+    void nextTick(() => accountButton('edit-account', restored)?.focus())
   } catch (err) {
     if ((err as ApiError)?.response?.status === 404) {
       onAccountNotFound(account.id, 'Esta conta já foi restaurada ou não existe mais')
@@ -1100,6 +850,67 @@ async function restore(account: Account) {
   }
 }
 
+// --- Transferir (Story 4.5) ---
+
+function openTransfer() {
+  transferError.value = null
+  clearFeedback()
+  transferDialogOpen.value = true
+}
+
+/** Fecha o diálogo e recarrega os saldos das contas e a seção (o total não muda). */
+function onTransferCreated() {
+  transferDialogOpen.value = false
+  setSuccess('Transferência registrada')
+  void refreshAccounts()
+  void loadTransfers(true)
+}
+
+/**
+ * 404 "Conta não encontrada" e outras falhas ficam no diálogo, que continua aberto. No 404 as listas são
+ * recarregadas pelo caminho comum, para a conta removida sair das opções.
+ */
+function onTransferFailed(detail: string | undefined, status?: number) {
+  transferError.value = detail ?? 'Não foi possível registrar a transferência. Tente novamente.'
+  if (status === 404) onAccountNotFound()
+}
+
+// --- Reconciliar (Story 4.6) ---
+
+function openReconcile(account: Account) {
+  reconciling.value = account
+  reconcileError.value = null
+  clearFeedback()
+  reconcileDialogOpen.value = true
+}
+
+/**
+ * Aplica a conta devolvida pelo servidor (saldo e data novos), fecha o diálogo e recarrega as contas do servidor; o
+ * total é recalculado pelo computed.
+ */
+function onReconciled(result: ReconciliationResult) {
+  const index = accounts.value.findIndex((x) => x.id === result.account.id)
+  if (index >= 0) {
+    discardPendingAccountLoads()
+    accounts.value.splice(index, 1, result.account)
+  }
+  reconcileDialogOpen.value = false
+  setSuccess('Saldo reconciliado')
+  void refreshAccounts()
+}
+
+/**
+ * 404: a conta foi removida ou não é do usuário; o diálogo fecha e o resto segue o caminho comum do 404.
+ * Outras falhas ficam no diálogo, que continua aberto.
+ */
+function onReconcileFailed(detail: string | undefined, status?: number) {
+  if (status === 404) {
+    reconcileDialogOpen.value = false
+    onAccountNotFound(reconciling.value?.id, 'Esta conta não existe mais')
+    return
+  }
+  reconcileError.value = detail ?? 'Não foi possível reconciliar a conta. Tente novamente.'
+}
+
 onMounted(load)
-onBeforeUnmount(() => clearTimeout(successTimer))
 </script>

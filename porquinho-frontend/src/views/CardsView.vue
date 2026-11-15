@@ -335,7 +335,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { CreditCard as CreditCardIcon, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-vue-next'
 import CardForm from '@/components/cards/CardForm.vue'
@@ -347,6 +347,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { useFeedback } from '@/composables/useFeedback'
+import { useFormDialog } from '@/composables/useFormDialog'
+import { useSequencedList } from '@/composables/useSequencedList'
 import { formatBRL } from '@/lib/money'
 import { deleteCard, listCards, listDeletedCards, restoreCard } from '@/services/cardService'
 import type { CreditCard } from '@/types/creditCard'
@@ -357,50 +360,59 @@ import type { CreditCard } from '@/types/creditCard'
  * Story 4.3: o botão "Editar" de cada cartão abre o mesmo diálogo com o formulário preenchido.
  * Story 4.4: "Remover" com confirmação (sem mínimo de cartões); "Mostrar removidos" lista os removidos com
  * "Restaurar".
+ * Retro do Epic 4 (G2): avisos, removidos e a máquina de diálogo são os mesmos composables da tela de contas.
  */
-const cards = ref<CreditCard[]>([])
-const loading = ref(true)
-const loadFailed = ref(false)
-const dialogOpen = ref(false)
-const saving = ref(false)
-const dialogError = ref<string | null>(null)
-const successMessage = ref<string | null>(null)
-/** Story 4.3: aviso de item que não existe mais (404 ao editar); some na próxima ação. */
-const notice = ref<string | null>(null)
-const cardForm = ref<InstanceType<typeof CardForm> | null>(null)
-const heading = ref<HTMLElement | null>(null)
-const list = ref<HTMLElement | null>(null)
-/** Story 4.3: item em edição (null no diálogo de adicionar). Continua definido depois de fechar, para o foco voltar ao botão dele. */
-const editing = ref<CreditCard | null>(null)
-const headerAddButton = ref<{ $el?: HTMLElement } | null>(null)
-
 interface ApiError {
   response?: { status?: number; data?: { detail?: string } }
 }
 
-/** Story 4.4: cartão em remoção. Continua definido depois de fechar, para o foco voltar ao botão dele. */
+const cards = ref<CreditCard[]>([])
+const loading = ref(true)
+const loadFailed = ref(false)
+const cardForm = ref<InstanceType<typeof CardForm> | null>(null)
+const heading = ref<HTMLElement | null>(null)
+const list = ref<HTMLElement | null>(null)
+const headerAddButton = ref<{ $el?: HTMLElement } | null>(null)
+/** Cartão do diálogo (null no de adicionar). Continua definido depois de fechar, para o foco voltar ao botão dele. */
+const editing = ref<CreditCard | null>(null)
 const removing = ref<CreditCard | null>(null)
-const removeDialogOpen = ref(false)
-const removeSubmitting = ref(false)
-const removeError = ref<string | null>(null)
+const restoringId = ref<string | null>(null)
 /** Story 4.4: seção de removidos (carregada ao marcar o seletor). */
 const showRemoved = ref(false)
-const removed = ref<CreditCard[]>([])
-const removedLoading = ref(false)
-const removedLoadFailed = ref(false)
-const restoringId = ref<string | null>(null)
 
-/** A mensagem de sucesso some sozinha depois de alguns segundos. */
-const SUCCESS_TIMEOUT_MS = 5000
-let successTimer: ReturnType<typeof setTimeout> | undefined
+const { successMessage, notice, setSuccess, clearFeedback } = useFeedback()
+const {
+  items: removed,
+  loading: removedLoading,
+  loadFailed: removedLoadFailed,
+  load: loadRemoved,
+} = useSequencedList(listDeletedCards)
 
-function setSuccess(message: string | null) {
-  clearTimeout(successTimer)
-  successMessage.value = message
-  if (message) {
-    successTimer = setTimeout(() => (successMessage.value = null), SUCCESS_TIMEOUT_MS)
-  }
-}
+/** Alvo que sempre existe: o botão do topo (há cartões) ou o título. */
+const fallbackFocus = () => headerAddButton.value?.$el ?? heading.value
+/** O botão `prefix` do cartão, se ele ainda estiver na lista. */
+const cardButton = (prefix: string, card: CreditCard | null) =>
+  card ? list.value?.querySelector<HTMLElement>(`[data-testid="${prefix}-${card.id}"]`) : null
+
+const {
+  open: dialogOpen,
+  submitting: saving,
+  error: dialogError,
+  onOpenChange: onDialogOpenChange,
+  onOpenAutoFocus,
+  onCloseAutoFocus,
+} = useFormDialog({
+  form: () => cardForm.value,
+  // Na edição, o foco volta para o "Editar" do cartão
+  returnFocus: () => cardButton('edit-card', editing.value) ?? fallbackFocus(),
+})
+const {
+  open: removeDialogOpen,
+  submitting: removeSubmitting,
+  error: removeError,
+  onOpenChange: onRemoveDialogOpenChange,
+  onCloseAutoFocus: onRemoveCloseAutoFocus,
+} = useFormDialog({ returnFocus: () => cardButton('remove-card', removing.value) ?? fallbackFocus() })
 
 /** Soma em centavos inteiros: 0,10 + 0,20 dá exatamente 0,30. */
 const totalCents = computed(() =>
@@ -408,8 +420,7 @@ const totalCents = computed(() =>
 )
 
 async function load() {
-  setSuccess(null)
-  notice.value = null
+  clearFeedback()
   loading.value = true
   loadFailed.value = false
   try {
@@ -423,44 +434,15 @@ async function load() {
 }
 
 function openDialog() {
-  editing.value = null
-  dialogError.value = null
-  setSuccess(null)
-  notice.value = null
-  dialogOpen.value = true
+  openEdit(null)
 }
 
-/** Story 4.3: abre o diálogo em modo edição, com o formulário preenchido. */
-function openEdit(card: CreditCard) {
+/** Story 4.3: abre o diálogo em modo edição (ou de adicionar, com null). */
+function openEdit(card: CreditCard | null) {
   editing.value = card
   dialogError.value = null
-  setSuccess(null)
-  notice.value = null
+  clearFeedback()
   dialogOpen.value = true
-}
-
-function onDialogOpenChange(open: boolean) {
-  // Não fecha no meio do envio (Esc ou clique fora)
-  if (!open && saving.value) return
-  dialogOpen.value = open
-}
-
-function onOpenAutoFocus(event: Event) {
-  event.preventDefault()
-  if (cardForm.value) cardForm.value.focus()
-  else void nextTick(() => cardForm.value?.focus())
-}
-
-/** Ao fechar, o foco vai para um alvo que sempre existe: o botão do topo (há cartões) ou o título. */
-function onCloseAutoFocus(event: Event) {
-  event.preventDefault()
-  void nextTick(() => {
-    // Na edição, o foco volta para o botão "Editar" do item (se ele ainda estiver na lista)
-    const editButton = editing.value
-      ? list.value?.querySelector<HTMLElement>(`[data-testid="edit-card-${editing.value.id}"]`)
-      : null
-    ;(editButton ?? headerAddButton.value?.$el ?? heading.value)?.focus()
-  })
 }
 
 function onCreated(created: CreditCard) {
@@ -494,26 +476,8 @@ function onFailed(detail: string | undefined) {
 function openRemove(card: CreditCard) {
   removing.value = card
   removeError.value = null
-  setSuccess(null)
-  notice.value = null
+  clearFeedback()
   removeDialogOpen.value = true
-}
-
-function onRemoveDialogOpenChange(open: boolean) {
-  // Não fecha no meio do envio (Esc ou clique fora)
-  if (!open && removeSubmitting.value) return
-  removeDialogOpen.value = open
-}
-
-/** Ao fechar, o foco volta ao "Remover" do cartão (se ele continua na lista) ou ao botão do topo/título. */
-function onRemoveCloseAutoFocus(event: Event) {
-  event.preventDefault()
-  void nextTick(() => {
-    const removeButton = removing.value
-      ? list.value?.querySelector<HTMLElement>(`[data-testid="remove-card-${removing.value.id}"]`)
-      : null
-    ;(removeButton ?? headerAddButton.value?.$el ?? heading.value)?.focus()
-  })
 }
 
 async function confirmRemove() {
@@ -541,24 +505,6 @@ async function confirmRemove() {
     }
   } finally {
     removeSubmitting.value = false
-  }
-}
-
-/** Sequência das cargas: só a resposta da carga mais recente é aplicada. */
-let removedRequest = 0
-
-/** Story 4.4: carrega a seção de removidos. `quiet` recarrega sem trocar a lista pelo "Carregando...". */
-async function loadRemoved(quiet = false) {
-  const request = ++removedRequest
-  if (!quiet) removedLoading.value = true
-  removedLoadFailed.value = false
-  try {
-    const result = await listDeletedCards()
-    if (request === removedRequest) removed.value = result
-  } catch {
-    if (request === removedRequest) removedLoadFailed.value = true
-  } finally {
-    if (request === removedRequest) removedLoading.value = false
   }
 }
 
@@ -591,17 +537,14 @@ function insertByCreation(card: CreditCard) {
 async function restore(card: CreditCard) {
   if (restoringId.value) return
   restoringId.value = card.id
-  setSuccess(null)
-  notice.value = null
+  clearFeedback()
   try {
     const restored = await restoreCard(card.id)
     removed.value = removed.value.filter((x) => x.id !== card.id)
     insertByCreation(restored)
     setSuccess('Cartão restaurado')
     // O botão "Restaurar" some: o foco vai para o "Editar" do cartão restaurado
-    void nextTick(() =>
-      list.value?.querySelector<HTMLElement>(`[data-testid="edit-card-${restored.id}"]`)?.focus(),
-    )
+    void nextTick(() => cardButton('edit-card', restored)?.focus())
   } catch (err) {
     if ((err as ApiError)?.response?.status === 404) {
       removed.value = removed.value.filter((x) => x.id !== card.id)
@@ -616,5 +559,4 @@ async function restore(card: CreditCard) {
 }
 
 onMounted(load)
-onBeforeUnmount(() => clearTimeout(successTimer))
 </script>
