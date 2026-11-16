@@ -232,7 +232,7 @@ import {
 } from '@/components/ui/dialog'
 import TransactionExportDialog, { type ExportInitial } from '@/components/transactions/TransactionExportDialog.vue'
 import TransactionFormDialog from '@/components/transactions/TransactionFormDialog.vue'
-import { currentMonth, formatLocalDateBR } from '@/lib/date'
+import { currentMonth, formatLocalDateBR, formatMonthBR, shiftMonth } from '@/lib/date'
 import { formatSignedBRL } from '@/lib/money'
 import { plural } from '@/lib/plural'
 import { categoryLabel, installmentLabel, pixLabel, signedAmount, targetName } from '@/lib/transactionLabels'
@@ -287,12 +287,7 @@ const exportInitial = computed<ExportInitial>(() => {
   return { preset: 'custom', from: `${month.value}-01`, to: last, categoryIds: [], targets: [] }
 })
 
-const monthLabel = computed(() => {
-  const [year, monthNumber] = month.value.split('-').map(Number)
-  return new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(
-    Date.UTC(year!, monthNumber! - 1, 1),
-  )
-})
+const monthLabel = computed(() => formatMonthBR(month.value))
 
 /** Decisão Q3: remover a única parcela confirmada leva as futuras ativas junto. */
 const futuresGoingAlong = computed(() =>
@@ -334,9 +329,7 @@ async function loadOptions() {
 }
 
 function changeMonth(delta: number) {
-  const [year, monthNumber] = month.value.split('-').map(Number)
-  const date = new Date(Date.UTC(year!, monthNumber! - 1 + delta, 1))
-  month.value = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`
+  month.value = shiftMonth(month.value, delta)
   transactions.value = []
   void load()
 }
