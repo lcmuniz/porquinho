@@ -10,12 +10,13 @@ import org.mockito.quality.Strictness;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -44,23 +45,11 @@ class AccountLockServiceTest {
     }
 
     @Test
-    void firstFailureStartsTheLockWindow() {
-        String key = AccountLockService.key(EMAIL, IP);
-        when(valueOperations.increment(key)).thenReturn(1L);
-
+    void failureIncrementsTheCounterWithTheLockWindowAtomically() {
         accountLockService.recordFailedAttempt(EMAIL, IP);
 
-        verify(redisTemplate).expire(key, AccountLockService.LOCK_DURATION);
-    }
-
-    @Test
-    void laterFailuresDoNotExtendTheWindow() {
-        String key = AccountLockService.key(EMAIL, IP);
-        when(valueOperations.increment(key)).thenReturn(3L);
-
-        accountLockService.recordFailedAttempt(EMAIL, IP);
-
-        verify(redisTemplate, never()).expire(anyString(), org.mockito.ArgumentMatchers.any());
+        verify(redisTemplate).execute(RateLimitService.INCREMENT_WITH_TTL, List.of(AccountLockService.key(EMAIL, IP)),
+            String.valueOf(AccountLockService.LOCK_DURATION.toMillis()));
     }
 
     @Test

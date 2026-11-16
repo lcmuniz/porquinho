@@ -6,15 +6,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.ValueOperations;
 
-import java.time.Duration;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -28,14 +24,10 @@ class RateLimitServiceTest {
     @Mock
     private StringRedisTemplate redisTemplate;
 
-    @Mock
-    private ValueOperations<String, String> valueOperations;
-
     private RateLimitService rateLimitService;
 
     @BeforeEach
     void setUp() {
-        lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);  // reset() does not use it
         rateLimitService = new RateLimitService(redisTemplate);
     }
 
@@ -43,14 +35,13 @@ class RateLimitServiceTest {
     void shouldAllowFirstRequest() {
         // Arrange
         String key = "login:test@example.com";
-        when(valueOperations.increment("rate_limit:" + key)).thenReturn(1L);
+        when(redisTemplate.execute(RateLimitService.INCREMENT_WITH_TTL, List.of("rate_limit:" + key), "60000")).thenReturn(1L);
 
         // Act
         boolean allowed = rateLimitService.allowRequest(key, 5, 60);
 
         // Assert
         assertTrue(allowed);
-        verify(redisTemplate).expire(eq("rate_limit:" + key), eq(Duration.ofSeconds(60)));
     }
 
     @Test
@@ -60,7 +51,7 @@ class RateLimitServiceTest {
 
         // Simulate 5 requests
         for (int i = 1; i <= 5; i++) {
-            when(valueOperations.increment("rate_limit:" + key)).thenReturn((long) i);
+            when(redisTemplate.execute(RateLimitService.INCREMENT_WITH_TTL, List.of("rate_limit:" + key), "60000")).thenReturn((long) i);
             boolean allowed = rateLimitService.allowRequest(key, 5, 60);
             assertTrue(allowed, "Request " + i + " should be allowed");
         }
@@ -70,7 +61,7 @@ class RateLimitServiceTest {
     void shouldBlock6thRequest() {
         // Arrange
         String key = "login:test@example.com";
-        when(valueOperations.increment("rate_limit:" + key)).thenReturn(6L);
+        when(redisTemplate.execute(RateLimitService.INCREMENT_WITH_TTL, List.of("rate_limit:" + key), "60000")).thenReturn(6L);
 
         // Act
         boolean allowed = rateLimitService.allowRequest(key, 5, 60);

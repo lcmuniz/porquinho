@@ -30,11 +30,7 @@ public class AccountLockService {
      * Records a failed login from this IP. After 5 failures within 15 minutes, this IP is locked for this email.
      */
     public void recordFailedAttempt(String email, String clientIp) {
-        String key = key(email, clientIp);
-        Long count = redisTemplate.opsForValue().increment(key);
-        if (count != null && count == 1) {
-            redisTemplate.expire(key, LOCK_DURATION);
-        }
+        RateLimitService.increment(redisTemplate, key(email, clientIp), LOCK_DURATION);
     }
 
     /**
