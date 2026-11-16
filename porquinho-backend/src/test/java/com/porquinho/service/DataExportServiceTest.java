@@ -301,6 +301,9 @@ class DataExportServiceTest {
         sub.setCancellationDate(start.plusDays(40));
         sub.setFailedPaymentAttempts(2);
         sub.setPaymentUpdateUrl("https://invoice.stripe.com/i/x");
+        sub.setAccessEndedAt(start.plusDays(41));
+        sub.setRetentionWarning7dSentAt(start.plusDays(64));
+        sub.setRetentionWarning1dSentAt(start.plusDays(70));
         when(subscriptionService.findByUserId(userId)).thenReturn(Optional.of(sub));
 
         @SuppressWarnings("unchecked")
@@ -314,6 +317,9 @@ class DataExportServiceTest {
         assertEquals(start.plusDays(40).toString(), exported.get("cancellation_date"));
         assertEquals(2, exported.get("failed_payment_attempts"));
         assertEquals("https://invoice.stripe.com/i/x", exported.get("payment_update_url"));
+        assertEquals(start.plusDays(41).toString(), exported.get("access_ended_at"));
+        assertEquals(start.plusDays(64).toString(), exported.get("retention_warning_7d_sent_at"));
+        assertEquals(start.plusDays(70).toString(), exported.get("retention_warning_1d_sent_at"));
     }
 
     @Test

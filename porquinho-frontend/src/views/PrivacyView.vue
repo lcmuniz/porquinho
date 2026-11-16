@@ -102,6 +102,17 @@
             obrigações legais. Após solicitação de exclusão, seus dados são mantidos por 30 dias
             (período de recuperação) e então permanentemente excluídos.
           </p>
+          <p class="mt-2 text-gray-700">
+            Se o seu período de teste ou a sua assinatura terminar e você não assinar, guardamos seus
+            dados por 30 dias depois do fim do acesso. Avisamos por e-mail 7 dias e 1 dia antes, com
+            links para assinar ou exportar seus dados. Passado esse prazo, a conta e todos os dados são
+            permanentemente excluídos.
+          </p>
+          <p class="mt-2 text-gray-700">
+            Depois de qualquer exclusão (pedida por você ou por fim do prazo), guardamos apenas um
+            código (hash) do seu e-mail, para impedir que o período de teste gratuito seja
+            usado de novo. Um novo cadastro com o mesmo e-mail não recebe outro período de teste.
+          </p>
         </section>
 
         <section class="mt-6">

@@ -9,6 +9,8 @@ import com.porquinho.entity.User;
 import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.PaymentProviderUnavailableException;
 import com.porquinho.exception.ResourceNotFoundException;
+import com.porquinho.entity.AccountDeletion;
+import com.porquinho.repository.AccountDeletionRepository;
 import com.porquinho.repository.SubscriptionRepository;
 import com.porquinho.repository.UserRepository;
 import org.slf4j.Logger;
@@ -58,31 +60,46 @@ public class SubscriptionService {
     private final StripeBillingService stripeBillingService;
     private final UserRepository userRepository;
     private final EmailService emailService;
+    private final AccountDeletionRepository accountDeletionRepository;
 
     public SubscriptionService(SubscriptionRepository subscriptionRepository,
                                AuditLogService auditLogService,
                                Clock clock,
                                StripeBillingService stripeBillingService,
                                UserRepository userRepository,
-                               EmailService emailService) {
+                               EmailService emailService,
+                               AccountDeletionRepository accountDeletionRepository) {
         this.subscriptionRepository = subscriptionRepository;
         this.auditLogService = auditLogService;
         this.clock = clock;
         this.stripeBillingService = stripeBillingService;
         this.userRepository = userRepository;
         this.emailService = emailService;
+        this.accountDeletionRepository = accountDeletionRepository;
     }
 
     /**
      * Start the 30-day free trial for a newly registered user.
      * Idempotent: if the user already has a subscription, returns it unchanged (never restarts the trial).
      * Joins the caller's transaction, so a failure here rolls back the registration.
+     *
+     * An e-mail whose hash a past deletion left in account_deletions (retention purge or the user's own request)
+     * gets no new trial: the row is born TRIAL/EXPIRED with every date = now (pre-Epic 10, no endless trials).
      */
     @Transactional
-    public Subscription startTrial(UUID userId, String ipAddress) {
+    public Subscription startTrial(UUID userId, String email, String ipAddress) {
         Optional<Subscription> existing = subscriptionRepository.findByUserId(userId);
         if (existing.isPresent()) {
             return existing.get();
+        }
+
+        if (email != null && accountDeletionRepository.existsByEmailHash(AccountDeletion.hashEmail(email))) {
+            OffsetDateTime now = OffsetDateTime.now(clock);
+            Subscription denied = new Subscription(userId, PlanType.TRIAL, Status.EXPIRED, now, now);
+            denied.setAccessEndedAt(now);
+            Subscription saved = subscriptionRepository.save(denied);
+            auditLogService.log("trial_denied_returning_email", userId, ipAddress);
+            return saved;
         }
 
         OffsetDateTime start = OffsetDateTime.now(clock);
@@ -311,6 +328,7 @@ public class SubscriptionService {
         int attempts = subscription.getFailedPaymentAttempts();
         subscription.setStatus(Status.EXPIRED);
         subscription.setCancellationDate(now);
+        subscription.setAccessEndedAt(now);
         subscription.setPaymentUpdateUrl(null);
         Subscription saved = subscriptionRepository.save(subscription);
 
@@ -363,6 +381,7 @@ public class SubscriptionService {
         OffsetDateTime now = OffsetDateTime.now(clock);
         subscription.setStatus(Status.EXPIRED);
         subscription.setCancellationDate(now);
+        subscription.setAccessEndedAt(now);
         subscription.setPaymentUpdateUrl(null);
         subscriptionRepository.save(subscription);
 

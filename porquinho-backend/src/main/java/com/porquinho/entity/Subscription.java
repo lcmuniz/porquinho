@@ -73,6 +73,16 @@ public class Subscription {
     @Column(name = "payment_update_url", length = 1024)
     private String paymentUpdateUrl;
 
+    /** Retention of non-converters (pre-Epic 10): when access ended (EXPIRED/SUSPENDED); purge 30 days later. */
+    @Column(name = "access_ended_at")
+    private OffsetDateTime accessEndedAt;
+
+    @Column(name = "retention_warning_7d_sent_at")
+    private OffsetDateTime retentionWarning7dSentAt;
+
+    @Column(name = "retention_warning_1d_sent_at")
+    private OffsetDateTime retentionWarning1dSentAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -150,6 +160,15 @@ public class Subscription {
 
     public String getPaymentUpdateUrl() { return paymentUpdateUrl; }
     public void setPaymentUpdateUrl(String paymentUpdateUrl) { this.paymentUpdateUrl = paymentUpdateUrl; }
+
+    public OffsetDateTime getAccessEndedAt() { return accessEndedAt; }
+    public void setAccessEndedAt(OffsetDateTime accessEndedAt) { this.accessEndedAt = accessEndedAt; }
+
+    public OffsetDateTime getRetentionWarning7dSentAt() { return retentionWarning7dSentAt; }
+    public void setRetentionWarning7dSentAt(OffsetDateTime retentionWarning7dSentAt) { this.retentionWarning7dSentAt = retentionWarning7dSentAt; }
+
+    public OffsetDateTime getRetentionWarning1dSentAt() { return retentionWarning1dSentAt; }
+    public void setRetentionWarning1dSentAt(OffsetDateTime retentionWarning1dSentAt) { this.retentionWarning1dSentAt = retentionWarning1dSentAt; }
 
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }

@@ -255,21 +255,7 @@ public class AccountDeletionService {
 
         String email = user.getEmail();
 
-        // Capture every non-revoked session BEFORE soft-deleting the user, also past expires_at: the Supabase session
-        // may still be refreshing, and revoked_at on its session_id is what JwtAuthenticationConverter checks.
-        List<UserSession> activeSessions = userSessionRepository.findAllByUserId(userId);
-
-        // Revoke each session (session_id) and blacklist its JWT hash (rows without session_id).
-        OffsetDateTime now = OffsetDateTime.now();
-        for (UserSession session : activeSessions) {
-            session.setRevokedAt(now);
-            jwtBlacklistService.blacklistToken(session.getJwtTokenHash(), session.getExpiresAt());
-        }
-        userSessionRepository.saveAll(activeSessions);
-
-        // Soft-delete the user.
-        user.softDelete(userId);
-        userRepository.save(user);
+        revokeSessionsAndSoftDelete(userId, user);
 
         // Create AccountDeletion record. Catch unique-constraint violations from the partial
         // index on (user_id) WHERE status='PENDING_PURGE' as a defensive race-condition guard:
@@ -277,6 +263,7 @@ public class AccountDeletionService {
         OffsetDateTime scheduledPurgeAt = OffsetDateTime.now().plusDays(RETENTION_DAYS);
         AccountDeletion deletion = new AccountDeletion(userId, scheduledPurgeAt, ipAddress);
         deletion.setLgpdConsentAt(user.getLgpdConsentAt());
+        deletion.setEmailHash(AccountDeletion.hashEmail(email));
         AccountDeletion saved;
         try {
             saved = accountDeletionRepository.save(deletion);
@@ -296,6 +283,52 @@ public class AccountDeletionService {
         subscriptionService.cancelForAccountDeletion(userId);
 
         return new DeletionContext(email, saved, true);
+    }
+
+    /**
+     * Retention of non-converters (pre-Epic 10): 30 days after access ended, the user is deleted without asking.
+     * Joins the caller's transaction (RetentionService holds the subscription row lock): soft-deletes the user,
+     * revokes sessions and creates a PENDING_PURGE deletion with reason RETENTION, due now. No rate limit and
+     * no confirmation e-mail. The caller runs {@link #purgeUser(AccountDeletion)} after commit; if that fails,
+     * the 03:00 job picks the row up.
+     */
+    @Transactional
+    public AccountDeletion createRetentionDeletion(UUID userId) {
+        User user = userRepository.findById(userId)
+            .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
+
+        revokeSessionsAndSoftDelete(userId, user);
+
+        OffsetDateTime now = OffsetDateTime.now();
+        AccountDeletion deletion = new AccountDeletion(userId, now, null);
+        deletion.setReason(AccountDeletion.Reason.RETENTION);
+        deletion.setLgpdConsentAt(user.getLgpdConsentAt());
+        deletion.setEmailHash(AccountDeletion.hashEmail(user.getEmail()));
+        AccountDeletion saved = accountDeletionRepository.save(deletion);
+
+        auditLogService.log("account_deletion_requested", userId, null,
+            String.format("{\"scheduled_purge_at\":\"%s\",\"reason\":\"RETENTION\"}", now));
+        return saved;
+    }
+
+    /**
+     * Revoke every session and soft-delete the user (both deletion paths). Captures every non-revoked session
+     * BEFORE soft-deleting the user, also past expires_at: the Supabase session may still be refreshing, and
+     * revoked_at on its session_id is what JwtAuthenticationConverter checks.
+     */
+    private void revokeSessionsAndSoftDelete(UUID userId, User user) {
+        List<UserSession> activeSessions = userSessionRepository.findAllByUserId(userId);
+
+        // Revoke each session (session_id) and blacklist its JWT hash (rows without session_id).
+        OffsetDateTime now = OffsetDateTime.now();
+        for (UserSession session : activeSessions) {
+            session.setRevokedAt(now);
+            jwtBlacklistService.blacklistToken(session.getJwtTokenHash(), session.getExpiresAt());
+        }
+        userSessionRepository.saveAll(activeSessions);
+
+        user.softDelete(userId);
+        userRepository.save(user);
     }
 
     /**

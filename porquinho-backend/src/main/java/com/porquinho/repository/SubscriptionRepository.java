@@ -56,6 +56,18 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, UUID
                                                    @Param("oneDayUntil") OffsetDateTime oneDayUntil);
 
     /**
+     * Candidates for the daily retention job (pre-Epic 10): rows that may be without access whose end of access
+     * (access_ended_at, else trial_end_date for TRIAL, else next_billing_date) is by endBefore. Excludes the
+     * statuses that always keep access (PAYMENT_FAILED, MONTHLY ACTIVE). The exact rules live in RetentionService.
+     */
+    @Query("SELECT s FROM Subscription s WHERE s.status <> com.porquinho.entity.Subscription.Status.PAYMENT_FAILED "
+        + "AND NOT (s.status = com.porquinho.entity.Subscription.Status.ACTIVE "
+        + "AND s.planType = com.porquinho.entity.Subscription.PlanType.MONTHLY) "
+        + "AND COALESCE(s.accessEndedAt, CASE WHEN s.planType = com.porquinho.entity.Subscription.PlanType.TRIAL "
+        + "THEN s.trialEndDate ELSE s.nextBillingDate END) <= :endBefore")
+    List<Subscription> findRetentionCandidates(@Param("endBefore") OffsetDateTime endBefore);
+
+    /**
      * Hard-delete the user's subscription (Story 1.7 account purge, extended in Story 2.1).
      * Must run BEFORE deleting the user row (FK subscriptions.user_id -> users.id).
      */

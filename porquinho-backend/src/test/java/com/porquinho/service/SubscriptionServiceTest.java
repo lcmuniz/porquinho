@@ -7,6 +7,7 @@ import com.porquinho.entity.Subscription.Status;
 import com.porquinho.entity.User;
 import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.PaymentProviderUnavailableException;
+import com.porquinho.repository.AccountDeletionRepository;
 import com.porquinho.repository.SubscriptionRepository;
 import com.porquinho.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -60,13 +61,16 @@ class SubscriptionServiceTest {
     @Mock
     private EmailService emailService;
 
+    @Mock
+    private AccountDeletionRepository accountDeletionRepository;
+
     private SubscriptionService service;
     private UUID userId;
 
     @BeforeEach
     void setUp() {
         service = new SubscriptionService(subscriptionRepository, auditLogService, Clock.fixed(NOW, ZoneOffset.UTC),
-            stripeBillingService, userRepository, emailService);
+            stripeBillingService, userRepository, emailService, accountDeletionRepository);
         userId = UUID.randomUUID();
     }
 
@@ -80,7 +84,7 @@ class SubscriptionServiceTest {
         when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
         when(auditLogService.log(anyString(), any(), any(), anyString())).thenReturn(new AuditLog());
 
-        Subscription result = service.startTrial(userId, "10.0.0.1");
+        Subscription result = service.startTrial(userId, "ana@x.com", "10.0.0.1");
 
         ArgumentCaptor<Subscription> captor = ArgumentCaptor.forClass(Subscription.class);
         verify(subscriptionRepository).save(captor.capture());
@@ -97,11 +101,31 @@ class SubscriptionServiceTest {
     }
 
     @Test
+    void startTrialForReturningEmailIsBornExpiredWithoutTrial() {
+        when(subscriptionRepository.findByUserId(userId)).thenReturn(Optional.empty());
+        when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+        // Same hash whatever the case and spaces of the e-mail typed again
+        when(accountDeletionRepository.existsByEmailHash(
+            com.porquinho.entity.AccountDeletion.hashEmail(" Ana@X.com "))).thenReturn(true);
+
+        Subscription result = service.startTrial(userId, "ana@x.com", "10.0.0.1");
+
+        assertThat(result.getPlanType()).isEqualTo(PlanType.TRIAL);
+        assertThat(result.getStatus()).isEqualTo(Status.EXPIRED);
+        assertThat(result.getTrialStartDate()).isEqualTo(NOW_UTC);
+        assertThat(result.getTrialEndDate()).isEqualTo(NOW_UTC);
+        assertThat(result.getAccessEndedAt()).isEqualTo(NOW_UTC);
+        assertThat(service.hasAccess(result)).isFalse();
+        verify(auditLogService).log("trial_denied_returning_email", userId, "10.0.0.1");
+        verify(auditLogService, never()).log(eq("trial_started"), any(), any(), any());
+    }
+
+    @Test
     void startTrialShouldBeIdempotentAndNeverRestartTrial() {
         Subscription existing = trialEndingAt(NOW_UTC.minusDays(5)); // already expired
         when(subscriptionRepository.findByUserId(userId)).thenReturn(Optional.of(existing));
 
-        Subscription result = service.startTrial(userId, "10.0.0.1");
+        Subscription result = service.startTrial(userId, "ana@x.com", "10.0.0.1");
 
         assertThat(result).isSameAs(existing);
         assertThat(result.getTrialEndDate()).isEqualTo(NOW_UTC.minusDays(5));
@@ -544,6 +568,7 @@ class SubscriptionServiceTest {
 
             assertThat(result.getStatus()).isEqualTo(Status.EXPIRED);
             assertThat(result.getCancellationDate()).isEqualTo(NOW_UTC);
+            assertThat(result.getAccessEndedAt()).isEqualTo(NOW_UTC);
             assertThat(result.getPaymentUpdateUrl()).isNull();
             assertThat(service.hasAccess(result)).isFalse();
             verify(stripeBillingService).cancelImmediately("sub_1");

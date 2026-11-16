@@ -130,6 +130,50 @@ class EmailServiceTest {
         service.sendTrialReminder("user@example.com", 1, OffsetDateTime.now(), "http://x/assinatura");  // must not throw
     }
 
+    // ---- Pre-Epic 10: retention of non-converters ----
+
+    private SimpleMailMessage retentionWarning(long daysLeft, OffsetDateTime purgeAt) {
+        JavaMailSender sender = mock(JavaMailSender.class);
+        serviceWith(sender, "x@example.com").sendRetentionWarning("user@example.com", daysLeft, purgeAt,
+            "https://app.example.com/assinatura", "https://app.example.com/auth/data-export");
+        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(sender).send(captor.capture());
+        return captor.getValue();
+    }
+
+    @Test
+    void retentionWarningSevenDaysText() {
+        SimpleMailMessage message = retentionWarning(7, OffsetDateTime.of(2026, 11, 30, 13, 0, 0, 0, ZoneOffset.UTC));
+
+        assertThat(message.getSubject()).isEqualTo("Porquinho - Seus dados serão excluídos em 7 dias");
+        assertThat(message.getTo()).containsExactly("user@example.com");
+        assertThat(message.getText())
+            .contains("acaba em 7 dias (30/11/2026)")
+            .contains("não tem uma assinatura ativa")
+            .contains("https://app.example.com/assinatura")
+            .contains("https://app.example.com/auth/data-export");
+    }
+
+    @Test
+    void retentionWarningOneDayUsesSaoPauloDate() {
+        // 01/12 01:00Z is still 30/11 in Brazil
+        SimpleMailMessage message = retentionWarning(1, OffsetDateTime.of(2026, 12, 1, 1, 0, 0, 0, ZoneOffset.UTC));
+
+        assertThat(message.getSubject()).isEqualTo("Porquinho - Seus dados serão excluídos amanhã");
+        assertThat(message.getText())
+            .contains("acaba amanhã (30/11/2026)")
+            .contains("https://app.example.com/assinatura")
+            .contains("https://app.example.com/auth/data-export");
+    }
+
+    @Test
+    void retentionWarningTodayText() {
+        SimpleMailMessage message = retentionWarning(0, OffsetDateTime.of(2026, 11, 30, 13, 0, 0, 0, ZoneOffset.UTC));
+
+        assertThat(message.getSubject()).isEqualTo("Porquinho - Seus dados serão excluídos hoje");
+        assertThat(message.getText()).contains("acaba hoje (30/11/2026)");
+    }
+
     @Test
     void skipsSilentlyWhenSmtpNotConfigured() {
         EmailService service = serviceWith(null, "");

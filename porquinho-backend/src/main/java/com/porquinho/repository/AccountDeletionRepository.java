@@ -25,4 +25,7 @@ public interface AccountDeletionRepository extends JpaRepository<AccountDeletion
      * Used by the daily purge job to find deletions ready to be hard-deleted.
      */
     List<AccountDeletion> findAllByStatusAndScheduledPurgeAtBefore(DeletionStatus status, OffsetDateTime threshold);
+
+    /** A deletion (any reason, any status) left this e-mail hash: a returning e-mail gets no new trial. */
+    boolean existsByEmailHash(String emailHash);
 }

@@ -171,6 +171,10 @@ public class SubscriptionWebhookService {
         subscription.setCancellationDate(null);
         subscription.setFailedPaymentAttempts(0);
         subscription.setPaymentUpdateUrl(null);
+        // Back with access: the retention countdown (purge 30 days after access ended) starts over
+        subscription.setAccessEndedAt(null);
+        subscription.setRetentionWarning7dSentAt(null);
+        subscription.setRetentionWarning1dSentAt(null);
         Subscription saved = subscriptionRepository.save(subscription);
 
         Map<String, Object> metadata = new LinkedHashMap<>();
@@ -223,6 +227,7 @@ public class SubscriptionWebhookService {
 
         Status previous = subscription.getStatus();
         subscription.setStatus(Status.EXPIRED);
+        subscription.setAccessEndedAt(OffsetDateTime.now(clock));
         subscriptionRepository.save(subscription);
 
         Map<String, Object> metadata = new LinkedHashMap<>();
@@ -235,6 +240,7 @@ public class SubscriptionWebhookService {
     private void suspend(Subscription subscription, String latestInvoiceId) {
         int attempts = subscription.getFailedPaymentAttempts();
         subscription.setStatus(Status.SUSPENDED);
+        subscription.setAccessEndedAt(OffsetDateTime.now(clock));
         // The failed invoice is closed with the subscription: its page no longer settles anything
         subscription.setPaymentUpdateUrl(null);
         subscriptionRepository.save(subscription);

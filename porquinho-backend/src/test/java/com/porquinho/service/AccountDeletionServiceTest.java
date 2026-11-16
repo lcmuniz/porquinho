@@ -199,6 +199,9 @@ class AccountDeletionServiceTest {
         ArgumentCaptor<AccountDeletion> saved = ArgumentCaptor.forClass(AccountDeletion.class);
         verify(accountDeletionRepository).save(saved.capture());
         assertEquals(consentAt, saved.getValue().getLgpdConsentAt());
+        // Pre-Epic 10: the e-mail hash survives the purge, so the same e-mail gets no new trial
+        assertEquals(AccountDeletion.hashEmail("test@example.com"), saved.getValue().getEmailHash());
+        assertEquals(AccountDeletion.Reason.USER_REQUEST, saved.getValue().getReason());
 
         // User soft-deleted
         assertNotNull(user.getDeletedAt());

@@ -223,6 +223,44 @@ public class EmailService {
     }
 
     /**
+     * Warn a user without access that all their data will be deleted (retention of non-converters, pre-Epic 10):
+     * 7 days and 1 day before the purge, with links to subscribe or export the data.
+     * Best-effort: if SMTP is not configured or sending fails, logs warning and continues.
+     *
+     * @param daysLeft Calendar days until the purge (Sao Paulo dates)
+     * @param purgeAt When the data is deleted (end of access + 30 days)
+     */
+    public void sendRetentionWarning(String email, long daysLeft, OffsetDateTime purgeAt, String subscribeUrl, String exportUrl) {
+        if (mailSender == null) {
+            log.warn("SMTP not configured - skipping retention warning email to {}", maskEmail(email));
+            return;
+        }
+
+        try {
+            String when = daysLeft <= 0 ? "hoje" : daysLeft == 1 ? "amanhã" : "em " + daysLeft + " dias";
+            String purgeDate = purgeAt
+                .atZoneSameInstant(ZoneId.of("America/Sao_Paulo"))
+                .format(DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.of("pt", "BR")));
+
+            SimpleMailMessage message = newMessage(email, "Porquinho - Seus dados serão excluídos " + when);
+            message.setText(
+                "Olá!\n\n" +
+                "Seu acesso ao Porquinho terminou há algum tempo. Como você não tem uma assinatura ativa, guardamos seus dados " +
+                "por 30 dias depois do fim do acesso. Esse prazo acaba " + when + " (" + purgeDate + ").\n\n" +
+                "Nessa data excluiremos a sua conta e todos os seus dados (contas, transações, categorias, " +
+                "orçamentos e metas), sem possibilidade de recuperação.\n\n" +
+                "Para manter tudo, assine o plano mensal (R$ 19,90/mês): " + subscribeUrl + "\n\n" +
+                "Para guardar uma cópia antes da exclusão, exporte seus dados: " + exportUrl + "\n\n" +
+                "Atenciosamente,\nEquipe Porquinho"
+            );
+            mailSender.send(message);
+            log.info("Retention warning ({} days left) email sent to {}", daysLeft, maskEmail(email));
+        } catch (Exception e) {
+            log.warn("Failed to send retention warning email to {}: {}", maskEmail(email), e.getClass().getSimpleName());
+        }
+    }
+
+    /**
      * Send "Assinatura cancelada" after a self-service cancel (Story 2.4), with the date until which
      * access is still valid (end of the paid period).
      * Best-effort: if SMTP is not configured or sending fails, logs warning and continues.

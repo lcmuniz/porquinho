@@ -3,8 +3,13 @@ package com.porquinho.entity;
 import jakarta.persistence.*;
 import org.hibernate.annotations.GenericGenerator;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.util.HexFormat;
+import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -19,6 +24,11 @@ public class AccountDeletion {
 
     public enum DeletionStatus {
         PENDING_PURGE, PURGED
+    }
+
+    /** USER_REQUEST: Story 1.7. RETENTION: 30 days without access (pre-Epic 10). */
+    public enum Reason {
+        USER_REQUEST, RETENTION
     }
 
     @Id
@@ -49,6 +59,14 @@ public class AccountDeletion {
     /** Copy of users.lgpd_consent_at: survives the purge, next to requested_at and purged_at (NFR25, retro Epic 1 A4). */
     @Column(name = "lgpd_consent_at")
     private LocalDateTime lgpdConsentAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "reason", nullable = false, length = 20)
+    private Reason reason = Reason.USER_REQUEST;
+
+    /** SHA-256 of the trimmed, lower-cased e-mail; survives the purge so a returning e-mail gets no new trial. */
+    @Column(name = "email_hash", length = 64)
+    private String emailHash;
 
     public AccountDeletion() {
     }
@@ -90,4 +108,21 @@ public class AccountDeletion {
 
     public LocalDateTime getLgpdConsentAt() { return lgpdConsentAt; }
     public void setLgpdConsentAt(LocalDateTime lgpdConsentAt) { this.lgpdConsentAt = lgpdConsentAt; }
+
+    /** SHA-256 hex of the trimmed, lower-cased e-mail (same as V45's backfill in SQL). */
+    public static String hashEmail(String email) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest(email.trim().toLowerCase(Locale.ROOT).getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
+    }
+
+    public Reason getReason() { return reason; }
+    public void setReason(Reason reason) { this.reason = reason; }
+
+    public String getEmailHash() { return emailHash; }
+    public void setEmailHash(String emailHash) { this.emailHash = emailHash; }
 }

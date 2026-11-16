@@ -71,7 +71,7 @@ class AuthServiceTest {
         verify(userRepository, never()).save(any(User.class));
         verify(userRepository).insertWithId(eq(userId), eq(email), eq("GOOGLE"), eq(googleId), any(), any(), any());
         // Story 2.1: trial started for the new user
-        verify(subscriptionService).startTrial(userId, ipAddress);
+        verify(subscriptionService).startTrial(userId, email, ipAddress);
         verify(auditLogService).log(eq("user_registration"), eq(userId), eq(ipAddress), anyString());
     }
 
@@ -89,7 +89,7 @@ class AuthServiceTest {
         assertThat(result.getUser()).isEqualTo(existingUser);
         verify(userRepository, never()).save(any(User.class));
         verify(auditLogService, never()).log(anyString(), any(UUID.class), anyString(), anyString());
-        verify(subscriptionService, never()).startTrial(any(), any());
+        verify(subscriptionService, never()).startTrial(any(), any(), any());
     }
 
     @Test
@@ -108,7 +108,7 @@ class AuthServiceTest {
         assertThat(existingUser.getGoogleId()).isEqualTo("google789");
         assertThat(existingUser.getAuthProvider()).isEqualTo(User.AuthProvider.GOOGLE);
         verify(auditLogService).log(eq("google_account_linked"), eq(userId), eq("192.168.1.1"), anyString());
-        verify(subscriptionService, never()).startTrial(any(), any());
+        verify(subscriptionService, never()).startTrial(any(), any(), any());
     }
 
     @Test
@@ -210,7 +210,7 @@ class AuthServiceTest {
         assertThat(result.getUser().getAuthProvider()).isEqualTo(User.AuthProvider.EMAIL);
         verify(userRepository, never()).save(any(User.class)); // Uses insertWithId, not save
         verify(userRepository).insertWithId(eq(userId), eq(email), eq("EMAIL"), isNull(), any(), any(), any());
-        verify(subscriptionService).startTrial(userId, ipAddress);
+        verify(subscriptionService).startTrial(userId, email, ipAddress);
         verify(auditLogService).log(eq("user_registration"), any(UUID.class), eq(ipAddress), anyString());
     }
 
@@ -246,7 +246,7 @@ class AuthServiceTest {
             authService.registerOrGetUserFromEmail(userId.toString(), "again@example.com", "1.1.1.1");
 
         assertThat(result.isNewUser()).isFalse();
-        verify(subscriptionService, never()).startTrial(any(), any());
+        verify(subscriptionService, never()).startTrial(any(), any(), any());
         verify(userRepository, never()).insertWithId(any(), any(), any(), any(), any(), any(), any());
     }
 
@@ -256,7 +256,7 @@ class AuthServiceTest {
             .isInstanceOf(IllegalArgumentException.class);
 
         verify(userRepository, never()).insertWithId(any(), any(), any(), any(), any(), any(), any());
-        verify(subscriptionService, never()).startTrial(any(), any());
+        verify(subscriptionService, never()).startTrial(any(), any(), any());
     }
 
     @Test

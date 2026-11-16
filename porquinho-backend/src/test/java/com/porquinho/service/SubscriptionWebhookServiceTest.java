@@ -77,7 +77,7 @@ class SubscriptionWebhookServiceTest {
         service = new SubscriptionWebhookService(subscriptionRepository, auditLogService, clock,
             stripeBillingService, userRepository, emailService, billingTransactionRepository, "http://app.test/");
         access = new SubscriptionService(subscriptionRepository, auditLogService, clock,
-            stripeBillingService, userRepository, emailService);
+            stripeBillingService, userRepository, emailService, null);
         userId = UUID.randomUUID();
     }
 
@@ -217,6 +217,7 @@ class SubscriptionWebhookServiceTest {
         assertThat(service.expireByStripeSubscriptionId("sub_1", null)).isTrue();
 
         assertThat(cancelled.getStatus()).isEqualTo(Status.EXPIRED);
+        assertThat(cancelled.getAccessEndedAt()).isEqualTo(NOW_UTC);
         ArgumentCaptor<String> metadata = ArgumentCaptor.forClass(String.class);
         verify(auditLogService).log(eq("subscription_expired"), eq(userId), isNull(), metadata.capture());
         assertThat(metadata.getValue()).isEqualTo("{\"stripe_subscription_id\":\"sub_1\",\"previous_status\":\"CANCELLED\"}");
@@ -283,6 +284,9 @@ class SubscriptionWebhookServiceTest {
     void activateMonthlyForExpiredFormerSubscriberAuditsReactivationAndSendsReactivatedEmail() {
         Subscription expired = monthly(Status.EXPIRED, NOW_UTC.minusDays(3));
         expired.setCancellationDate(NOW_UTC.minusDays(33));
+        expired.setAccessEndedAt(NOW_UTC.minusDays(29));
+        expired.setRetentionWarning7dSentAt(NOW_UTC.minusDays(6));
+        expired.setRetentionWarning1dSentAt(NOW_UTC.minusHours(1));
         OffsetDateTime nextBilling = NOW_UTC.plusDays(30);
         when(subscriptionRepository.findByUserIdForUpdate(userId)).thenReturn(Optional.of(expired));
         when(subscriptionRepository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -293,6 +297,10 @@ class SubscriptionWebhookServiceTest {
         assertThat(result.getStatus()).isEqualTo(Status.ACTIVE);
         assertThat(result.getStripeSubscriptionId()).isEqualTo("sub_2");
         assertThat(result.getCancellationDate()).isNull();
+        // Back with access before the retention purge: the countdown starts over
+        assertThat(result.getAccessEndedAt()).isNull();
+        assertThat(result.getRetentionWarning7dSentAt()).isNull();
+        assertThat(result.getRetentionWarning1dSentAt()).isNull();
         assertThat(result.getNextBillingDate()).isEqualTo(nextBilling);
         ArgumentCaptor<String> metadata = ArgumentCaptor.forClass(String.class);
         verify(auditLogService).log(eq("subscription_reactivated"), eq(userId), isNull(), metadata.capture());
@@ -779,6 +787,7 @@ class SubscriptionWebhookServiceTest {
         assertThat(service.expireByStripeSubscriptionId("sub_1", null)).isTrue();
 
         assertThat(sub.getStatus()).isEqualTo(Status.SUSPENDED);
+        assertThat(sub.getAccessEndedAt()).isEqualTo(NOW_UTC);
         verify(stripeBillingService, never()).voidInvoice(any());
     }
 

@@ -104,7 +104,7 @@ public class AuthService {
             .orElseThrow(() -> new RuntimeException("Failed to create user"));
 
         // Story 2.1: 30-day trial in the same transaction (failure rolls back the registration)
-        subscriptionService.startTrial(savedUser.getId(), ipAddress);
+        subscriptionService.startTrial(savedUser.getId(), email, ipAddress);
 
         // Log audit event for user registration (NFR20)
         auditLogService.log("user_registration", savedUser.getId(), ipAddress,
@@ -159,7 +159,7 @@ public class AuthService {
             .orElseThrow(() -> new RuntimeException("Failed to create user"));
 
         // Story 2.1: 30-day trial in the same transaction (failure rolls back the registration)
-        subscriptionService.startTrial(createdUser.getId(), ipAddress);
+        subscriptionService.startTrial(createdUser.getId(), email, ipAddress);
 
         // Log audit event for user registration (NFR20)
         auditLogService.log("user_registration", createdUser.getId(), ipAddress,

@@ -419,6 +419,9 @@ public class DataExportService {
             subMap.put("cancellation_date", sub.getCancellationDate() != null ? sub.getCancellationDate().toString() : null);
             subMap.put("failed_payment_attempts", sub.getFailedPaymentAttempts());
             subMap.put("payment_update_url", sub.getPaymentUpdateUrl());
+            subMap.put("access_ended_at", sub.getAccessEndedAt() != null ? sub.getAccessEndedAt().toString() : null);
+            subMap.put("retention_warning_7d_sent_at", sub.getRetentionWarning7dSentAt() != null ? sub.getRetentionWarning7dSentAt().toString() : null);
+            subMap.put("retention_warning_1d_sent_at", sub.getRetentionWarning1dSentAt() != null ? sub.getRetentionWarning1dSentAt().toString() : null);
             subMap.put("created_at", sub.getCreatedAt() != null ? sub.getCreatedAt().toString() : null);
             subMap.put("updated_at", sub.getUpdatedAt() != null ? sub.getUpdatedAt().toString() : null);
             subMap.put("deleted_at", sub.getDeletedAt() != null ? sub.getDeletedAt().toString() : null);
