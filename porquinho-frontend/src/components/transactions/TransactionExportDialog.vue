@@ -113,7 +113,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive } from 'vue'
+import { useExportDialog } from '@/composables/useExportDialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -174,10 +175,19 @@ const form = reactive({
   includeFutureInstallments: false,
   includeDeleted: false,
 })
-const exporting = ref(false)
-const failed = ref(false)
-/** Quem tinha o foco ao abrir (o botão "Exportar CSV"): sem DialogTrigger, o Reka não sabe para onde voltar. */
-let opener: HTMLElement | null = null
+// Ao abrir, o formulário recomeça com o filtro da tela de origem
+const { exporting, failed, returnFocus, onOpenChange, run } = useExportDialog({
+  open: () => props.open,
+  setOpen: (open) => emit('update:open', open),
+  reset: () =>
+    Object.assign(form, {
+      ...props.initial,
+      categoryIds: [...props.initial.categoryIds],
+      targets: [...props.initial.targets],
+      includeFutureInstallments: false,
+      includeDeleted: false,
+    }),
+})
 
 const categoryOptions = computed(() => categoryFilterOptions(props.categories))
 const targetOptions = computed(() => targetFilterOptions(props.accounts, props.cards))
@@ -193,51 +203,18 @@ const period = computed<{ from: string; to: string } | null>(() => {
   return { from: form.from, to: form.to }
 })
 
-// Ao abrir, o formulário recomeça com o filtro da tela de origem
-watch(
-  () => props.open,
-  (open) => {
-    if (!open) return
-    opener = document.activeElement as HTMLElement | null
-    failed.value = false
-    Object.assign(form, {
-      ...props.initial,
-      categoryIds: [...props.initial.categoryIds],
-      targets: [...props.initial.targets],
-      includeFutureInstallments: false,
-      includeDeleted: false,
-    })
-  },
-  { immediate: true },
-)
-
-function returnFocus(event: Event) {
-  event.preventDefault()
-  opener?.focus()
-}
-
-/** Com o download em andamento o diálogo não fecha. */
-function onOpenChange(open: boolean) {
-  if (!exporting.value) emit('update:open', open)
-}
-
 async function generate() {
   const p = period.value
-  if (!p || exporting.value) return
-  exporting.value = true
-  failed.value = false
-  try {
-    const { blob, count } = await exportDetails(
+  if (!p) return
+  let count = 0
+  const ok = await run(async () => {
+    const result = await exportDetails(
       { ...p, categoryIds: form.categoryIds, targets: form.targets, q: '', sort: 'date', dir: 'desc' },
       { includeFutureInstallments: form.includeFutureInstallments, includeDeleted: form.includeDeleted },
     )
-    downloadBlob(blob, `transacoes_${todaySaoPaulo()}.csv`)
-    emit('update:open', false)
-    emit('exported', count)
-  } catch {
-    failed.value = true
-  } finally {
-    exporting.value = false
-  }
+    count = result.count
+    downloadBlob(result.blob, `transacoes_${todaySaoPaulo()}.csv`)
+  })
+  if (ok) emit('exported', count)
 }
 </script>

@@ -90,7 +90,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive } from 'vue'
+import { useExportDialog } from '@/composables/useExportDialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -125,10 +126,12 @@ const MONTH = /^\d{4}-\d{2}$/
 const MAX_MONTHS = 12
 
 const form = reactive({ from: '', to: '', hierarchy: false, averages: false })
-const exporting = ref(false)
-const failed = ref(false)
-/** Quem tinha o foco ao abrir: sem DialogTrigger, o Reka não sabe para onde voltar. */
-let opener: HTMLElement | null = null
+const { exporting, failed, returnFocus, onOpenChange, run } = useExportDialog({
+  open: () => props.open,
+  setOpen: (open) => emit('update:open', open),
+  reset: () =>
+    Object.assign(form, { from: props.initialMonth, to: props.initialMonth, hierarchy: false, averages: false }),
+})
 
 /** De 1 a 12 meses, com o final a partir do inicial (a mesma regra do backend). */
 const valid = computed(
@@ -139,41 +142,13 @@ const valid = computed(
     form.to <= shiftMonth(form.from, MAX_MONTHS - 1),
 )
 
-watch(
-  () => props.open,
-  (open) => {
-    if (!open) return
-    opener = document.activeElement as HTMLElement | null
-    failed.value = false
-    Object.assign(form, { from: props.initialMonth, to: props.initialMonth, hierarchy: false, averages: false })
-  },
-  { immediate: true },
-)
-
-function returnFocus(event: Event) {
-  event.preventDefault()
-  opener?.focus()
-}
-
-/** Com o download em andamento o diálogo não fecha. */
-function onOpenChange(open: boolean) {
-  if (!exporting.value) emit('update:open', open)
-}
-
 async function generate() {
-  if (!valid.value || exporting.value) return
-  exporting.value = true
-  failed.value = false
-  try {
+  if (!valid.value) return
+  const ok = await run(async () => {
     const { from, to, hierarchy, averages } = form
     const blob = await exportBudgetReport({ from, to, hierarchy, averages })
     downloadBlob(blob, from === to ? `orcamento_${from}.csv` : `orcamento_${from}_${to}.csv`)
-    emit('update:open', false)
-    emit('exported')
-  } catch {
-    failed.value = true
-  } finally {
-    exporting.value = false
-  }
+  })
+  if (ok) emit('exported')
 }
 </script>
