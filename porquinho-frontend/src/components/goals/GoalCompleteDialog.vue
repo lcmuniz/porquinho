@@ -51,16 +51,13 @@ import {
 } from '@/components/ui/dialog'
 import { completeGoal } from '@/services/goalService'
 import type { Goal } from '@/types/goal'
+import { apiErrorDetail } from '@/lib/apiError'
 
 /** Story 8.7: confirmação antes de concluir manualmente (vale mesmo abaixo do alvo). */
 const props = defineProps<{ focusFallback: HTMLElement | null }>()
 const emit = defineEmits<{ completed: [goal: Goal] }>()
 
 const SAVE_FAILED = 'Não foi possível salvar. Verifique sua conexão e tente novamente.'
-
-interface ApiError {
-  response?: { data?: { detail?: string } }
-}
 
 const target = ref<Goal | null>(null)
 const dialogOpen = ref(false)
@@ -95,7 +92,7 @@ async function confirm() {
     dialogOpen.value = false
     emit('completed', updated)
   } catch (err) {
-    error.value = (err as ApiError)?.response?.data?.detail ?? SAVE_FAILED
+    error.value = apiErrorDetail(err, SAVE_FAILED)
   } finally {
     saving.value = false
   }

@@ -171,6 +171,7 @@ import { goalProjection, projectionText } from '@/lib/goalPace'
 import { formatBRL, formatBRLInput, parseBRL } from '@/lib/money'
 import { getGoalsSummary, listGoals, updateGoalAllocations } from '@/services/goalService'
 import type { Goal, GoalAllocationItem, GoalsSummary } from '@/types/goal'
+import type { ApiError } from '@/lib/apiError'
 
 /**
  * Story 8.5: um campo de alocação por meta ativa, total antes/depois, aviso de disponível e a projeção da 8.4
@@ -216,10 +217,6 @@ function validate(goal: Goal): number | string | null {
   if (value === null) return 'Informe um valor válido, com até 2 casas decimais'
   if (value < 0) return 'O aporte mensal não pode ser negativo'
   return value
-}
-
-interface ApiError {
-  response?: { status?: number; data?: { detail?: string; errors?: Record<string, string> } }
 }
 
 async function load() {

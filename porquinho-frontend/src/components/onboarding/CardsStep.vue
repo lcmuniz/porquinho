@@ -114,6 +114,7 @@ import { deleteCard, listCards } from '@/services/cardService'
 import { completeCards } from '@/services/onboardingService'
 import type { CreditCard } from '@/types/creditCard'
 import type { OnboardingProgress } from '@/types/onboarding'
+import { apiErrorDetail, apiErrorStatus } from '@/lib/apiError'
 
 /**
  * Story 3.3: passo 3 do onboarding. Adiciona cartões um a um, lista e remove; Próximo, Voltar e Pular.
@@ -134,12 +135,8 @@ const heading = ref<HTMLElement | null>(null)
 
 const busy = computed(() => adding.value || removing.value || finishing.value !== null)
 
-interface ApiError {
-  response?: { status?: number; data?: { detail?: string; errors?: Record<string, string> } }
-}
-
 function apiDetail(err: unknown): string | undefined {
-  return (err as ApiError)?.response?.data?.detail
+  return apiErrorDetail(err)
 }
 
 function onCreated(created: CreditCard) {
@@ -160,7 +157,7 @@ async function removeCard(card: CreditCard) {
     await deleteCard(card.id)
     cards.value = cards.value.filter((c) => c.id !== card.id)
   } catch (err) {
-    if ((err as ApiError)?.response?.status === 404) {
+    if (apiErrorStatus(err) === 404) {
       // Já tinha sido removido (outra aba): só tira da lista
       cards.value = cards.value.filter((c) => c.id !== card.id)
     } else {

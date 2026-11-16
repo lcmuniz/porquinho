@@ -244,6 +244,7 @@ import {
 import { completeCustomization } from '@/services/onboardingService'
 import type { Category, CategoryOptions } from '@/types/category'
 import type { OnboardingProgress } from '@/types/onboarding'
+import { apiErrorDetail, apiErrorStatus } from '@/lib/apiError'
 
 /**
  * Story 3.5: passo 5 do onboarding. Lista as categorias do usuário agrupadas e em ordem alfabética (pt-BR).
@@ -305,12 +306,8 @@ const canConfirmDelete = computed(
     (deleteUsage.value === 0 || deleteTarget.value !== ''),
 )
 
-interface ApiError {
-  response?: { status?: number; data?: { detail?: string } }
-}
-
 function apiDetail(err: unknown): string | undefined {
-  return (err as ApiError)?.response?.data?.detail
+  return apiErrorDetail(err)
 }
 
 async function load() {
@@ -414,7 +411,7 @@ async function confirmDelete() {
     await request
     categories.value = categories.value.filter((c) => c.id !== target.id)
   } catch (err) {
-    if ((err as ApiError)?.response?.status === 404) {
+    if (apiErrorStatus(err) === 404) {
       // Já tinha sido excluída (outra aba, por exemplo): só tira da lista
       categories.value = categories.value.filter((c) => c.id !== target.id)
     } else {

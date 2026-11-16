@@ -211,6 +211,7 @@ import { formatDateBR } from '@/lib/date'
 import { formatBRL } from '@/lib/money'
 import { getGoalProgress, getGoalsSummary, listGoals, reopenGoal } from '@/services/goalService'
 import type { Goal, GoalProgressPoint, GoalsSummary } from '@/types/goal'
+import { apiErrorDetail } from '@/lib/apiError'
 
 /**
  * Story 8.1: metas ativas do usuário (ordem de criação) e criação de outra meta, sem limite.
@@ -276,10 +277,6 @@ function toggleChart(id: string) {
   else void loadProgress(id)
 }
 
-interface ApiError {
-  response?: { data?: { detail?: string } }
-}
-
 async function load() {
   loading.value = true
   loadFailed.value = false
@@ -339,7 +336,7 @@ async function reopen(goal: Goal) {
     // O botão some com o card concluído: o foco não pode cair no body
     void nextTick(() => heading.value?.focus())
   } catch (err) {
-    actionError.value = (err as ApiError)?.response?.data?.detail ?? ACTION_FAILED
+    actionError.value = apiErrorDetail(err, ACTION_FAILED)
   } finally {
     reopening.value = null
   }

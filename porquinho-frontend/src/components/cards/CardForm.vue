@@ -139,6 +139,7 @@ import { BANKS } from '@/lib/banks'
 import { formatBRLInput, parseBRL } from '@/lib/money'
 import { createCard, updateCard } from '@/services/cardService'
 import type { CreditCard } from '@/types/creditCard'
+import type { ApiError } from '@/lib/apiError'
 
 /**
  * Formulário de cartão de crédito (Stories 3.3 e 4.2): valida localmente, chama
@@ -198,10 +199,6 @@ const form = reactive({
 const errors = reactive<Partial<Record<Field, string>>>({})
 const isEdit = computed(() => props.card != null)
 const nameInput = ref<{ $el?: HTMLInputElement } | null>(null)
-
-interface ApiError {
-  response?: { status?: number; data?: { detail?: string; errors?: Record<string, string> } }
-}
 
 function clearErrors() {
   for (const key of Object.keys(errors) as Field[]) delete errors[key]

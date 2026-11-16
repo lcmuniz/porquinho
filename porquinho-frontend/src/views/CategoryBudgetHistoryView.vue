@@ -176,6 +176,7 @@ import { csvLine, downloadCsv, fileSlug } from '@/lib/download'
 import { formatBRL, formatBRLInput } from '@/lib/money'
 import { getCategoryBudgetHistory } from '@/services/budgetService'
 import type { CategoryBudgetHistory } from '@/types/budget'
+import { apiErrorStatus } from '@/lib/apiError'
 
 /**
  * Story 6.8: histórico de alocações de uma categoria. Uma chamada só; filtro, estatísticas e CSV são calculados aqui
@@ -190,10 +191,6 @@ const RANGE_OPTIONS: { value: Range; label: string; months: number | null }[] = 
   { value: '1y', label: '1 ano', months: 12 },
   { value: 'all', label: 'Tudo', months: null },
 ]
-
-interface ApiError {
-  response?: { status?: number }
-}
 
 const route = useRoute()
 const range = ref<Range>('1y')
@@ -260,7 +257,7 @@ async function load() {
   } catch (err) {
     if (current !== request) return
     // 400 só vem de um id malformado na URL: para o usuário, é uma categoria que não existe
-    const status = (err as ApiError)?.response?.status
+    const status = apiErrorStatus(err)
     if (status === 404 || status === 400) notFound.value = true
     else loadFailed.value = true
   } finally {

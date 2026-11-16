@@ -145,6 +145,7 @@ import { getCategorySuggestions, listCategories } from '@/services/categoryServi
 import { completeCategories } from '@/services/onboardingService'
 import type { CategorySuggestionGroup } from '@/types/category'
 import type { OnboardingProgress } from '@/types/onboarding'
+import { apiErrorDetail } from '@/lib/apiError'
 
 /**
  * Story 3.4: passo 4 do onboarding. Mostra as categorias sugeridas em 3 grupos, todas marcadas;
@@ -174,12 +175,8 @@ const ready = computed(() => !loadingSuggestions.value && !loadFailed.value)
 const showNoneHint = computed(() => ready.value && selected.value.size === 0)
 const canFinish = computed(() => ready.value && selected.value.size > 0 && !finishing.value)
 
-interface ApiError {
-  response?: { status?: number; data?: { detail?: string } }
-}
-
 function apiDetail(err: unknown): string | undefined {
-  return (err as ApiError)?.response?.data?.detail
+  return apiErrorDetail(err)
 }
 
 function toggle(key: string) {

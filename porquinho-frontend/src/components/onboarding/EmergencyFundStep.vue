@@ -232,6 +232,8 @@ import { formatBRL, formatBRLInput, parseBRL } from '@/lib/money'
 import { createGoal, listGoals } from '@/services/goalService'
 import { finishOnboarding } from '@/services/onboardingService'
 import type { OnboardingProgress } from '@/types/onboarding'
+import { apiErrorDetail, apiErrorStatus } from '@/lib/apiError'
+import type { ApiError } from '@/lib/apiError'
 
 /**
  * Story 3.8: passo 8, o último do onboarding. Formulário pré-preenchido da Reserva de Emergência (R$ 25.000,00,
@@ -307,12 +309,8 @@ const forecastText = computed(() => {
   return 'Informe um aporte mensal ou uma data-alvo para ver a previsão.'
 })
 
-interface ApiError {
-  response?: { status?: number; data?: { detail?: string; errors?: Record<string, string> } }
-}
-
 function apiDetail(err: unknown): string | undefined {
-  return (err as ApiError)?.response?.data?.detail || undefined
+  return apiErrorDetail(err) || undefined
 }
 
 function clearErrors() {
@@ -341,7 +339,7 @@ async function createAndFinish() {
       finishing.value = null
       const fieldErrors = (err as ApiError)?.response?.data?.errors ?? {}
       const known = Object.entries(fieldErrors).filter(([key]) => GOAL_FIELDS.includes(key as GoalField))
-      if ((err as ApiError)?.response?.status === 400 && known.length > 0) {
+      if (apiErrorStatus(err) === 400 && known.length > 0) {
         Object.assign(errors, Object.fromEntries(known))
       } else {
         emit(

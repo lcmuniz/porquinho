@@ -144,6 +144,7 @@ import { BANKS } from '@/lib/banks'
 import { formatBRLInput, parseBRL } from '@/lib/money'
 import { createAccount, updateAccount } from '@/services/accountService'
 import type { Account, AccountType } from '@/types/account'
+import type { ApiError } from '@/lib/apiError'
 
 /**
  * Formulário de conta bancária (Stories 3.2 e 4.1): valida localmente, chama `POST /accounts`
@@ -204,10 +205,6 @@ const form = reactive({
 const errors = reactive<Partial<Record<Field, string>>>({})
 const isEdit = computed(() => props.account != null)
 const nameInput = ref<{ $el?: HTMLInputElement } | null>(null)
-
-interface ApiError {
-  response?: { status?: number; data?: { detail?: string; errors?: Record<string, string> } }
-}
 
 function clearErrors() {
   for (const key of Object.keys(errors) as Field[]) delete errors[key]

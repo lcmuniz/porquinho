@@ -165,6 +165,7 @@ import type { Account } from '@/types/account'
 import type { CreditCard } from '@/types/creditCard'
 import type { BankCode, ImportTarget, TransactionImport, TransactionImportStatus } from '@/types/transactionImport'
 import { formatDateTimeBR } from '@/lib/date'
+import { apiErrorDetail, apiErrorStatus } from '@/lib/apiError'
 
 /**
  * Envio do extrato (Stories 5.1 a 5.8): destino, zona de envio, progresso, lista das importações e consulta a cada 2 s.
@@ -286,10 +287,6 @@ function target(): ImportTarget | null {
   return kind === 'card' ? { kind: 'card', id } : { kind: 'account', id }
 }
 
-interface ApiError {
-  response?: { status?: number; data?: { detail?: string } }
-}
-
 async function submit() {
   successMessage.value = null
   const chosen = target()
@@ -319,7 +316,7 @@ async function submit() {
     selectedFile.value = null
     if (fileInput.value) fileInput.value.value = ''
   } catch (e) {
-    formError.value = (e as ApiError)?.response?.data?.detail ?? MESSAGES.uploadFailed
+    formError.value = apiErrorDetail(e, MESSAGES.uploadFailed)
   } finally {
     isUploading.value = false
   }
@@ -394,7 +391,7 @@ async function poll() {
     pending.map((item) =>
       getImport(item.id).then(
         (fresh) => ({ id: item.id, fresh, gone: false }),
-        (e) => ({ id: item.id, fresh: null, gone: (e as ApiError)?.response?.status === 404 }),
+        (e) => ({ id: item.id, fresh: null, gone: apiErrorStatus(e) === 404 }),
       ),
     ),
   )

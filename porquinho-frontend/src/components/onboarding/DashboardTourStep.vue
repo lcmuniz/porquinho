@@ -257,6 +257,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { completeDashboardTour } from '@/services/onboardingService'
 import type { OnboardingProgress } from '@/types/onboarding'
+import { apiErrorDetail } from '@/lib/apiError'
 
 /**
  * Story 3.7: passo 7 do onboarding, um tour curto de 5 telas pelo Dashboard GPS (visão geral das 3 camadas,
@@ -289,10 +290,6 @@ const screen = ref(
 const finishing = ref(false)
 const heading = ref<HTMLElement | null>(null)
 
-interface ApiError {
-  response?: { data?: { detail?: string } }
-}
-
 function back() {
   if (screen.value === 0) {
     emit('back')
@@ -321,7 +318,7 @@ async function finish() {
     finishing.value = false
     emit(
       'error',
-      (err as ApiError)?.response?.data?.detail ||
+      apiErrorDetail(err) ||
         'Não foi possível salvar seu progresso. Verifique sua conexão e tente novamente.',
     )
     return

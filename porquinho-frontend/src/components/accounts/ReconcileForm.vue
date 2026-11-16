@@ -135,6 +135,7 @@ import { Input } from '@/components/ui/input'
 import { formatBRL, formatSignedBRL, parseBRL } from '@/lib/money'
 import { reconcileAccount } from '@/services/accountService'
 import type { Account, ReconciliationResult } from '@/types/account'
+import type { ApiError } from '@/lib/apiError'
 
 /**
  * Formulário de reconciliação do saldo com o banco (Story 4.6). Mostra o saldo da tela e a diferença enquanto o
@@ -170,10 +171,6 @@ const FIELDS: Field[] = ['bankBalance', 'reason']
 const form = reactive({ bankBalance: '', reason: '' })
 const errors = reactive<Partial<Record<Field, string>>>({})
 const bankInput = ref<{ $el?: HTMLInputElement } | null>(null)
-
-interface ApiError {
-  response?: { status?: number; data?: { detail?: string; errors?: Record<string, string> } }
-}
 
 /** Diferença em centavos inteiros (banco − tela); null enquanto o saldo do banco não é um valor válido. */
 const differenceCents = computed(() => {

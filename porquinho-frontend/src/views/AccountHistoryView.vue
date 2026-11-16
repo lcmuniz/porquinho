@@ -157,6 +157,7 @@ import { formatDateBR } from '@/lib/date'
 import { formatBRL } from '@/lib/money'
 import { getBalanceHistory } from '@/services/accountService'
 import type { BalanceHistory, BalanceRange } from '@/types/account'
+import { apiErrorStatus } from '@/lib/apiError'
 
 /** Story 4.7: histórico de saldo de uma conta — seletor de período, gráfico e a tabela com os mesmos dados. */
 const RANGE_OPTIONS: { value: BalanceRange; label: string }[] = [
@@ -166,10 +167,6 @@ const RANGE_OPTIONS: { value: BalanceRange; label: string }[] = [
   { value: '1y', label: '1 ano' },
   { value: 'all', label: 'Tudo' },
 ]
-
-interface ApiError {
-  response?: { status?: number }
-}
 
 const route = useRoute()
 const range = ref<BalanceRange>('3m')
@@ -195,7 +192,7 @@ async function load() {
   } catch (err) {
     if (current !== request) return
     // 400 só vem de um id malformado na URL: para o usuário, é uma conta que não existe
-    const status = (err as ApiError)?.response?.status
+    const status = apiErrorStatus(err)
     if (status === 404 || status === 400) notFound.value = true
     else loadFailed.value = true
   } finally {

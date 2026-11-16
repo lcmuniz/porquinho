@@ -244,6 +244,7 @@ import type { Account } from '@/types/account'
 import type { Category } from '@/types/category'
 import type { CreditCard as Card } from '@/types/creditCard'
 import type { Transaction } from '@/types/transaction'
+import { apiErrorDetail } from '@/lib/apiError'
 
 /**
  * Story 5.12: as transações confirmadas, um mês por vez (decisão Q1), com edição e remoção; 5.13: inclusão manual.
@@ -251,10 +252,6 @@ import type { Transaction } from '@/types/transaction'
  */
 
 const ACTION_FAILED = 'Não foi possível concluir a ação. Tente de novo.'
-
-interface ApiError {
-  response?: { status?: number; data?: { detail?: string } }
-}
 
 const heading = ref<HTMLElement | null>(null)
 const addButton = ref<{ $el: HTMLElement } | null>(null)
@@ -394,7 +391,7 @@ async function confirmAction() {
       )
     }
   } catch (err) {
-    actionError.value = (err as ApiError)?.response?.data?.detail ?? ACTION_FAILED
+    actionError.value = apiErrorDetail(err, ACTION_FAILED)
   } finally {
     confirmOpen.value = false
     confirming.value = false

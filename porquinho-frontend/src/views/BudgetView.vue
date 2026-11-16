@@ -327,6 +327,8 @@ import { getBudget, saveBudget } from '@/services/budgetService'
 import { listCategories } from '@/services/categoryService'
 import type { Budget, CategoryBudget } from '@/types/budget'
 import type { Category } from '@/types/category'
+import { apiErrorDetail, apiErrorStatus } from '@/lib/apiError'
+import type { ApiError } from '@/lib/apiError'
 
 /**
  * Story 6.3: orçamento do mês por categoria filha, agrupado por grupo. O gasto e o comprometido vêm do backend; a
@@ -342,10 +344,6 @@ const SAVE_FAILED = 'Não foi possível salvar o orçamento. Verifique sua conex
 const REPEAT_FAILED = 'Não foi possível carregar o orçamento do mês anterior.'
 const REALLOCATE_FAILED = 'Não foi possível mover o dinheiro. Verifique sua conexão e tente novamente.'
 const INVALID_AMOUNT = 'Informe um valor válido, zero ou maior'
-
-interface ApiError {
-  response?: { status?: number; data?: { detail?: string } }
-}
 
 const month = ref(currentMonth())
 const budget = ref<Budget | null>(null)
@@ -493,7 +491,7 @@ async function load() {
   } catch (err) {
     if (currentRequest !== request) return
     budget.value = null
-    loadError.value = (err as ApiError).response?.status === 400 ? ((err as ApiError).response?.data?.detail ?? LOAD_FAILED) : LOAD_FAILED
+    loadError.value = apiErrorStatus(err) === 400 ? apiErrorDetail(err, LOAD_FAILED) : LOAD_FAILED
   } finally {
     if (currentRequest === request) loading.value = false
   }

@@ -233,13 +233,10 @@ import { formatSignedBRL } from '@/lib/money'
 import { plural } from '@/lib/plural'
 import { categoryLabel, installmentLabel, pixLabel, signedAmount } from '@/lib/transactionLabels'
 import { approveHighConfidence } from '@/services/transactionImportService'
+import type { ApiError } from '@/lib/apiError'
 
 /** Revisão de uma importação (Story 5.9), com a edição das categorias e a conclusão (Story 5.10). */
 const ACTION_FAILED = 'Não foi possível concluir a ação. Tente de novo.'
-
-interface ApiError {
-  response?: { status?: number; data?: { detail?: string } }
-}
 
 const route = useRoute()
 const router = useRouter()

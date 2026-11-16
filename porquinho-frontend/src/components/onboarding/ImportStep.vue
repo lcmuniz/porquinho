@@ -89,6 +89,7 @@ import { Button } from '@/components/ui/button'
 import { completeImport } from '@/services/onboardingService'
 import type { OnboardingProgress } from '@/types/onboarding'
 import type { TransactionImport } from '@/types/transactionImport'
+import { apiErrorDetail } from '@/lib/apiError'
 
 /**
  * Passo 6 do onboarding (Stories 3.6 e 5.10). Explica como baixar o extrato em OFX ou CSV nos 5 bancos suportados e
@@ -168,10 +169,6 @@ const imports = ref<TransactionImport[]>([])
 
 const completedImport = computed(() => imports.value.find((item) => item.status === 'COMPLETED'))
 
-interface ApiError {
-  response?: { data?: { detail?: string } }
-}
-
 async function finish(importId?: string) {
   // Duplo clique no mesmo tick: o botão ainda não foi desabilitado
   if (finishing.value) return
@@ -184,7 +181,7 @@ async function finish(importId?: string) {
     finishing.value = false
     emit(
       'error',
-      (err as ApiError)?.response?.data?.detail ||
+      apiErrorDetail(err) ||
         'Não foi possível salvar seu progresso. Verifique sua conexão e tente novamente.',
     )
     return

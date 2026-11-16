@@ -140,6 +140,7 @@ import { formatBRL, parseBRL } from '@/lib/money'
 import { createTransfer } from '@/services/transferService'
 import type { Account } from '@/types/account'
 import type { Transfer } from '@/types/transfer'
+import type { ApiError } from '@/lib/apiError'
 
 /**
  * Formulário de transferência entre contas próprias (Story 4.5). Valida localmente o que dá para conferir antes de
@@ -194,10 +195,6 @@ const form = reactive({
 })
 const errors = reactive<Partial<Record<Field, string>>>({})
 const fromSelect = ref<HTMLSelectElement | null>(null)
-
-interface ApiError {
-  response?: { status?: number; data?: { detail?: string; errors?: Record<string, string> } }
-}
 
 function optionLabel(account: Account): string {
   return `${account.accountName} — ${formatBRL(account.currentBalance)}`

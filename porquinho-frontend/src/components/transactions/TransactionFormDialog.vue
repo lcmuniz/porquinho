@@ -167,6 +167,7 @@ import type { Account } from '@/types/account'
 import type { Category } from '@/types/category'
 import type { CreditCard } from '@/types/creditCard'
 import type { Transaction } from '@/types/transaction'
+import type { ApiError } from '@/lib/apiError'
 
 /**
  * Story 5.12: o diálogo de edição de /transacoes; 5.13: o mesmo em modo "Adicionar transação". Story 7.6: saiu da
@@ -197,10 +198,6 @@ const emit = defineEmits<{
 
 const ACTION_FAILED = 'Não foi possível concluir a ação. Tente de novo.'
 const OPTIONS_FAILED = 'Não foi possível carregar suas contas, cartões e categorias.'
-
-interface ApiError {
-  response?: { status?: number; data?: { detail?: string } }
-}
 
 const saving = ref(false)
 const formError = ref<string | null>(null)

@@ -82,6 +82,7 @@ import { Input } from '@/components/ui/input'
 import { formatBRL, parseBRL } from '@/lib/money'
 import { reallocateBudget } from '@/services/budgetService'
 import type { Budget } from '@/types/budget'
+import type { ApiError } from '@/lib/apiError'
 
 /**
  * Story 6.5: move dinheiro entre duas categorias filhas do mês. A origem só lista categorias com restante > 0; o
@@ -121,10 +122,6 @@ const form = reactive({
 })
 const errors = reactive<Partial<Record<Field, string>>>({})
 const fromSelect = ref<HTMLSelectElement | null>(null)
-
-interface ApiError {
-  response?: { status?: number; data?: { detail?: string; errors?: Record<string, string> } }
-}
 
 function optionLabel(option: ReallocateOption): string {
   return option.remaining === null

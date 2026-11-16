@@ -3,6 +3,7 @@ import { CircleCheck, Flag, TriangleAlert, UserCheck } from 'lucide-vue-next'
 import { plural } from '@/lib/plural'
 import { getImport, listImportTransactions } from '@/services/transactionImportService'
 import type { ImportTransaction, TransactionImport } from '@/types/transactionImport'
+import { apiErrorStatus } from '@/lib/apiError'
 
 /** Carga, grupos por confiança e seleção da revisão de uma importação (Stories 5.9 e 5.10). */
 export type GroupKey = 'high' | 'medium' | 'low' | 'reviewed' | 'card-payment'
@@ -16,10 +17,6 @@ const GROUP_TITLES: Record<GroupKey, string> = {
   low: 'Baixa confiança',
   reviewed: 'Revisadas por você',
   'card-payment': 'Pagamento de fatura',
-}
-
-interface ApiError {
-  response?: { status?: number }
 }
 
 /** Sem categoria, ou sem confiança numa linha REGULAR (dados anteriores à Story 5.8). */
@@ -106,7 +103,7 @@ export function useImportReview(importId: () => string) {
     } catch (err) {
       if (current !== request) return
       // 400 só vem de um id malformado na URL: para o usuário, é uma importação que não existe
-      const status = (err as ApiError)?.response?.status
+      const status = apiErrorStatus(err)
       if (status === 404 || status === 400) notFound.value = true
       else loadFailed.value = true
     } finally {

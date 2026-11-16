@@ -161,6 +161,7 @@ import { categoryColorLabel, categoryIcon, categoryIconLabel } from '@/lib/categ
 import { cleanCategoryName } from '@/lib/categoryName'
 import { updateCategory } from '@/services/categoryService'
 import type { Category, CategoryOptions, UpdateCategoryInput } from '@/types/category'
+import { apiErrorDetail } from '@/lib/apiError'
 
 /**
  * Story 3.5: uma categoria (ou o título de um grupo) no passo 5. O nome é editado no lugar e salvo ao sair
@@ -204,12 +205,8 @@ watch(
   },
 )
 
-interface ApiError {
-  response?: { data?: { detail?: string } }
-}
-
 function apiDetail(err: unknown): string | undefined {
-  return (err as ApiError)?.response?.data?.detail
+  return apiErrorDetail(err)
 }
 
 function sameColor(a: string, b: string): boolean {

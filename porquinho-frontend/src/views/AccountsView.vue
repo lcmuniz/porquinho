@@ -566,6 +566,8 @@ import { formatBRL } from '@/lib/money'
 import { deleteAccount, listDeletedAccounts, restoreAccount } from '@/services/accountService'
 import { listTransfers } from '@/services/transferService'
 import type { Account, ReconciliationResult } from '@/types/account'
+import { apiErrorStatus } from '@/lib/apiError'
+import type { ApiError } from '@/lib/apiError'
 
 /**
  * Story 4.1: contas ativas, saldo total e cadastro de conta nova pelo diálogo.
@@ -579,10 +581,6 @@ import type { Account, ReconciliationResult } from '@/types/account'
  * avisos e a máquina de diálogo vêm de composables (`useAccountList`, `useSequencedList`, `useFeedback`,
  * `useFormDialog`); aqui ficam só os fluxos.
  */
-interface ApiError {
-  response?: { status?: number; data?: { detail?: string } }
-}
-
 const loading = ref(true)
 const loadFailed = ref(false)
 const accountForm = ref<InstanceType<typeof AccountForm> | null>(null)
@@ -840,7 +838,7 @@ async function restore(account: Account) {
     // O botão "Restaurar" some: o foco vai para o "Editar" da conta restaurada
     void nextTick(() => accountButton('edit-account', restored)?.focus())
   } catch (err) {
-    if ((err as ApiError)?.response?.status === 404) {
+    if (apiErrorStatus(err) === 404) {
       onAccountNotFound(account.id, 'Esta conta já foi restaurada ou não existe mais')
     } else {
       notice.value = 'Não foi possível restaurar a conta. Tente novamente.'

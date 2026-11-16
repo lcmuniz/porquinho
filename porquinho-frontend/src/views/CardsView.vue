@@ -353,6 +353,8 @@ import { useSequencedList } from '@/composables/useSequencedList'
 import { formatBRL } from '@/lib/money'
 import { deleteCard, listCards, listDeletedCards, restoreCard } from '@/services/cardService'
 import type { CreditCard } from '@/types/creditCard'
+import { apiErrorStatus } from '@/lib/apiError'
+import type { ApiError } from '@/lib/apiError'
 
 /**
  * Story 4.2: cartões ativos, limite total e cadastro de cartão novo pelo diálogo.
@@ -362,10 +364,6 @@ import type { CreditCard } from '@/types/creditCard'
  * "Restaurar".
  * Retro do Epic 4 (G2): avisos, removidos e a máquina de diálogo são os mesmos composables da tela de contas.
  */
-interface ApiError {
-  response?: { status?: number; data?: { detail?: string } }
-}
-
 const cards = ref<CreditCard[]>([])
 const loading = ref(true)
 const loadFailed = ref(false)
@@ -584,7 +582,7 @@ async function restore(card: CreditCard) {
     // O botão "Restaurar" some: o foco vai para o "Editar" do cartão restaurado
     void nextTick(() => cardButton('edit-card', restored)?.focus())
   } catch (err) {
-    if ((err as ApiError)?.response?.status === 404) {
+    if (apiErrorStatus(err) === 404) {
       removed.value = removed.value.filter((x) => x.id !== card.id)
       notice.value = 'Este cartão já foi restaurado ou não existe mais'
       void refreshAfterNotFound()

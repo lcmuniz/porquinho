@@ -335,6 +335,8 @@ import { categoryColorLabel, categoryIcon, categoryIconLabel } from '@/lib/categ
 import { cleanCategoryName } from '@/lib/categoryName'
 import { createCategory, getCategoryOptions, listCategories, updateCategory } from '@/services/categoryService'
 import type { Category, CategoryOptions } from '@/types/category'
+import { apiErrorDetail } from '@/lib/apiError'
+import type { ApiError } from '@/lib/apiError'
 
 /**
  * Story 6.1: categorias do usuário agrupadas (grupo → filhas, por nome) e criação de uma categoria filha.
@@ -404,10 +406,6 @@ function toggle(id: string) {
   const next = new Set(collapsed.value)
   if (!next.delete(id)) next.add(id)
   collapsed.value = next
-}
-
-interface ApiError {
-  response?: { status?: number; data?: { detail?: string } }
 }
 
 async function load() {
@@ -503,7 +501,7 @@ async function move() {
     const group = groups.value.find((g) => g.parent.id === moved.parentCategoryId)
     setSuccess(`Categoria movida para ${group?.parent.categoryName ?? 'o grupo'}`)
   } catch (err) {
-    moveError.value = (err as ApiError)?.response?.data?.detail ?? MOVE_FAILED
+    moveError.value = apiErrorDetail(err, MOVE_FAILED)
   } finally {
     saving.value = false
   }

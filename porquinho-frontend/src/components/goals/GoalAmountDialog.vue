@@ -81,6 +81,7 @@ import {
 import { formatBRLInput, parseBRL } from '@/lib/money'
 import { contributeToGoal, updateGoalAllocation } from '@/services/goalService'
 import type { Goal } from '@/types/goal'
+import type { ApiError } from '@/lib/apiError'
 
 /** Story 8.2: um diálogo só para "Editar alocação" e "Aportar"; muda o rótulo, a regra e o endpoint. */
 type AmountKind = 'allocation' | 'contribution'
@@ -89,10 +90,6 @@ const props = defineProps<{ focusFallback: HTMLElement | null }>()
 const emit = defineEmits<{ saved: [kind: AmountKind, goal: Goal] }>()
 
 const SAVE_FAILED = 'Não foi possível salvar. Verifique sua conexão e tente novamente.'
-
-interface ApiError {
-  response?: { status?: number; data?: { detail?: string; errors?: Record<string, string> } }
-}
 
 // Os textos leem a última ação; ela só muda ao abrir, então o diálogo não troca de texto enquanto fecha
 const action = ref<{ kind: AmountKind; goal: Goal } | null>(null)

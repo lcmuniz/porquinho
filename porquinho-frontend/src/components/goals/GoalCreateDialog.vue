@@ -218,6 +218,7 @@ import {
 import { formatBRLInput, parseBRL } from '@/lib/money'
 import { createGoal } from '@/services/goalService'
 import type { Goal, GoalTemplate } from '@/types/goal'
+import type { ApiError } from '@/lib/apiError'
 
 /**
  * Story 8.1: criação de meta, sem limite. O aporte mensal é sugerido pelo valor-alvo e pela data até o usuário
@@ -228,10 +229,6 @@ const props = defineProps<{ focusFallback: HTMLElement | null }>()
 const emit = defineEmits<{ created: [goal: Goal] }>()
 
 const SAVE_FAILED = 'Não foi possível criar a meta. Verifique sua conexão e tente novamente.'
-
-interface ApiError {
-  response?: { status?: number; data?: { detail?: string; errors?: Record<string, string> } }
-}
 
 const dialogOpen = ref(false)
 const saving = ref(false)

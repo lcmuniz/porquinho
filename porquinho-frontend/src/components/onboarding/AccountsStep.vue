@@ -117,6 +117,7 @@ import { deleteAccount, listAccounts } from '@/services/accountService'
 import { completeAccounts } from '@/services/onboardingService'
 import type { Account } from '@/types/account'
 import type { OnboardingProgress } from '@/types/onboarding'
+import { apiErrorDetail, apiErrorStatus } from '@/lib/apiError'
 
 /** Story 3.2: passo 2 do onboarding. Adiciona contas uma a uma, lista e remove; Próximo, Voltar e Pular. */
 const emit = defineEmits<{
@@ -136,12 +137,8 @@ const heading = ref<HTMLElement | null>(null)
 
 const busy = computed(() => adding.value || removing.value || finishing.value !== null)
 
-interface ApiError {
-  response?: { status?: number; data?: { detail?: string; errors?: Record<string, string> } }
-}
-
 function apiDetail(err: unknown): string | undefined {
-  return (err as ApiError)?.response?.data?.detail
+  return apiErrorDetail(err)
 }
 
 function onCreated(created: Account) {
@@ -162,7 +159,7 @@ async function removeAccount(account: Account) {
     await deleteAccount(account.id)
     accounts.value = accounts.value.filter((a) => a.id !== account.id)
   } catch (err) {
-    if ((err as ApiError)?.response?.status === 404) {
+    if (apiErrorStatus(err) === 404) {
       // Já tinha sido removida (outra aba): só tira da lista
       accounts.value = accounts.value.filter((a) => a.id !== account.id)
     } else {

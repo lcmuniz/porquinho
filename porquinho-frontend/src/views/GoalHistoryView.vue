@@ -119,15 +119,12 @@ import { downloadCsv, fileSlug } from '@/lib/download'
 import { formatBRL, formatBRLInput } from '@/lib/money'
 import { getGoalHistory } from '@/services/goalService'
 import type { GoalHistory } from '@/types/goal'
+import { apiErrorStatus } from '@/lib/apiError'
 
 /**
  * Story 8.8: histórico de uma meta (ativa ou concluída), molde do CategoryBudgetHistoryView. Uma chamada só;
  * estatísticas e CSV são calculados aqui sobre a mesma resposta.
  */
-interface ApiError {
-  response?: { status?: number }
-}
-
 const route = useRoute()
 const history = ref<GoalHistory | null>(null)
 const loading = ref(true)
@@ -207,7 +204,7 @@ async function load() {
   } catch (err) {
     if (current !== request) return
     // 400 só vem de um id malformado na URL: para o usuário, é uma meta que não existe
-    const status = (err as ApiError)?.response?.status
+    const status = apiErrorStatus(err)
     if (status === 404 || status === 400) notFound.value = true
     else loadFailed.value = true
   } finally {
