@@ -183,7 +183,7 @@ import { authService } from '@/services/authService'
 
 const router = useRouter()
 
-const { signUpWithGoogle, signUpWithEmail, getSession: _getSession } = useAuth()
+const { signInWithGoogle, signUpWithEmail } = useAuth()
 const isLoading = ref(false)
 const errorMessage = ref('')
 
@@ -270,7 +270,7 @@ const handleGoogleSignUp = async () => {
   errorMessage.value = ''
 
   try {
-    await signUpWithGoogle()
+    await signInWithGoogle()
   } catch (error) {
     console.error('Erro ao cadastrar com Google:', error)
     errorMessage.value =

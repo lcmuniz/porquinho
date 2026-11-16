@@ -7,26 +7,6 @@ import { supabase } from '@/services/supabase'
  */
 export function useAuth() {
   /**
-   * Sign up with Google OAuth.
-   * Redirects to Google OAuth consent screen and returns to callback URL after authentication.
-   */
-  const signUpWithGoogle = async () => {
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    })
-
-    if (error) {
-      console.error('Error signing up with Google:', error)
-      throw error
-    }
-
-    return data
-  }
-
-  /**
    * Sign up with email and password.
    * Creates user in Supabase Auth (with automatic bcrypt hashing).
    * Supabase automatically sends email verification.
@@ -94,7 +74,7 @@ export function useAuth() {
   }
 
   /**
-   * Sign in with Google OAuth.
+   * Sign in (or sign up) with Google OAuth: the same flow creates the account on first access.
    * Redirects to Google OAuth consent screen and returns to callback URL after authentication.
    */
   const signInWithGoogle = async () => {
@@ -165,7 +145,6 @@ export function useAuth() {
   }
 
   return {
-    signUpWithGoogle,
     signUpWithEmail,
     signInWithEmail,
     signInWithGoogle,

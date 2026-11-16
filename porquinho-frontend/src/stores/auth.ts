@@ -9,7 +9,6 @@ import type { UserResponse } from '@/services/authService'
 export const useAuthStore = defineStore('auth', () => {
   // State
   const user = ref<UserResponse | null>(null)
-  const loading = ref(false)
 
   // Getters
   const isAuthenticated = computed(() => user.value !== null)
@@ -24,7 +23,6 @@ export const useAuthStore = defineStore('auth', () => {
   const clearUser = () => {
     user.value = null
     localStorage.removeItem('user')
-    localStorage.removeItem('auth_token')
   }
 
   const checkSession = () => {
@@ -42,7 +40,6 @@ export const useAuthStore = defineStore('auth', () => {
 
   return {
     user,
-    loading,
     isAuthenticated,
     setUser,
     clearUser,
