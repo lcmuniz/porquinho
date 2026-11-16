@@ -1,6 +1,6 @@
 # Checklist de deploy
 
-Itens que o código não consegue garantir sozinho: ficam na configuração do Stripe Dashboard e nas variáveis do servidor.
+Itens que o código não consegue garantir sozinho: configuração do Stripe Dashboard, variáveis do servidor e decisões pendentes antes de produção.
 Repita a seção do Stripe no modo **test** e no modo **live**, porque cada modo tem sua configuração.
 Só marque um item depois de executar a verificação dele.
 
@@ -64,3 +64,71 @@ Como verificar (modo test, com test clock):
 
 Esse cliente não existe no Porquinho: o backend ignora os eventos dele e responde 200. O teste valida só a configuração do
 Stripe. O fluxo com usuário real está no roteiro manual do Epic 2 (2.7).
+
+## 4. Importação de extratos (Epic 5)
+
+Pendências da retro do Epic 5 (X3, W1 a W5). Os itens marcados com **Decisão** precisam de uma escolha antes de
+produção. Os outros precisam de uma conferência.
+
+### 4.1 Decisão: transferência que repete uma transação importada (X3, W1)
+
+Hoje, quem importa um extrato com uma TED e depois registra a mesma TED como transferência (Story 4.5) fica com o valor
+contado duas vezes no saldo. O mesmo acontece se a transferência for registrada entre o upload e a conclusão da
+importação. A detecção de duplicatas só roda no processamento do arquivo, e `TransferService` não consulta
+`transactions`.
+
+- [ ] Escolher uma opção:
+  - (a) ao registrar a transferência, procurar a transação importada que casa (mesma conta, valor e data próxima) e
+    vinculá-la à transferência, sem lançar de novo;
+  - (b) só avisar o usuário que existe uma transação parecida e deixar que ele decida;
+  - (c) aceitar o risco e explicar na ajuda que a transação importada deve ser excluída à mão.
+
+### 4.2 Decisão: FITID reutilizado pelo banco (W2)
+
+O passo 1 da detecção de duplicatas descarta toda linha cujo FITID já existe, sem conferir valor nem tipo. Se um banco
+reutilizar o FITID para lançamentos diferentes, um lançamento real some da importação.
+
+- [ ] Conferir em extratos OFX reais (vários meses do mesmo banco) se algum FITID se repete com valor ou tipo diferente.
+- [ ] Se repetir: exigir no passo 1 o mesmo valor e o mesmo tipo além do FITID. Se não repetir: registrar o resultado
+  e manter como está.
+
+### 4.3 Conferência com extratos reais (W3)
+
+As regras de parcelas foram escritas sem arquivo real. Para cada banco aceito, use uma fatura de cartão real que tenha
+compra parcelada.
+
+- [ ] O marcador de parcela está num formato reconhecido. Formatos como `PARCELA 03 DE 10`, `03 DE 10` ou `3/10` com um
+  dígito não são reconhecidos: a compra entraria como lançamento comum, sem parcelas futuras.
+- [ ] A data de cada parcela no arquivo é a data da cobrança, não a da compra original. Se for a da compra, a
+  parcela vai para o mês errado, e cada fatura pode abrir um grupo novo com parcelas futuras repetidas.
+- [ ] Depois de importar duas faturas seguidas, a mesma compra aparece como um grupo só, com as futuras certas.
+
+### 4.4 Decisão jurídica: política de privacidade (W4)
+
+`PrivacyView.vue` precisa de revisão jurídica antes de produção:
+
+- [ ] Transferência internacional de dados (LGPD art. 33): a Anthropic recebe as descrições das transações para
+  classificar. Stripe e Resend também processam dados fora do Brasil, e o Supabase também, se a região do projeto não
+  for São Paulo.
+- [ ] Prazo de retenção de cada tipo de dado.
+- [ ] Data de "Última atualização" fixa. Hoje é `new Date()`, que mostra sempre o dia em que a página é aberta.
+- [ ] A seção 10 promete aviso por e-mail em mudanças significativas, e esse envio não existe. Implementar ou tirar a
+  promessa do texto.
+
+### 4.5 Chave da Anthropic (W5)
+
+Com a variável vazia, o backend avisa na subida (`ANTHROPIC_API_KEY not set: imported transactions stay unclassified`).
+Com uma chave errada, ele sobe sem nenhum aviso, e tudo o que for importado fica "Não classificado".
+
+- [ ] A chave responde:
+
+  ```bash
+  curl -s -o /dev/null -w '%{http_code}\n' https://api.anthropic.com/v1/models \
+    -H "x-api-key: $ANTHROPIC_API_KEY" -H "anthropic-version: 2023-06-01"
+  ```
+
+  O resultado deve ser `200`. Se vier `401`, a chave está errada.
+- [ ] No servidor, importe um extrato pequeno. As transações devem chegar com categoria, e o log não pode ter
+  `AI batch of ... failed: com.anthropic.errors.UnauthorizedException`.
+- [ ] Decisão: validar a chave também na subida do backend (uma chamada a `/v1/models` com log de erro), ou ficar só
+  com esta conferência manual.
