@@ -110,7 +110,9 @@ compra parcelada.
 - [ ] Transferência internacional de dados (LGPD art. 33): a Anthropic recebe as descrições das transações para
   classificar. Stripe e Resend também processam dados fora do Brasil, e o Supabase também, se a região do projeto não
   for São Paulo.
-- [ ] Prazo de retenção de cada tipo de dado.
+- [ ] Prazo de retenção de cada tipo de dado. Para pagamentos, a decisão já tomada (retro Epic 2, item 7) é esta: o
+  Porquinho apaga o histórico de pagamentos junto com a conta, e as faturas continuam no Stripe, que é onde fica o
+  registro de cobrança. O texto deve dizer isso.
 - [ ] Data de "Última atualização" fixa. Hoje é `new Date()`, que mostra sempre o dia em que a página é aberta.
 - [ ] A seção 10 promete aviso por e-mail em mudanças significativas, e esse envio não existe. Implementar ou tirar a
   promessa do texto.
