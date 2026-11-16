@@ -1116,8 +1116,9 @@ class DataExportServiceTest {
         when(dataExportRepository.findByDownloadToken(token)).thenReturn(Optional.of(export));
         when(dataExportRepository.save(any(DataExport.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        assertThrows(ResourceNotFoundException.class, () ->
+        var e = assertThrows(ResourceNotFoundException.class, () ->
             dataExportService.downloadExport(token.toString(), "127.0.0.1"));
+        assertEquals("Este link expirou (vale 24 horas). Peça uma nova exportação.", e.getMessage());
     }
 
     @Test
@@ -1128,8 +1129,9 @@ class DataExportServiceTest {
         UUID token = export.getDownloadToken();
         when(dataExportRepository.findByDownloadToken(token)).thenReturn(Optional.of(export));
 
-        assertThrows(ResourceNotFoundException.class, () ->
+        var e = assertThrows(ResourceNotFoundException.class, () ->
             dataExportService.downloadExport(token.toString(), "127.0.0.1"));
+        assertEquals("Este link já foi usado. Peça uma nova exportação.", e.getMessage());
     }
 
     @Test

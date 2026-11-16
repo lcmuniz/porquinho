@@ -214,7 +214,7 @@ public class DataExportService {
     @Transactional
     public DataExportResponse requestExport(UUID userId, String ipAddress, String password) {
         if (!rateLimitService.allowRequest("data_export:" + userId, 1, 3600)) {
-            throw new RateLimitExceededException("Data export rate limit exceeded. Maximum 1 export per hour.");
+            throw new RateLimitExceededException("Limite de exportação atingido: 1 por hora. Tente novamente mais tarde.");
         }
         // only after the limit check: a 429 must not leave a "requested" event in the user's own audit_log.json
         auditLogService.log("data_export_requested", userId, ipAddress);
@@ -357,7 +357,7 @@ public class DataExportService {
 
         // User profile (sanitized)
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + userId));
+                .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado: " + userId));
         Map<String, Object> userProfile = new LinkedHashMap<>();
         userProfile.put("id", user.getId().toString());
         userProfile.put("email", user.getEmail());
@@ -794,29 +794,29 @@ public class DataExportService {
     public Resource downloadExport(String downloadToken, String ipAddress) {
         UUID token = UUID.fromString(downloadToken);
         DataExport export = dataExportRepository.findByDownloadToken(token)
-                .orElseThrow(() -> new ResourceNotFoundException("Export not found for token"));
+                .orElseThrow(() -> new ResourceNotFoundException("Link de exportação inválido. Peça uma nova exportação."));
 
         if (export.getStatus() == ExportStatus.EXPIRED) {
-            throw new ResourceNotFoundException("Export has expired");
+            throw new ResourceNotFoundException("Este link expirou (vale 24 horas). Peça uma nova exportação.");
         }
 
         if (export.getStatus() == ExportStatus.DOWNLOADED) {
-            throw new ResourceNotFoundException("Export has already been downloaded");
+            throw new ResourceNotFoundException("Este link já foi usado. Peça uma nova exportação.");
         }
 
         if (export.getStatus() != ExportStatus.READY) {
-            throw new ResourceNotFoundException("Export is not ready for download");
+            throw new ResourceNotFoundException("A exportação ainda não está pronta. Aguarde o e-mail com o link.");
         }
 
         if (export.getExpiresAt() != null && export.getExpiresAt().isBefore(LocalDateTime.now())) {
             export.setStatus(ExportStatus.EXPIRED);
             dataExportRepository.save(export);
-            throw new ResourceNotFoundException("Export has expired");
+            throw new ResourceNotFoundException("Este link expirou (vale 24 horas). Peça uma nova exportação.");
         }
 
         Path filePath = Paths.get(export.getFilePath());
         if (!Files.exists(filePath)) {
-            throw new ResourceNotFoundException("Export file not found");
+            throw new ResourceNotFoundException("Arquivo da exportação não encontrado. Peça uma nova exportação.");
         }
 
         // Read file into memory and delete from filesystem (AC4: single-use download)
@@ -826,7 +826,7 @@ public class DataExportService {
             Files.deleteIfExists(filePath);
         } catch (IOException e) {
             log.error("Failed to read/delete export file {}: {}", filePath, e.getMessage());
-            throw new ResourceNotFoundException("Export file could not be read");
+            throw new ResourceNotFoundException("Não foi possível ler o arquivo da exportação. Peça uma nova exportação.");
         }
 
         export.setStatus(ExportStatus.DOWNLOADED);
