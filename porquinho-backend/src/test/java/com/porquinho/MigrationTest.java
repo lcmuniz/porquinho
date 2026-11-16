@@ -51,11 +51,22 @@ class MigrationTest {
 
     @Test
     void usersTableShouldHaveUniqueEmailIndex() {
+        // V40 dropped the duplicate idx_users_email: the constraint's own index is the only one
+        java.util.List<String> indexes = jdbcTemplate.queryForList(
+            "SELECT indexname FROM pg_indexes WHERE tablename = 'users' AND indexdef LIKE 'CREATE UNIQUE INDEX%(email)'",
+            String.class
+        );
+        assertThat(indexes).containsExactly("users_email_unique");
+    }
+
+    @Test
+    void redundantIndexesShouldBeGone() {
         Integer count = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM pg_indexes WHERE tablename = 'users' AND indexname = 'idx_users_email'",
+            "SELECT COUNT(*) FROM pg_indexes WHERE indexname IN ('idx_users_email', 'idx_data_exports_download_token', "
+                + "'idx_transactions_user_id', 'idx_users_locked_until')",
             Integer.class
         );
-        assertThat(count).isGreaterThan(0);
+        assertThat(count).isZero();
     }
 
     @Test
@@ -332,7 +343,7 @@ class MigrationTest {
         }
 
         // V38 replaced idx_transactions_user_id with (user_id, transaction_date) (retro Epic 7 A2)
-        for (String index : new String[] {"idx_transactions_user_date", "idx_transactions_import_id",
+        for (String index : new String[] {"idx_transactions_user_date", "idx_transactions_user_installment_group", "idx_transactions_import_id",
             "idx_transactions_account_date", "idx_transactions_credit_card_date"}) {
             Integer count = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM pg_indexes WHERE tablename = 'transactions' AND indexname = ?",
