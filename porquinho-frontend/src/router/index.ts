@@ -189,12 +189,16 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
 
-    // Rotas de desenvolvimento (sem restricao)
-    {
-      path: '/design-system',
-      name: 'design-system',
-      component: () => import('../views/DesignSystemView.vue'),
-    },
+    // Rotas de desenvolvimento (sem restricao): só existem no `vite dev`, nunca no build de produção
+    ...(import.meta.env.DEV
+      ? [
+          {
+            path: '/design-system',
+            name: 'design-system',
+            component: () => import('../views/DesignSystemView.vue'),
+          },
+        ]
+      : []),
   ],
 })
 

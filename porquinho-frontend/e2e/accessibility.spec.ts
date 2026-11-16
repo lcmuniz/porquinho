@@ -2,7 +2,10 @@ import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 
 test.describe('Accessibility (WCAG 2.1 AA)', () => {
+  // /design-system só existe no `vite dev`; no CI o e2e roda contra o build (preview)
+  const skipDesignSystem = !!process.env.CI
   test('design system page has no critical a11y violations', async ({ page }) => {
+    test.skip(skipDesignSystem, '/design-system não existe no build de produção')
     await page.goto('/design-system')
     const results = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa'])
@@ -19,6 +22,7 @@ test.describe('Accessibility (WCAG 2.1 AA)', () => {
   })
 
   test('design system page has skip link as first focusable element', async ({ page }) => {
+    test.skip(skipDesignSystem, '/design-system não existe no build de produção')
     await page.goto('/design-system')
     await page.keyboard.press('Tab')
     const focused = await page.evaluate(() => {
@@ -35,6 +39,7 @@ test.describe('Accessibility (WCAG 2.1 AA)', () => {
   })
 
   test('buttons on design system page meet minimum touch target height', async ({ page }) => {
+    test.skip(skipDesignSystem, '/design-system não existe no build de produção')
     await page.goto('/design-system')
     const buttons = page.locator('button')
     const count = await buttons.count()
