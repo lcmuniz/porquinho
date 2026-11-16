@@ -36,6 +36,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -49,7 +50,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
     "spring.autoconfigure.exclude=",
     "spring.flyway.enabled=true",
     "spring.jpa.hibernate.ddl-auto=validate",
-    "management.health.redis.enabled=false"
+    "management.health.redis.enabled=false",
+    "app.cors.allowed-origins=https://app.example.com,http://localhost:5173"
 })
 @AutoConfigureMockMvc
 @ActiveProfiles("prod")
@@ -108,6 +110,19 @@ class ProductionSecurityChainTest {
         int deleted = filters.indexOf(filters.stream().filter(f -> f instanceof DeletedAccountFilter).findFirst().orElseThrow());
         int subscription = filters.indexOf(filters.stream().filter(f -> f instanceof SubscriptionAccessFilter).findFirst().orElseThrow());
         assertThat(deleted).isLessThan(subscription);
+    }
+
+    @Test
+    void corsAllowsOnlyTheConfiguredOrigins() throws Exception {
+        mockMvc.perform(request(HttpMethod.OPTIONS, "/api/v1/accounts")
+                .header("Origin", "https://app.example.com")
+                .header("Access-Control-Request-Method", "GET"))
+            .andExpect(status().isOk())
+            .andExpect(header().string("Access-Control-Allow-Origin", "https://app.example.com"));
+        mockMvc.perform(request(HttpMethod.OPTIONS, "/api/v1/accounts")
+                .header("Origin", "http://localhost:5175")
+                .header("Access-Control-Request-Method", "GET"))
+            .andExpect(status().isForbidden());
     }
 
     @Test

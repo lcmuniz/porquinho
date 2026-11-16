@@ -68,6 +68,7 @@ app:
     directory: ${EXPORT_DIR:./exports}
     expiration-hours: 24
     base-url: ${APP_BASE_URL:http://localhost:8080}
+  # cors.allowed-origins (env APP_CORS_ALLOWED_ORIGINS): origens do frontend separadas por vírgula; padrão localhost do Vite
   # Usado nas URLs de retorno do Stripe Checkout (Story 2.2)
   frontend-url: ${FRONTEND_URL:http://localhost:5173}
   mail:

@@ -10,6 +10,8 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.cors.CorsConfiguration;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -72,7 +74,8 @@ class SecurityConfigTest {
         // cross-origin frontend reads no X-Export-Count and shows "0 transações" (Story 9.1)
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/dashboard/layer3/export");
         request.addHeader("Origin", "http://localhost:5173");
-        CorsConfiguration config = new SecurityConfig(null, null, null).corsConfigurationSource().getCorsConfiguration(request);
+        CorsConfiguration config = new SecurityConfig(null, null, null)
+            .corsConfigurationSource(List.of("http://localhost:5173")).getCorsConfiguration(request);
 
         assertThat(config).isNotNull();
         assertThat(config.checkOrigin("http://localhost:5173")).isEqualTo("http://localhost:5173");

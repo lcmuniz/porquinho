@@ -5,6 +5,7 @@ import java.util.List;
 import com.porquinho.repository.UserRepository;
 import com.porquinho.service.JwtBlacklistService;
 import com.porquinho.service.SubscriptionService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -41,9 +42,10 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, CorsConfigurationSource corsConfigurationSource)
+            throws Exception {
         http
-            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+            .cors(cors -> cors.configurationSource(corsConfigurationSource))
             .csrf(csrf -> csrf.disable())
             .sessionManagement(session -> session
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
@@ -78,14 +80,16 @@ public class SecurityConfig {
         return converter;
     }
 
+    /**
+     * Origins from app.cors.allowed-origins (env APP_CORS_ALLOWED_ORIGINS), comma-separated. Default: Vite dev server
+     * (5173), its alternate port (5175) and the Vite preview server (4173).
+     */
     @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
+    public CorsConfigurationSource corsConfigurationSource(
+            @Value("${app.cors.allowed-origins:http://localhost:5173,http://localhost:5175,http://localhost:4173}")
+            List<String> allowedOrigins) {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of(
-            "http://localhost:5173",  // Vite dev server
-            "http://localhost:5175",  // Vite dev server (alternate port)
-            "http://localhost:4173"   // Vite preview server
-        ));
+        config.setAllowedOrigins(allowedOrigins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         // Story 9.1: the frontend is cross-origin and reads the CSV row count from this header
