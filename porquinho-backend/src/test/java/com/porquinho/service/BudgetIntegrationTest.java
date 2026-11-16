@@ -30,6 +30,11 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -740,6 +745,95 @@ class BudgetIntegrationTest {
             assertThatThrownBy(() -> service.history(userId, id))
                 .isInstanceOf(ResourceNotFoundException.class).hasMessage(CategoryService.NOT_FOUND_MESSAGE);
         }
+    }
+
+    // --- retro Epic 6 A8: tests the epic left out ---
+
+    @Test
+    void anAllocationOfZeroIsLow() {
+        service.save(userId, CURRENT.toString(), null, List.of(item(food, "0")));
+
+        BudgetResponse.CategoryBudget read = of(service.get(userId, CURRENT.toString()), food);
+
+        assertThat(read.remaining()).isEqualByComparingTo("0");
+        assertThat(read.status()).isEqualTo(BudgetStatus.LOW);
+    }
+
+    @Test
+    void discardingAnImportInvalidatesTheCache() {
+        UUID account = newAccount("1000", false);
+        UUID card = newCard(false);
+        assertThat(of(service.get(userId, CURRENT.toString()), food).spent()).isEqualByComparingTo("0");
+        // Skips the invalidation: only the discard can make the cache see it
+        rowWithoutEvict(account, null, food, CURRENT, "25.00", "DEBIT", "REGULAR", "CONFIRMED", false);
+        UUID importId = UUID.randomUUID();
+        jdbc.update("INSERT INTO transaction_imports (id, user_id, credit_card_id, file_name, file_type, file_size_kb, "
+            + "status) VALUES (?, ?, ?, 'x.ofx', 'OFX', 1, 'REVIEW')", importId, userId, card);
+        assertThat(of(service.get(userId, CURRENT.toString()), food).spent()).isEqualByComparingTo("0");
+
+        importReviewService.discard(userId, importId, "127.0.0.1");
+
+        assertThat(of(service.get(userId, CURRENT.toString()), food).spent()).isEqualByComparingTo("25.00");
+    }
+
+    @Test
+    void twoConcurrentReallocationsCannotDrainTheSameRemainingTwice() throws Exception {
+        foodWithRemaining200();
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            List<Future<String>> results = new ArrayList<>();
+            for (int i = 0; i < 2; i++) {
+                results.add(pool.submit(() -> {
+                    start.await();
+                    try {
+                        service.reallocate(userId, CURRENT.toString(), move(food, transport, "150"));
+                        return "moved";
+                    } catch (BadRequestException e) {
+                        return e.getMessage();
+                    }
+                }));
+            }
+            start.countDown();
+            List<String> outcomes = new ArrayList<>();
+            for (Future<String> result : results) {
+                outcomes.add(result.get(30, TimeUnit.SECONDS));
+            }
+
+            // The second one reads the remaining after the first (50), under the same lock as save
+            assertThat(outcomes).containsExactlyInAnyOrder("moved", "O valor passa do restante de Alimentação (R$ 50,00)");
+        } finally {
+            pool.shutdownNow();
+        }
+        assertThat(allocated(food)).isEqualByComparingTo("150");
+        assertThat(allocated(transport)).isEqualByComparingTo("200");
+        assertThat(reallocations()).isEqualTo(1);
+    }
+
+    @Test
+    void historyOfTwoYearsAnswersInUnderOneSecond() {
+        // NFR10: history with 12+ months in under 1 s. 24 allocated months with 40 transactions each; best of 3 runs
+        UUID account = newAccount("1000", false);
+        List<Object[]> rows = new ArrayList<>();
+        for (int i = 0; i < 24; i++) {
+            YearMonth month = CURRENT.minusMonths(i);
+            allocationRow(food, month, "500");
+            for (int t = 0; t < 40; t++) {
+                rows.add(new Object[] {UUID.randomUUID(), userId, account, food, month.atDay(1 + t % 28)});
+            }
+        }
+        jdbc.batchUpdate("INSERT INTO transactions (id, user_id, account_id, category_id, transaction_date, description, "
+            + "original_description, amount, transaction_type, review_status) VALUES (?, ?, ?, ?, ?, 'X', 'X', 10.00, "
+            + "'DEBIT', 'CONFIRMED')", rows);
+
+        assertThat(service.history(userId, food).months()).hasSize(24); // warm-up, and the data is all there
+        long best = Long.MAX_VALUE;
+        for (int run = 0; run < 3; run++) {
+            long begin = System.nanoTime();
+            service.history(userId, food);
+            best = Math.min(best, (System.nanoTime() - begin) / 1_000_000);
+        }
+        assertThat(best).isLessThan(1000);
     }
 
     // --- retro Epic 6 A4: removing a child with a target category moves its transactions, allocations and patterns ---
