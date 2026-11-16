@@ -48,6 +48,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -62,7 +63,7 @@ import java.util.UUID;
  * Daily scheduled purge (03:00 UTC):
  * - Each AccountDeletion is processed in its own transaction (REQUIRES_NEW) so a single
  *   failure does not block the queue.
- * - Hard-deletes data_exports, user_sessions, audit_logs, billing_transactions, subscriptions,
+ * - Hard-deletes data_exports, user_sessions, audit_logs (plus anonymous ones carrying the e-mail), billing_transactions, subscriptions,
  *   onboarding_progress, ai_classification_history, user_classification_patterns, budget_allocations, budget_reallocations, transactions, transaction_imports, transfers, reconciliation_history,
  *   account_balance_history, accounts, credit_cards, categories, goal_progress_history, goal_allocations, goals, users
  *   (in that order, native SQL to bypass @Where filters on User and UserSession; billing_transactions
@@ -345,6 +346,8 @@ public class AccountDeletionService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void purgeUser(AccountDeletion deletion) {
         UUID userId = deletion.getUserId();
+        // Read before the users row goes away: anonymous audits keyed by e-mail are deleted with it (retro Epic 1 S8)
+        Optional<String> email = userRepository.findByIdIncludingDeleted(userId).map(User::getEmail);
 
         // 1. Anonymous audit log FIRST (in its own REQUIRES_NEW tx). Survives rollback.
         String metadata = String.format("{\"deletion_id\":\"%s\"}", deletion.getId());
@@ -381,6 +384,7 @@ public class AccountDeletionService {
         dataExportRepository.deleteByUserId(userId);
         userSessionRepository.deleteByUserId(userId);
         auditLogRepository.deleteByUserId(userId);
+        email.ifPresent(e -> auditLogRepository.deleteAnonymousByMetadataEntry(emailMetadataEntry(e)));
         // Story 2.2: stop Stripe billing before the local row (and its stripe id) disappears. Best-effort.
         subscriptionRepository.findByUserId(userId)
             .map(Subscription::getStripeSubscriptionId)
@@ -412,5 +416,14 @@ public class AccountDeletionService {
         deletion.setStatus(DeletionStatus.PURGED);
         deletion.setPurgedAt(OffsetDateTime.now());
         accountDeletionRepository.save(deletion);
+    }
+
+    /**
+     * The "email" entry exactly as AuditLogService.metadata writes it (Jackson escaping), without the braces:
+     * "email":"ana@x.com". The e-mail is trimmed and lowercased; the query compares case-insensitively.
+     */
+    static String emailMetadataEntry(String email) {
+        String json = AuditLogService.metadata("email", email.trim().toLowerCase(Locale.ROOT));
+        return json.substring(1, json.length() - 1);
     }
 }

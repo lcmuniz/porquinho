@@ -634,4 +634,24 @@ class AccountDeletionServiceTest {
         order.verify(userRepository).deleteByIdNative(userId);
         assertEquals(DeletionStatus.PURGED, deletion.getStatus());
     }
+
+    @Test
+    void purgeDeletesAnonymousAuditsCarryingTheEmail() {
+        // Retro Epic 1 S8: password_reset_requested is anonymous (user_id NULL) and keeps the e-mail in metadata
+        user = new User("  Ana.Silva@Example.com ", AuthProvider.EMAIL, null);
+        AccountDeletion deletion = new AccountDeletion(userId,
+            OffsetDateTime.now().minusDays(1), "127.0.0.1");
+        deletion.setId(UUID.randomUUID());
+
+        when(accountDeletionRepository.findAllByStatusAndScheduledPurgeAtBefore(
+            eq(DeletionStatus.PENDING_PURGE), any())).thenReturn(List.of(deletion));
+        when(dataExportRepository.findAllByUserId(userId)).thenReturn(List.of());
+        when(userRepository.findByIdIncludingDeleted(userId)).thenReturn(Optional.of(user));
+
+        service.purgeScheduledDeletions();
+
+        InOrder order = inOrder(auditLogRepository, userRepository);
+        order.verify(auditLogRepository).deleteAnonymousByMetadataEntry("\"email\":\"ana.silva@example.com\"");
+        order.verify(userRepository).deleteByIdNative(userId);
+    }
 }
