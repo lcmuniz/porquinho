@@ -5,6 +5,7 @@ import com.porquinho.entity.Account;
 import com.porquinho.entity.CreditCard;
 import com.porquinho.entity.TransactionImport;
 import com.porquinho.exception.BadRequestException;
+import com.porquinho.exception.RateLimitExceededException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.CreditCardRepository;
@@ -29,7 +30,7 @@ import java.util.stream.Collectors;
 /**
  * Upload of a bank statement to one of the user's accounts or cards (Story 5.1). Validates the target (exactly one,
  * active, owned by the JWT user; otherwise 404 as if it did not exist) and the file (extension .ofx or .csv, at most
- * 10MB, content that looks like OFX or a known CSV layout (Story 5.2), statement type matching the target), then records the import as PROCESSING and logs
+ * 10MB, at most 20 per hour and 5000 rows, content that looks like OFX or a known CSV layout (Story 5.2), statement type matching the target), then records the import as PROCESSING and logs
  * "import_created". The file content is never stored nor logged: after the commit it is handed, in memory only, to
  * {@link TransactionImportProcessor} (Story 5.3).
  */
@@ -43,11 +44,19 @@ public class TransactionImportService {
     public static final long MAX_FILE_SIZE_BYTES = 10L * 1024 * 1024;
     public static final int RECENT_LIMIT = 20;
     static final int MAX_FILE_NAME_LENGTH = 255;
+    /** Each import calls the AI (Anthropic): caps the cost one user can cause. */
+    static final int MAX_IMPORTS_PER_HOUR = 20;
+    /** Rows (OFX blocks or CSV lines) per file; a real monthly statement has a few hundred. */
+    static final int MAX_ROWS_PER_FILE = 5000;
 
     public static final String NOT_FOUND_MESSAGE = "Importação não encontrada";
     public static final String TARGET_REQUIRED_MESSAGE = "Escolha uma conta ou um cartão de destino";
     public static final String FILE_TOO_LARGE_MESSAGE = "Arquivo muito grande (máximo 10MB)";
     public static final String UNSUPPORTED_FORMAT_MESSAGE = "Formato de arquivo não suportado";
+    public static final String TOO_MANY_IMPORTS_MESSAGE =
+        "Limite de importações atingido: 20 por hora. Tente novamente mais tarde.";
+    public static final String TOO_MANY_ROWS_MESSAGE =
+        "Extrato com lançamentos demais (máximo 5000). Divida o período em arquivos menores.";
     public static final String UNKNOWN_CSV_MESSAGE =
         "Não reconhecemos o formato deste CSV. Tente exportar o extrato em OFX.";
     public static final String CARD_FILE_TO_ACCOUNT_MESSAGE =
@@ -64,22 +73,25 @@ public class TransactionImportService {
     private final AuditLogService auditLogService;
     private final TransactionImportProcessor transactionImportProcessor;
     private final TransactionTemplate transactionTemplate;
+    private final RateLimitService rateLimitService;
 
     public TransactionImportService(TransactionImportRepository transactionImportRepository,
                                     AccountRepository accountRepository, CreditCardRepository creditCardRepository,
                                     AuditLogService auditLogService, TransactionImportProcessor transactionImportProcessor,
-                                    PlatformTransactionManager transactionManager) {
+                                    PlatformTransactionManager transactionManager, RateLimitService rateLimitService) {
         this.transactionImportRepository = transactionImportRepository;
         this.accountRepository = accountRepository;
         this.creditCardRepository = creditCardRepository;
         this.auditLogService = auditLogService;
         this.transactionImportProcessor = transactionImportProcessor;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.rateLimitService = rateLimitService;
     }
 
     /**
      * Records the upload. 400 when the target is missing or doubled, the file is empty, too large, not .ofx/.csv, not OFX
-     * content, a CSV of unknown layout, or of the other statement type; 404 "Conta não encontrada" / "Cartão não encontrado" when the target is
+     * content, a CSV of unknown layout, of the other statement type or with more than 5000 rows; 429 after 20 uploads
+     * in an hour; 404 "Conta não encontrada" / "Cartão não encontrado" when the target is
      * not one of the user's active rows. Nothing is written on error. The file is validated before the transaction
      * starts, so reading up to 10MB never holds a pooled connection. After the commit, the content (only in memory) goes
      * to the background processing (Story 5.3).
@@ -95,6 +107,9 @@ public class TransactionImportService {
         if (file.getSize() > MAX_FILE_SIZE_BYTES) {
             throw new BadRequestException(FILE_TOO_LARGE_MESSAGE);
         }
+        if (!rateLimitService.allowRequest("import:" + userId, MAX_IMPORTS_PER_HOUR, 3600)) {
+            throw new RateLimitExceededException(TOO_MANY_IMPORTS_MESSAGE);
+        }
         String fileName = sanitizeFileName(file.getOriginalFilename());
         TransactionImport.FileType fileType = fileType(fileName);
         byte[] content = read(file);
@@ -104,6 +119,13 @@ public class TransactionImportService {
         }
         if (creditCardId != null && kind == StatementKind.ACCOUNT) {
             throw new BadRequestException(ACCOUNT_FILE_TO_CARD_MESSAGE);
+        }
+        // before anything is recorded or sent to the AI; the processor parses the content again in the background
+        OfxTransactionParser.Result parsed = fileType == TransactionImport.FileType.CSV
+            ? CsvStatementReader.parse(content, kind == StatementKind.CARD)
+            : OfxTransactionParser.parse(content, kind == StatementKind.CARD);
+        if (parsed.totalRows() > MAX_ROWS_PER_FILE) {
+            throw new BadRequestException(TOO_MANY_ROWS_MESSAGE);
         }
         int fileSizeKb = sizeKb(file.getSize());
         TransactionImportResponse created = transactionTemplate.execute(status ->

@@ -5,6 +5,7 @@ import com.porquinho.entity.Account;
 import com.porquinho.entity.CreditCard;
 import com.porquinho.entity.TransactionImport;
 import com.porquinho.exception.BadRequestException;
+import com.porquinho.exception.RateLimitExceededException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.CreditCardRepository;
@@ -38,6 +39,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -62,6 +64,8 @@ class TransactionImportServiceTest {
     private PlatformTransactionManager transactionManager;
     @Mock
     private TransactionImportProcessor transactionImportProcessor;
+    @Mock
+    private RateLimitService rateLimitService;
 
     private TransactionImportService service;
     private UUID userId;
@@ -70,9 +74,10 @@ class TransactionImportServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new TransactionImportService(transactionImportRepository, accountRepository, creditCardRepository,
-            auditLogService, transactionImportProcessor, transactionManager);
         userId = UUID.randomUUID();
+        service = new TransactionImportService(transactionImportRepository, accountRepository, creditCardRepository,
+            auditLogService, transactionImportProcessor, transactionManager, rateLimitService);
+        lenient().when(rateLimitService.allowRequest("import:" + userId, 20, 3600)).thenReturn(true);
         accountId = UUID.randomUUID();
         cardId = UUID.randomUUID();
     }
@@ -116,6 +121,35 @@ class TransactionImportServiceTest {
         verify(transactionImportRepository, never()).save(any());
         verifyNoInteractions(auditLogService);
         verifyNoInteractions(transactionImportProcessor);
+    }
+
+    @Test
+    void the21stUploadInAnHourIsRejectedBeforeAnythingIsReadOrRecorded() throws IOException {
+        when(rateLimitService.allowRequest("import:" + userId, 20, 3600)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.create(userId, accountId, null, sample("nubank-conta.ofx"), "127.0.0.1"))
+            .isInstanceOf(RateLimitExceededException.class)
+            .hasMessage(TransactionImportService.TOO_MANY_IMPORTS_MESSAGE);
+        verify(transactionImportRepository, never()).save(any());
+        verifyNoInteractions(auditLogService, transactionImportProcessor);
+    }
+
+    @Test
+    void fileWithMoreThan5000RowsIsRejectedBeforeClassification() {
+        String rows = "01/10/2026;PIX;-1,00\n".repeat(TransactionImportService.MAX_ROWS_PER_FILE + 1);
+
+        assertRejected(accountId, null, file("itau.csv", rows), TransactionImportService.TOO_MANY_ROWS_MESSAGE);
+    }
+
+    @Test
+    void fileWith5000RowsIsAccepted() {
+        accountExists();
+        saveAssignsId();
+        String rows = "01/10/2026;PIX;-1,00\n".repeat(TransactionImportService.MAX_ROWS_PER_FILE);
+
+        service.create(userId, accountId, null, file("itau.csv", rows), "127.0.0.1");
+
+        verify(transactionImportProcessor).process(any(), eq(TransactionImport.FileType.CSV), any());
     }
 
     @ParameterizedTest
