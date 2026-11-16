@@ -16,7 +16,7 @@
         v-else-if="stage === 'accounts'"
         @back="backToTutorial"
         @done="goToStep"
-        @error="showError"
+        @error="onStepError"
       />
 
       <!-- Passo 3: cartões de crédito (Story 3.3) -->
@@ -24,7 +24,7 @@
         v-else-if="stage === 'cards'"
         @back="backToAccounts"
         @done="goToStep"
-        @error="showError"
+        @error="onStepError"
       />
 
       <!-- Passo 4: categorias de gastos sugeridas (Story 3.4) -->
@@ -33,7 +33,7 @@
         :read-only="savedStep >= CUSTOMIZE_STEP"
         @back="backToCards"
         @done="goToStep"
-        @error="showError"
+        @error="onStepError"
       />
 
       <!-- Passo 5: personalizar as categorias (Story 3.5) -->
@@ -41,7 +41,7 @@
         v-else-if="stage === 'customize'"
         @back="backToCategories"
         @done="goToStep"
-        @error="showError"
+        @error="onStepError"
       />
 
       <!-- Passo 6: importar transações, ainda sem upload (Story 3.6) -->
@@ -49,7 +49,7 @@
         v-else-if="stage === 'import'"
         @back="backToCustomize"
         @done="goToStep"
-        @error="showError"
+        @error="onStepError"
       />
 
       <!-- Passo 7: tour do Dashboard GPS (Story 3.7) -->
@@ -58,7 +58,7 @@
         :initial-screen="tourScreen"
         @back="backToImport"
         @done="goToStep"
-        @error="showError"
+        @error="onStepError"
       />
 
       <!-- Passo 8: meta de Reserva de Emergência, conclui o onboarding (Story 3.8) -->
@@ -66,7 +66,7 @@
         v-else-if="stage === 'goal'"
         @back="backToTour"
         @done="goToStep"
-        @error="showError"
+        @error="onStepError"
       />
 
       <section
@@ -428,6 +428,7 @@ const STAGE_STEP: Record<Stage, number> = {
   goal: GOAL_STEP,
 }
 const STEP_STAGE: Record<number, Stage> = {
+  1: 'tutorial',
   [ACCOUNTS_STEP]: 'accounts',
   [CARDS_STEP]: 'cards',
   [CATEGORIES_STEP]: 'categories',
@@ -458,6 +459,22 @@ function showError(message: string) {
   toast.value = message
   if (toastTimer) clearTimeout(toastTimer)
   toastTimer = setTimeout(() => (toast.value = null), TOAST_MS)
+}
+
+/**
+ * Erro num passo: mostra o toast e relê o progresso. Se outra aba mudou o passo salvo (o 409 de "passo
+ * errado"), vai ao passo certo em vez de deixar o usuário preso só com o toast. Erro de validação no mesmo
+ * passo não muda o progresso, e Voltar não mexe em savedStep, então nesses casos a tela fica onde está.
+ */
+async function onStepError(message: string) {
+  showError(message)
+  let progress: OnboardingProgress
+  try {
+    progress = await getMyOnboarding()
+  } catch {
+    return // Sem conexão: o toast já avisa
+  }
+  if (progress.completed || progress.currentStep !== savedStep.value) await goToStep(progress)
 }
 
 // Leitores de tela e teclado: a cada tela nova o foco vai para o título

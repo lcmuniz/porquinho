@@ -694,6 +694,45 @@ describe('OnboardingView', () => {
     )
   })
 
+  it('409 no passo 3 (progresso mudou em outra aba) relê o progresso e vai ao passo salvo', async () => {
+    mockGetMyOnboarding
+      .mockResolvedValueOnce(
+        progress({ currentStep: 3, stepsCompleted: ['tutorial_viewed', 'accounts_added'] }),
+      )
+      .mockResolvedValueOnce(progress({ currentStep: 2, stepsCompleted: ['tutorial_viewed'] }))
+    mockCompleteCards.mockRejectedValue({
+      response: { status: 409, data: { detail: 'Conclua o passo anterior primeiro.' } },
+    })
+    const wrapper = await mountView()
+
+    await wrapper.get('[data-testid="next-button"]').trigger('click')
+    await flushPromises()
+
+    expect(mockGetMyOnboarding).toHaveBeenCalledTimes(2)
+    expect(wrapper.get('[data-testid="onboarding-error"]').text()).toContain(
+      'Conclua o passo anterior primeiro.',
+    )
+    expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+      'Passo 2 de 8',
+    )
+  })
+
+  it('erro no passo 3 sem mudança de progresso continua na tela', async () => {
+    mockGetMyOnboarding.mockResolvedValue(
+      progress({ currentStep: 3, stepsCompleted: ['tutorial_viewed', 'accounts_added'] }),
+    )
+    mockCompleteCards.mockRejectedValue({ response: { status: 500 } })
+    const wrapper = await mountView()
+
+    await wrapper.get('[data-testid="next-button"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="onboarding-error"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="onboarding-step-indicator"]').text()).toContain(
+      'Passo 3 de 8',
+    )
+  })
+
   it('concluir o passo 4 cria as categorias marcadas e leva ao passo 5', async () => {
     mockGetMyOnboarding.mockResolvedValue(
       progress({
