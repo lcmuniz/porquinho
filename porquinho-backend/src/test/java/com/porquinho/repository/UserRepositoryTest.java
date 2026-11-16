@@ -61,21 +61,6 @@ class UserRepositoryTest {
     }
 
     @Test
-    void shouldFindUserByGoogleId() {
-        Optional<User> found = userRepository.findByGoogleIdAndDeletedAtIsNull("google123");
-
-        assertThat(found).isPresent();
-        assertThat(found.get().getId()).isEqualTo(testUser.getId());
-    }
-
-    @Test
-    void shouldNotFindUserByNonExistentGoogleId() {
-        Optional<User> found = userRepository.findByGoogleIdAndDeletedAtIsNull("nonexistent");
-
-        assertThat(found).isEmpty();
-    }
-
-    @Test
     void shouldNotFindSoftDeletedUserByEmail() {
         // Soft delete the user
         testUser.softDelete(UUID.randomUUID());
@@ -83,17 +68,6 @@ class UserRepositoryTest {
 
         // Should not find soft-deleted user
         Optional<User> found = userRepository.findByEmailAndDeletedAtIsNull("test@example.com");
-        assertThat(found).isEmpty();
-    }
-
-    @Test
-    void shouldNotFindSoftDeletedUserByGoogleId() {
-        // Soft delete the user
-        testUser.softDelete(UUID.randomUUID());
-        userRepository.save(testUser);
-
-        // Should not find soft-deleted user
-        Optional<User> found = userRepository.findByGoogleIdAndDeletedAtIsNull("google123");
         assertThat(found).isEmpty();
     }
 

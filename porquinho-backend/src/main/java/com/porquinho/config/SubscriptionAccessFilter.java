@@ -29,7 +29,7 @@ import java.util.UUID;
  * BearerTokenAuthenticationFilter, so the JwtAuthenticationToken is already in the context.
  *
  * ponytail: one indexed query by user_id per request, no cache. If latency becomes a problem,
- * add @Cacheable on Redis (RedisConfig) with a short TTL and evict on startTrial/updates.
+ * cache it in Redis (like DashboardCache) with a short TTL and evict on startTrial/updates.
  */
 public class SubscriptionAccessFilter extends OncePerRequestFilter {
 

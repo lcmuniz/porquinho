@@ -27,13 +27,6 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     Optional<User> findByEmailAndDeletedAtIsNull(String email);
 
     /**
-     * Find a user by Google OAuth ID (non-deleted only).
-     * @param googleId The Google OAuth user ID to search for
-     * @return Optional containing the user if found, empty otherwise
-     */
-    Optional<User> findByGoogleIdAndDeletedAtIsNull(String googleId);
-
-    /**
      * Insert a new user with a specific ID (used for Supabase UUID sync).
      * Uses native SQL to bypass JPA's merge behavior when ID is pre-set.
      *

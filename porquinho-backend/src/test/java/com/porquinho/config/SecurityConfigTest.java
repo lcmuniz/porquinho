@@ -31,7 +31,7 @@ class SecurityConfigTest {
     @Test
     void healthEndpointShouldBePublic() throws Exception {
         // Health endpoint should be accessible without authentication (not 401/403)
-        // Returns 200 OK in tests because Redis is disabled (spring.cache.type: none)
+        // Returns 200 OK in tests
         mockMvc.perform(get("/actuator/health"))
                 .andExpect(status().isOk());
     }
@@ -60,7 +60,7 @@ class SecurityConfigTest {
     @Test
     void corsShouldBeConfigured() throws Exception {
         // CORS headers should be present for allowed origins
-        // Returns 200 OK in tests because Redis is disabled (spring.cache.type: none)
+        // Returns 200 OK in tests
         mockMvc.perform(get("/actuator/health")
                 .header("Origin", "http://localhost:5173"))
                 .andExpect(status().isOk());

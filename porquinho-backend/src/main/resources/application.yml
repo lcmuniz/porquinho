@@ -63,8 +63,6 @@ spring:
           connectiontimeout: 5000
           timeout: 5000
           writetimeout: 5000
-  cache:
-    type: redis
 app:
   export:
     directory: ${EXPORT_DIR:./exports}
