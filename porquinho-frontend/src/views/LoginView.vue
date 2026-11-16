@@ -23,7 +23,7 @@ const showPassword = ref(false)
 // Flash messages from redirects (e.g., post-account-deletion confirmation)
 const infoMessage = computed(() => {
   if (route.query.msg === 'account-deletion-scheduled') {
-    return 'Sua conta foi marcada para exclusao. Os dados serao removidos definitivamente em 30 dias.'
+    return 'Sua conta foi marcada para exclusão. Os dados serão removidos definitivamente em 30 dias.'
   }
   return ''
 })

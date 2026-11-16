@@ -50,12 +50,12 @@ describe('SessionsView', () => {
     const wrapper = mount(SessionsView)
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.find('[aria-label="Carregando sessoes"]').exists()).toBe(true)
+    expect(wrapper.find('[aria-label="Carregando sessões"]').exists()).toBe(true)
 
     // Resolve and verify loading disappears
     resolvePromise!(mockSessions)
     await flushPromises()
-    expect(wrapper.find('[aria-label="Carregando sessoes"]').exists()).toBe(false)
+    expect(wrapper.find('[aria-label="Carregando sessões"]').exists()).toBe(false)
   })
 
   it('should render sessions after loading', async () => {
@@ -77,12 +77,12 @@ describe('SessionsView', () => {
     expect(wrapper.text()).toContain('Dispositivo atual')
   })
 
-  it('should show "Encerrar sessao" button only for non-current sessions', async () => {
+  it('should show "Encerrar sessão" button only for non-current sessions', async () => {
     mockGetSessions.mockResolvedValue(mockSessions)
     const wrapper = mount(SessionsView)
     await flushPromises()
 
-    const revokeButtons = wrapper.findAll('button').filter((b) => b.text() === 'Encerrar sessao')
+    const revokeButtons = wrapper.findAll('button').filter((b) => b.text() === 'Encerrar sessão')
     expect(revokeButtons.length).toBe(1)
   })
 
@@ -91,7 +91,7 @@ describe('SessionsView', () => {
     const wrapper = mount(SessionsView)
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Nao foi possivel carregar as sessoes')
+    expect(wrapper.text()).toContain('Não foi possível carregar as sessões')
   })
 
   it('should show empty state when no sessions', async () => {
@@ -99,25 +99,25 @@ describe('SessionsView', () => {
     const wrapper = mount(SessionsView)
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Nenhuma sessao ativa encontrada')
+    expect(wrapper.text()).toContain('Nenhuma sessão ativa encontrada')
   })
 
-  it('should show "Encerrar todas as outras sessoes" button when other sessions exist', async () => {
+  it('should show "Encerrar todas as outras sessões" button when other sessions exist', async () => {
     mockGetSessions.mockResolvedValue(mockSessions)
     const wrapper = mount(SessionsView)
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Encerrar todas as outras sessoes')
+    expect(wrapper.text()).toContain('Encerrar todas as outras sessões')
   })
 
-  it('should not show "Encerrar todas as outras sessoes" button when only current session', async () => {
+  it('should not show "Encerrar todas as outras sessões" button when only current session', async () => {
     mockGetSessions.mockResolvedValue([mockSessions[0]])
     const wrapper = mount(SessionsView)
     await flushPromises()
 
     const revokeAllButtons = wrapper
       .findAll('button')
-      .filter((b) => b.text() === 'Encerrar todas as outras sessoes')
+      .filter((b) => b.text() === 'Encerrar todas as outras sessões')
     expect(revokeAllButtons.length).toBe(0)
   })
 })

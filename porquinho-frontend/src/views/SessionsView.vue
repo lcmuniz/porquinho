@@ -3,9 +3,9 @@
     <div class="mx-auto max-w-3xl space-y-6">
       <div class="flex items-center justify-between">
         <div>
-          <h1 class="text-2xl font-semibold text-gray-900">Sessoes ativas</h1>
+          <h1 class="text-2xl font-semibold text-gray-900">Sessões ativas</h1>
           <p class="mt-1 text-sm text-gray-600">
-            Gerencie os dispositivos conectados a sua conta
+            Gerencie os dispositivos conectados à sua conta
           </p>
         </div>
         <Button
@@ -19,7 +19,7 @@
       </div>
 
       <!-- Loading state -->
-      <div v-if="isLoading" class="flex items-center justify-center py-12" role="status" aria-label="Carregando sessoes">
+      <div v-if="isLoading" class="flex items-center justify-center py-12" role="status" aria-label="Carregando sessões">
         <div class="h-8 w-8 animate-spin rounded-full border-4 border-purple-200 border-t-purple-600" />
         <span class="sr-only">Carregando...</span>
       </div>
@@ -41,7 +41,7 @@
       <!-- Empty state -->
       <Card v-else-if="sessions.length === 0 && !isLoading" class="bg-white">
         <CardContent class="p-6 text-center">
-          <p class="text-gray-600">Nenhuma sessao ativa encontrada.</p>
+          <p class="text-gray-600">Nenhuma sessão ativa encontrada.</p>
         </CardContent>
       </Card>
 
@@ -54,7 +54,7 @@
             class="min-h-[44px]"
             @click="showRevokeAllDialog = true"
           >
-            Encerrar todas as outras sessoes
+            Encerrar todas as outras sessões
           </Button>
         </div>
 
@@ -82,7 +82,7 @@
             <CardContent class="space-y-2">
               <div class="text-sm text-gray-600">
                 <p>IP: {{ session.ipAddress || 'Desconhecido' }}</p>
-                <p>Ultimo acesso: {{ formatDate(session.lastActivity) }}</p>
+                <p>Último acesso: {{ formatDate(session.lastActivity) }}</p>
                 <p>Criada em: {{ formatDate(session.createdAt) }}</p>
               </div>
               <Button
@@ -92,7 +92,7 @@
                 class="mt-2 min-h-[44px] text-red-600 hover:bg-red-50 hover:text-red-700"
                 @click="sessionToRevoke = session; showRevokeDialog = true"
               >
-                Encerrar sessao
+                Encerrar sessão
               </Button>
             </CardContent>
           </Card>
@@ -103,9 +103,9 @@
       <Dialog :open="showRevokeDialog" @update:open="showRevokeDialog = $event">
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Encerrar sessao</DialogTitle>
+            <DialogTitle>Encerrar sessão</DialogTitle>
             <DialogDescription>
-              Tem certeza que deseja encerrar esta sessao? O dispositivo sera desconectado imediatamente.
+              Tem certeza que deseja encerrar esta sessão? O dispositivo será desconectado imediatamente.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -128,9 +128,9 @@
       <Dialog :open="showRevokeAllDialog" @update:open="showRevokeAllDialog = $event">
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Encerrar todas as outras sessoes</DialogTitle>
+            <DialogTitle>Encerrar todas as outras sessões</DialogTitle>
             <DialogDescription>
-              Tem certeza que deseja encerrar todas as outras sessoes? Todos os outros dispositivos serao desconectados imediatamente.
+              Tem certeza que deseja encerrar todas as outras sessões? Todos os outros dispositivos serão desconectados imediatamente.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -186,7 +186,7 @@ async function loadSessions() {
   try {
     sessions.value = await getSessions()
   } catch (e) {
-    error.value = 'Nao foi possivel carregar as sessoes. Tente novamente.'
+    error.value = 'Não foi possível carregar as sessões. Tente novamente.'
   } finally {
     isLoading.value = false
   }
@@ -201,7 +201,7 @@ async function handleRevokeSession() {
     showRevokeDialog.value = false
     sessionToRevoke.value = null
   } catch (e) {
-    error.value = 'Nao foi possivel encerrar a sessao. Tente novamente.'
+    error.value = 'Não foi possível encerrar a sessão. Tente novamente.'
   } finally {
     isRevoking.value = false
   }
@@ -214,7 +214,7 @@ async function handleRevokeAllOther() {
     sessions.value = sessions.value.filter((s) => s.current)
     showRevokeAllDialog.value = false
   } catch (e) {
-    error.value = 'Nao foi possivel encerrar as sessoes. Tente novamente.'
+    error.value = 'Não foi possível encerrar as sessões. Tente novamente.'
   } finally {
     isRevoking.value = false
   }

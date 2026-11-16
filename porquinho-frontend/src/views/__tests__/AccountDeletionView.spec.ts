@@ -65,16 +65,16 @@ describe('AccountDeletionView', () => {
       expect(wrapper.text()).toContain(item)
     }
     expect(wrapper.text()).toContain('30 dias')
-    expect(wrapper.find('[aria-label="Iniciar processo de exclusao da conta"]').exists()).toBe(true)
+    expect(wrapper.find('[aria-label="Iniciar processo de exclusão da conta"]').exists()).toBe(true)
   })
 
   it('opens confirm dialog when clicking delete button', async () => {
     const wrapper = mount(AccountDeletionView, { attachTo: document.body })
 
-    await wrapper.find('[aria-label="Iniciar processo de exclusao da conta"]').trigger('click')
+    await wrapper.find('[aria-label="Iniciar processo de exclusão da conta"]').trigger('click')
     await flushPromises()
 
-    expect(document.body.textContent).toContain('Confirmar exclusao de conta')
+    expect(document.body.textContent).toContain('Confirmar exclusão de conta')
     expect(document.body.textContent).toContain('EXCLUIR MINHA CONTA')
     wrapper.unmount()
   })
@@ -82,11 +82,11 @@ describe('AccountDeletionView', () => {
   it('keeps confirm button disabled until exact phrase is typed', async () => {
     const wrapper = mount(AccountDeletionView, { attachTo: document.body })
 
-    await wrapper.find('[aria-label="Iniciar processo de exclusao da conta"]').trigger('click')
+    await wrapper.find('[aria-label="Iniciar processo de exclusão da conta"]').trigger('click')
     await flushPromises()
 
     const confirmBtn = Array.from(document.querySelectorAll('button')).find(
-      (b) => b.getAttribute('aria-label') === 'Confirmar exclusao definitiva da conta'
+      (b) => b.getAttribute('aria-label') === 'Confirmar exclusão definitiva da conta'
     ) as HTMLButtonElement | undefined
 
     expect(confirmBtn?.disabled).toBe(true)
@@ -103,7 +103,7 @@ describe('AccountDeletionView', () => {
   it('keeps button disabled when case differs', async () => {
     const wrapper = mount(AccountDeletionView, { attachTo: document.body })
 
-    await wrapper.find('[aria-label="Iniciar processo de exclusao da conta"]').trigger('click')
+    await wrapper.find('[aria-label="Iniciar processo de exclusão da conta"]').trigger('click')
     await flushPromises()
 
     const input = document.getElementById('confirm-input') as HTMLInputElement
@@ -112,7 +112,7 @@ describe('AccountDeletionView', () => {
     await flushPromises()
 
     const confirmBtn = Array.from(document.querySelectorAll('button')).find(
-      (b) => b.getAttribute('aria-label') === 'Confirmar exclusao definitiva da conta'
+      (b) => b.getAttribute('aria-label') === 'Confirmar exclusão definitiva da conta'
     ) as HTMLButtonElement | undefined
 
     expect(confirmBtn?.disabled).toBe(true)
@@ -123,7 +123,7 @@ describe('AccountDeletionView', () => {
   it('enables button with exact phrase including extra surrounding spaces', async () => {
     const wrapper = mount(AccountDeletionView, { attachTo: document.body })
 
-    await wrapper.find('[aria-label="Iniciar processo de exclusao da conta"]').trigger('click')
+    await wrapper.find('[aria-label="Iniciar processo de exclusão da conta"]').trigger('click')
     await flushPromises()
 
     const input = document.getElementById('confirm-input') as HTMLInputElement
@@ -132,7 +132,7 @@ describe('AccountDeletionView', () => {
     await flushPromises()
 
     const confirmBtn = Array.from(document.querySelectorAll('button')).find(
-      (b) => b.getAttribute('aria-label') === 'Confirmar exclusao definitiva da conta'
+      (b) => b.getAttribute('aria-label') === 'Confirmar exclusão definitiva da conta'
     ) as HTMLButtonElement | undefined
 
     expect(confirmBtn?.disabled).toBe(false)
@@ -144,7 +144,7 @@ describe('AccountDeletionView', () => {
     mockRequestDeletion.mockResolvedValue(mockDeletionResponse)
     const wrapper = mount(AccountDeletionView, { attachTo: document.body })
 
-    await wrapper.find('[aria-label="Iniciar processo de exclusao da conta"]').trigger('click')
+    await wrapper.find('[aria-label="Iniciar processo de exclusão da conta"]').trigger('click')
     await flushPromises()
 
     const input = document.getElementById('confirm-input') as HTMLInputElement
@@ -153,7 +153,7 @@ describe('AccountDeletionView', () => {
     await flushPromises()
 
     const confirmBtn = Array.from(document.querySelectorAll('button')).find(
-      (b) => b.getAttribute('aria-label') === 'Confirmar exclusao definitiva da conta'
+      (b) => b.getAttribute('aria-label') === 'Confirmar exclusão definitiva da conta'
     ) as HTMLButtonElement | undefined
 
     confirmBtn?.click()
@@ -171,7 +171,7 @@ describe('AccountDeletionView', () => {
     mockRequestDeletion.mockRejectedValue({ response: { status: 429 } })
     const wrapper = mount(AccountDeletionView, { attachTo: document.body })
 
-    await wrapper.find('[aria-label="Iniciar processo de exclusao da conta"]').trigger('click')
+    await wrapper.find('[aria-label="Iniciar processo de exclusão da conta"]').trigger('click')
     await flushPromises()
 
     const input = document.getElementById('confirm-input') as HTMLInputElement
@@ -180,7 +180,7 @@ describe('AccountDeletionView', () => {
     await flushPromises()
 
     const confirmBtn = Array.from(document.querySelectorAll('button')).find(
-      (b) => b.getAttribute('aria-label') === 'Confirmar exclusao definitiva da conta'
+      (b) => b.getAttribute('aria-label') === 'Confirmar exclusão definitiva da conta'
     ) as HTMLButtonElement | undefined
     confirmBtn?.click()
     await flushPromises()
@@ -197,7 +197,7 @@ describe('AccountDeletionView', () => {
     mockSupabaseSignOut.mockRejectedValue(new Error('network'))
     const wrapper = mount(AccountDeletionView, { attachTo: document.body })
 
-    await wrapper.find('[aria-label="Iniciar processo de exclusao da conta"]').trigger('click')
+    await wrapper.find('[aria-label="Iniciar processo de exclusão da conta"]').trigger('click')
     await flushPromises()
 
     const input = document.getElementById('confirm-input') as HTMLInputElement
@@ -206,7 +206,7 @@ describe('AccountDeletionView', () => {
     await flushPromises()
 
     const confirmBtn = Array.from(document.querySelectorAll('button')).find(
-      (b) => b.getAttribute('aria-label') === 'Confirmar exclusao definitiva da conta'
+      (b) => b.getAttribute('aria-label') === 'Confirmar exclusão definitiva da conta'
     ) as HTMLButtonElement | undefined
     confirmBtn?.click()
     await flushPromises()

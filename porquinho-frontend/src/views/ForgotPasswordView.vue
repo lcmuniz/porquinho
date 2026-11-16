@@ -55,7 +55,7 @@ async function handleSubmit() {
             Esqueceu sua senha?
           </CardTitle>
           <CardDescription class="text-center text-gray-600">
-            Digite seu email e enviaremos um link para redefinir sua senha
+            Digite seu e-mail e enviaremos um link para redefinir sua senha
           </CardDescription>
         </CardHeader>
         <CardContent class="space-y-4">

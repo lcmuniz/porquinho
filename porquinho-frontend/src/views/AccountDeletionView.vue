@@ -5,7 +5,7 @@
         <div>
           <h1 class="text-2xl font-semibold text-gray-900">Excluir minha conta</h1>
           <p class="mt-1 text-sm text-gray-600">
-            Solicite a exclusao permanente da sua conta e dos seus dados (direito LGPD)
+            Solicite a exclusão permanente da sua conta e dos seus dados (direito LGPD)
           </p>
         </div>
         <Button
@@ -50,17 +50,17 @@
             <li>Todas as suas exportações de dados, incluindo arquivos disponíveis para download</li>
           </ul>
           <p class="rounded-md bg-amber-50 p-3 text-sm text-amber-800">
-            Sua conta ficara em periodo de retencao por <strong>30 dias</strong> antes da exclusao definitiva.
-            Durante este periodo voce nao podera fazer login.
+            Sua conta ficará em período de retenção por <strong>30 dias</strong> antes da exclusão definitiva.
+            Durante este período você não poderá fazer login.
           </p>
           <p class="text-sm font-semibold text-red-700">
-            Apos os 30 dias, a exclusao sera definitiva e nao havera como recuperar a conta.
+            Após os 30 dias, a exclusão será definitiva e não haverá como recuperar a conta.
           </p>
           <Button
             variant="destructive"
             class="min-h-[44px]"
             @click="openConfirmDialog"
-            aria-label="Iniciar processo de exclusao da conta"
+            aria-label="Iniciar processo de exclusão da conta"
           >
             Excluir minha conta
           </Button>
@@ -71,9 +71,9 @@
       <Dialog :open="showConfirmDialog" @update:open="onDialogOpenChange">
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Confirmar exclusao de conta</DialogTitle>
+            <DialogTitle>Confirmar exclusão de conta</DialogTitle>
             <DialogDescription>
-              Esta acao nao pode ser desfeita apos os 30 dias de retencao. Para confirmar,
+              Esta ação não pode ser desfeita após os 30 dias de retenção. Para confirmar,
               digite a frase abaixo exatamente como aparece.
             </DialogDescription>
           </DialogHeader>
@@ -105,9 +105,9 @@
               class="min-h-[44px]"
               :disabled="!isConfirmTextValid || isSubmitting"
               @click="handleConfirmDeletion"
-              aria-label="Confirmar exclusao definitiva da conta"
+              aria-label="Confirmar exclusão definitiva da conta"
             >
-              {{ isSubmitting ? 'Excluindo...' : 'Confirmar exclusao' }}
+              {{ isSubmitting ? 'Excluindo...' : 'Confirmar exclusão' }}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -207,9 +207,9 @@ async function handleConfirmDeletion() {
     if (e?.response?.status === 429) {
       error.value = 'Limite atingido. Tente novamente em 24 horas.'
     } else if (e?.response?.status === 404) {
-      error.value = 'Sua conta nao foi encontrada. Atualize a pagina.'
+      error.value = 'Sua conta não foi encontrada. Atualize a página.'
     } else {
-      error.value = 'Nao foi possivel processar sua solicitacao. Tente novamente.'
+      error.value = 'Não foi possível processar sua solicitação. Tente novamente.'
     }
     showConfirmDialog.value = false
   } finally {
