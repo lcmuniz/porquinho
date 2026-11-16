@@ -35,6 +35,13 @@ import java.util.UUID;
 @RequestMapping("/api/v1/auth")
 public class AuthController {
 
+    /** Per client IP on the public /login/failed: well above a person mistyping, far below a script. */
+    static final int FAILED_LOGINS_PER_IP_MINUTE = 30;
+    /** Per client IP on the public /password-reset/requested (on top of the 3 per e-mail). */
+    static final int PASSWORD_RESETS_PER_IP_HOUR = 10;
+    /** Longest User-Agent kept in the audit metadata. */
+    static final int MAX_USER_AGENT_LENGTH = 512;
+
     private final AuthService authService;
     private final AuditLogService auditLogService;
     private final RateLimitService rateLimitService;
@@ -168,7 +175,7 @@ public class AuthController {
 
         // 5 attempts per 60 seconds per (normalized e-mail, IP): a third party cannot keep the victim at 429, and
         // changing the e-mail's case does not reset the limit (retro Epic 1 A1, S3)
-        String normalizedEmail = request.getEmail().trim().toLowerCase(Locale.ROOT);
+        String normalizedEmail = normalizeEmail(request.getEmail());
         if (!rateLimitService.allowRequest("login:" + normalizedEmail + ":" + getClientIpAddress(httpRequest), 5, 60)) {
             throw new RateLimitExceededException("Too many login attempts. Please wait 1 minute.");
         }
@@ -191,8 +198,14 @@ public class AuthController {
         @Valid @RequestBody LoginRequest request,
         HttpServletRequest httpRequest
     ) {
+        String ipAddress = getClientIpAddress(httpRequest);
+        // public endpoint: caps how many lock counters (Redis keys) one IP can create
+        if (!rateLimitService.allowRequest("login_failed_ip:" + ipAddress, FAILED_LOGINS_PER_IP_MINUTE, 60)) {
+            throw new RateLimitExceededException("Muitas tentativas a partir deste endereço. Aguarde 1 minuto.");
+        }
+
         // Record failed attempt for this email + IP (locks this IP if >= 5 attempts)
-        accountLockService.recordFailedAttempt(request.getEmail(), getClientIpAddress(httpRequest));
+        accountLockService.recordFailedAttempt(normalizeEmail(request.getEmail()), ipAddress);
 
         return ResponseEntity.ok().build();
     }
@@ -266,15 +279,19 @@ public class AuthController {
         @Valid @RequestBody PasswordResetRequest request,
         HttpServletRequest httpRequest
     ) {
-        // Check rate limit (3 requests per 60 minutes per email)
-        if (!rateLimitService.allowRequest("password_reset:" + request.getEmail(), 3, 3600)) {
-            throw new RateLimitExceededException("Too many password reset requests. Please wait 1 hour.");
-        }
-
-        // Extract client IP address for audit logging
+        String email = normalizeEmail(request.getEmail());
         String ipAddress = getClientIpAddress(httpRequest);
 
-        String metadata = AuditLogService.metadata("email", request.getEmail(), "user_agent", userAgent(httpRequest));
+        // Check rate limit (3 requests per 60 minutes per email)
+        if (!rateLimitService.allowRequest("password_reset:" + email, 3, 3600)) {
+            throw new RateLimitExceededException("Too many password reset requests. Please wait 1 hour.");
+        }
+        // and per IP: one client cycling e-mails would otherwise fill the anonymous audit log
+        if (!rateLimitService.allowRequest("password_reset_ip:" + ipAddress, PASSWORD_RESETS_PER_IP_HOUR, 3600)) {
+            throw new RateLimitExceededException("Muitos pedidos a partir deste endereço. Aguarde 1 hora.");
+        }
+
+        String metadata = AuditLogService.metadata("email", email, "user_agent", userAgent(httpRequest));
 
         // Log anonymous audit event (no user_id - security feature)
         auditLogService.logAnonymous("password_reset_requested", ipAddress, metadata);
@@ -429,7 +446,16 @@ public class AuthController {
 
     private static String userAgent(HttpServletRequest request) {
         String userAgent = request.getHeader("User-Agent");
-        return userAgent != null ? userAgent : "unknown";
+        if (userAgent == null) {
+            return "unknown";
+        }
+        // the header comes from the client: a huge one would bloat the audit row
+        return userAgent.length() > MAX_USER_AGENT_LENGTH ? userAgent.substring(0, MAX_USER_AGENT_LENGTH) : userAgent;
+    }
+
+    /** Trim + lower case, so changing the e-mail's case does not reset a limit nor split the audit trail. */
+    static String normalizeEmail(String email) {
+        return email.trim().toLowerCase(Locale.ROOT);
     }
 
     private static Jwt resolveJwt(Authentication authentication) {

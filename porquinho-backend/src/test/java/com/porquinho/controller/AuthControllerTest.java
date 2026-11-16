@@ -233,7 +233,8 @@ class AuthControllerTest {
     @Test
     void shouldRecordFailedLoginAttempt() throws Exception {
         // Arrange
-        String loginJson = "{\"email\":\"test@example.com\"}";
+        String loginJson = "{\"email\":\"Test@Example.com\"}";
+        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(true);
 
         // Act & Assert
         mockMvc.perform(post("/api/v1/auth/login/failed")
@@ -243,6 +244,20 @@ class AuthControllerTest {
                 .andExpect(status().isOk());
 
         verify(accountLockService).recordFailedAttempt(eq("test@example.com"), anyString());
+        verify(rateLimitService).allowRequest(org.mockito.ArgumentMatchers.startsWith("login_failed_ip:"), eq(30), eq(60));
+    }
+
+    @Test
+    void failedLoginsFromOneIpAreRateLimited() throws Exception {
+        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(false);
+
+        mockMvc.perform(post("/api/v1/auth/login/failed")
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"test@example.com\"}"))
+                .andExpect(status().isTooManyRequests());
+
+        verify(accountLockService, org.mockito.Mockito.never()).recordFailedAttempt(anyString(), anyString());
     }
 
     @Test
@@ -401,6 +416,41 @@ class AuthControllerTest {
             org.mockito.ArgumentMatchers.eq(sub),
             anyString(),
             anyString());
+    }
+
+    @Test
+    void passwordResetRequestedNormalizesEmailLimitsPerIpAndTruncatesUserAgent() throws Exception {
+        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(true);
+
+        mockMvc.perform(post("/api/v1/auth/password-reset/requested")
+                .with(csrf())
+                .header("User-Agent", "a".repeat(2000))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"Test@Example.COM\"}"))
+                .andExpect(status().isOk());
+
+        verify(rateLimitService).allowRequest("password_reset:test@example.com", 3, 3600);
+        verify(rateLimitService).allowRequest(org.mockito.ArgumentMatchers.startsWith("password_reset_ip:"), eq(10), eq(3600));
+        org.mockito.ArgumentCaptor<String> metadata = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(auditLogService).logAnonymous(eq("password_reset_requested"), anyString(), metadata.capture());
+        var json = objectMapper.readTree(metadata.getValue());
+        org.assertj.core.api.Assertions.assertThat(json.get("email").asText()).isEqualTo("test@example.com");
+        org.assertj.core.api.Assertions.assertThat(json.get("user_agent").asText()).hasSize(512);
+    }
+
+    @Test
+    void passwordResetRequestedIsRateLimitedPerIp() throws Exception {
+        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(true);
+        when(rateLimitService.allowRequest(org.mockito.ArgumentMatchers.startsWith("password_reset_ip:"), anyInt(), anyInt()))
+            .thenReturn(false);
+
+        mockMvc.perform(post("/api/v1/auth/password-reset/requested")
+                .with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"other@example.com\"}"))
+                .andExpect(status().isTooManyRequests());
+
+        verify(auditLogService, org.mockito.Mockito.never()).logAnonymous(anyString(), anyString(), anyString());
     }
 
     @Test
