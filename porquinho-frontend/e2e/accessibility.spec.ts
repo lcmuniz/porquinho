@@ -4,6 +4,7 @@ import AxeBuilder from '@axe-core/playwright'
 test.describe('Accessibility (WCAG 2.1 AA)', () => {
   // /design-system só existe no `vite dev`; no CI o e2e roda contra o build (preview)
   const skipDesignSystem = !!process.env.CI
+
   test('design system page has no critical a11y violations', async ({ page }) => {
     test.skip(skipDesignSystem, '/design-system não existe no build de produção')
     await page.goto('/design-system')
