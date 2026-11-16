@@ -27,9 +27,9 @@ describe('SkipLink', () => {
   it('renders default slot text', () => {
     const wrapper = mount(SkipLink, {
       props: { target: '#main-content' },
-      slots: { default: 'Pular para o conteudo principal' },
+      slots: { default: 'Pular para o conteúdo principal' },
     })
-    expect(wrapper.text()).toContain('Pular para o conteudo principal')
+    expect(wrapper.text()).toContain('Pular para o conteúdo principal')
   })
 
   it('renders default label when no slot provided', () => {

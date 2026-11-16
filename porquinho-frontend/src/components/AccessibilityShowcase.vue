@@ -23,7 +23,7 @@ import SkipLink from '@/components/common/SkipLink.vue'
       <div class="bg-muted rounded p-3 text-sm font-mono">
         <p class="text-muted-foreground mb-2">Exemplo (visivel ao receber foco com Tab):</p>
         <div class="relative h-8 overflow-hidden rounded border border-border bg-background">
-          <SkipLink target="#demo-main">Pular para o conteudo principal</SkipLink>
+          <SkipLink target="#demo-main">Pular para o conteúdo principal</SkipLink>
           <span class="absolute inset-0 flex items-center px-3 text-xs text-muted-foreground">
             Pressione Tab para revelar o skip link
           </span>

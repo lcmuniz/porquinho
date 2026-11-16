@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-background">
+  <main class="min-h-screen bg-background">
     <ColorPalette />
     <hr class="border-border" />
     <TypographyShowcase />
@@ -7,7 +7,7 @@
     <SpacingShowcase />
     <hr class="border-border" />
     <AccessibilityShowcase />
-  </div>
+  </main>
 </template>
 
 <script setup lang="ts">

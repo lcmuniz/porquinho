@@ -6,6 +6,6 @@ defineProps<{
 
 <template>
   <a :href="target" class="skip-link">
-    <slot>Pular para o conteudo principal</slot>
+    <slot>Pular para o conteúdo principal</slot>
   </a>
 </template>

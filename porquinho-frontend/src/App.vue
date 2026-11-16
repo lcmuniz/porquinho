@@ -5,15 +5,8 @@ import SkipLink from '@/components/common/SkipLink.vue'
 
 <template>
   <SkipLink target="#main-content" />
-  <header>
-    <nav aria-label="Navegacao principal">
-      <!-- RouterLink navigation will be added in auth epic -->
-    </nav>
-  </header>
-  <main id="main-content">
+  <!-- Cada tela tem o seu <main> (um por página); este wrapper só é o alvo do link "Pular para o conteúdo" -->
+  <div id="main-content">
     <RouterView />
-  </main>
-  <footer aria-label="Rodape">
-    <!-- Footer content will be added in future epics -->
-  </footer>
+  </div>
 </template>
