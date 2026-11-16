@@ -2,6 +2,7 @@ package com.porquinho.config;
 
 import java.util.List;
 
+import com.porquinho.repository.UserRepository;
 import com.porquinho.service.JwtBlacklistService;
 import com.porquinho.service.SubscriptionService;
 import org.springframework.context.annotation.Bean;
@@ -30,10 +31,13 @@ public class SecurityConfig {
 
     private final JwtBlacklistService jwtBlacklistService;
     private final SubscriptionService subscriptionService;
+    private final UserRepository userRepository;
 
-    public SecurityConfig(JwtBlacklistService jwtBlacklistService, SubscriptionService subscriptionService) {
+    public SecurityConfig(JwtBlacklistService jwtBlacklistService, SubscriptionService subscriptionService,
+                          UserRepository userRepository) {
         this.jwtBlacklistService = jwtBlacklistService;
         this.subscriptionService = subscriptionService;
+        this.userRepository = userRepository;
     }
 
     @Bean
@@ -59,6 +63,8 @@ public class SecurityConfig {
             .oauth2ResourceServer(oauth2 -> oauth2
                 .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
             )
+            // Retro Epic 1 A2 (S6): 403 for an account in deletion. Added first, so it runs before the 402 below.
+            .addFilterAfter(new DeletedAccountFilter(userRepository), BearerTokenAuthenticationFilter.class)
             // Story 2.1 (AC4): 402 when the subscription gives no access. Runs after the JWT is authenticated.
             .addFilterAfter(new SubscriptionAccessFilter(subscriptionService), BearerTokenAuthenticationFilter.class);
 

@@ -2,6 +2,7 @@ package com.porquinho.config;
 
 import com.porquinho.service.JwtBlacklistService;
 import com.porquinho.service.SessionService;
+import jakarta.servlet.Filter;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -12,6 +13,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpMethod;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -34,6 +36,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -54,6 +57,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ProductionSecurityChainTest {
 
     static final UUID USER_ID = UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+    /** Dono do token "deleted-token": conta com exclusão pedida (users.deleted_at preenchido). */
+    static final UUID DELETED_USER_ID = UUID.fromString("dddddddd-bbbb-cccc-dddd-eeeeeeeeeeee");
 
     /** Rotas da API que respondem sem JWT. Abrir uma nova exige mudar esta lista de propósito. */
     static final Set<String> PUBLIC_API_ROUTES = Set.of(
@@ -71,7 +76,7 @@ class ProductionSecurityChainTest {
         JwtDecoder jwtDecoder() {
             return token -> Jwt.withTokenValue(token)
                 .header("alg", "none")
-                .subject(USER_ID.toString())
+                .subject(("deleted-token".equals(token) ? DELETED_USER_ID : USER_ID).toString())
                 .issuedAt(Instant.now())
                 .expiresAt(Instant.now().plusSeconds(3600))
                 .build();
@@ -91,10 +96,34 @@ class ProductionSecurityChainTest {
     @MockBean
     private JwtBlacklistService jwtBlacklistService;
 
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
     @Test
     void contextStartsWithTheProductionChain() {
         assertThat(chains).hasSize(1);
-        assertThat(chains.get(0).getFilters()).anyMatch(f -> f instanceof SubscriptionAccessFilter);
+        List<Filter> filters = chains.get(0).getFilters();
+        assertThat(filters).anyMatch(f -> f instanceof SubscriptionAccessFilter);
+        // Conta em exclusão deve dar 403 antes de o filtro de assinatura dar 402
+        int deleted = filters.indexOf(filters.stream().filter(f -> f instanceof DeletedAccountFilter).findFirst().orElseThrow());
+        int subscription = filters.indexOf(filters.stream().filter(f -> f instanceof SubscriptionAccessFilter).findFirst().orElseThrow());
+        assertThat(deleted).isLessThan(subscription);
+    }
+
+    @Test
+    void tokenOfAccountInDeletionGets403() throws Exception {
+        // Retro Epic 1 A2 (S6): login novo depois do pedido de exclusão gera token fora da blacklist
+        jdbcTemplate.update("INSERT INTO users (id, email, auth_provider, failed_login_attempts, deleted_at, deleted_by) "
+            + "VALUES (?, 'em-exclusao@example.com', 'EMAIL', 0, now(), ?)", DELETED_USER_ID, DELETED_USER_ID);
+        try {
+            for (String path : List.of("/api/v1/budgets/2026-11", "/api/v1/subscriptions/me", "/api/v1/auth/sessions")) {
+                mockMvc.perform(get(path).header("Authorization", "Bearer deleted-token"))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.detail").value("Esta conta está em exclusão e não pode mais ser usada."));
+            }
+        } finally {
+            jdbcTemplate.update("DELETE FROM users WHERE id = ?", DELETED_USER_ID);
+        }
     }
 
     @Test

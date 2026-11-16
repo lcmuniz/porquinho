@@ -71,4 +71,8 @@ public interface UserRepository extends JpaRepository<User, UUID> {
      */
     @Query(value = "SELECT * FROM users WHERE id = :id", nativeQuery = true)
     Optional<User> findByIdIncludingDeleted(@Param("id") UUID id);
+
+    /** Retro Epic 1 A2 (S6): true while the account waits for the purge. Primary-key lookup, runs on every API request. */
+    @Query(value = "SELECT EXISTS (SELECT 1 FROM users WHERE id = :id AND deleted_at IS NOT NULL)", nativeQuery = true)
+    boolean isDeletionPending(@Param("id") UUID id);
 }

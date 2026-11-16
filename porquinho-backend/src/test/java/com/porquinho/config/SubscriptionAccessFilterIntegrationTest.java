@@ -1,6 +1,7 @@
 package com.porquinho.config;
 
 import com.porquinho.controller.SubscriptionController;
+import com.porquinho.repository.UserRepository;
 import com.porquinho.service.JwtBlacklistService;
 import com.porquinho.service.SubscriptionService;
 import org.junit.jupiter.api.Test;
@@ -58,6 +59,10 @@ class SubscriptionAccessFilterIntegrationTest {
 
     @MockBean
     private JwtBlacklistService jwtBlacklistService;
+
+    // DeletedAccountFilter (retro Epic 1 A2): mock answers false, so no account here is in deletion
+    @MockBean
+    private UserRepository userRepository;
 
     @Test
     void protectedRouteWithoutAccessReturns402ProblemDetail() throws Exception {
