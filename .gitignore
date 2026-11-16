@@ -27,7 +27,6 @@ docs/*.csv
 # Notas internas e artefatos do BMAD: ficam só na máquina local, fora do repositório público
 _bmad/
 _bmad-output/
-PROXIMO-PASSO.md
 
 # Scripts locais do Windows (podem conter caminhos e credenciais da máquina)
 *.bat
