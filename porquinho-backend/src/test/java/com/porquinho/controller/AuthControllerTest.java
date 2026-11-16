@@ -105,6 +105,9 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.email").value("test@example.com"))
                 .andExpect(jsonPath("$.authProvider").value("GOOGLE"))
                 .andExpect(jsonPath("$.id").value(sub.toString()));
+
+        // retro Epic 1 A3 (R1): Google sign-in is a login too
+        verify(auditLogService).log(eq("user_login"), eq(sub), anyString());
     }
 
     @Test
@@ -118,6 +121,8 @@ class AuthControllerTest {
         mockMvc.perform(post("/api/v1/auth/register/google").with(csrf()).with(as(sub, "existing@example.com")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value("existing@example.com"));
+
+        verify(auditLogService).log(eq("user_login"), eq(sub), anyString());
     }
 
     @Test

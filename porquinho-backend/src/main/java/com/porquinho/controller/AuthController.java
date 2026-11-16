@@ -80,6 +80,9 @@ public class AuthController {
         AuthService.UserRegistrationResult result = authService.registerOrGetUserFromGoogle(
             userId, email, googleId(jwt), ipAddress);
 
+        // Every Google sign-in lands here (the frontend never calls /login for it): audit it as a login (retro Epic 1 A3)
+        auditLogService.log("user_login", result.getUser().getId(), ipAddress);
+
         // Register session if JWT token is available (AC5: session tracking on login)
         String authHeader = httpRequest.getHeader("Authorization");
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
