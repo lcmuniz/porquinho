@@ -419,12 +419,42 @@ const totalCents = computed(() =>
   cards.value.reduce((sum, card) => sum + Math.round(card.cardLimit * 100), 0),
 )
 
+/**
+ * Guarda de sequência das cargas de cartões (como `useAccountList`): só a resposta da carga mais recente é aplicada, e
+ * uma mudança local da lista feita depois de a carga começar a faz buscar de novo, para não sobrescrever a mudança.
+ */
+let cardsRequest = 0
+let cardsChange = 0
+
+/** Mudança local da lista: a carga de cartões em andamento descarta a resposta e busca de novo. */
+function discardPendingCardLoads() {
+  cardsChange++
+}
+
+/** Lê os cartões ativos. A resposta de uma carga substituída por outra não é aplicada, e a falha dela é ignorada. */
+async function fetchCards() {
+  const current = ++cardsRequest
+  for (;;) {
+    const changeAtStart = cardsChange
+    try {
+      const result = await listCards()
+      if (current !== cardsRequest) return
+      if (changeAtStart !== cardsChange) continue
+      cards.value = result
+      return
+    } catch (err) {
+      if (current === cardsRequest) throw err
+      return
+    }
+  }
+}
+
 async function load() {
   clearFeedback()
   loading.value = true
   loadFailed.value = false
   try {
-    cards.value = await listCards()
+    await fetchCards()
   } catch {
     loadFailed.value = true
   } finally {
@@ -446,6 +476,7 @@ function openEdit(card: CreditCard | null) {
 }
 
 function onCreated(created: CreditCard) {
+  discardPendingCardLoads()
   cards.value.push(created)
   dialogOpen.value = false
   setSuccess('Cartão adicionado com sucesso')
@@ -454,7 +485,10 @@ function onCreated(created: CreditCard) {
 /** Story 4.3: o item editado é substituído na lista (o total é recalculado pelo computed). */
 function onUpdated(updated: CreditCard) {
   const index = cards.value.findIndex((x) => x.id === updated.id)
-  if (index >= 0) cards.value.splice(index, 1, updated)
+  if (index >= 0) {
+    discardPendingCardLoads()
+    cards.value.splice(index, 1, updated)
+  }
   dialogOpen.value = false
   setSuccess('Informações atualizadas')
 }
@@ -462,6 +496,7 @@ function onUpdated(updated: CreditCard) {
 /** Story 4.3: 404 ao salvar — o item foi removido ou não é do usuário; sai da lista. */
 function onNotFound() {
   const id = editing.value?.id
+  discardPendingCardLoads()
   cards.value = cards.value.filter((x) => x.id !== id)
   dialogOpen.value = false
   setSuccess(null)
@@ -487,6 +522,7 @@ async function confirmRemove() {
   removeError.value = null
   try {
     await deleteCard(target.id)
+    discardPendingCardLoads()
     cards.value = cards.value.filter((x) => x.id !== target.id)
     // A seção de removidos é recarregada para seguir a ordem do servidor
     if (showRemoved.value) void loadRemoved(true)
@@ -495,6 +531,7 @@ async function confirmRemove() {
   } catch (err) {
     const response = (err as ApiError)?.response
     if (response?.status === 404) {
+      discardPendingCardLoads()
       cards.value = cards.value.filter((x) => x.id !== target.id)
       removeDialogOpen.value = false
       notice.value = 'Este cartão já foi removido ou não existe mais'
@@ -515,7 +552,7 @@ async function confirmRemove() {
 async function refreshAfterNotFound() {
   if (showRemoved.value) void loadRemoved(true)
   try {
-    cards.value = await listCards()
+    await fetchCards()
   } catch {
     // Mantém a lista atual; o aviso já foi mostrado
   }
@@ -527,6 +564,7 @@ watch(showRemoved, (show) => {
 
 /** Volta para a lista ativa na posição da criação (a API ordena do mais antigo para o mais novo). */
 function insertByCreation(card: CreditCard) {
+  discardPendingCardLoads()
   const created = Date.parse(card.createdAt)
   const index = cards.value.findIndex((x) => Date.parse(x.createdAt) > created)
   if (index < 0) cards.value.push(card)

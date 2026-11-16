@@ -762,6 +762,31 @@ describe('CardsView — remover e restaurar cartão (Story 4.4)', () => {
     expect(notice.classes()).toContain('bg-amber-50')
   })
 
+  it('a recarga lenta depois do 404 não apaga um cartão criado enquanto isso (busca de novo)', async () => {
+    mockDelete.mockRejectedValue({ response: { status: 404, data: {} } })
+    let resolveSlow: (cards: CreditCard[]) => void = () => {}
+    mockList
+      .mockResolvedValueOnce([roxinho(), inter()])
+      .mockReturnValueOnce(new Promise<CreditCard[]>((resolve) => (resolveSlow = resolve)))
+    const wrapper = await mountView()
+    await openRemove(wrapper)
+    await confirm()
+    expect(mockList).toHaveBeenCalledTimes(2)
+
+    mockCreate.mockResolvedValue(card({ id: 'new-Novo', cardName: 'Novo', cardLimit: 100 }))
+    const form = await openDialog(wrapper)
+    await fillAndSave(form, 'Novo', '100,00', '5')
+    expect(wrapper.find('[data-testid="card-item-new-Novo"]').exists()).toBe(true)
+
+    // A resposta atrasada leu o servidor antes da criação: é descartada e a carga é refeita
+    mockList.mockResolvedValue([roxinho(), card({ id: 'new-Novo', cardName: 'Novo', cardLimit: 100 })])
+    resolveSlow([roxinho()])
+    await flushPromises()
+
+    expect(mockList).toHaveBeenCalledTimes(3)
+    expect(wrapper.find('[data-testid="card-item-new-Novo"]').exists()).toBe(true)
+  })
+
   it('cancelar não muda nada e devolve o foco ao "Remover" do cartão', async () => {
     const wrapper = await mountView()
     await openRemove(wrapper)
