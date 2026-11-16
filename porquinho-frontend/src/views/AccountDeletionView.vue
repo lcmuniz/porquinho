@@ -34,13 +34,20 @@
         </CardHeader>
         <CardContent class="space-y-4">
           <p class="text-sm text-gray-700">
-            Esta acao iniciara o processo de exclusao definitiva da sua conta. Os seguintes dados serao removidos:
+            Esta ação iniciará o processo de exclusão definitiva da sua conta. Os seguintes dados serão removidos:
           </p>
           <ul class="ml-5 list-disc space-y-1 text-sm text-gray-700">
-            <li>Seu perfil de usuario (email, autenticacao)</li>
-            <li>Todas as suas sessoes ativas (voce sera deslogado de todos os dispositivos)</li>
-            <li>Seu historico de auditoria</li>
-            <li>Todas as suas exportacoes de dados, incluindo arquivos disponiveis para download</li>
+            <li>Seu perfil de usuário (e-mail, autenticação)</li>
+            <li>Todas as suas sessões ativas (você será desconectado de todos os dispositivos)</li>
+            <li>Suas contas bancárias, com o histórico de saldos, as transferências e as conciliações</li>
+            <li>Seus cartões de crédito</li>
+            <li>Todas as suas transações e os extratos importados</li>
+            <li>Suas categorias e o que o Porquinho aprendeu ao classificar suas transações</li>
+            <li>Seus orçamentos mensais e as realocações entre categorias</li>
+            <li>Suas metas, com os aportes e o histórico de progresso</li>
+            <li>Sua assinatura e o histórico de pagamentos</li>
+            <li>Seu histórico de auditoria</li>
+            <li>Todas as suas exportações de dados, incluindo arquivos disponíveis para download</li>
           </ul>
           <p class="rounded-md bg-amber-50 p-3 text-sm text-amber-800">
             Sua conta ficara em periodo de retencao por <strong>30 dias</strong> antes da exclusao definitiva.

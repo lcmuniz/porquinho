@@ -51,7 +51,19 @@ describe('AccountDeletionView', () => {
     const wrapper = mount(AccountDeletionView)
 
     expect(wrapper.text()).toContain('Excluir minha conta permanentemente')
-    expect(wrapper.text()).toContain('Esta acao iniciara o processo')
+    expect(wrapper.text()).toContain('Esta ação iniciará o processo')
+    // Retro Epic 1 R4: o aviso cita os dados financeiros que o purge apaga
+    for (const item of [
+      'contas bancárias',
+      'cartões de crédito',
+      'transações e os extratos importados',
+      'categorias',
+      'orçamentos mensais',
+      'metas',
+      'assinatura e o histórico de pagamentos',
+    ]) {
+      expect(wrapper.text()).toContain(item)
+    }
     expect(wrapper.text()).toContain('30 dias')
     expect(wrapper.find('[aria-label="Iniciar processo de exclusao da conta"]').exists()).toBe(true)
   })
