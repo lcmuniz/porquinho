@@ -1,11 +1,15 @@
 package com.porquinho.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.porquinho.entity.AuditLog;
 import com.porquinho.repository.AuditLogRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -14,6 +18,8 @@ import java.util.UUID;
  */
 @Service
 public class AuditLogService {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private final AuditLogRepository auditLogRepository;
 
@@ -69,5 +75,26 @@ public class AuditLogService {
     public AuditLog logAnonymous(String eventType, String ipAddress, String metadata) {
         AuditLog auditLog = new AuditLog(null, eventType, ipAddress, metadata);
         return auditLogRepository.save(auditLog);
+    }
+
+    /**
+     * Metadata JSON from key/value pairs, escaped by Jackson (retro Epic 1 A7): User-Agent or e-mail cannot forge
+     * fields. Numbers and booleans stay JSON numbers/booleans; anything else (UUID, YearMonth...) goes as its string.
+     */
+    public static String metadata(Object... keyValues) {
+        if (keyValues.length % 2 != 0) {
+            throw new IllegalArgumentException("metadata expects key/value pairs");
+        }
+        Map<String, Object> map = new LinkedHashMap<>();
+        for (int i = 0; i < keyValues.length; i += 2) {
+            Object value = keyValues[i + 1];
+            map.put(String.valueOf(keyValues[i]),
+                value == null || value instanceof Number || value instanceof Boolean ? value : String.valueOf(value));
+        }
+        try {
+            return JSON.writeValueAsString(map);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException(e);
+        }
     }
 }

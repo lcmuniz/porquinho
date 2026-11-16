@@ -101,7 +101,8 @@ public class DashboardController {
             accountIds, creditCardIds, q, sort);
         DashboardDetailsService.CsvExport export = detailsService.detailsCsv(userId, filter,
             new DashboardDetailsService.ExportOptions(includeFutureInstallments, includeDeleted));
-        auditLogService.log("transaction_export", userId, request.getRemoteAddr(), "{\"count\":" + export.count() + "}");
+        auditLogService.log("transaction_export", userId, request.getRemoteAddr(),
+            AuditLogService.metadata("count", export.count()));
         LocalDate today = LocalDate.now(ZoneId.of("America/Sao_Paulo"));
         return ResponseEntity.ok()
             .contentType(new MediaType("text", "csv", java.nio.charset.StandardCharsets.UTF_8))

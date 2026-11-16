@@ -86,7 +86,7 @@ public class AuthService {
 
                 // Log account linking event
                 auditLogService.log("google_account_linked", updatedUser.getId(), ipAddress,
-                    String.format("{\"email\":\"%s\",\"previous_provider\":\"EMAIL\"}", email));
+                    AuditLogService.metadata("email", email, "previous_provider", "EMAIL"));
 
                 return new UserRegistrationResult(updatedUser, false);
             }
@@ -119,7 +119,7 @@ public class AuthService {
 
         // Log audit event for user registration (NFR20)
         auditLogService.log("user_registration", savedUser.getId(), ipAddress,
-            String.format("{\"provider\":\"google\",\"email\":\"%s\"}", email));
+            AuditLogService.metadata("provider", "google", "email", email));
 
         return new UserRegistrationResult(savedUser, true);
     }
@@ -170,7 +170,7 @@ public class AuthService {
 
             // Log account linking event
             auditLogService.log("auth_method_linked", updatedUser.getId(), ipAddress,
-                String.format("{\"email\":\"%s\",\"previous_provider\":\"GOOGLE\"}", email));
+                AuditLogService.metadata("email", email, "previous_provider", "GOOGLE"));
 
             return new UserRegistrationResult(updatedUser, false);
         }
@@ -199,7 +199,7 @@ public class AuthService {
 
         // Log audit event for user registration (NFR20)
         auditLogService.log("user_registration", createdUser.getId(), ipAddress,
-            String.format("{\"provider\":\"email\",\"email\":\"%s\"}", email));
+            AuditLogService.metadata("provider", "email", "email", email));
 
         return new UserRegistrationResult(createdUser, true);
     }

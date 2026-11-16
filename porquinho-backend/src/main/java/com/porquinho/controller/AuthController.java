@@ -253,12 +253,7 @@ public class AuthController {
         // Extract client IP address for audit logging
         String ipAddress = getClientIpAddress(httpRequest);
 
-        // Build metadata JSON string manually (simple approach)
-        String metadata = String.format(
-            "{\"email\":\"%s\",\"user_agent\":\"%s\"}",
-            request.getEmail(),
-            httpRequest.getHeader("User-Agent") != null ? httpRequest.getHeader("User-Agent") : "unknown"
-        );
+        String metadata = AuditLogService.metadata("email", request.getEmail(), "user_agent", userAgent(httpRequest));
 
         // Log anonymous audit event (no user_id - security feature)
         auditLogService.logAnonymous("password_reset_requested", ipAddress, metadata);
@@ -286,11 +281,7 @@ public class AuthController {
         // Extract client IP address for audit logging
         String ipAddress = getClientIpAddress(httpRequest);
 
-        // Build metadata JSON string
-        String metadata = String.format(
-            "{\"user_agent\":\"%s\"}",
-            httpRequest.getHeader("User-Agent") != null ? httpRequest.getHeader("User-Agent") : "unknown"
-        );
+        String metadata = AuditLogService.metadata("user_agent", userAgent(httpRequest));
 
         // Log audit event with user_id (null only when unauthenticated, e.g. test profile)
         if (userId != null) {
@@ -346,7 +337,7 @@ public class AuthController {
 
         String ipAddress = getClientIpAddress(httpRequest);
         auditLogService.log("remote_logout", userUuid, ipAddress,
-            String.format("{\"revoked_session_id\":\"%s\"}", sessionId));
+            AuditLogService.metadata("revoked_session_id", sessionId));
 
         return ResponseEntity.noContent().build();
     }
@@ -372,7 +363,7 @@ public class AuthController {
 
         String ipAddress = getClientIpAddress(httpRequest);
         auditLogService.log("remote_logout_all", userUuid, ipAddress,
-            String.format("{\"revoked_count\":%d}", revokedCount));
+            AuditLogService.metadata("revoked_count", revokedCount));
 
         return ResponseEntity.noContent().build();
     }
@@ -413,6 +404,11 @@ public class AuthController {
             return null;
         }
         return name;
+    }
+
+    private static String userAgent(HttpServletRequest request) {
+        String userAgent = request.getHeader("User-Agent");
+        return userAgent != null ? userAgent : "unknown";
     }
 
     /** Client IP: server.forward-headers-strategy=native already resolves X-Forwarded-For from the trusted proxy. */

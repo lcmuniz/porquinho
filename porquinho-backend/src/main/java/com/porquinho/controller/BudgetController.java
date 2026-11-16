@@ -55,7 +55,7 @@ public class BudgetController {
         UUID userId = UUID.fromString(jwt.getSubject());
         String csv = budgetReportService.csv(userId, from, to, hierarchy, averages);
         auditLogService.log("budget_export", userId, request.getRemoteAddr(),
-            "{\"from\":\"" + from + "\",\"to\":\"" + to + "\"}");
+            AuditLogService.metadata("from", from, "to", to));
         String name = from.equals(to) ? "orcamento_" + from : "orcamento_" + from + "_" + to;
         return ResponseEntity.ok()
             .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))

@@ -411,6 +411,26 @@ class AuthControllerTest {
     }
 
     @Test
+    void passwordResetRequestedShouldEscapeUserAgentInAuditMetadata() throws Exception {
+        // retro Epic 1 A7 (S12): a crafted User-Agent cannot forge fields in the audit JSON
+        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(true);
+
+        mockMvc.perform(post("/api/v1/auth/password-reset/requested")
+                .with(csrf())
+                .header("User-Agent", "x\",\"forged\":\"1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"test@example.com\"}"))
+                .andExpect(status().isOk());
+
+        org.mockito.ArgumentCaptor<String> metadata = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(auditLogService).logAnonymous(eq("password_reset_requested"), anyString(), metadata.capture());
+        var json = objectMapper.readTree(metadata.getValue());
+        org.assertj.core.api.Assertions.assertThat(json.has("forged")).isFalse();
+        org.assertj.core.api.Assertions.assertThat(json.get("user_agent").asText()).isEqualTo("x\",\"forged\":\"1");
+        org.assertj.core.api.Assertions.assertThat(json.get("email").asText()).isEqualTo("test@example.com");
+    }
+
+    @Test
     void shouldLogPasswordResetCompleted() throws Exception {
         // Arrange
         // In test profile, authentication is disabled, so userId will be null
