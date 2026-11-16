@@ -143,6 +143,8 @@ GitHub Actions runs the backend and frontend pipelines on every push to `main`.
 
 `docker-compose.yml` builds the frontend and backend images and runs them behind nginx (TLS, security headers, `/actuator` blocked from outside) with Redis. The backend container runs as a non-root user.
 
+Before the first deploy (and after changing Stripe accounts), go through [docs/deploy-checklist.md](docs/deploy-checklist.md): Stripe webhook events, payment retry schedule and the backend variables.
+
 ## Project status
 
 Done: foundation, authentication and LGPD, subscription billing, onboarding, accounts and cards, statement import with AI classification, and envelope budgeting.
