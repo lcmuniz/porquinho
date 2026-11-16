@@ -12,6 +12,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.core.io.ClassPathResource;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
@@ -241,6 +242,29 @@ class CsvStatementReaderTest {
         assertThat(CsvStatementReader.detect(csv.getBytes(CP1252))).contains(Layout.ITAU);
         assertThat(result.skippedRows()).isEmpty();
         assertThat(descriptions(result)).containsExactly("PIX QRS IFOOD");
+    }
+
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+        // raw | OFX | comma-decimal CSV (Itaú) | dot-decimal CSV (Nubank)
+        "1.500|1.50|1500.00|", "10.000|10.00|10000.00|", "1.234||1234.00|", "1.234,56|1234.56|1234.56|1234.56",
+        "1500.00|1500.00|1500.00|1500.00", "-1.500|-1.50|-1500.00|", "1.234.567||1234567.00|", "1.50|1.50|1.50|1.50"})
+    void dotGroupsOfThreeAreThousandsInCommaDecimalCsvAndNeverCents(String raw, String ofx, String itau, String nubank) {
+        assertThat(OfxTransactionParser.parseAmount(raw)).isEqualTo(ofx == null ? null : new BigDecimal(ofx));
+        assertThat(CsvStatementReader.parseAmount(raw, Layout.ITAU)).isEqualTo(itau == null ? null : new BigDecimal(itau));
+        assertThat(CsvStatementReader.parseAmount(raw, Layout.NUBANK_ACCOUNT))
+            .isEqualTo(nubank == null ? null : new BigDecimal(nubank));
+    }
+
+    @Test
+    void thousandsWithoutCentsAreNeverReadAsCents() {
+        String csv = "01/10/2026;ALUGUEL;-1.500\n02/10/2026;SALARIO;10.000\n03/10/2026;PIX;1.234,56\n";
+
+        Result result = CsvStatementReader.parse(csv.getBytes(CP1252), false);
+
+        assertThat(result.skippedRows()).isEmpty();
+        assertThat(result.entries()).extracting(Entry::amount)
+            .containsExactly(new BigDecimal("1500.00"), new BigDecimal("10000.00"), new BigDecimal("1234.56"));
     }
 
     @Test

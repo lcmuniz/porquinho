@@ -44,6 +44,7 @@ public final class CsvStatementReader {
     private static final Pattern ITAU_DATE = Pattern.compile("\\d{2}/\\d{2}/\\d{4}");
     private static final Set<String> BALANCE_ROWS = Set.of("SALDO ANTERIOR", "S A L D O", "SALDO", "SALDO DO DIA");
     private static final Pattern ONLY_ZEROS = Pattern.compile("0+");
+    private static final Pattern DOT_THOUSANDS = Pattern.compile("[+-]?[0-9]{1,3}(\\.[0-9]{3})+");
 
     private static final DateTimeFormatter DD_MM_YYYY = strict("dd/MM/uuuu");
     private static final DateTimeFormatter YYYY_MM_DD = strict("uuuu-MM-dd");
@@ -117,6 +118,11 @@ public final class CsvStatementReader {
         public boolean card() {
             return card;
         }
+
+        /** Itaú and Bradesco write "1.234,56"; the others use the dot as decimal ("1234.56"). */
+        boolean commaDecimal() {
+            return this == ITAU || this == BRADESCO;
+        }
     }
 
     /** A CSV record: its fields and the line (1-based) where it starts. */
@@ -173,7 +179,7 @@ public final class CsvStatementReader {
         if (first.isPresent()) {
             List<String> fields = trimmedWithoutTrailingEmpties(first.get().fields());
             if (fields.size() == 3 && ITAU_DATE.matcher(fields.get(0)).matches() && parseDate(fields.get(0), Layout.ITAU) != null
-                && OfxTransactionParser.parseAmount(fields.get(2)) != null) {
+                && parseAmount(fields.get(2), Layout.ITAU) != null) {
                 return Optional.of(new Detection(Layout.ITAU, ';', 0));
             }
         }
@@ -217,8 +223,8 @@ public final class CsvStatementReader {
         switch (layout.amountRule) {
             case CREDIT_DEBIT_COLUMNS -> {
                 // a zero in the other column counts as empty
-                String credit = zeroAsEmpty(fields.get(layout.amountColumn));
-                String debit = zeroAsEmpty(fields.get(layout.secondColumn));
+                String credit = zeroAsEmpty(fields.get(layout.amountColumn), layout);
+                String debit = zeroAsEmpty(fields.get(layout.secondColumn), layout);
                 if (!credit.isEmpty() && !debit.isEmpty()) {
                     skipped.add(new SkippedRow(row.line(), SkipReason.INVALID_AMOUNT));
                     return;
@@ -243,7 +249,7 @@ public final class CsvStatementReader {
             skipped.add(new SkippedRow(row.line(), SkipReason.MISSING_AMOUNT));
             return;
         }
-        BigDecimal signed = OfxTransactionParser.parseAmount(rawAmount);
+        BigDecimal signed = parseAmount(rawAmount, layout);
         if (signed == null || (layout.amountRule == AmountRule.DC_COLUMN && debitOrCredit == null)) {
             skipped.add(new SkippedRow(row.line(), SkipReason.INVALID_AMOUNT));
             return;
@@ -349,12 +355,24 @@ public final class CsvStatementReader {
         return rows;
     }
 
+    /**
+     * Only dots grouping 3 digits ("1.500", "-10.000"): thousands in comma-decimal layouts; in dot-decimal ones 3
+     * decimals are ambiguous and the row is rejected. Never read as 1.50.
+     */
+    static BigDecimal parseAmount(String raw, Layout layout) {
+        String s = raw.replace(" ", "").replace("\u00A0", "");
+        if (DOT_THOUSANDS.matcher(s).matches()) {
+            return layout.commaDecimal() ? OfxTransactionParser.parseAmount(s.replace(".", "")) : null;
+        }
+        return OfxTransactionParser.parseAmount(raw);
+    }
+
     private static boolean isBalance(String description) {
         return BALANCE_ROWS.contains(normalize(description).toUpperCase(Locale.ROOT).replaceAll("\\s+", " "));
     }
 
-    private static String zeroAsEmpty(String value) {
-        BigDecimal amount = value.isEmpty() ? null : OfxTransactionParser.parseAmount(value);
+    private static String zeroAsEmpty(String value, Layout layout) {
+        BigDecimal amount = value.isEmpty() ? null : parseAmount(value, layout);
         return amount != null && amount.signum() == 0 ? "" : value;
     }
 
