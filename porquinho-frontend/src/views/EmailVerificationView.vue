@@ -171,9 +171,6 @@ onMounted(async () => {
   const hashParams = new URLSearchParams(window.location.hash.substring(1))
   const accessToken = hashParams.get('access_token')
   const refreshToken = hashParams.get('refresh_token')
-  const type = hashParams.get('type')
-
-  console.log('Hash params:', { accessToken: !!accessToken, refreshToken: !!refreshToken, type })
 
   // Se encontrou tokens na URL, processar verificação
   if (accessToken || refreshToken) {
@@ -182,12 +179,6 @@ onMounted(async () => {
     try {
       // Buscar sessão atualizada (Supabase já processou os tokens da URL)
       const { data, error } = await supabase.auth.getSession()
-
-      console.log('Session after verification:', {
-        hasSession: !!data.session,
-        email: data.session?.user?.email,
-        emailConfirmed: data.session?.user?.email_confirmed_at
-      })
 
       if (error) {
         throw error
@@ -234,18 +225,14 @@ onMounted(async () => {
     }
   } else {
     // Sem tokens na URL - verificar se usuário já tem sessão ativa
-    console.log('No tokens in URL - checking if already verified')
-
     // Se usuário já está com sessão e email confirmado, mostrar sucesso
     const { data: sessionData } = await supabase.auth.getSession()
 
     if (sessionData.session?.user?.email_confirmed_at) {
-      console.log('User already has verified session')
       verificationStatus.value = 'success'
       userEmail.value = sessionData.session.user.email || ''
     } else {
       // Usuário veio do redirect após registro (ainda não verificou)
-      console.log('User needs to verify email - showing pending state')
       verificationStatus.value = 'pending'
     }
   }
