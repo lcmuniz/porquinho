@@ -110,10 +110,10 @@ public class BudgetReportService {
                 win6.getOrDefault(c.getId(), BigDecimal.ZERO), null));
         }
 
-        StringBuilder csv = new StringBuilder("﻿Categoria;Grupo;Alocado;Gasto;Restante;% usado;Status");
+        StringBuilder csv = new StringBuilder(CsvPtBr.BOM + "Categoria;Grupo;Alocado;Gasto;Restante;% usado;Status");
         if (hierarchy) csv.append(";Gasto sem orçamento");
         if (averages) csv.append(";Média 3 meses;Média 6 meses;Tendência");
-        csv.append("\r\n");
+        csv.append(CsvPtBr.CRLF);
         for (Map.Entry<UUID, List<Line>> entry : byGroup.entrySet()) {
             if (hierarchy) append(csv, groupLine(groups.getOrDefault(entry.getKey(), ""), entry.getValue()), true, averages);
             for (Line l : entry.getValue()) append(csv, l, hierarchy, averages);
@@ -149,20 +149,20 @@ public class BudgetReportService {
         String percent = l.allocated() == null || l.allocated().signum() == 0 ? ""
             : l.spent().multiply(HUNDRED).divide(l.allocated(), 0, RoundingMode.HALF_UP).toPlainString();
         csv.append(String.join(";",
-            DashboardDetailsService.csvText(l.name()),
-            DashboardDetailsService.csvText(l.group()),
-            money(l.allocated()),
-            money(l.spent()),
-            money(remaining),
+            CsvPtBr.text(l.name()),
+            CsvPtBr.text(l.group()),
+            CsvPtBr.money(l.allocated()),
+            CsvPtBr.money(l.spent()),
+            CsvPtBr.money(remaining),
             percent,
             statusLabel(BudgetService.status(l.allocated(), remaining))));
-        if (hierarchy) csv.append(';').append(money(l.unbudgeted()));
+        if (hierarchy) csv.append(';').append(CsvPtBr.money(l.unbudgeted()));
         if (averages) {
-            csv.append(';').append(money(l.win3().divide(BigDecimal.valueOf(3), 2, RoundingMode.HALF_UP)))
-                .append(';').append(money(l.win6().divide(BigDecimal.valueOf(6), 2, RoundingMode.HALF_UP)))
+            csv.append(';').append(CsvPtBr.money(l.win3().divide(BigDecimal.valueOf(3), 2, RoundingMode.HALF_UP)))
+                .append(';').append(CsvPtBr.money(l.win6().divide(BigDecimal.valueOf(6), 2, RoundingMode.HALF_UP)))
                 .append(';').append(trend(l.win3(), l.win6()));
         }
-        csv.append("\r\n");
+        csv.append(CsvPtBr.CRLF);
     }
 
     /** avg3 / avg6 = 2 × win3 / win6, compared without rounding: ≥ +10% "Subindo", ≤ −10% "Caindo". */
@@ -181,10 +181,6 @@ public class BudgetReportService {
             case LOW -> "Saldo baixo";
             case OVERSPENT -> "Estourada";
         };
-    }
-
-    private static String money(BigDecimal value) {
-        return value == null ? "" : value.setScale(2, RoundingMode.HALF_UP).toPlainString().replace('.', ',');
     }
 
     private static YearMonth parse(String month) {

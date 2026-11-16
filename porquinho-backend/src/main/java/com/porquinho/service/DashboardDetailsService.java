@@ -140,7 +140,7 @@ public class DashboardDetailsService {
         accountRepository.findByUserIdOrderByCreatedAtAsc(userId).forEach(a -> targets.put(a.getId(), a.getAccountName()));
         creditCardRepository.findByUserIdOrderByCreatedAtAsc(userId).forEach(c -> targets.put(c.getId(), c.getCardName()));
 
-        StringBuilder csv = new StringBuilder("﻿Data;Descrição;Valor;Tipo;Categoria;Conta;Pix;Parcelado;Parcela;Origem;Excluída\r\n");
+        StringBuilder csv = new StringBuilder(CsvPtBr.BOM + "Data;Descrição;Valor;Tipo;Categoria;Conta;Pix;Parcelado;Parcela;Origem;Excluída" + CsvPtBr.CRLF);
         for (int i = 0; i < rows.size(); i++) {
             Transaction row = rows.get(i);
             TransactionResponse r = responses.get(i);
@@ -148,17 +148,17 @@ public class DashboardDetailsService {
             UUID target = row.getAccountId() != null ? row.getAccountId() : row.getCreditCardId();
             csv.append(String.join(";",
                 row.getTransactionDate().format(CSV_DATE),
-                csvText(row.getDescription()),
-                (debit ? row.getAmount().negate() : row.getAmount()).toPlainString().replace('.', ','),
+                CsvPtBr.text(row.getDescription()),
+                CsvPtBr.money(debit ? row.getAmount().negate() : row.getAmount()),
                 debit ? "Saída" : "Entrada",
-                csvText(categoryLabel(row, r.category())),
-                csvText(targets.getOrDefault(target, "")),
+                CsvPtBr.text(categoryLabel(row, r.category())),
+                CsvPtBr.text(targets.getOrDefault(target, "")),
                 row.isPix() ? "Sim" : "Não",
                 row.isInstallment() ? "Sim" : "Não",
                 row.isInstallment() && row.getInstallmentNumber() != null && row.getInstallmentTotal() != null
                     ? row.getInstallmentNumber() + "/" + row.getInstallmentTotal() : "",
                 row.getImportId() != null ? "Importação" : "Manual",
-                row.getDeletedAt() != null ? "Sim" : "Não")).append("\r\n");
+                row.getDeletedAt() != null ? "Sim" : "Não")).append(CsvPtBr.CRLF);
         }
         return new CsvExport(csv.toString(), rows.size());
     }
@@ -168,16 +168,6 @@ public class DashboardDetailsService {
         if (row.getKind() == Transaction.Kind.CARD_PAYMENT) return "Pagamento de fatura";
         if (category == null) return "Não classificado";
         return category.group() == null ? category.name() : category.group() + " › " + category.name();
-    }
-
-    /** Quotes a field with ; " or a line break; a leading = + - @ gets a ' so a spreadsheet does not run it. */
-    static String csvText(String value) {
-        String v = value == null ? "" : value;
-        if (!v.isEmpty() && "=+-@\t\r".indexOf(v.charAt(0)) >= 0) v = "'" + v;
-        if (v.contains(";") || v.contains("\"") || v.contains("\n") || v.contains("\r")) {
-            v = "\"" + v.replace("\"", "\"\"") + "\"";
-        }
-        return v;
     }
 
     /** Base of /transacoes (findConfirmedBetween) plus the optional filters; the order is skipped on the count query. */
