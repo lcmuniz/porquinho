@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import router from '../index'
 
 describe('router', () => {
@@ -51,5 +51,23 @@ describe('router', () => {
 
     expect(route.name).toBe('budget-comparison')
     expect(route.meta.requiresAuth).toBe(true)
+  })
+})
+
+describe('guard de autenticação', () => {
+  beforeEach(() => localStorage.clear())
+
+  it('sem login, manda ao /login com a página pedida em redirectTo', async () => {
+    await router.push('/transacoes?mes=2026-11')
+
+    expect(router.currentRoute.value.name).toBe('login')
+    expect(router.currentRoute.value.query.redirectTo).toBe('/transacoes?mes=2026-11')
+  })
+
+  it('com login, abre a rota protegida', async () => {
+    localStorage.setItem('user', '{"id":"u1"}')
+    await router.push('/metas')
+
+    expect(router.currentRoute.value.name).toBe('goals')
   })
 })

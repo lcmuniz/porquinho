@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { supabase } from './supabase'
 import router from '@/router'
+import { endSession } from './session'
 
 const apiBaseURL = import.meta.env.VITE_API_BASE_URL
 
@@ -22,6 +23,8 @@ export const api = axios.create({
 // Request interceptor: Attach JWT token from Supabase session
 api.interceptors.request.use(
   async (config) => {
+    // Token já informado (login recém-feito, repetição após o refresh do 401): usa esse
+    if (config.headers.Authorization) return config
     try {
       // Try to get session, with retry logic for recently authenticated users
       let session = null
@@ -56,7 +59,10 @@ api.interceptors.request.use(
 
 export const SUBSCRIPTION_ROUTE = '/assinatura'
 
-// Response interceptor: 402 -> tela de assinatura (Story 2.2); 401 -> refresh token
+/** title do ProblemDetail que o backend devolve (403) para conta em exclusão. */
+const DELETED_ACCOUNT_TITLE = 'Conta em exclusão'
+
+// Response interceptor: 402 -> tela de assinatura (Story 2.2); 403 conta em exclusão e 401 sem refresh -> /login
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -70,25 +76,27 @@ api.interceptors.response.use(
       return Promise.reject(error)
     }
 
-    // If 401 and not already retried, try to refresh token
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true
+    // 403 do DeletedAccountFilter: a conta está em exclusão e o login não vale mais.
+    if (error.response?.status === 403 && error.response.data?.title === DELETED_ACCOUNT_TITLE) {
+      endSession({ msg: 'account-deletion-scheduled' })
+      return Promise.reject(error)
+    }
 
-      try {
-        // Supabase automatically refreshes token if needed
-        const {
-          data: { session },
-        } = await supabase.auth.getSession()
-
-        if (session?.access_token) {
-          originalRequest.headers.Authorization = `Bearer ${session.access_token}`
+    // 401: token vencido ou revogado. Renova uma vez e repete; se não renovar (ou o repetido também der 401), a sessão
+    // acabou: logout local e /login com a página atual em redirectTo.
+    if (error.response?.status === 401 && originalRequest) {
+      if (!originalRequest._retry) {
+        originalRequest._retry = true
+        const token = await supabase.auth
+          .refreshSession()
+          .then(({ data, error: refreshError }) => (refreshError ? null : data.session?.access_token))
+          .catch(() => null)
+        if (token) {
+          originalRequest.headers.Authorization = `Bearer ${token}`
           return api(originalRequest)
         }
-      } catch (refreshError) {
-        console.error('Error refreshing token:', refreshError)
-        // Redirect to login or handle as needed
-        return Promise.reject(refreshError)
       }
+      endSession()
     }
 
     return Promise.reject(error)

@@ -204,7 +204,8 @@ router.beforeEach((to) => {
   const isAuthenticated = !!localStorage.getItem('user')
 
   if (to.meta.requiresAuth && !isAuthenticated) {
-    return { name: 'login' }
+    // Depois do login volta para onde ia (o LoginView só aceita caminho interno)
+    return { name: 'login', query: { redirectTo: to.fullPath } }
   }
 
   // Redireciona usuario ja autenticado para /dashboard se tentar acessar /login ou /register

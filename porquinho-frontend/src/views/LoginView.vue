@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useAuth } from '@/composables/useAuth'
 import { useAuthStore } from '@/stores/auth'
 import { authService } from '@/services/authService'
+import { safeRedirect } from '@/lib/redirect'
 
 const router = useRouter()
 const route = useRoute()
@@ -94,8 +95,7 @@ async function handleEmailLogin() {
     })
 
     // Step 5: Redirect to onboarding or original page
-    const redirectTo = route.query.redirectTo as string
-    router.push(redirectTo || '/onboarding')
+    router.push(safeRedirect(route.query.redirectTo) ?? '/onboarding')
   } catch (error: any) {
     // Step 6: Record failed login attempt (increment counter)
     try {
