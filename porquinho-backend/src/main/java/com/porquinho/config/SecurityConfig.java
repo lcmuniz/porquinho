@@ -3,7 +3,7 @@ package com.porquinho.config;
 import java.util.List;
 
 import com.porquinho.repository.UserRepository;
-import com.porquinho.repository.UserSessionRepository;
+import com.porquinho.service.SessionService;
 import com.porquinho.service.JwtBlacklistService;
 import com.porquinho.service.SubscriptionService;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,14 +34,14 @@ public class SecurityConfig {
     private final JwtBlacklistService jwtBlacklistService;
     private final SubscriptionService subscriptionService;
     private final UserRepository userRepository;
-    private final UserSessionRepository userSessionRepository;
+    private final SessionService sessionService;
 
     public SecurityConfig(JwtBlacklistService jwtBlacklistService, SubscriptionService subscriptionService,
-                          UserRepository userRepository, UserSessionRepository userSessionRepository) {
+                          UserRepository userRepository, SessionService sessionService) {
         this.jwtBlacklistService = jwtBlacklistService;
         this.subscriptionService = subscriptionService;
         this.userRepository = userRepository;
-        this.userSessionRepository = userSessionRepository;
+        this.sessionService = sessionService;
     }
 
     @Bean
@@ -80,7 +80,7 @@ public class SecurityConfig {
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
         converter.setJwtBlacklistService(jwtBlacklistService);
-        converter.setUserSessionRepository(userSessionRepository);
+        converter.setSessionService(sessionService);
         return converter;
     }
 

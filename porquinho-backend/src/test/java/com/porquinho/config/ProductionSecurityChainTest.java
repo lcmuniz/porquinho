@@ -183,6 +183,33 @@ class ProductionSecurityChainTest {
     }
 
     @Test
+    void idleSessionGets401AndLiveSessionRecordsActivity() throws Exception {
+        // Retro Epic 1 A3 (NFR16): 7 days without activity end the session; each request slides expires_at
+        UUID idleSid = UUID.randomUUID();
+        UUID liveSid = UUID.randomUUID();
+        jdbcTemplate.update("INSERT INTO users (id, email, auth_provider, failed_login_attempts) "
+            + "VALUES (?, 'inatividade@example.com', 'EMAIL', 0)", USER_ID);
+        try {
+            jdbcTemplate.update("INSERT INTO user_sessions (user_id, jwt_token_hash, session_id, last_activity, expires_at) "
+                + "VALUES (?, 'idle-hash', ?, now() - interval '8 days', now() - interval '1 day')", USER_ID, idleSid);
+            jdbcTemplate.update("INSERT INTO user_sessions (user_id, jwt_token_hash, session_id, last_activity, expires_at) "
+                + "VALUES (?, 'live-hash', ?, now() - interval '6 days', now() + interval '1 day')", USER_ID, liveSid);
+
+            mockMvc.perform(get("/api/v1/budgets/2026-11").header("Authorization", "Bearer sid-" + idleSid + "-refreshed"))
+                .andExpect(status().isUnauthorized());
+            mockMvc.perform(get("/api/v1/budgets/2026-11").header("Authorization", "Bearer sid-" + liveSid + "-refreshed"))
+                .andExpect(status().isPaymentRequired());
+
+            Boolean touched = jdbcTemplate.queryForObject("SELECT last_activity > now() - interval '1 minute' "
+                + "AND expires_at > now() + interval '6 days' FROM user_sessions WHERE session_id = ?", Boolean.class, liveSid);
+            assertThat(touched).isTrue();
+        } finally {
+            jdbcTemplate.update("DELETE FROM user_sessions WHERE user_id = ?", USER_ID);
+            jdbcTemplate.update("DELETE FROM users WHERE id = ?", USER_ID);
+        }
+    }
+
+    @Test
     void everyApiRouteOutsideThePublicListRequiresJwt() throws Exception {
         Set<String> found = new TreeSet<>();
         List<String> opened = new ArrayList<>();

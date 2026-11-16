@@ -1,6 +1,5 @@
 package com.porquinho.config;
 
-import com.porquinho.repository.UserSessionRepository;
 import com.porquinho.service.JwtBlacklistService;
 import com.porquinho.service.SessionService;
 import org.springframework.core.convert.converter.Converter;
@@ -22,19 +21,20 @@ import java.util.UUID;
  * (The principal is the Jwt object, so @AuthenticationPrincipal String resolves to null.)
  * Also rejects revoked sessions: by the session_id claim, which survives Supabase's token refresh (user_sessions,
  * retro Epic 1 A2), and by the token hash in the Redis blacklist (sessions recorded without session_id).
+ * The session_id check also rejects a session idle for 7 days (NFR16) and records the request as activity (A3).
  */
 public class JwtAuthenticationConverter implements Converter<Jwt, AbstractAuthenticationToken> {
 
     private JwtBlacklistService jwtBlacklistService;
 
-    private UserSessionRepository userSessionRepository;
+    private SessionService sessionService;
 
     public void setJwtBlacklistService(JwtBlacklistService jwtBlacklistService) {
         this.jwtBlacklistService = jwtBlacklistService;
     }
 
-    public void setUserSessionRepository(UserSessionRepository userSessionRepository) {
-        this.userSessionRepository = userSessionRepository;
+    public void setSessionService(SessionService sessionService) {
+        this.sessionService = sessionService;
     }
 
     @Override
@@ -46,10 +46,13 @@ public class JwtAuthenticationConverter implements Converter<Jwt, AbstractAuthen
                 throw new InvalidBearerTokenException("Token has been revoked");
             }
         }
-        if (userSessionRepository != null) {
+        if (sessionService != null) {
             UUID sessionId = SessionService.sessionId(jwt);
-            if (sessionId != null && userSessionRepository.isSessionIdRevoked(sessionId)) {
-                throw new InvalidBearerTokenException("Token has been revoked");
+            if (sessionId != null) {
+                if (sessionService.isRevokedOrExpired(sessionId)) {
+                    throw new InvalidBearerTokenException("Token has been revoked");
+                }
+                sessionService.updateLastActivity(sessionId);
             }
         }
 

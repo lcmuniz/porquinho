@@ -260,30 +260,18 @@ class SessionServiceTest {
     }
 
     @Test
-    void updateLastActivityShouldCallRepositoryWithCorrectHash() {
-        // Act
-        sessionService.updateLastActivity(jwtToken);
+    void updateLastActivitySlidesExpiryBySessionIdWithThrottle() {
+        UUID sid = UUID.randomUUID();
+        OffsetDateTime before = OffsetDateTime.now();
 
-        // Assert
-        verify(userSessionRepository).updateLastActivity(eq(tokenHash), any(OffsetDateTime.class));
-    }
+        sessionService.updateLastActivity(sid);
 
-    @Test
-    void cleanExpiredSessionsShouldRevokeInactiveSessions() {
-        // Arrange
-        UserSession expiredSession = new UserSession(userId, "expired-hash", "Old Chrome", "1.1.1.1", OffsetDateTime.now().plusDays(1));
-        expiredSession.setId(UUID.randomUUID());
-
-        when(userSessionRepository.findExpiredByInactivity(eq(userId), any(), any()))
-            .thenReturn(List.of(expiredSession));
-        when(userSessionRepository.save(any(UserSession.class))).thenAnswer(inv -> inv.getArgument(0));
-
-        // Act
-        int result = sessionService.cleanExpiredSessions(userId);
-
-        // Assert
-        assertEquals(1, result);
-        assertNotNull(expiredSession.getRevokedAt());
-        verify(userSessionRepository).save(expiredSession);
+        ArgumentCaptor<OffsetDateTime> now = ArgumentCaptor.forClass(OffsetDateTime.class);
+        ArgumentCaptor<OffsetDateTime> expiresAt = ArgumentCaptor.forClass(OffsetDateTime.class);
+        ArgumentCaptor<OffsetDateTime> touchedBefore = ArgumentCaptor.forClass(OffsetDateTime.class);
+        verify(userSessionRepository).updateLastActivity(eq(sid), now.capture(), expiresAt.capture(), touchedBefore.capture());
+        assertFalse(now.getValue().isBefore(before));
+        assertEquals(now.getValue().plusDays(7), expiresAt.getValue());
+        assertEquals(now.getValue().minusMinutes(5), touchedBefore.getValue());
     }
 }

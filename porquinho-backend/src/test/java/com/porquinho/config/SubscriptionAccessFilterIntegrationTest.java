@@ -2,8 +2,8 @@ package com.porquinho.config;
 
 import com.porquinho.controller.SubscriptionController;
 import com.porquinho.repository.UserRepository;
-import com.porquinho.repository.UserSessionRepository;
 import com.porquinho.service.JwtBlacklistService;
+import com.porquinho.service.SessionService;
 import com.porquinho.service.SubscriptionService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -65,9 +65,9 @@ class SubscriptionAccessFilterIntegrationTest {
     @MockBean
     private UserRepository userRepository;
 
-    // JwtAuthenticationConverter checks revoked session_id claims (retro Epic 1 A2); the mock answers "not revoked"
+    // JwtAuthenticationConverter checks revoked/idle session_id claims (retro Epic 1 A2/A3); the mock answers "live"
     @MockBean
-    private UserSessionRepository userSessionRepository;
+    private SessionService sessionService;
 
     @Test
     void protectedRouteWithoutAccessReturns402ProblemDetail() throws Exception {

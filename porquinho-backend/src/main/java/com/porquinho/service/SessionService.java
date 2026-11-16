@@ -19,6 +19,9 @@ import java.util.UUID;
 @Service
 public class SessionService {
 
+    /** NFR16: a session expires after this many days without activity; updateLastActivity slides expires_at. */
+    static final int INACTIVITY_DAYS = 7;
+
     private final UserSessionRepository userSessionRepository;
     private final JwtBlacklistService jwtBlacklistService;
     private final SupabaseAdminClient supabaseAdminClient;
@@ -41,16 +44,14 @@ public class SessionService {
             }
         }
         String tokenHash = hashToken(jwt.getTokenValue());
-        OffsetDateTime expiresAt = OffsetDateTime.now().plusDays(7);
+        OffsetDateTime expiresAt = OffsetDateTime.now().plusDays(INACTIVITY_DAYS);
 
         UserSession session = new UserSession(userId, tokenHash, deviceInfo, ipAddress, expiresAt);
         session.setSessionId(supabaseSessionId);
         return userSessionRepository.save(session);
     }
 
-    @Transactional
     public List<UserSession> getActiveSessions(UUID userId) {
-        cleanExpiredSessions(userId);
         return userSessionRepository.findByUserIdAndRevokedAtIsNullAndExpiresAtAfter(userId, OffsetDateTime.now());
     }
 
@@ -97,22 +98,14 @@ public class SessionService {
         return otherSessions.size();
     }
 
-    @Transactional
-    public void updateLastActivity(String jwtToken) {
-        String tokenHash = hashToken(jwtToken);
-        userSessionRepository.updateLastActivity(tokenHash, OffsetDateTime.now());
+    public boolean isRevokedOrExpired(UUID sessionId) {
+        return userSessionRepository.isSessionIdRevokedOrExpired(sessionId);
     }
 
-    @Transactional
-    public int cleanExpiredSessions(UUID userId) {
+    /** Called on every authenticated request (JwtAuthenticationConverter); writes at most once per 5 minutes per session. */
+    public void updateLastActivity(UUID sessionId) {
         OffsetDateTime now = OffsetDateTime.now();
-        OffsetDateTime inactivityThreshold = now.minusDays(7);
-        List<UserSession> expired = userSessionRepository.findExpiredByInactivity(userId, now, inactivityThreshold);
-        for (UserSession session : expired) {
-            session.setRevokedAt(now);
-            userSessionRepository.save(session);
-        }
-        return expired.size();
+        userSessionRepository.updateLastActivity(sessionId, now, now.plusDays(INACTIVITY_DAYS), now.minusMinutes(5));
     }
 
     /** The Supabase session_id claim (stable across token refreshes), or null when absent or not a UUID. */
