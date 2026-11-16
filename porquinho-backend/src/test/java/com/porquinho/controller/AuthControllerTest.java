@@ -1,8 +1,6 @@
 package com.porquinho.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.porquinho.dto.RegisterGoogleRequest;
-import com.porquinho.dto.RegisterEmailRequest;
 import com.porquinho.entity.User;
 import com.porquinho.exception.ConflictException;
 import com.porquinho.service.AuthService;
@@ -74,234 +72,111 @@ class AuthControllerTest {
                 .andExpect(content().string("Auth service is running"));
     }
 
+    /** JWT as Supabase issues it: sub, e-mail and (Google) user_metadata. */
+    private static org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken jwtAuth(
+            UUID sub, String email) {
+        org.springframework.security.oauth2.jwt.Jwt jwt = org.springframework.security.oauth2.jwt.Jwt.withTokenValue("t")
+            .header("alg", "ES256")
+            .subject(sub.toString())
+            .claim("email", email)
+            .claim("user_metadata", java.util.Map.of("sub", "google-sub", "provider_id", "google-sub"))
+            .issuedAt(java.time.Instant.now())
+            .expiresAt(java.time.Instant.now().plusSeconds(3600))
+            .build();
+        return new org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken(
+            jwt, java.util.List.of(), sub.toString());
+    }
+
+    private static org.springframework.test.web.servlet.request.RequestPostProcessor as(UUID sub, String email) {
+        return org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+            .authentication(jwtAuth(sub, email));
+    }
+
     @Test
     void registerWithGoogleShouldReturnCreatedForNewUser() throws Exception {
-        // Arrange
-        RegisterGoogleRequest request = new RegisterGoogleRequest(
-            "test@example.com",
-            "google123",
-            "Test User"
-        );
+        UUID sub = UUID.randomUUID();
+        User newUser = new User("test@example.com", User.AuthProvider.GOOGLE, "google-sub");
+        newUser.setId(sub);
+        when(authService.registerOrGetUserFromGoogle(anyString(), anyString(), anyString(), anyString()))
+            .thenReturn(new AuthService.UserRegistrationResult(newUser, true));
 
-        User newUser = new User("test@example.com", User.AuthProvider.GOOGLE, "google123");
-        newUser.setId(UUID.randomUUID());
-
-        AuthService.UserRegistrationResult result = new AuthService.UserRegistrationResult(newUser, true);
-
-        when(authService.registerOrGetUserFromGoogle(nullable(String.class), anyString(), anyString(), anyString()))
-            .thenReturn(result);
-
-        // Act & Assert
-        mockMvc.perform(post("/api/v1/auth/register/google")
-                .with(csrf())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
+        mockMvc.perform(post("/api/v1/auth/register/google").with(csrf()).with(as(sub, "test@example.com")))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.email").value("test@example.com"))
                 .andExpect(jsonPath("$.authProvider").value("GOOGLE"))
-                .andExpect(jsonPath("$.id").exists());
+                .andExpect(jsonPath("$.id").value(sub.toString()));
     }
 
     @Test
     void registerWithGoogleShouldReturnOkForExistingUser() throws Exception {
-        // Arrange
-        RegisterGoogleRequest request = new RegisterGoogleRequest(
-            "existing@example.com",
-            "google456",
-            "Existing User"
-        );
-
-        User existingUser = new User("existing@example.com", User.AuthProvider.GOOGLE, "google456");
-        existingUser.setId(UUID.randomUUID());
-
-        AuthService.UserRegistrationResult result = new AuthService.UserRegistrationResult(existingUser, false);
-
-        when(authService.registerOrGetUserFromGoogle(nullable(String.class), anyString(), anyString(), anyString()))
-            .thenReturn(result);
-
-        // Act & Assert
-        mockMvc.perform(post("/api/v1/auth/register/google")
-                .with(csrf())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.email").value("existing@example.com"))
-                .andExpect(jsonPath("$.authProvider").value("GOOGLE"));
-    }
-
-    @Test
-    void registerWithGoogleShouldValidateRequest() throws Exception {
-        // Arrange - invalid request (missing email)
-        RegisterGoogleRequest invalidRequest = new RegisterGoogleRequest();
-        invalidRequest.setGoogleId("google789");
-        invalidRequest.setName("Invalid User");
-        // email is missing
-
-        // Act & Assert
-        mockMvc.perform(post("/api/v1/auth/register/google")
-                .with(csrf())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(invalidRequest)))
-                .andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void registerWithGoogleWorksWithoutAuthInTests() throws Exception {
-        // Arrange
-        RegisterGoogleRequest request = new RegisterGoogleRequest(
-            "test@example.com",
-            "google123",
-            "Test User"
-        );
-
-        User newUser = new User("test@example.com", User.AuthProvider.GOOGLE, "google123");
-        newUser.setId(UUID.randomUUID());
-        AuthService.UserRegistrationResult result = new AuthService.UserRegistrationResult(newUser, true);
-
-        when(authService.registerOrGetUserFromGoogle(nullable(String.class), anyString(), anyString(), anyString()))
-            .thenReturn(result);
-
-        // Act & Assert - In test profile, authentication is not required
-        mockMvc.perform(post("/api/v1/auth/register/google")
-                .with(csrf())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isCreated());
-    }
-
-    @Test
-    void registerWithGoogleShouldPassJwtSubAsUserId() throws Exception {
-        // Story 2.1 Task 0: users.id must equal the Supabase JWT sub
         UUID sub = UUID.randomUUID();
-        org.springframework.security.oauth2.jwt.Jwt jwt = org.springframework.security.oauth2.jwt.Jwt.withTokenValue("t")
-            .header("alg", "ES256")
-            .subject(sub.toString())
-            .issuedAt(java.time.Instant.now())
-            .expiresAt(java.time.Instant.now().plusSeconds(3600))
-            .build();
-        var authToken = new org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken(
-            jwt, java.util.List.of(), sub.toString());
+        User existingUser = new User("existing@example.com", User.AuthProvider.GOOGLE, "google-sub");
+        existingUser.setId(sub);
+        when(authService.registerOrGetUserFromGoogle(anyString(), anyString(), anyString(), anyString()))
+            .thenReturn(new AuthService.UserRegistrationResult(existingUser, false));
 
-        User newUser = new User("sub@example.com", User.AuthProvider.GOOGLE, "google-sub");
+        mockMvc.perform(post("/api/v1/auth/register/google").with(csrf()).with(as(sub, "existing@example.com")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value("existing@example.com"));
+    }
+
+    @Test
+    void registerWithoutJwtIs401() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/register/google").with(csrf()))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/v1/auth/register/email").with(csrf()))
+                .andExpect(status().isUnauthorized());
+        verify(authService, org.mockito.Mockito.never())
+            .registerOrGetUserFromGoogle(any(), any(), any(), any());
+        verify(authService, org.mockito.Mockito.never()).registerOrGetUserFromEmail(any(), any(), any());
+    }
+
+    @Test
+    void registerWithGoogleUsesJwtIdentityAndIgnoresBody() throws Exception {
+        // retro Epic 1 A1 (S2): e-mail and googleId in the body are an attacker's choice; only the JWT counts
+        UUID sub = UUID.randomUUID();
+        User newUser = new User("me@example.com", User.AuthProvider.GOOGLE, "google-sub");
         newUser.setId(sub);
         when(authService.registerOrGetUserFromGoogle(anyString(), anyString(), anyString(), anyString()))
             .thenReturn(new AuthService.UserRegistrationResult(newUser, true));
 
         mockMvc.perform(post("/api/v1/auth/register/google")
                 .with(csrf())
-                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(authToken))
+                .with(as(sub, "me@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(new RegisterGoogleRequest("sub@example.com", "google-sub", "Sub"))))
+                .content("{\"email\":\"victim@example.com\",\"googleId\":\"victim-google\",\"name\":\"X\"}"))
                 .andExpect(status().isCreated());
 
         verify(authService).registerOrGetUserFromGoogle(
-            org.mockito.ArgumentMatchers.eq(sub.toString()),
-            org.mockito.ArgumentMatchers.eq("sub@example.com"),
-            org.mockito.ArgumentMatchers.eq("google-sub"),
-            anyString());
+            eq(sub.toString()), eq("me@example.com"), eq("google-sub"), anyString());
     }
 
     @Test
-    void registerWithEmailShouldPassJwtSubAsUserId() throws Exception {
-        // Story 2.1 Task 0: guards against regressing to @AuthenticationPrincipal String (null with JwtAuthenticationToken)
+    void registerWithEmailUsesJwtIdentityAndIgnoresBody() throws Exception {
         UUID sub = UUID.randomUUID();
-        org.springframework.security.oauth2.jwt.Jwt jwt = org.springframework.security.oauth2.jwt.Jwt.withTokenValue("t")
-            .header("alg", "ES256")
-            .subject(sub.toString())
-            .issuedAt(java.time.Instant.now())
-            .expiresAt(java.time.Instant.now().plusSeconds(3600))
-            .build();
-        var authToken = new org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken(
-            jwt, java.util.List.of(), sub.toString());
-
-        User newUser = new User("sub@example.com", User.AuthProvider.EMAIL, null);
+        User newUser = new User("me@example.com", User.AuthProvider.EMAIL, null);
         newUser.setId(sub);
-        when(authService.registerOrGetUserFromEmail(anyString(), any(RegisterEmailRequest.class), anyString()))
+        when(authService.registerOrGetUserFromEmail(anyString(), anyString(), anyString()))
             .thenReturn(new AuthService.UserRegistrationResult(newUser, true));
 
         mockMvc.perform(post("/api/v1/auth/register/email")
                 .with(csrf())
-                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(authToken))
+                .with(as(sub, "me@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(new RegisterEmailRequest("sub@example.com", "Sub"))))
-                .andExpect(status().isCreated());
-
-        verify(authService).registerOrGetUserFromEmail(
-            org.mockito.ArgumentMatchers.eq(sub.toString()),
-            any(RegisterEmailRequest.class),
-            anyString());
-    }
-
-    @Test
-    void shouldRegisterUserWithEmail() throws Exception {
-        // Arrange
-        RegisterEmailRequest request = new RegisterEmailRequest(
-            "test@example.com",
-            "Test User"
-        );
-
-        User newUser = new User("test@example.com", User.AuthProvider.EMAIL, null);
-        newUser.setId(UUID.randomUUID());
-
-        AuthService.UserRegistrationResult result = new AuthService.UserRegistrationResult(newUser, true);
-
-        when(authService.registerOrGetUserFromEmail(nullable(String.class), any(RegisterEmailRequest.class), anyString()))
-            .thenReturn(result);
-
-        // Act & Assert
-        mockMvc.perform(post("/api/v1/auth/register/email")
-                .with(csrf())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
+                .content("{\"email\":\"victim@example.com\",\"name\":\"X\"}"))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.email").value("test@example.com"))
-                .andExpect(jsonPath("$.authProvider").value("EMAIL"))
-                .andExpect(jsonPath("$.id").exists());
-    }
-
-    @Test
-    void shouldReturnConflictWhenEmailExists() throws Exception {
-        // Arrange
-        RegisterEmailRequest request = new RegisterEmailRequest(
-            "existing@example.com",
-            "Existing User"
-        );
-
-        when(authService.registerOrGetUserFromEmail(nullable(String.class), any(RegisterEmailRequest.class), anyString()))
-            .thenThrow(new ConflictException("Email already registered"));
-
-        // Act & Assert
-        mockMvc.perform(post("/api/v1/auth/register/email")
-                .with(csrf())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isConflict());
-    }
-
-    @Test
-    void shouldLinkEmailPasswordToGoogleUser() throws Exception {
-        // Arrange
-        RegisterEmailRequest request = new RegisterEmailRequest(
-            "google@example.com",
-            "Google User"
-        );
-
-        User existingUser = new User("google@example.com", User.AuthProvider.EMAIL, "google123");
-        existingUser.setId(UUID.randomUUID());
-
-        AuthService.UserRegistrationResult result = new AuthService.UserRegistrationResult(existingUser, false);
-
-        when(authService.registerOrGetUserFromEmail(nullable(String.class), any(RegisterEmailRequest.class), anyString()))
-            .thenReturn(result);
-
-        // Act & Assert
-        mockMvc.perform(post("/api/v1/auth/register/email")
-                .with(csrf())
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.email").value("google@example.com"))
                 .andExpect(jsonPath("$.authProvider").value("EMAIL"));
+
+        verify(authService).registerOrGetUserFromEmail(eq(sub.toString()), eq("me@example.com"), anyString());
+    }
+
+    @Test
+    void shouldReturnConflictWhenEmailBelongsToAnotherAccount() throws Exception {
+        when(authService.registerOrGetUserFromEmail(anyString(), anyString(), anyString()))
+            .thenThrow(new ConflictException("Este e-mail já está cadastrado em outra conta."));
+
+        mockMvc.perform(post("/api/v1/auth/register/email").with(csrf()).with(as(UUID.randomUUID(), "x@example.com")))
+                .andExpect(status().isConflict());
     }
 
     // ===== LOGIN TESTS (Story 1.3) =====
@@ -367,25 +242,76 @@ class AuthControllerTest {
 
     @Test
     void shouldLogSuccessfulLogin() throws Exception {
-        // Arrange
-        String loginJson = "{\"email\":\"test@example.com\"}";
+        UUID sub = UUID.randomUUID();
+        User me = new User("me@example.com", User.AuthProvider.EMAIL, null);
+        me.setId(sub);
+        when(authService.findById(sub.toString())).thenReturn(java.util.Optional.of(me));
 
-        // Mock findUserByEmail to return a user (so endpoint returns 200, not 404)
-        User mockUser = new User("test@example.com", User.AuthProvider.EMAIL, null);
-        mockUser.setId(UUID.randomUUID());
-        when(authService.findUserByEmail("test@example.com")).thenReturn(mockUser);
+        mockMvc.perform(post("/api/v1/auth/login").with(csrf()).with(as(sub, "me@example.com")))
+                .andExpect(status().isOk());
 
-        // Note: In test profile, authentication is disabled, so userId will be null.
-        // The endpoint should handle this gracefully.
+        verify(auditLogService).log(eq("user_login"), eq(sub), anyString());
+        verify(accountLockService).resetFailedAttempts(eq("me@example.com"), anyString());
+    }
 
-        // Act & Assert
+    @Test
+    void loginUsesJwtSubAndIgnoresEmailInBody() throws Exception {
+        // retro Epic 1 A1 (S1): with {email: victim} the old endpoint reset the victim's lock counter for the
+        // attacker's IP and wrote session and audit rows on the victim's account
+        UUID attacker = UUID.randomUUID();
+        User me = new User("attacker@example.com", User.AuthProvider.EMAIL, null);
+        me.setId(attacker);
+        when(authService.findById(attacker.toString())).thenReturn(java.util.Optional.of(me));
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                .with(csrf())
+                .with(as(attacker, "attacker@example.com"))
+                .header("Authorization", "Bearer attacker-token")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"victim@example.com\"}"))
+                .andExpect(status().isOk());
+
+        verify(accountLockService).resetFailedAttempts(eq("attacker@example.com"), anyString());
+        verify(accountLockService, org.mockito.Mockito.never()).resetFailedAttempts(eq("victim@example.com"), anyString());
+        verify(auditLogService).log(eq("user_login"), eq(attacker), anyString());
+        verify(sessionService).createSession(eq(attacker), eq("attacker-token"), any(), anyString());
+    }
+
+    @Test
+    void loginWithoutJwtIs401AndTouchesNothing() throws Exception {
         mockMvc.perform(post("/api/v1/auth/login")
                 .with(csrf())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(loginJson))
+                .content("{\"email\":\"victim@example.com\"}"))
+                .andExpect(status().isUnauthorized());
+
+        verify(accountLockService, org.mockito.Mockito.never()).resetFailedAttempts(anyString(), anyString());
+        verify(auditLogService, org.mockito.Mockito.never()).log(anyString(), any(UUID.class), anyString());
+    }
+
+    @Test
+    void loginOfUserNotYetSyncedIs404() throws Exception {
+        UUID sub = UUID.randomUUID();
+        when(authService.findById(sub.toString())).thenReturn(java.util.Optional.empty());
+
+        mockMvc.perform(post("/api/v1/auth/login").with(csrf()).with(as(sub, "new@example.com")))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void loginCheckRateLimitIsPerNormalizedEmailAndIp() throws Exception {
+        // retro Epic 1 A1 (S3): keyed by e-mail only, anyone could keep the victim at 429; and "Victim@" escaped it
+        when(accountLockService.isLocked(anyString(), anyString())).thenReturn(false);
+        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(true);
+
+        mockMvc.perform(post("/api/v1/auth/login/check")
+                .with(csrf())
+                .with(r -> { r.setRemoteAddr("6.6.6.6"); return r; })
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"Victim@Example.com\"}"))
                 .andExpect(status().isOk());
 
-        verify(accountLockService).resetFailedAttempts(eq("test@example.com"), anyString());
+        verify(rateLimitService).allowRequest("login:victim@example.com:6.6.6.6", 5, 60);
     }
 
     // ===== PASSWORD RESET TESTS (Story 1.4) =====

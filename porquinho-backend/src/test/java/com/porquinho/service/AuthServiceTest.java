@@ -1,7 +1,5 @@
 package com.porquinho.service;
 
-import com.porquinho.dto.RegisterEmailRequest;
-import com.porquinho.entity.AuditLog;
 import com.porquinho.entity.User;
 import com.porquinho.exception.ConflictException;
 import com.porquinho.repository.UserRepository;
@@ -20,7 +18,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
@@ -54,34 +51,22 @@ class AuthServiceTest {
 
     @Test
     void shouldCreateNewUserWhenNotExists() {
-        // Arrange
         UUID userId = UUID.randomUUID();
         String email = "newuser@example.com";
         String googleId = "google123";
         String ipAddress = "192.168.1.1";
 
-        when(userRepository.findByGoogleIdAndDeletedAtIsNull(googleId)).thenReturn(Optional.empty());
-        when(userRepository.findByEmailAndDeletedAtIsNull(email)).thenReturn(Optional.empty());
-
         User newUser = new User(email, User.AuthProvider.GOOGLE, googleId);
         newUser.setId(userId);
-        when(userRepository.findById(userId)).thenReturn(Optional.of(newUser));
-        when(auditLogService.log(anyString(), any(UUID.class), anyString(), anyString()))
-            .thenReturn(new AuditLog());
+        when(userRepository.findById(userId)).thenReturn(Optional.empty()).thenReturn(Optional.of(newUser));
+        when(userRepository.findByEmailAndDeletedAtIsNull(email)).thenReturn(Optional.empty());
 
-        // Act
         AuthService.UserRegistrationResult result = authService.registerOrGetUserFromGoogle(userId.toString(), email, googleId, ipAddress);
 
-        // Assert
-        assertThat(result).isNotNull();
         assertThat(result.isNewUser()).isTrue();
-        assertThat(result.getUser()).isNotNull();
         assertThat(result.getUser().getEmail()).isEqualTo(email);
         assertThat(result.getUser().getGoogleId()).isEqualTo(googleId);
         assertThat(result.getUser().getAuthProvider()).isEqualTo(User.AuthProvider.GOOGLE);
-
-        verify(userRepository).findByGoogleIdAndDeletedAtIsNull(googleId);
-        verify(userRepository).findByEmailAndDeletedAtIsNull(email);
         // Story 2.1 Task 0: user id = JWT sub, inserted with google_id (users_google_id_check)
         verify(userRepository, never()).save(any(User.class));
         verify(userRepository).insertWithId(eq(userId), eq(email), eq("GOOGLE"), eq(googleId), any(), any(), any());
@@ -91,64 +76,75 @@ class AuthServiceTest {
     }
 
     @Test
-    void shouldReturnExistingUserWhenFoundByGoogleId() {
-        // Arrange
-        String email = "existing@example.com";
-        String googleId = "google456";
-        String ipAddress = "192.168.1.1";
+    void shouldReturnExistingGoogleUserFoundBySub() {
+        UUID userId = UUID.randomUUID();
+        User existingUser = new User("existing@example.com", User.AuthProvider.GOOGLE, "google456");
+        existingUser.setId(userId);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(existingUser));
 
-        User existingUser = new User(email, User.AuthProvider.GOOGLE, googleId);
-        existingUser.setId(UUID.randomUUID());
+        AuthService.UserRegistrationResult result = authService.registerOrGetUserFromGoogle(
+            userId.toString(), "existing@example.com", "google456", "192.168.1.1");
 
-        when(userRepository.findByGoogleIdAndDeletedAtIsNull(googleId)).thenReturn(Optional.of(existingUser));
-
-        // Act
-        AuthService.UserRegistrationResult result = authService.registerOrGetUserFromGoogle(UUID.randomUUID().toString(), email, googleId, ipAddress);
-
-        // Assert
-        assertThat(result).isNotNull();
         assertThat(result.isNewUser()).isFalse();
         assertThat(result.getUser()).isEqualTo(existingUser);
-
-        verify(userRepository).findByGoogleIdAndDeletedAtIsNull(googleId);
-        verify(userRepository, never()).findByEmailAndDeletedAtIsNull(anyString());
         verify(userRepository, never()).save(any(User.class));
         verify(auditLogService, never()).log(anyString(), any(UUID.class), anyString(), anyString());
         verify(subscriptionService, never()).startTrial(any(), any());
     }
 
     @Test
-    void shouldLinkGoogleAccountWhenUserExistsByEmail() {
-        // Arrange
-        String email = "existing@example.com";
-        String googleId = "google789";
-        String ipAddress = "192.168.1.1";
+    void shouldLinkGoogleWhenSubAndEmailMatch() {
+        // E-mail/password user signing in with Google: same Supabase sub, same e-mail
+        UUID userId = UUID.randomUUID();
+        User existingUser = new User("existing@example.com", User.AuthProvider.EMAIL, null);
+        existingUser.setId(userId);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(existingUser));
+        when(userRepository.save(existingUser)).thenReturn(existingUser);
 
-        User existingUser = new User(email, User.AuthProvider.EMAIL, null);
-        existingUser.setId(UUID.randomUUID());
+        AuthService.UserRegistrationResult result = authService.registerOrGetUserFromGoogle(
+            userId.toString(), "Existing@Example.com", "google789", "192.168.1.1");
 
-        User updatedUser = new User(email, User.AuthProvider.GOOGLE, googleId);
-        updatedUser.setId(existingUser.getId());
-
-        when(userRepository.findByGoogleIdAndDeletedAtIsNull(googleId)).thenReturn(Optional.empty());
-        when(userRepository.findByEmailAndDeletedAtIsNull(email)).thenReturn(Optional.of(existingUser));
-        when(userRepository.save(any(User.class))).thenReturn(updatedUser);
-        when(auditLogService.log(anyString(), any(UUID.class), anyString(), anyString()))
-            .thenReturn(new AuditLog());
-
-        // Act
-        AuthService.UserRegistrationResult result = authService.registerOrGetUserFromGoogle(UUID.randomUUID().toString(), email, googleId, ipAddress);
-
-        // Assert
-        assertThat(result).isNotNull();
         assertThat(result.isNewUser()).isFalse();
-        assertThat(result.getUser()).isNotNull();
-
-        verify(userRepository).findByGoogleIdAndDeletedAtIsNull(googleId);
-        verify(userRepository).findByEmailAndDeletedAtIsNull(email);
-        verify(userRepository).save(any(User.class));
-        verify(auditLogService).log(eq("google_account_linked"), any(UUID.class), eq(ipAddress), anyString());
+        assertThat(existingUser.getGoogleId()).isEqualTo("google789");
+        assertThat(existingUser.getAuthProvider()).isEqualTo(User.AuthProvider.GOOGLE);
+        verify(auditLogService).log(eq("google_account_linked"), eq(userId), eq("192.168.1.1"), anyString());
         verify(subscriptionService, never()).startTrial(any(), any());
+    }
+
+    @Test
+    void googleWithSameSubButOtherEmailDoesNotLink() {
+        UUID userId = UUID.randomUUID();
+        User existingUser = new User("owner@example.com", User.AuthProvider.EMAIL, null);
+        existingUser.setId(userId);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(existingUser));
+
+        AuthService.UserRegistrationResult result = authService.registerOrGetUserFromGoogle(
+            userId.toString(), "other@example.com", "google789", "192.168.1.1");
+
+        assertThat(result.getUser()).isEqualTo(existingUser);
+        assertThat(existingUser.getGoogleId()).isNull();
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
+    void googleWithEmailOfAnotherAccountIs409AndNeverTouchesIt() {
+        // retro Epic 1 A1 (S2): a new sub claiming an existing e-mail must not take over that account
+        UUID attackerSub = UUID.randomUUID();
+        User victim = new User("victim@example.com", User.AuthProvider.EMAIL, null);
+        victim.setId(UUID.randomUUID());
+        when(userRepository.findById(attackerSub)).thenReturn(Optional.empty());
+        when(userRepository.findByEmailAndDeletedAtIsNull("victim@example.com")).thenReturn(Optional.of(victim));
+
+        assertThatThrownBy(() -> authService.registerOrGetUserFromGoogle(
+                attackerSub.toString(), "victim@example.com", "attacker-google", "6.6.6.6"))
+            .isInstanceOf(ConflictException.class)
+            .hasMessage(AuthService.EMAIL_TAKEN_MESSAGE);
+
+        assertThat(victim.getGoogleId()).isNull();
+        assertThat(victim.getAuthProvider()).isEqualTo(User.AuthProvider.EMAIL);
+        verify(userRepository, never()).save(any(User.class));
+        verify(userRepository, never()).insertWithId(any(), any(), any(), any(), any(), any(), any());
+        verify(auditLogService, never()).log(anyString(), any(UUID.class), anyString(), anyString());
     }
 
     @Test
@@ -199,130 +195,55 @@ class AuthServiceTest {
 
     @Test
     void shouldCreateUserFromEmail() {
-        // Arrange
         UUID userId = UUID.randomUUID();
         String email = "newuser@example.com";
-        String name = "New User";
         String ipAddress = "192.168.1.1";
 
-        RegisterEmailRequest request = new RegisterEmailRequest(email, name);
-
-        // Mock findByEmail: user doesn't exist by email (new user)
         when(userRepository.findByEmailAndDeletedAtIsNull(email)).thenReturn(Optional.empty());
-
-        // Mock insertWithId (native query) - returns void
-        doNothing().when(userRepository).insertWithId(
-            any(UUID.class), anyString(), anyString(), any(), any(), any(), any()
-        );
-
-        // Mock findById: first call returns empty (check), second call returns created user (after insert)
         User newUser = new User(email, User.AuthProvider.EMAIL, null);
         newUser.setId(userId);
-        when(userRepository.findById(userId))
-            .thenReturn(Optional.empty())      // First call: check if exists by ID
-            .thenReturn(Optional.of(newUser)); // Second call: fetch after insert
+        when(userRepository.findById(userId)).thenReturn(Optional.empty()).thenReturn(Optional.of(newUser));
 
-        when(auditLogService.log(anyString(), any(UUID.class), anyString(), anyString()))
-            .thenReturn(new AuditLog());
+        AuthService.UserRegistrationResult result = authService.registerOrGetUserFromEmail(userId.toString(), email, ipAddress);
 
-        // Act
-        AuthService.UserRegistrationResult result = authService.registerOrGetUserFromEmail(userId.toString(), request, ipAddress);
-
-        // Assert
-        assertThat(result).isNotNull();
         assertThat(result.isNewUser()).isTrue();
-        assertThat(result.getUser()).isNotNull();
-        assertThat(result.getUser().getEmail()).isEqualTo(email);
         assertThat(result.getUser().getAuthProvider()).isEqualTo(User.AuthProvider.EMAIL);
-
         verify(userRepository, never()).save(any(User.class)); // Uses insertWithId, not save
-        verify(userRepository).findByEmailAndDeletedAtIsNull(email);
         verify(userRepository).insertWithId(eq(userId), eq(email), eq("EMAIL"), isNull(), any(), any(), any());
         verify(subscriptionService).startTrial(userId, ipAddress);
         verify(auditLogService).log(eq("user_registration"), any(UUID.class), eq(ipAddress), anyString());
     }
 
     @Test
-    void shouldReturnExistingUserWhenEmailExistsWithEmailProvider() {
-        // Arrange
-        UUID userId = UUID.randomUUID();
-        String email = "existing@example.com";
-        String name = "Existing User";
-        String ipAddress = "192.168.1.1";
+    void emailRegistrationWithEmailOfAnotherAccountIs409AndNeverTouchesIt() {
+        // retro Epic 1 A1 (S2): the old flow returned (and relinked) the account found by e-mail
+        UUID attackerSub = UUID.randomUUID();
+        User victim = new User("google@example.com", User.AuthProvider.GOOGLE, "google123");
+        victim.setId(UUID.randomUUID());
+        when(userRepository.findById(attackerSub)).thenReturn(Optional.empty());
+        when(userRepository.findByEmailAndDeletedAtIsNull("google@example.com")).thenReturn(Optional.of(victim));
 
-        RegisterEmailRequest request = new RegisterEmailRequest(email, name);
+        assertThatThrownBy(() -> authService.registerOrGetUserFromEmail(
+                attackerSub.toString(), "google@example.com", "6.6.6.6"))
+            .isInstanceOf(ConflictException.class)
+            .hasMessage(AuthService.EMAIL_TAKEN_MESSAGE);
 
-        User existingUser = new User(email, User.AuthProvider.EMAIL, null);
-        existingUser.setId(userId);
-
-        // Mock: user doesn't exist by ID (first call), but exists by email
-        when(userRepository.findById(userId)).thenReturn(Optional.empty());
-        when(userRepository.findByEmailAndDeletedAtIsNull(email)).thenReturn(Optional.of(existingUser));
-
-        // Act
-        AuthService.UserRegistrationResult result = authService.registerOrGetUserFromEmail(userId.toString(), request, ipAddress);
-
-        // Assert - HYBRID ARCHITECTURE: Returns existing user (idempotent), doesn't throw exception
-        assertThat(result).isNotNull();
-        assertThat(result.isNewUser()).isFalse();
-        assertThat(result.getUser()).isEqualTo(existingUser);
-
-        verify(userRepository).findById(userId);
-        verify(userRepository).findByEmailAndDeletedAtIsNull(email);
-        verify(userRepository, never()).insertWithId(any(), anyString(), anyString(), any(), any(), any(), any());
+        assertThat(victim.getAuthProvider()).isEqualTo(User.AuthProvider.GOOGLE);
+        verify(userRepository, never()).save(any(User.class));
+        verify(userRepository, never()).insertWithId(any(), any(), any(), any(), any(), any(), any());
         verify(auditLogService, never()).log(anyString(), any(UUID.class), anyString(), anyString());
-        verify(subscriptionService, never()).startTrial(any(), any());
-    }
-
-    @Test
-    void shouldLinkEmailPasswordWhenGoogleUserExists() {
-        // Arrange
-        UUID userId = UUID.randomUUID();
-        String email = "google@example.com";
-        String name = "Google User";
-        String ipAddress = "192.168.1.1";
-
-        RegisterEmailRequest request = new RegisterEmailRequest(email, name);
-
-        User existingUser = new User(email, User.AuthProvider.GOOGLE, "google123");
-        existingUser.setId(UUID.randomUUID());
-
-        User updatedUser = new User(email, User.AuthProvider.EMAIL, "google123");
-        updatedUser.setId(existingUser.getId());
-
-        // Mock: user doesn't exist by ID (first call), but exists by email with GOOGLE provider
-        when(userRepository.findById(userId)).thenReturn(Optional.empty());
-        when(userRepository.findByEmailAndDeletedAtIsNull(email)).thenReturn(Optional.of(existingUser));
-        when(userRepository.save(any(User.class))).thenReturn(updatedUser);
-        when(auditLogService.log(anyString(), any(UUID.class), anyString(), anyString()))
-            .thenReturn(new AuditLog());
-
-        // Act
-        AuthService.UserRegistrationResult result = authService.registerOrGetUserFromEmail(userId.toString(), request, ipAddress);
-
-        // Assert
-        assertThat(result).isNotNull();
-        assertThat(result.isNewUser()).isFalse();
-        assertThat(result.getUser()).isNotNull();
-
-        verify(userRepository).findById(userId);
-        verify(userRepository).findByEmailAndDeletedAtIsNull(email);
-        verify(userRepository).save(any(User.class));
-        verify(auditLogService).log(eq("auth_method_linked"), any(UUID.class), eq(ipAddress), anyString());
-        verify(subscriptionService, never()).startTrial(any(), any());
     }
 
     @Test
     void shouldNotStartTrialOnIdempotentEmailRegistration() {
         // Story 2.1 AC2: repeated calls (user already exists by id) must not create or restart the trial
         UUID userId = UUID.randomUUID();
-        RegisterEmailRequest request = new RegisterEmailRequest("again@example.com", "Again");
         User existing = new User("again@example.com", User.AuthProvider.EMAIL, null);
         existing.setId(userId);
         when(userRepository.findById(userId)).thenReturn(Optional.of(existing));
 
         AuthService.UserRegistrationResult result =
-            authService.registerOrGetUserFromEmail(userId.toString(), request, "1.1.1.1");
+            authService.registerOrGetUserFromEmail(userId.toString(), "again@example.com", "1.1.1.1");
 
         assertThat(result.isNewUser()).isFalse();
         verify(subscriptionService, never()).startTrial(any(), any());
@@ -330,10 +251,7 @@ class AuthServiceTest {
     }
 
     @Test
-    void googleRegistrationShouldRequireJwtSubForNewUser() {
-        when(userRepository.findByGoogleIdAndDeletedAtIsNull("g1")).thenReturn(Optional.empty());
-        when(userRepository.findByEmailAndDeletedAtIsNull("x@example.com")).thenReturn(Optional.empty());
-
+    void googleRegistrationShouldRequireJwtSub() {
         assertThatThrownBy(() -> authService.registerOrGetUserFromGoogle(null, "x@example.com", "g1", "1.1.1.1"))
             .isInstanceOf(IllegalArgumentException.class);
 
@@ -349,7 +267,7 @@ class AuthServiceTest {
         when(userRepository.findByIdIncludingDeleted(userId)).thenReturn(Optional.of(deleted));
 
         assertThatThrownBy(() -> authService.registerOrGetUserFromEmail(userId.toString(),
-                new RegisterEmailRequest("gone@example.com", "Gone"), "1.1.1.1"))
+                "gone@example.com", "1.1.1.1"))
             .isInstanceOf(ConflictException.class)
             .hasMessage(AuthService.DELETION_PENDING_MESSAGE);
         assertThatThrownBy(() -> authService.registerOrGetUserFromGoogle(userId.toString(), "gone@example.com",

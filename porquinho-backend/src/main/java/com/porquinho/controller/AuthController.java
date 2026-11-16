@@ -1,7 +1,5 @@
 package com.porquinho.controller;
 
-import com.porquinho.dto.RegisterGoogleRequest;
-import com.porquinho.dto.RegisterEmailRequest;
 import com.porquinho.dto.LoginRequest;
 import com.porquinho.dto.PasswordResetRequest;
 import com.porquinho.dto.SessionResponse;
@@ -20,9 +18,13 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -52,27 +54,31 @@ public class AuthController {
      * This endpoint is called by the frontend after Supabase completes Google OAuth.
      * The JWT from Supabase is validated by Spring Security, and user_id is extracted from the "sub" claim.
      *
+     * Identity (sub, e-mail, Google id) comes only from the JWT; the body the frontend sends is ignored
+     * (retro Epic 1 A1, S2): otherwise any logged-in user could claim someone else's e-mail.
+     *
      * @param authentication Authenticated JWT (user id = sub claim)
-     * @param request Request containing email and googleId from Supabase JWT
      * @param httpRequest HTTP request to extract client IP address
-     * @return UserResponse with user data
+     * @return UserResponse with user data, 401 without a JWT carrying sub and e-mail
      */
     @PostMapping("/register/google")
     public ResponseEntity<UserResponse> registerWithGoogle(
         Authentication authentication,
-        @Valid @RequestBody RegisterGoogleRequest request,
         HttpServletRequest httpRequest
     ) {
-        // JWT sub. Resolved via Authentication.getName(): with JwtAuthenticationToken the
-        // principal is the Jwt object, so @AuthenticationPrincipal String would resolve to null.
-        String userId = resolveUserId(authentication);
+        Jwt jwt = resolveJwt(authentication);
+        String email = jwtEmail(jwt);
+        if (email == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        String userId = jwt.getSubject();
 
         // Extract client IP address for audit logging
         String ipAddress = getClientIpAddress(httpRequest);
 
         // Register or retrieve user (new users get id = JWT sub, Story 2.1)
         AuthService.UserRegistrationResult result = authService.registerOrGetUserFromGoogle(
-            userId, request.getEmail(), request.getGoogleId(), ipAddress);
+            userId, email, googleId(jwt), ipAddress);
 
         // Register session if JWT token is available (AC5: session tracking on login)
         String authHeader = httpRequest.getHeader("Authorization");
@@ -103,31 +109,35 @@ public class AuthController {
      * - Rate limiting per-user
      * - Business data (subscriptions, billing, etc)
      *
+     * Identity comes only from the JWT (sub and e-mail claims); the body is ignored (retro Epic 1 A1, S2).
+     *
      * @param authentication Authenticated JWT (user id = sub claim)
-     * @param request Request containing email and name
      * @param httpRequest HTTP request to extract client IP address
-     * @return UserResponse with user data
+     * @return UserResponse with user data, 401 without a JWT carrying sub and e-mail
      */
     @PostMapping("/register/email")
     public ResponseEntity<UserResponse> registerWithEmail(
         Authentication authentication,
-        @Valid @RequestBody RegisterEmailRequest request,
         HttpServletRequest httpRequest
     ) {
-        // JWT sub (see registerWithGoogle for why not @AuthenticationPrincipal String)
-        String userId = resolveUserId(authentication);
+        Jwt jwt = resolveJwt(authentication);
+        String email = jwtEmail(jwt);
+        if (email == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        String userId = jwt.getSubject();
 
         // Extract client IP address for audit logging
         String ipAddress = getClientIpAddress(httpRequest);
 
         // Register or retrieve user (userId from JWT)
         AuthService.UserRegistrationResult result = authService.registerOrGetUserFromEmail(
-            userId, request, ipAddress);
+            userId, email, ipAddress);
 
         // Convert to response DTO
         UserResponse response = UserResponse.fromEntity(result.getUser());
 
-        // Return 201 Created for new users, 200 OK for existing users (account linking)
+        // Return 201 Created for new users, 200 OK for existing users
         HttpStatus status = result.isNewUser() ? HttpStatus.CREATED : HttpStatus.OK;
 
         return ResponseEntity.status(status).body(response);
@@ -153,8 +163,10 @@ public class AuthController {
             throw new AccountLockedException("Account temporarily locked due to multiple failed attempts. Try again in 15 minutes.");
         }
 
-        // Check rate limit (5 attempts per 60 seconds per email)
-        if (!rateLimitService.allowRequest("login:" + request.getEmail(), 5, 60)) {
+        // 5 attempts per 60 seconds per (normalized e-mail, IP): a third party cannot keep the victim at 429, and
+        // changing the e-mail's case does not reset the limit (retro Epic 1 A1, S3)
+        String normalizedEmail = request.getEmail().trim().toLowerCase(Locale.ROOT);
+        if (!rateLimitService.allowRequest("login:" + normalizedEmail + ":" + getClientIpAddress(httpRequest), 5, 60)) {
             throw new RateLimitExceededException("Too many login attempts. Please wait 1 minute.");
         }
 
@@ -189,17 +201,23 @@ public class AuthController {
      * HYBRID ARCHITECTURE: Returns 404 if user doesn't exist in backend database,
      * allowing frontend to perform lazy sync (create user in backend on first login).
      *
-     * @param request Request containing email
+     * The user is the JWT sub; the e-mail in the body is ignored (retro Epic 1 A1, S1): otherwise any logged-in
+     * user could reset someone else's lock counter and write sessions and audit rows on their account.
+     *
+     * @param authentication Authenticated JWT (user id = sub claim)
      * @param httpRequest HTTP request to extract client IP address
-     * @return 200 OK if successful, 404 if user not found in backend
+     * @return 200 OK if successful, 401 without JWT, 404 if user not found in backend
      */
     @PostMapping("/login")
     public ResponseEntity<Void> logLogin(
-        @Valid @RequestBody LoginRequest request,
+        Authentication authentication,
         HttpServletRequest httpRequest
     ) {
-        // Find user by email to verify they exist in backend database
-        User user = authService.findUserByEmail(request.getEmail());
+        String userId = resolveUserId(authentication);
+        if (userId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        User user = authService.findById(userId).orElse(null);
 
         if (user == null) {
             // User doesn't exist in backend (Supabase-only) - return 404 for lazy sync
@@ -213,7 +231,7 @@ public class AuthController {
         auditLogService.log("user_login", user.getId(), ipAddress);
 
         // Reset failed login attempts on successful login
-        accountLockService.resetFailedAttempts(request.getEmail(), ipAddress);
+        accountLockService.resetFailedAttempts(user.getEmail(), ipAddress);
 
         // Register session if JWT token is available
         String authHeader = httpRequest.getHeader("Authorization");
@@ -409,6 +427,33 @@ public class AuthController {
     private static String userAgent(HttpServletRequest request) {
         String userAgent = request.getHeader("User-Agent");
         return userAgent != null ? userAgent : "unknown";
+    }
+
+    private static Jwt resolveJwt(Authentication authentication) {
+        return authentication instanceof JwtAuthenticationToken token ? token.getToken() : null;
+    }
+
+    /** E-mail claim of a JWT that also has a sub; null when either is missing. */
+    private static String jwtEmail(Jwt jwt) {
+        if (jwt == null || jwt.getSubject() == null) {
+            return null;
+        }
+        String email = jwt.getClaimAsString("email");
+        return email == null || email.isBlank() ? null : email;
+    }
+
+    /** Google id as the frontend used to send it: user_metadata.sub, then provider_id, then the Supabase sub. */
+    private static String googleId(Jwt jwt) {
+        Map<String, Object> metadata = jwt.getClaimAsMap("user_metadata");
+        if (metadata != null) {
+            for (String key : List.of("sub", "provider_id")) {
+                Object value = metadata.get(key);
+                if (value != null && !value.toString().isBlank()) {
+                    return value.toString();
+                }
+            }
+        }
+        return jwt.getSubject();
     }
 
     /** Client IP: server.forward-headers-strategy=native already resolves X-Forwarded-For from the trusted proxy. */
