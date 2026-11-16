@@ -3,6 +3,7 @@ package com.porquinho.entity;
 import jakarta.persistence.*;
 import org.hibernate.annotations.GenericGenerator;
 
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -45,6 +46,10 @@ public class AccountDeletion {
     @Column(name = "requested_ip", length = 45)
     private String requestedIp;
 
+    /** Copy of users.lgpd_consent_at: survives the purge, next to requested_at and purged_at (NFR25, retro Epic 1 A4). */
+    @Column(name = "lgpd_consent_at")
+    private LocalDateTime lgpdConsentAt;
+
     public AccountDeletion() {
     }
 
@@ -82,4 +87,7 @@ public class AccountDeletion {
 
     public String getRequestedIp() { return requestedIp; }
     public void setRequestedIp(String requestedIp) { this.requestedIp = requestedIp; }
+
+    public LocalDateTime getLgpdConsentAt() { return lgpdConsentAt; }
+    public void setLgpdConsentAt(LocalDateTime lgpdConsentAt) { this.lgpdConsentAt = lgpdConsentAt; }
 }

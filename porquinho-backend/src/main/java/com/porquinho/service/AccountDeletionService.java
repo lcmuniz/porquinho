@@ -276,6 +276,7 @@ public class AccountDeletionService {
         // if a concurrent request slipped past the idempotency check, we re-fetch and return.
         OffsetDateTime scheduledPurgeAt = OffsetDateTime.now().plusDays(RETENTION_DAYS);
         AccountDeletion deletion = new AccountDeletion(userId, scheduledPurgeAt, ipAddress);
+        deletion.setLgpdConsentAt(user.getLgpdConsentAt());
         AccountDeletion saved;
         try {
             saved = accountDeletionRepository.save(deletion);

@@ -186,11 +186,19 @@ class AccountDeletionServiceTest {
             return d;
         });
 
+        LocalDateTime consentAt = LocalDateTime.of(2026, 3, 1, 10, 0);
+        user.setLgpdConsentAt(consentAt);
+
         AccountDeletionResponse response = service.requestDeletion(userId, "127.0.0.1", "user-token");
 
         assertNotNull(response);
         assertEquals(DeletionStatus.PENDING_PURGE, response.getStatus());
         assertNotNull(response.getScheduledPurgeAt());
+
+        // Retro Epic 1 A4 (R3): consent kept on account_deletions, which survives the purge
+        ArgumentCaptor<AccountDeletion> saved = ArgumentCaptor.forClass(AccountDeletion.class);
+        verify(accountDeletionRepository).save(saved.capture());
+        assertEquals(consentAt, saved.getValue().getLgpdConsentAt());
 
         // User soft-deleted
         assertNotNull(user.getDeletedAt());
