@@ -118,22 +118,13 @@
               <table class="w-full text-left text-sm" data-testid="history-table">
                 <thead class="border-b border-gray-200 bg-gray-50 text-gray-600">
                   <tr>
-                    <th
-                      scope="col"
+                    <SortableHeader
                       class="px-4 py-2 font-medium"
-                      :aria-sort="newestFirst ? 'descending' : 'ascending'"
-                      data-testid="sort-month-header"
-                    >
-                      <button
-                        type="button"
-                        class="inline-flex min-h-[44px] items-center gap-1 font-medium hover:text-gray-900"
-                        data-testid="sort-month"
-                        @click="newestFirst = !newestFirst"
-                      >
-                        Mês
-                        <component :is="newestFirst ? ArrowDown : ArrowUp" class="size-4" aria-hidden="true" />
-                      </button>
-                    </th>
+                      label="Mês"
+                      sort-id="month"
+                      :sort="newestFirst ? 'descending' : 'ascending'"
+                      @sort="newestFirst = !newestFirst"
+                    />
                     <th scope="col" class="px-4 py-2 text-right font-medium">Alocado</th>
                     <th scope="col" class="px-4 py-2 text-right font-medium">Gasto</th>
                     <th scope="col" class="px-4 py-2 text-right font-medium">Restante</th>
@@ -159,15 +150,7 @@
                       {{ formatBRL(m.remaining) }}
                     </td>
                     <td class="px-4 py-2">
-                      <span class="inline-flex items-center gap-1 font-medium text-gray-900">
-                        <component
-                          :is="STATUS[m.status].icon"
-                          class="size-4 shrink-0"
-                          :class="STATUS[m.status].text"
-                          aria-hidden="true"
-                        />
-                        {{ STATUS[m.status].label(m.remaining) }}
-                      </span>
+                      <BudgetStatusLabel class="text-gray-900" :status="m.status" :remaining="m.remaining" />
                     </td>
                   </tr>
                 </tbody>
@@ -183,12 +166,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
-import { ArrowDown, ArrowUp } from 'lucide-vue-next'
 import AllocationHistoryChart from '@/components/budget/AllocationHistoryChart.vue'
+import BudgetStatusLabel from '@/components/budget/BudgetStatusLabel.vue'
+import SortableHeader from '@/components/common/SortableHeader.vue'
 import { Button } from '@/components/ui/button'
 import { STATUS } from '@/lib/budgetStatus'
 import { currentMonth, formatMonthBR, shiftMonth } from '@/lib/date'
-import { downloadCsv, fileSlug } from '@/lib/download'
+import { csvLine, downloadCsv, fileSlug } from '@/lib/download'
 import { formatBRL, formatBRLInput } from '@/lib/money'
 import { getCategoryBudgetHistory } from '@/services/budgetService'
 import type { CategoryBudgetHistory } from '@/types/budget'
@@ -249,13 +233,13 @@ function exportCsv() {
   const lines = [
     'Mês;Alocado;Gasto;Restante;Status',
     ...filtered.value.map((m) =>
-      [
+      csvLine([
         formatMonthBR(m.month),
         formatBRLInput(m.allocated),
         formatBRLInput(m.spent),
         formatBRLInput(m.remaining),
-        STATUS[m.status].label(m.remaining).replace(/\s/g, ' '),
-      ].join(';'),
+        STATUS[m.status].label(m.remaining),
+      ]),
     ),
   ]
   downloadCsv(lines, `historico-${fileSlug(history.value!.categoryName, 'categoria')}.csv`)

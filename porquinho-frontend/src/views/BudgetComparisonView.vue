@@ -150,32 +150,18 @@
             <table class="w-full text-left text-sm" data-testid="comparison-table">
               <thead class="border-b border-gray-200 bg-gray-50 text-gray-600">
                 <tr>
-                  <th
+                  <SortableHeader
                     v-for="column in COLUMNS"
                     :key="column.key"
-                    scope="col"
                     class="px-3 py-2 font-medium"
                     :class="{ 'text-right': column.numeric }"
-                    :aria-sort="
+                    :label="column.label"
+                    :sort-id="column.key"
+                    :sort="
                       sortKey === column.key ? (ascending ? 'ascending' : 'descending') : 'none'
                     "
-                    :data-testid="`sort-${column.key}-header`"
-                  >
-                    <button
-                      type="button"
-                      class="inline-flex min-h-[44px] items-center gap-1 font-medium hover:text-gray-900"
-                      :data-testid="`sort-${column.key}`"
-                      @click="sortBy(column.key)"
-                    >
-                      {{ column.label }}
-                      <component
-                        :is="ascending ? ArrowUp : ArrowDown"
-                        v-if="sortKey === column.key"
-                        class="size-4"
-                        aria-hidden="true"
-                      />
-                    </button>
-                  </th>
+                    @sort="sortBy(column.key)"
+                  />
                 </tr>
               </thead>
               <tbody
@@ -281,13 +267,15 @@
 <script setup lang="ts">
 import { computed, defineComponent, h, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight } from 'lucide-vue-next'
+import { ChevronDown, ChevronRight } from 'lucide-vue-next'
+import BudgetStatusLabel from '@/components/budget/BudgetStatusLabel.vue'
 import PlannedVsActualChart from '@/components/budget/PlannedVsActualChart.vue'
+import SortableHeader from '@/components/common/SortableHeader.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { STATUS, computeStatus } from '@/lib/budgetStatus'
 import { currentMonth, formatMonthBR, shiftMonth } from '@/lib/date'
-import { downloadCsv } from '@/lib/download'
+import { csvLine, downloadCsv } from '@/lib/download'
 import { formatBRL, formatBRLInput } from '@/lib/money'
 import { getBudget } from '@/services/budgetService'
 import { listCategories } from '@/services/categoryService'
@@ -503,15 +491,11 @@ const RowCells = defineComponent({
         ),
         h('td', { class: num }, r.percent === null ? '—' : `${r.percent}%`),
         h('td', { class: 'px-3 py-2' }, [
-          h('span', { class: 'inline-flex items-center gap-1 font-medium' }, [
-            r.status
-              ? h(STATUS[r.status].icon, {
-                  class: ['size-4 shrink-0', STATUS[r.status].text],
-                  'aria-hidden': 'true',
-                })
-              : null,
-            statusText(r),
-          ]),
+          h(
+            BudgetStatusLabel,
+            { status: r.status, remaining: r.difference },
+            { default: () => NO_BUDGET },
+          ),
         ]),
       ]
     }
@@ -549,17 +533,15 @@ function exportCsv() {
     'Grupo;Categoria;Alocado;Gasto;Diferença;Percentual;Status',
     ...groups.value.flatMap((g) =>
       g.children.map((r) =>
-        [
+        csvLine([
           g.row.name,
           r.name,
           money(r.allocated),
           money(r.spent),
           money(r.difference),
           r.percent === null ? '' : String(r.percent),
-          statusText(r).replace(/\s/g, ' '),
-        ]
-          .map((cell) => cell.replace(/;/g, ','))
-          .join(';'),
+          statusText(r),
+        ]),
       ),
     ),
   ]

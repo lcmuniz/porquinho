@@ -14,6 +14,14 @@ export function downloadCsv(lines: string[], filename: string): void {
   downloadBlob(new Blob(['﻿' + lines.join('\r\n') + '\r\n'], { type: 'text/csv;charset=utf-8' }), filename)
 }
 
+/**
+ * Retro Epic 6 (A6/D1): uma linha do CSV pt-BR. `;` dentro da célula vira `,` (não quebra a coluna) e qualquer espaço
+ * (o NBSP do `formatBRL`, quebras de linha) vira espaço comum.
+ */
+export function csvLine(cells: string[]): string {
+  return cells.map((cell) => cell.replace(/;/g, ',').replace(/\s/g, ' ')).join(';')
+}
+
 /** Nome para arquivo: sem acento, minúsculo, só letras, dígitos e hífen; `fallback` quando não sobra nada. */
 export function fileSlug(name: string, fallback: string): string {
   const s = name

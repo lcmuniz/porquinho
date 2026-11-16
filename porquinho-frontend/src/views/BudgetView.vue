@@ -208,20 +208,14 @@
                     {{ formatBRL(byCategory[child.id]!.spent) }} de {{ formatBRL(byCategory[child.id]!.allocated!) }}
                     · Restante: {{ formatBRL(byCategory[child.id]!.remaining ?? 0) }}
                   </p>
-                  <span
-                    v-if="statusOf(byCategory[child.id]!)"
-                    class="inline-flex items-center gap-1 font-medium text-gray-900"
+                  <BudgetStatusLabel
+                    v-if="byCategory[child.id]!.status"
+                    class="text-gray-900"
+                    :status="byCategory[child.id]!.status"
+                    :remaining="byCategory[child.id]!.remaining"
                     :title="exact(byCategory[child.id]!)"
                     :data-testid="`status-${child.id}`"
-                  >
-                    <component
-                      :is="statusOf(byCategory[child.id]!)!.icon"
-                      class="size-4"
-                      :class="statusOf(byCategory[child.id]!)!.text"
-                      aria-hidden="true"
-                    />
-                    {{ statusOf(byCategory[child.id]!)!.label(byCategory[child.id]!.remaining ?? 0) }}
-                  </span>
+                  />
                 </div>
               </div>
             </li>
@@ -320,6 +314,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import BudgetExportDialog from '@/components/budget/BudgetExportDialog.vue'
+import BudgetStatusLabel from '@/components/budget/BudgetStatusLabel.vue'
 import ReallocateForm from '@/components/budget/ReallocateForm.vue'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
