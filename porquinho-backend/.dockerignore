@@ -2,9 +2,9 @@
 .gitignore
 .idea
 .vscode
+.env
 *.md
-src/
-.mvn/
-mvnw
+*.log
+target/
+exports/
 mvnw.cmd
-pom.xml

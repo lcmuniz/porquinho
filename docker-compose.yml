@@ -10,7 +10,8 @@ services:
       - "3000:80"
     restart: unless-stopped
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
   backend:
     build:
@@ -38,14 +39,30 @@ services:
       SMTP_USERNAME: ${SMTP_USERNAME:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       MAIL_FROM: ${MAIL_FROM:-}
+    volumes:
+      # Exportações LGPD (app.export.directory = ./exports no WORKDIR /app): sobrevivem a um novo deploy
+      - backend-exports:/app/exports
+    # wget do busybox (a imagem alpine não tem curl); o health agrega banco, Redis e SMTP
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
     restart: unless-stopped
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
 
   redis:
     image: redis:7-alpine
     volumes:
       - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     restart: unless-stopped
 
   nginx:
@@ -58,8 +75,11 @@ services:
       - ./ssl:/etc/nginx/ssl:ro
     restart: unless-stopped
     depends_on:
-      - frontend
-      - backend
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_healthy
 
 volumes:
   redis-data:
+  backend-exports:
