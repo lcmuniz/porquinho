@@ -54,6 +54,10 @@ public class User {
     @Column(name = "locked_until")
     private LocalDateTime lockedUntil;
 
+    /** Pre-Epic 10: e-mail when a category reaches 90% and 100% of the month's budget. On by default (V46). */
+    @Column(name = "budget_alert_email_enabled", nullable = false)
+    private boolean budgetAlertEmailEnabled = true;
+
     // Constructors
     public User() {
     }
@@ -173,6 +177,14 @@ public class User {
 
     public void setLockedUntil(LocalDateTime lockedUntil) {
         this.lockedUntil = lockedUntil;
+    }
+
+    public boolean isBudgetAlertEmailEnabled() {
+        return budgetAlertEmailEnabled;
+    }
+
+    public void setBudgetAlertEmailEnabled(boolean budgetAlertEmailEnabled) {
+        this.budgetAlertEmailEnabled = budgetAlertEmailEnabled;
     }
 
     /**

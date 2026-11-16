@@ -21,6 +21,7 @@ import com.porquinho.repository.AiClassificationHistoryRepository;
 import com.porquinho.repository.BudgetAllocationRepository;
 import com.porquinho.repository.GoalAllocationRepository;
 import com.porquinho.repository.GoalProgressHistoryRepository;
+import com.porquinho.repository.BudgetAlertNotificationRepository;
 import com.porquinho.repository.BudgetReallocationRepository;
 import com.porquinho.repository.UserClassificationPatternRepository;
 import com.porquinho.repository.CategoryRepository;
@@ -112,6 +113,8 @@ class AccountDeletionServiceTest {
     @Mock
     private BudgetReallocationRepository budgetReallocationRepository;
     @Mock
+    private BudgetAlertNotificationRepository budgetAlertNotificationRepository;
+    @Mock
     private CategoryRepository categoryRepository;
     @Mock
     private GoalRepository goalRepository;
@@ -145,13 +148,13 @@ class AccountDeletionServiceTest {
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
             supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService,
             billingTransactionRepository, subscriptionService, onboardingProgressRepository, accountRepository,
-            creditCardRepository, categoryRepository, goalRepository, accountBalanceHistoryRepository, transferRepository, reconciliationRepository, transactionImportRepository, transactionRepository, aiClassificationHistoryRepository, userClassificationPatternRepository, budgetAllocationRepository, budgetReallocationRepository, goalAllocationRepository, goalProgressHistoryRepository, null);
+            creditCardRepository, categoryRepository, goalRepository, accountBalanceHistoryRepository, transferRepository, reconciliationRepository, transactionImportRepository, transactionRepository, aiClassificationHistoryRepository, userClassificationPatternRepository, budgetAllocationRepository, budgetReallocationRepository, budgetAlertNotificationRepository, goalAllocationRepository, goalProgressHistoryRepository, null);
         service = new AccountDeletionService(
             userRepository, userSessionRepository, auditLogRepository, dataExportRepository,
             accountDeletionRepository, jwtBlacklistService, emailService, auditLogService,
             supabaseAdminClient, rateLimitService, subscriptionRepository, stripeBillingService,
             billingTransactionRepository, subscriptionService, onboardingProgressRepository, accountRepository,
-            creditCardRepository, categoryRepository, goalRepository, accountBalanceHistoryRepository, transferRepository, reconciliationRepository, transactionImportRepository, transactionRepository, aiClassificationHistoryRepository, userClassificationPatternRepository, budgetAllocationRepository, budgetReallocationRepository, goalAllocationRepository, goalProgressHistoryRepository, temp);
+            creditCardRepository, categoryRepository, goalRepository, accountBalanceHistoryRepository, transferRepository, reconciliationRepository, transactionImportRepository, transactionRepository, aiClassificationHistoryRepository, userClassificationPatternRepository, budgetAllocationRepository, budgetReallocationRepository, budgetAlertNotificationRepository, goalAllocationRepository, goalProgressHistoryRepository, temp);
         // After construction, swap in the real reference so self == service (recursive ref ok
         // for tests because Spring's proxy would similarly route the call into this same bean).
         try {
@@ -416,6 +419,12 @@ class AccountDeletionServiceTest {
         reallocationOrder.verify(budgetReallocationRepository).deleteByUserId(userId);
         reallocationOrder.verify(categoryRepository).deleteByUserId(userId);
         reallocationOrder.verify(userRepository).deleteByIdNative(userId);
+
+        // Pre-Epic 10: the budget alert marks deleted BEFORE categories and user (FKs to both)
+        InOrder alertOrder = inOrder(budgetAlertNotificationRepository, categoryRepository, userRepository);
+        alertOrder.verify(budgetAlertNotificationRepository).deleteByUserId(userId);
+        alertOrder.verify(categoryRepository).deleteByUserId(userId);
+        alertOrder.verify(userRepository).deleteByIdNative(userId);
 
         // Story 5.4: transactions deleted BEFORE imports, accounts, cards, categories and user (FKs to all of them)
         InOrder transactionsOrder = inOrder(transactionRepository, transactionImportRepository, accountRepository,

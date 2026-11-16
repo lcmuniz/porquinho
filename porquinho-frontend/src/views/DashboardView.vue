@@ -158,6 +158,24 @@
             Exportar meus dados
           </RouterLink>
         </nav>
+        <!-- Pré-Epic 10: chave global do alerta de orçamento; some se a leitura falhar (ex.: sem acesso, 402) -->
+        <label
+          v-if="budgetAlertEmail !== null"
+          class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm text-gray-900"
+        >
+          <input
+            :checked="budgetAlertEmail"
+            type="checkbox"
+            class="size-4 accent-purple-600"
+            data-testid="budget-alert-email"
+            :disabled="savingPreferences"
+            @change="toggleBudgetAlert(($event.target as HTMLInputElement).checked)"
+          />
+          Receber alerta de orçamento por e-mail
+        </label>
+        <p v-if="preferencesError" role="alert" class="text-sm text-red-700" data-testid="budget-alert-email-error">
+          {{ preferencesError }}
+        </p>
       </section>
 
       <section aria-labelledby="danger-zone-heading" class="space-y-3">
@@ -193,6 +211,7 @@ import TrialBadge from '@/components/subscription/TrialBadge.vue'
 import DashboardGps from '@/components/dashboard/DashboardGps.vue'
 import FinancialHealthSemaphore from '@/components/dashboard/FinancialHealthSemaphore.vue'
 import { getMySubscription } from '@/services/subscriptionService'
+import { getMyPreferences, updateMyPreferences } from '@/services/userPreferencesService'
 import { supabase } from '@/services/supabase'
 import { useAuthStore } from '@/stores/auth'
 import type { Subscription } from '@/types/subscription'
@@ -252,7 +271,36 @@ onBeforeRouteLeave(() => {
   savedScrollY = window.scrollY
 })
 
+// Pré-Epic 10: null enquanto carrega ou se a leitura falhou (o checkbox fica escondido)
+const budgetAlertEmail = ref<boolean | null>(null)
+const savingPreferences = ref(false)
+const preferencesError = ref('')
+
+async function loadPreferences() {
+  try {
+    budgetAlertEmail.value = (await getMyPreferences()).budgetAlertEmail
+  } catch {
+    budgetAlertEmail.value = null
+  }
+}
+
+async function toggleBudgetAlert(enabled: boolean) {
+  const previous = budgetAlertEmail.value
+  budgetAlertEmail.value = enabled
+  savingPreferences.value = true
+  preferencesError.value = ''
+  try {
+    budgetAlertEmail.value = (await updateMyPreferences({ budgetAlertEmail: enabled })).budgetAlertEmail
+  } catch {
+    budgetAlertEmail.value = previous
+    preferencesError.value = 'Não foi possível salvar a preferência. Tente de novo.'
+  } finally {
+    savingPreferences.value = false
+  }
+}
+
 onMounted(async () => {
+  void loadPreferences()
   try {
     subscription.value = await getMySubscription()
   } catch {

@@ -91,6 +91,7 @@ class RetentionServiceIntegrationTest {
             Map.entry("account_balance_history", "balance history"),
             Map.entry("budget_allocations", "allocation"),
             Map.entry("budget_reallocations", "reallocation"),
+            Map.entry("budget_alert_notifications", "budget alert"),
             Map.entry("goals", "goal"),
             Map.entry("goal_allocations", "goal allocation"),
             Map.entry("accounts", "account"),
@@ -223,6 +224,8 @@ class RetentionServiceIntegrationTest {
             + "VALUES (?, ?, date_trunc('month', CURRENT_DATE)::date, 500)", userId, food);
         jdbc.update("INSERT INTO budget_reallocations (user_id, from_category_id, to_category_id, month_year, amount) "
             + "VALUES (?, ?, ?, date_trunc('month', CURRENT_DATE)::date, 50)", userId, food, rent);
+        jdbc.update("INSERT INTO budget_alert_notifications (user_id, category_id, month, level) "
+            + "VALUES (?, ?, date_trunc('month', CURRENT_DATE)::date, 90)", userId, food);
         UUID goal = UUID.randomUUID();
         jdbc.update("INSERT INTO goals (id, user_id, goal_name, target_amount, current_amount) "
             + "VALUES (?, ?, 'Viagem', 1000, 100)", goal, userId);

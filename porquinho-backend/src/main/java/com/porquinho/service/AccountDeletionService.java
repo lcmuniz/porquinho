@@ -13,6 +13,7 @@ import com.porquinho.repository.AccountDeletionRepository;
 import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.AiClassificationHistoryRepository;
+import com.porquinho.repository.BudgetAlertNotificationRepository;
 import com.porquinho.repository.BudgetAllocationRepository;
 import com.porquinho.repository.GoalAllocationRepository;
 import com.porquinho.repository.GoalProgressHistoryRepository;
@@ -107,6 +108,7 @@ public class AccountDeletionService {
     private final UserClassificationPatternRepository userClassificationPatternRepository;
     private final BudgetAllocationRepository budgetAllocationRepository;
     private final BudgetReallocationRepository budgetReallocationRepository;
+    private final BudgetAlertNotificationRepository budgetAlertNotificationRepository;
     private final GoalAllocationRepository goalAllocationRepository;
     private final GoalProgressHistoryRepository goalProgressHistoryRepository;
 
@@ -150,6 +152,7 @@ public class AccountDeletionService {
             UserClassificationPatternRepository userClassificationPatternRepository,
             BudgetAllocationRepository budgetAllocationRepository,
             BudgetReallocationRepository budgetReallocationRepository,
+            BudgetAlertNotificationRepository budgetAlertNotificationRepository,
             GoalAllocationRepository goalAllocationRepository,
             GoalProgressHistoryRepository goalProgressHistoryRepository,
             @Lazy AccountDeletionService self) {
@@ -181,6 +184,7 @@ public class AccountDeletionService {
         this.userClassificationPatternRepository = userClassificationPatternRepository;
         this.budgetAllocationRepository = budgetAllocationRepository;
         this.budgetReallocationRepository = budgetReallocationRepository;
+        this.budgetAlertNotificationRepository = budgetAlertNotificationRepository;
         this.goalAllocationRepository = goalAllocationRepository;
         this.goalProgressHistoryRepository = goalProgressHistoryRepository;
         this.self = self;
@@ -435,6 +439,7 @@ public class AccountDeletionService {
         userClassificationPatternRepository.deleteByUserId(userId);  // Story 5.11: FKs to categories and users
         budgetAllocationRepository.deleteByUserId(userId);  // Story 6.3: FKs to categories and users
         budgetReallocationRepository.deleteByUserId(userId);  // Story 6.5: FKs to categories and users
+        budgetAlertNotificationRepository.deleteByUserId(userId);  // pre-Epic 10: FKs to categories and users
         transactionRepository.deleteByUserId(userId);  // Story 5.4: FKs to imports, accounts, cards, categories and users
         transactionImportRepository.deleteByUserId(userId);  // Story 5.1: FKs to accounts, credit_cards and users
         transferRepository.deleteByUserId(userId);  // Story 4.5: FKs to accounts and users (removed transfers too)

@@ -4,6 +4,7 @@ import com.porquinho.entity.AiClassificationHistory;
 import com.porquinho.entity.BudgetAllocation;
 import com.porquinho.entity.GoalAllocation;
 import com.porquinho.entity.GoalProgressHistory;
+import com.porquinho.entity.BudgetAlertNotification;
 import com.porquinho.entity.BudgetReallocation;
 import com.porquinho.entity.UserClassificationPattern;
 import com.porquinho.entity.Account;
@@ -30,6 +31,7 @@ import com.porquinho.repository.AiClassificationHistoryRepository;
 import com.porquinho.repository.BudgetAllocationRepository;
 import com.porquinho.repository.GoalAllocationRepository;
 import com.porquinho.repository.GoalProgressHistoryRepository;
+import com.porquinho.repository.BudgetAlertNotificationRepository;
 import com.porquinho.repository.BudgetReallocationRepository;
 import com.porquinho.repository.UserClassificationPatternRepository;
 import com.porquinho.repository.AccountBalanceHistoryRepository;
@@ -143,6 +145,9 @@ class DataExportServiceTest {
     private BudgetReallocationRepository budgetReallocationRepository;
 
     @Mock
+    private BudgetAlertNotificationRepository budgetAlertNotificationRepository;
+
+    @Mock
     private GoalAllocationRepository goalAllocationRepository;
 
     @Mock
@@ -229,6 +234,7 @@ class DataExportServiceTest {
         assertFalse(userProfile.containsKey("deleted_at"));
         assertFalse(userProfile.containsKey("deleted_by"));
         assertTrue(userProfile.containsKey("lgpd_consent_at"));
+        assertEquals(true, userProfile.get("budget_alert_email_enabled"));
 
         // Verify sessions - jwt_token_hash excluded
         @SuppressWarnings("unchecked")
@@ -1065,6 +1071,33 @@ class DataExportServiceTest {
         assertEquals("2026-11-10T12:00Z", first.get("created_at"));
     }
 
+    @Test
+    void collectUserDataShouldExportTheBudgetAlertNotifications() {
+        // Pre-Epic 10: every stored column, in budgets.json
+        when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
+        UUID categoryId = UUID.randomUUID();
+        BudgetAlertNotification alert = new BudgetAlertNotification();
+        alert.setId(UUID.randomUUID());
+        alert.setUserId(userId);
+        alert.setCategoryId(categoryId);
+        alert.setMonth(java.time.LocalDate.parse("2026-11-01"));
+        alert.setLevel((short) 90);
+        alert.setSentAt(OffsetDateTime.parse("2026-11-10T12:00:00Z"));
+        when(budgetAlertNotificationRepository.findByUserId(userId)).thenReturn(List.of(alert));
+
+        Map<String, Object> data = dataExportService.collectUserData(userId);
+
+        assertTrue(DataExportService.EXPORT_FILES.get("budgets.json").contains("budget_alert_notifications"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) data.get("budget_alert_notifications");
+        Map<String, Object> first = rows.get(0);
+        assertExportsEveryColumn(BudgetAlertNotification.class, first);
+        assertEquals(categoryId.toString(), first.get("category_id"));
+        assertEquals("2026-11-01", first.get("month"));
+        assertEquals((short) 90, first.get("level"));
+        assertEquals("2026-11-10T12:00Z", first.get("sent_at"));
+    }
+
     private static void assertExportsEveryColumn(Class<?> entity, Map<String, Object> exported) {
         for (Field field : entity.getDeclaredFields()) {
             Column column = field.getAnnotation(Column.class);
@@ -1255,7 +1288,7 @@ class DataExportServiceTest {
         Set<String> collectedKeys = dataExportService.collectUserData(userId).keySet();
         List<String> tables = exportedTables();
 
-        assertEquals(21, tables.size());
+        assertEquals(22, tables.size());
         assertEquals(tables.size(), new HashSet<>(tables).size(), "a table appears in more than one file");
         assertEquals(collectedKeys, new HashSet<>(tables.stream().map(DataExportService::dataKey).toList()));
     }

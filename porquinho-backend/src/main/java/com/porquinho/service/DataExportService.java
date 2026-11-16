@@ -9,6 +9,7 @@ import com.porquinho.dto.DataExportResponse;
 import com.porquinho.entity.Account;
 import com.porquinho.entity.AccountBalanceHistory;
 import com.porquinho.entity.AiClassificationHistory;
+import com.porquinho.entity.BudgetAlertNotification;
 import com.porquinho.entity.BudgetAllocation;
 import com.porquinho.entity.BudgetReallocation;
 import com.porquinho.entity.UserClassificationPattern;
@@ -32,6 +33,7 @@ import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.AiClassificationHistoryRepository;
+import com.porquinho.repository.BudgetAlertNotificationRepository;
 import com.porquinho.repository.BudgetAllocationRepository;
 import com.porquinho.repository.GoalAllocationRepository;
 import com.porquinho.repository.GoalProgressHistoryRepository;
@@ -98,7 +100,7 @@ public class DataExportService {
         EXPORT_FILES.put("transactions.json",
             List.of("transactions", "transaction_imports", "ai_classification_history"));
         EXPORT_FILES.put("categories.json", List.of("categories", "user_classification_patterns"));
-        EXPORT_FILES.put("budgets.json", List.of("budget_allocations", "budget_reallocations"));
+        EXPORT_FILES.put("budgets.json", List.of("budget_allocations", "budget_reallocations", "budget_alert_notifications"));
         EXPORT_FILES.put("goals.json", List.of("goals", "goal_allocations", "goal_progress_history"));
         EXPORT_FILES.put("audit_log.json", List.of("audit_logs"));
     }
@@ -129,6 +131,7 @@ public class DataExportService {
     private final UserClassificationPatternRepository userClassificationPatternRepository;
     private final BudgetAllocationRepository budgetAllocationRepository;
     private final BudgetReallocationRepository budgetReallocationRepository;
+    private final BudgetAlertNotificationRepository budgetAlertNotificationRepository;
     private final GoalAllocationRepository goalAllocationRepository;
     private final GoalProgressHistoryRepository goalProgressHistoryRepository;
     private final ObjectMapper objectMapper;
@@ -168,6 +171,7 @@ public class DataExportService {
             UserClassificationPatternRepository userClassificationPatternRepository,
             BudgetAllocationRepository budgetAllocationRepository,
             BudgetReallocationRepository budgetReallocationRepository,
+            BudgetAlertNotificationRepository budgetAlertNotificationRepository,
             GoalAllocationRepository goalAllocationRepository,
             GoalProgressHistoryRepository goalProgressHistoryRepository,
             ObjectProvider<Flyway> flywayProvider,
@@ -195,6 +199,7 @@ public class DataExportService {
         this.userClassificationPatternRepository = userClassificationPatternRepository;
         this.budgetAllocationRepository = budgetAllocationRepository;
         this.budgetReallocationRepository = budgetReallocationRepository;
+        this.budgetAlertNotificationRepository = budgetAlertNotificationRepository;
         this.goalAllocationRepository = goalAllocationRepository;
         this.goalProgressHistoryRepository = goalProgressHistoryRepository;
         this.flywayProvider = flywayProvider;
@@ -366,6 +371,7 @@ public class DataExportService {
         userProfile.put("created_at", user.getCreatedAt() != null ? user.getCreatedAt().toString() : null);
         userProfile.put("updated_at", user.getUpdatedAt() != null ? user.getUpdatedAt().toString() : null);
         userProfile.put("lgpd_consent_at", user.getLgpdConsentAt() != null ? user.getLgpdConsentAt().toString() : null);
+        userProfile.put("budget_alert_email_enabled", user.isBudgetAlertEmailEnabled());
         // Excluded: deleted_at, deleted_by, failed_login_attempts, locked_until
         data.put("user_profile", userProfile);
 
@@ -663,6 +669,20 @@ public class DataExportService {
             reallocationList.add(reallocationMap);
         }
         data.put("budget_reallocations", reallocationList);
+
+        // Budget alert e-mails sent (pre-Epic 10) - every stored column, oldest first
+        List<Map<String, Object>> alertList = new ArrayList<>();
+        for (BudgetAlertNotification alert : budgetAlertNotificationRepository.findByUserId(userId)) {
+            Map<String, Object> alertMap = new LinkedHashMap<>();
+            alertMap.put("id", alert.getId() != null ? alert.getId().toString() : null);
+            alertMap.put("user_id", alert.getUserId() != null ? alert.getUserId().toString() : null);
+            alertMap.put("category_id", alert.getCategoryId() != null ? alert.getCategoryId().toString() : null);
+            alertMap.put("month", alert.getMonth() != null ? alert.getMonth().toString() : null);
+            alertMap.put("level", alert.getLevel());
+            alertMap.put("sent_at", alert.getSentAt() != null ? alert.getSentAt().toString() : null);
+            alertList.add(alertMap);
+        }
+        data.put("budget_alert_notifications", alertList);
 
         // Reconciliations (Story 4.6) - every stored column, oldest first; money as JSON numbers
         List<Map<String, Object>> reconciliationList = new ArrayList<>();

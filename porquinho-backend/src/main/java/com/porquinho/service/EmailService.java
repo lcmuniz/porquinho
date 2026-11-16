@@ -9,9 +9,11 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -257,6 +259,46 @@ public class EmailService {
             log.info("Retention warning ({} days left) email sent to {}", daysLeft, maskEmail(email));
         } catch (Exception e) {
             log.warn("Failed to send retention warning email to {}: {}", maskEmail(email), e.getClass().getSimpleName());
+        }
+    }
+
+    /** One category of the budget alert e-mail: the level is the highest one newly reached (90 or 100). */
+    public record BudgetAlertLine(String categoryName, BigDecimal spent, BigDecimal allocated, int level) {}
+
+    /**
+     * Tell the user that categories reached 90% or 100% of the month's budget (pre-Epic 10), with a link to the budget
+     * and how to turn the alert off. Best-effort: if SMTP is not configured or sending fails, logs warning and continues.
+     */
+    public void sendBudgetAlert(String email, List<BudgetAlertLine> lines, String budgetUrl, String settingsUrl) {
+        if (mailSender == null) {
+            log.warn("SMTP not configured - skipping budget alert email to {}", maskEmail(email));
+            return;
+        }
+
+        try {
+            Locale ptBr = Locale.of("pt", "BR");
+            StringBuilder body = new StringBuilder("Olá!\n\n")
+                .append(lines.size() == 1 ? "Uma categoria do seu orçamento deste mês chegou perto do limite ou passou dele:\n\n"
+                    : "Algumas categorias do seu orçamento deste mês chegaram perto do limite ou passaram dele:\n\n");
+            for (BudgetAlertLine line : lines) {
+                BigDecimal percent = line.spent().multiply(BigDecimal.valueOf(100))
+                    .divide(line.allocated(), 0, RoundingMode.DOWN);
+                body.append("- ").append(line.categoryName()).append(": ")
+                    .append(String.format(ptBr, "R$ %,.2f de R$ %,.2f (%d%%)", line.spent(), line.allocated(), percent.intValue()))
+                    .append(line.level() >= 100 ? " - atingiu 100% do orçamento" : " - atingiu 90% do orçamento")
+                    .append("\n");
+            }
+            body.append("\nVeja seu orçamento: ").append(budgetUrl).append("\n\n")
+                .append("Para não receber mais estes alertas, desmarque \"Receber alerta de orçamento por e-mail\" ")
+                .append("em Configurações da conta: ").append(settingsUrl).append("\n\n")
+                .append("Atenciosamente,\nEquipe Porquinho");
+
+            SimpleMailMessage message = newMessage(email, "Porquinho - Alerta de orçamento");
+            message.setText(body.toString());
+            mailSender.send(message);
+            log.info("Budget alert ({} categories) email sent to {}", lines.size(), maskEmail(email));
+        } catch (Exception e) {
+            log.warn("Failed to send budget alert email to {}: {}", maskEmail(email), e.getClass().getSimpleName());
         }
     }
 

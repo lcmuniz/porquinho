@@ -9,6 +9,7 @@ import org.springframework.mail.javamail.JavaMailSender;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
@@ -399,5 +400,34 @@ class EmailServiceTest {
         noSmtp.sendPaymentFailed("user@example.com", "https://invoice.stripe.com/i/in_1", false);
         noSmtp.sendSubscriptionSuspended("user@example.com", "https://app.example.com/assinatura");
         noSmtp.sendSubscriptionCancelledImmediately("user@example.com");
+    }
+
+    @Test
+    void budgetAlertListsEachCategoryInPtBrWithLinks() {
+        // Pre-Epic 10: name, spent, allocated and percent in pt-BR, link to the budget and how to turn it off
+        JavaMailSender sender = mock(JavaMailSender.class);
+        serviceWith(sender, "x@example.com").sendBudgetAlert("user@example.com", List.of(
+                new EmailService.BudgetAlertLine("Mercado", new BigDecimal("1234.5"), new BigDecimal("1300"), 90),
+                new EmailService.BudgetAlertLine("Lazer", new BigDecimal("130"), new BigDecimal("100"), 100)),
+            "https://app.example.com/orcamento", "https://app.example.com/dashboard");
+
+        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(sender).send(captor.capture());
+        SimpleMailMessage message = captor.getValue();
+        assertThat(message.getSubject()).isEqualTo("Porquinho - Alerta de orçamento");
+        assertThat(message.getTo()).containsExactly("user@example.com");
+        assertThat(message.getText())
+            .contains("- Mercado: R$ 1.234,50 de R$ 1.300,00 (94%) - atingiu 90% do orçamento")
+            .contains("- Lazer: R$ 130,00 de R$ 100,00 (130%) - atingiu 100% do orçamento")
+            .contains("https://app.example.com/orcamento")
+            .contains("Receber alerta de orçamento por e-mail")
+            .contains("https://app.example.com/dashboard");
+    }
+
+    @Test
+    void budgetAlertWithoutSmtpDoesNotThrow() {
+        @SuppressWarnings("unchecked")
+        ObjectProvider<JavaMailSender> provider = mock(ObjectProvider.class);
+        new EmailService(provider, "").sendBudgetAlert("user@example.com", List.of(), "a", "b");
     }
 }

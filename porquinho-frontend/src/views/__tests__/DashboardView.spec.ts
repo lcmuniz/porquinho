@@ -28,6 +28,13 @@ vi.mock('@/services/categoryService', () => ({ listCategories: async () => [] })
 // O drill-down da Camada 2 importa o transactionService; sem mock, api.ts exige o .env (CI)
 vi.mock('@/services/transactionService', () => ({ listTransactions: vi.fn(), updateTransaction: vi.fn() }))
 
+const mockGetMyPreferences = vi.fn()
+const mockUpdateMyPreferences = vi.fn()
+vi.mock('@/services/userPreferencesService', () => ({
+  getMyPreferences: () => mockGetMyPreferences(),
+  updateMyPreferences: (...args: unknown[]) => mockUpdateMyPreferences(...args),
+}))
+
 vi.mock('@/services/subscriptionService', () => ({
   getMySubscription: (...args: unknown[]) => mockGetMySubscription(...args),
 }))
@@ -62,6 +69,8 @@ describe('DashboardView', () => {
     vi.stubGlobal('location', { ...window.location, assign })
     setActivePinia(createPinia())
     mockGetMySubscription.mockReset()
+    mockGetMyPreferences.mockReset().mockResolvedValue({ budgetAlertEmail: true })
+    mockUpdateMyPreferences.mockReset()
     mockGetFinancialHealth.mockReset().mockResolvedValue({
       status: 'HEALTHY',
       healthyCategories: 9,
@@ -533,6 +542,48 @@ describe('DashboardView', () => {
       await flushPromises()
 
       expect(window.scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: 'instant' })
+    })
+  })
+
+  describe('Pré-Epic 10: alerta de orçamento por e-mail', () => {
+    it('mostra o checkbox ligado e desligar salva a preferência', async () => {
+      mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
+      mockUpdateMyPreferences.mockResolvedValue({ budgetAlertEmail: false })
+      const wrapper = mountView()
+      await flushPromises()
+
+      const checkbox = wrapper.get<HTMLInputElement>('[data-testid="budget-alert-email"]')
+      expect(checkbox.element.checked).toBe(true)
+      expect(wrapper.text()).toContain('Receber alerta de orçamento por e-mail')
+
+      await checkbox.setValue(false)
+      await flushPromises()
+
+      expect(mockUpdateMyPreferences).toHaveBeenCalledWith({ budgetAlertEmail: false })
+      expect(checkbox.element.checked).toBe(false)
+    })
+
+    it('falha ao salvar volta o checkbox e mostra o erro', async () => {
+      mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
+      mockUpdateMyPreferences.mockRejectedValue(new Error('boom'))
+      const wrapper = mountView()
+      await flushPromises()
+
+      const checkbox = wrapper.get<HTMLInputElement>('[data-testid="budget-alert-email"]')
+      await checkbox.setValue(false)
+      await flushPromises()
+
+      expect(checkbox.element.checked).toBe(true)
+      expect(wrapper.find('[data-testid="budget-alert-email-error"]').exists()).toBe(true)
+    })
+
+    it('esconde o checkbox se a leitura falhar', async () => {
+      mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
+      mockGetMyPreferences.mockRejectedValue({ response: { status: 402 } })
+      const wrapper = mountView()
+      await flushPromises()
+
+      expect(wrapper.find('[data-testid="budget-alert-email"]').exists()).toBe(false)
     })
   })
 })

@@ -39,6 +39,15 @@ public interface BudgetAllocationRepository extends JpaRepository<BudgetAllocati
     int deleteByUserIdAndMonthYearAndCategoryIdIn(@Param("userId") UUID userId, @Param("monthYear") LocalDate monthYear,
                                                   @Param("categoryIds") Collection<UUID> categoryIds);
 
+    /**
+     * Users with an allocation above zero in the month ({@code monthYear} is day 1) and the budget alert e-mail on
+     * (pre-Epic 10). Soft-deleted users left out; access and pending purge are checked per user.
+     */
+    @Query(value = "SELECT DISTINCT b.user_id FROM budget_allocations b JOIN users u ON u.id = b.user_id "
+        + "WHERE b.month_year = :monthYear AND b.allocated_amount > 0 "
+        + "AND u.budget_alert_email_enabled AND u.deleted_at IS NULL", nativeQuery = true)
+    List<UUID> findBudgetAlertCandidates(@Param("monthYear") LocalDate monthYear);
+
     /** Every row of the user, oldest first (LGPD export). */
     @Query("SELECT b FROM BudgetAllocation b WHERE b.userId = :userId ORDER BY b.createdAt ASC, b.id ASC")
     List<BudgetAllocation> findByUserIdOrdered(@Param("userId") UUID userId);
