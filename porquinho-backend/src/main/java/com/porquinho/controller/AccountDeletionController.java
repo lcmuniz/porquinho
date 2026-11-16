@@ -19,7 +19,7 @@ import java.util.UUID;
  *
  * Dedicated controller (separate from AuthController which already handles 5 endpoint groups).
  * The single POST endpoint is sufficient: once a user soft-deletes their account, the
- * @Where(deleted_at IS NULL) on User entity prevents authenticated re-access, so a GET
+ * DeletedAccountFilter answers 403 to every other API route, so a GET
  * status endpoint would be unreachable in practice. If admin needs visibility, add it
  * in Epic 10 (admin module).
  */
