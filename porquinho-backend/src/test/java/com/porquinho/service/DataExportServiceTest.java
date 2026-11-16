@@ -188,6 +188,7 @@ class DataExportServiceTest {
         assertNotNull(response.getId());
         assertEquals("PROCESSING", response.getStatus());
         verify(dataExportRepository, atLeastOnce()).save(any(DataExport.class));
+        verify(auditLogService).log("data_export_requested", userId, "127.0.0.1");
     }
 
     @Test
@@ -198,6 +199,7 @@ class DataExportServiceTest {
             dataExportService.requestExport(userId, "127.0.0.1", PASSWORD));
 
         verify(dataExportRepository, never()).save(any());
+        verify(auditLogService, never()).log(eq("data_export_requested"), any(), any());
     }
 
     @Test
@@ -1338,5 +1340,19 @@ class DataExportServiceTest {
         verify(emailService, never()).sendDataExportReady(any(), any());
         assertArrayEquals(new char[PASSWORD.length()], password);
         verify(rateLimitService).reset("data_export:" + userId);
+    }
+
+    @Test
+    void processExportShouldFreeTheRateLimitEvenWhenSavingFailedThrows() {
+        DataExport export = createTestExport();
+        when(dataExportRepository.findById(export.getId())).thenReturn(Optional.of(export));
+        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+        when(dataExportRepository.save(export)).thenThrow(new RuntimeException("db down"));
+        char[] password = PASSWORD.toCharArray();
+
+        assertThrows(RuntimeException.class, () -> dataExportService.processExport(export.getId(), password, "10.0.0.1"));
+
+        verify(rateLimitService).reset("data_export:" + userId);
+        assertArrayEquals(new char[PASSWORD.length()], password);
     }
 }

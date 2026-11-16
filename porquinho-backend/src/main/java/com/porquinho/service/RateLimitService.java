@@ -12,6 +12,8 @@ import java.time.Duration;
 @Service
 public class RateLimitService {
 
+    static final String KEY_PREFIX = "rate_limit:";
+
     private final StringRedisTemplate redisTemplate;
 
     public RateLimitService(StringRedisTemplate redisTemplate) {
@@ -28,7 +30,7 @@ public class RateLimitService {
      * @return true if request is allowed, false if rate limit exceeded
      */
     public boolean allowRequest(String key, int maxAttempts, int windowSeconds) {
-        String redisKey = "rate_limit:" + key;
+        String redisKey = KEY_PREFIX + key;
 
         // Increment counter in Redis
         Long count = redisTemplate.opsForValue().increment(redisKey);
@@ -42,8 +44,12 @@ public class RateLimitService {
         return count <= maxAttempts;
     }
 
-    /** Story 9.3: frees the slot again (e.g. a data export that ended FAILED can be retried at once). */
+    /**
+     * Story 9.3: frees the slot again (e.g. a data export that ended FAILED can be retried at once).
+     * Deletes the whole window, so use it only for limit-1 keys: on a key like {@code login:} it would
+     * also wipe the failed attempts that the brute-force protection counts.
+     */
     public void reset(String key) {
-        redisTemplate.delete("rate_limit:" + key);
+        redisTemplate.delete(KEY_PREFIX + key);
     }
 }

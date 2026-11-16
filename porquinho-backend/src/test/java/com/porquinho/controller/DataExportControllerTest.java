@@ -75,7 +75,7 @@ class DataExportControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.status").value("PROCESSING"));
 
-        verify(auditLogService).log(eq("data_export_requested"), eq(userId), anyString());
+        verify(auditLogService, never()).log(any(), any(), any());  // the service audits after its rate-limit check
     }
 
     @Test

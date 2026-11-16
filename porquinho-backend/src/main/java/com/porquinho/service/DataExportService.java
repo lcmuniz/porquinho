@@ -216,6 +216,8 @@ public class DataExportService {
         if (!rateLimitService.allowRequest("data_export:" + userId, 1, 3600)) {
             throw new RateLimitExceededException("Data export rate limit exceeded. Maximum 1 export per hour.");
         }
+        // only after the limit check: a 429 must not leave a "requested" event in the user's own audit_log.json
+        auditLogService.log("data_export_requested", userId, ipAddress);
 
         DataExport export = new DataExport(userId);
         export.setDownloadToken(UUID.randomUUID());
@@ -276,11 +278,12 @@ public class DataExportService {
                     // best-effort: a FAILED row is never downloadable, the partial file holds no usable link
                 }
             }
+            // a failed job does not count against the 1-per-hour limit: "Tentar de novo" works right away.
+            // Before the save, so a save that throws still frees the slot.
+            rateLimitService.reset("data_export:" + export.getUserId());
             export.setFilePath(null);
             export.setStatus(ExportStatus.FAILED);
             dataExportRepository.save(export);
-            // a failed job does not count against the 1-per-hour limit: "Tentar de novo" works right away
-            rateLimitService.reset("data_export:" + export.getUserId());
         } finally {
             Arrays.fill(password, '\0');
         }

@@ -2,7 +2,6 @@ package com.porquinho.controller;
 
 import com.porquinho.dto.DataExportRequest;
 import com.porquinho.dto.DataExportResponse;
-import com.porquinho.service.AuditLogService;
 import com.porquinho.service.DataExportService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -28,12 +27,9 @@ import java.util.UUID;
 public class DataExportController {
 
     private final DataExportService dataExportService;
-    private final AuditLogService auditLogService;
 
-    public DataExportController(DataExportService dataExportService,
-                                AuditLogService auditLogService) {
+    public DataExportController(DataExportService dataExportService) {
         this.dataExportService = dataExportService;
-        this.auditLogService = auditLogService;
     }
 
     /**
@@ -47,8 +43,6 @@ public class DataExportController {
             HttpServletRequest request) {
         UUID userId = UUID.fromString(jwt.getSubject());
         String ipAddress = request.getRemoteAddr();
-
-        auditLogService.log("data_export_requested", userId, ipAddress);
 
         DataExportResponse response = dataExportService.requestExport(userId, ipAddress, body.password());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
