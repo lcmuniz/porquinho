@@ -123,7 +123,7 @@
           <li v-for="item in imports" :key="item.id" class="space-y-1 px-4 py-3" :data-testid="`import-${item.id}`">
             <div class="flex flex-wrap items-baseline justify-between gap-2">
               <span class="truncate text-sm font-medium text-gray-900">{{ item.fileName }}</span>
-              <span class="text-xs text-gray-500">{{ formatDate(item.createdAt) }}</span>
+              <span class="text-xs text-gray-500">{{ formatDateTimeBR(item.createdAt) }}</span>
             </div>
             <p class="text-xs text-gray-600">
               {{ item.creditCardId ? 'Cartão' : 'Conta' }}: {{ item.targetName ?? '—' }}
@@ -164,6 +164,7 @@ import { getImport, listImports, uploadImport } from '@/services/transactionImpo
 import type { Account } from '@/types/account'
 import type { CreditCard } from '@/types/creditCard'
 import type { BankCode, ImportTarget, TransactionImport, TransactionImportStatus } from '@/types/transactionImport'
+import { formatDateTimeBR } from '@/lib/date'
 
 /**
  * Envio do extrato (Stories 5.1 a 5.8): destino, zona de envio, progresso, lista das importações e consulta a cada 2 s.
@@ -420,15 +421,6 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1).replace('.', ',')} MB`
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
 
 onMounted(load)
 </script>

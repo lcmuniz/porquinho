@@ -82,8 +82,8 @@
             <CardContent class="space-y-2">
               <div class="text-sm text-gray-600">
                 <p>IP: {{ session.ipAddress || 'Desconhecido' }}</p>
-                <p>Último acesso: {{ formatDate(session.lastActivity) }}</p>
-                <p>Criada em: {{ formatDate(session.createdAt) }}</p>
+                <p>Último acesso: {{ formatDateTimeBR(session.lastActivity) }}</p>
+                <p>Criada em: {{ formatDateTimeBR(session.createdAt) }}</p>
               </div>
               <Button
                 v-if="!session.current"
@@ -167,6 +167,7 @@ import {
 } from '@/components/ui/dialog'
 import { getSessions, revokeSession, revokeAllOtherSessions } from '@/services/sessionService'
 import type { Session } from '@/types/session'
+import { formatDateTimeBR } from '@/lib/date'
 
 const router = useRouter()
 
@@ -231,16 +232,6 @@ function parseDeviceInfo(deviceInfo: string | null): string {
   return deviceInfo.length > 50 ? deviceInfo.substring(0, 50) + '...' : deviceInfo
 }
 
-function formatDate(isoString: string): string {
-  const date = new Date(isoString)
-  return date.toLocaleString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
 
 function goBack() {
   router.push('/dashboard')

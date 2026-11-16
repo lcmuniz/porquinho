@@ -21,6 +21,22 @@ export function formatLocalDateBR(date: string | null | undefined): string {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : ''
 }
 
+const DATE_TIME_BR = new Intl.DateTimeFormat('pt-BR', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  timeZone: 'America/Sao_Paulo',
+})
+
+/** dd/mm/aaaa hh:mm no horário de Brasília, qualquer que seja o fuso do aparelho. */
+export function formatDateTimeBR(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? '' : DATE_TIME_BR.format(date)
+}
+
 const SAO_PAULO_DATE = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' })
 
 /** "AAAA-MM-DD" do instante em São Paulo (en-CA formata assim), qualquer que seja o fuso do aparelho. */

@@ -79,7 +79,7 @@
               </p>
             </div>
             <p class="text-xs text-gray-500">
-              Solicitado em: {{ formatDate(exportData.createdAt) }}
+              Solicitado em: {{ formatDateTimeBR(exportData.createdAt) }}
             </p>
           </CardContent>
         </Card>
@@ -112,7 +112,7 @@
               Seu arquivo ZIP está pronto para download. Use a senha que você definiu para abri-lo.
             </p>
             <p class="text-xs text-gray-600">
-              Expira em: {{ formatDate(exportData.expiresAt!) }}
+              Expira em: {{ formatDateTimeBR(exportData.expiresAt!) }}
             </p>
             <Button
               class="min-h-[44px]"
@@ -207,6 +207,7 @@ import {
 import { requestExport, getExportStatus } from '@/services/dataExportService'
 import type { DataExportResponse } from '@/types/dataExport'
 import { api } from '@/services/api'
+import { formatDateTimeBR } from '@/lib/date'
 
 const router = useRouter()
 
@@ -325,16 +326,6 @@ function stopPolling() {
   }
 }
 
-function formatDate(isoString: string): string {
-  const date = new Date(isoString)
-  return date.toLocaleString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
 
 function goBack() {
   router.push('/dashboard')
