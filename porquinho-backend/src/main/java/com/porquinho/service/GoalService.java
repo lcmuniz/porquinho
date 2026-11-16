@@ -48,6 +48,7 @@ public class GoalService {
     static final String NOT_FOUND_MESSAGE = "Meta não encontrada";
     static final String COMPLETED_MESSAGE = "Esta meta já foi concluída. Reabra a meta para alterá-la";
     static final String NOT_COMPLETED_MESSAGE = "Esta meta não está concluída";
+    static final String AMOUNT_OUT_OF_RANGE_MESSAGE = "Este aporte deixaria o valor da meta fora do limite permitido";
     public static final String AUDIT_COMPLETED = "goal_completed";
     public static final String AUDIT_REOPENED = "goal_reopened";
     private static final ZoneId SAO_PAULO = ZoneId.of("America/Sao_Paulo");
@@ -145,9 +146,15 @@ public class GoalService {
         Goal goal = lockedGoal(userId, goalId);
         requireNotCompleted(goal);
         BigDecimal value = amount.setScale(2, RoundingMode.HALF_UP);
-        goal.setCurrentAmount(goal.getCurrentAmount().add(value));
+        BigDecimal current = goal.getCurrentAmount().add(value);
         GoalAllocation row = monthRow(goal);
-        row.setContributedAmount(row.getContributedAmount().add(value));
+        BigDecimal contributed = row.getContributedAmount().add(value);
+        // DECIMAL(15,2) would otherwise fail on flush as a 500
+        if (!BalanceHistoryRecorder.fits(current) || !BalanceHistoryRecorder.fits(contributed)) {
+            throw new BadRequestException(AMOUNT_OUT_OF_RANGE_MESSAGE);
+        }
+        goal.setCurrentAmount(current);
+        row.setContributedAmount(contributed);
         goalAllocationRepository.save(row);
         snapshot(goal, value);  // Story 8.8: same transaction as the contribution
         if (goal.getCurrentAmount().compareTo(goal.getTargetAmount()) >= 0) {

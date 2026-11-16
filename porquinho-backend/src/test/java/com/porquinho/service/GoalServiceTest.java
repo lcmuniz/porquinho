@@ -321,6 +321,20 @@ class GoalServiceTest {
     }
 
     @Test
+    void contributionThatWouldOverflowDecimal15_2IsRejectedAndNothingIsWritten() {
+        Goal goal = existing("9999999999999.00", null);
+        when(goalAllocationRepository.findByUserIdAndGoalIdAndMonthYear(any(), any(), any())).thenReturn(Optional.empty());
+
+        BadRequestException e = assertThrows(BadRequestException.class,
+            () -> service.contribute(userId, goal.getId(), new BigDecimal("1.00"), "ip"));
+
+        assertEquals(GoalService.AMOUNT_OUT_OF_RANGE_MESSAGE, e.getMessage());
+        assertEquals(new BigDecimal("9999999999999.00"), goal.getCurrentAmount());
+        verify(goalAllocationRepository, never()).save(any());
+        verify(goalRepository, never()).save(any());
+    }
+
+    @Test
     void anotherUsersRemovedOrMissingGoalIsNotFoundAndNothingIsWritten() {
         UUID goalId = UUID.randomUUID();
         when(goalRepository.findActiveByIdAndUserIdForUpdate(goalId, userId)).thenReturn(Optional.empty());
