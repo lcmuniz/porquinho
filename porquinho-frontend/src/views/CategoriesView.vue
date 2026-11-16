@@ -79,26 +79,38 @@
           :aria-labelledby="`group-${group.parent.id}`"
           :data-testid="`group-${group.parent.id}`"
         >
-          <h2 :id="`group-${group.parent.id}`" class="text-sm font-semibold text-gray-900">
-            <button
-              type="button"
-              class="flex min-h-[44px] w-full items-center gap-2 rounded-md text-left focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:outline-none"
-              :aria-expanded="!collapsed.has(group.parent.id)"
-              :aria-controls="`group-items-${group.parent.id}`"
-              :data-testid="`group-toggle-${group.parent.id}`"
-              @click="toggle(group.parent.id)"
+          <div class="flex items-center gap-2">
+            <h2 :id="`group-${group.parent.id}`" class="flex-1 text-sm font-semibold text-gray-900">
+              <button
+                type="button"
+                class="flex min-h-[44px] w-full items-center gap-2 rounded-md text-left focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:outline-none"
+                :aria-expanded="!collapsed.has(group.parent.id)"
+                :aria-controls="`group-items-${group.parent.id}`"
+                :data-testid="`group-toggle-${group.parent.id}`"
+                @click="toggle(group.parent.id)"
+              >
+                <ChevronRight v-if="collapsed.has(group.parent.id)" class="h-4 w-4 text-gray-500" aria-hidden="true" />
+                <ChevronDown v-else class="h-4 w-4 text-gray-500" aria-hidden="true" />
+                <component
+                  :is="categoryIcon(group.parent.iconName)"
+                  class="h-4 w-4"
+                  :style="{ color: group.parent.colorHex }"
+                  aria-hidden="true"
+                />
+                {{ group.parent.categoryName }}
+              </button>
+            </h2>
+            <Button
+              v-if="group.children.length === 0"
+              variant="outline"
+              class="min-h-[44px]"
+              :aria-label="`Excluir ${group.parent.categoryName}`"
+              :data-testid="`delete-${group.parent.id}`"
+              @click="openDelete(group.parent)"
             >
-              <ChevronRight v-if="collapsed.has(group.parent.id)" class="h-4 w-4 text-gray-500" aria-hidden="true" />
-              <ChevronDown v-else class="h-4 w-4 text-gray-500" aria-hidden="true" />
-              <component
-                :is="categoryIcon(group.parent.iconName)"
-                class="h-4 w-4"
-                :style="{ color: group.parent.colorHex }"
-                aria-hidden="true"
-              />
-              {{ group.parent.categoryName }}
-            </button>
-          </h2>
+              Excluir
+            </Button>
+          </div>
           <div v-show="!collapsed.has(group.parent.id)" :id="`group-items-${group.parent.id}`">
             <ul class="space-y-2 pl-6">
               <li
@@ -124,6 +136,15 @@
                   @click="openMove(child)"
                 >
                   Mover
+                </Button>
+                <Button
+                  variant="outline"
+                  class="min-h-[44px]"
+                  :aria-label="`Excluir ${child.categoryName}`"
+                  :data-testid="`delete-${child.id}`"
+                  @click="openDelete(child)"
+                >
+                  Excluir
                 </Button>
               </li>
             </ul>
@@ -305,6 +326,14 @@
       </DialogContent>
     </Dialog>
 
+    <CategoryDeleteDialog
+      :category="deleting"
+      :categories="categories"
+      @deleted="removeDeleted"
+      @close="deleting = null"
+      @close-auto-focus="returnDeleteFocus"
+    />
+
     <BudgetExportDialog
       v-model:open="exportOpen"
       :initial-month="currentMonth()"
@@ -322,6 +351,7 @@ import { RouterLink } from 'vue-router'
 import { Check, ChevronDown, ChevronRight } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import BudgetExportDialog from '@/components/budget/BudgetExportDialog.vue'
+import CategoryDeleteDialog from '@/components/category/CategoryDeleteDialog.vue'
 import { currentMonth } from '@/lib/date'
 import {
   Dialog,
@@ -342,6 +372,7 @@ import type { ApiError } from '@/lib/apiError'
  * Story 6.1: categorias do usuário agrupadas (grupo → filhas, por nome) e criação de uma categoria filha.
  * Cor e ícone são opcionais: vazios não são enviados e o backend usa a cor do grupo e o ícone `folder`.
  * Story 6.2: criar grupo (sem `parentId`), mover uma filha para outro grupo e recolher/expandir os grupos.
+ * Pre-10.3: excluir uma filha ou um grupo vazio (diálogo compartilhado com o onboarding).
  */
 const NAME_REQUIRED = 'Informe o nome da categoria'
 const SAVE_FAILED = 'Não foi possível criar a categoria. Verifique sua conexão e tente novamente.'
@@ -369,6 +400,10 @@ const moveOpen = ref(false)
 const moving = ref<Category | null>(null)
 const moveTarget = ref('')
 const moveError = ref<string | null>(null)
+
+const deleting = ref<Category | null>(null)
+/** id da última categoria do diálogo de exclusão: o foco volta ao botão dela, ou ao título se ela saiu da lista. */
+let deleteFocusId: string | undefined
 
 const byName = (a: Category, b: Category) =>
   a.categoryName.localeCompare(b.categoryName, 'pt-BR', { sensitivity: 'base' }) || a.id.localeCompare(b.id)
@@ -505,6 +540,24 @@ async function move() {
   } finally {
     saving.value = false
   }
+}
+
+function openDelete(category: Category) {
+  deleteFocusId = category.id
+  deleting.value = category
+}
+
+function removeDeleted(deleted: Category) {
+  categories.value = categories.value.filter((c) => c.id !== deleted.id)
+  deleting.value = null
+  setSuccess(deleted.parentCategoryId ? 'Categoria excluída' : 'Grupo excluído')
+}
+
+function returnDeleteFocus(event: Event) {
+  event.preventDefault()
+  void nextTick(() =>
+    (document.querySelector<HTMLElement>(`[data-testid="delete-${deleteFocusId}"]`) ?? heading.value)?.focus(),
+  )
 }
 
 onMounted(async () => {

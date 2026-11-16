@@ -1,5 +1,6 @@
 package com.porquinho.service;
 
+import com.porquinho.dto.CategoryUsageResponse;
 import com.porquinho.entity.Category;
 import com.porquinho.exception.BadRequestException;
 import com.porquinho.exception.ConflictException;
@@ -50,7 +51,7 @@ public class CategoryService {
     public static final String GROUP_NOT_EMPTY_MESSAGE = "Exclua ou mova as categorias deste grupo antes";
     public static final String NOT_FOUND_MESSAGE = "Categoria não encontrada";
     public static final String HAS_TRANSACTIONS_MESSAGE =
-        "Esta categoria tem transações. Escolha para qual categoria elas vão antes de excluir.";
+        "Esta categoria tem transações ou orçamento. Escolha para qual categoria eles vão antes de excluir.";
     public static final String TARGET_INVALID_MESSAGE =
         "Categoria de destino inválida. Recarregue a página e tente novamente.";
 
@@ -235,22 +236,26 @@ public class CategoryService {
         return categoryRepository.save(category);
     }
 
-    /** The active transactions of the user's active child category (retro Epic 6 A4); 404 otherwise. */
+    /**
+     * The active transactions and the open allocation (current and future months) of the user's active child category
+     * (retro Epic 6 A4, Pre-10.3); 404 otherwise.
+     */
     @Transactional(readOnly = true)
-    public long transactionCount(UUID userId, UUID categoryId) {
+    public CategoryUsageResponse usage(UUID userId, UUID categoryId) {
         Category category = find(categoryRepository.findActiveByUserId(userId), categoryId);
         if (category.getParentCategoryId() == null) {
             throw new ResourceNotFoundException(NOT_FOUND_MESSAGE);
         }
-        return transactionRepository.countActiveByCategory(userId, categoryId);
+        return new CategoryUsageResponse(transactionRepository.countActiveByCategory(userId, categoryId),
+            budgetService.openAllocationTotal(userId, categoryId));
     }
 
     /**
      * Soft delete. A group can only be removed when it has no active children (409) and never takes a target (400);
      * removing an empty group does not count toward the minimum. A child cannot be removed when it is the user's last
      * active child (409): the budget needs at least one envelope. 404 when the category is not the user's active one.
-     * Retro Epic 6 A4: a child with transactions needs {@code targetCategoryId} (409 without it), another active child
-     * of the user (400 otherwise). With a target, its transactions, its allocations of the current and future months
+     * Retro Epic 6 A4 (Pre-10.3): a child with transactions or a positive open allocation needs
+     * {@code targetCategoryId} (409 without it), another active child of the user (400 otherwise). With a target, its transactions, its allocations of the current and future months
      * and its classification patterns move to the target; without one, nothing is reclassified.
      */
     @Transactional
@@ -277,7 +282,8 @@ public class CategoryService {
             budgetService.moveAllocations(userId, categoryId, targetCategoryId);
             patternRepository.reassignCategory(userId, categoryId, targetCategoryId);
             balanceCache.evict(userId);
-        } else if (transactionRepository.countActiveByCategory(userId, categoryId) > 0) {
+        } else if (transactionRepository.countActiveByCategory(userId, categoryId) > 0
+                || budgetService.openAllocationTotal(userId, categoryId).signum() > 0) {
             throw new ConflictException(HAS_TRANSACTIONS_MESSAGE);
         }
         category.setDeletedAt(OffsetDateTime.now());

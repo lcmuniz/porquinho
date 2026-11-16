@@ -166,85 +166,27 @@
       </Button>
     </nav>
 
-    <Dialog :open="pendingDelete !== null" @update:open="(open) => !open && closeDelete()">
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Excluir "{{ pendingDelete?.categoryName }}"?</DialogTitle>
-          <DialogDescription>
-            {{
-              pendingDelete?.parentCategoryId
-                ? 'A categoria sai do seu orçamento. Você pode criá-la de novo depois.'
-                : 'O grupo vazio sai da sua lista.'
-            }}
-          </DialogDescription>
-        </DialogHeader>
-        <div v-if="deleteUsage !== null && deleteUsage > 0" class="space-y-1">
-          <label for="delete-target" class="text-sm font-medium text-gray-900">
-            {{ deleteUsage === 1 ? '1 transação vai' : `${deleteUsage} transações vão` }} para:
-          </label>
-          <select
-            id="delete-target"
-            v-model="deleteTarget"
-            :class="SELECT_CLASS"
-            data-testid="delete-target"
-            :disabled="deleting"
-          >
-            <option value="" disabled>Escolha uma categoria</option>
-            <option v-for="child in deleteTargets" :key="child.id" :value="child.id">
-              {{ child.categoryName }}
-            </option>
-          </select>
-        </div>
-        <DialogFooter>
-          <Button
-            variant="outline"
-            class="min-h-[44px]"
-            data-testid="cancel-delete-button"
-            :disabled="deleting"
-            @click="closeDelete"
-          >
-            Cancelar
-          </Button>
-          <Button
-            class="min-h-[44px] bg-red-600 text-white hover:bg-red-700"
-            data-testid="confirm-delete-button"
-            :disabled="!canConfirmDelete"
-            @click="confirmDelete"
-          >
-            {{ deleting ? 'Excluindo...' : 'Excluir' }}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <CategoryDeleteDialog
+      :category="pendingDelete"
+      :categories="categories"
+      @deleted="removeDeleted"
+      @close="pendingDelete = null"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { SELECT_CLASS } from '@/lib/formField'
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import CategoryDeleteDialog from '@/components/category/CategoryDeleteDialog.vue'
 import CategoryItem from '@/components/onboarding/CategoryItem.vue'
 import { cleanCategoryName } from '@/lib/categoryName'
-import {
-  createCategory,
-  deleteCategory,
-  getCategoryOptions,
-  getCategoryUsage,
-  listCategories,
-} from '@/services/categoryService'
+import { createCategory, getCategoryOptions, listCategories } from '@/services/categoryService'
 import { completeCustomization } from '@/services/onboardingService'
 import type { Category, CategoryOptions } from '@/types/category'
 import type { OnboardingProgress } from '@/types/onboarding'
-import { apiErrorDetail, apiErrorStatus } from '@/lib/apiError'
+import { apiErrorDetail } from '@/lib/apiError'
 
 /**
  * Story 3.5: passo 5 do onboarding. Lista as categorias do usuário agrupadas e em ordem alfabética (pt-BR).
@@ -271,10 +213,6 @@ const addError = ref('')
 const adding = ref(false)
 
 const pendingDelete = ref<Category | null>(null)
-const deleting = ref(false)
-/** Retro Epic 6 A4: transações da filha a excluir (null = carregando) e a filha que as recebe. */
-const deleteUsage = ref<number | null>(null)
-const deleteTarget = ref('')
 
 /** Requisições de edição em andamento (true = deu certo): Próximo espera por elas antes de avançar. */
 const pending = new Set<Promise<boolean>>()
@@ -291,19 +229,6 @@ const groups = computed(() =>
       parent,
       children: categories.value.filter((c) => c.parentCategoryId === parent.id).sort(byName),
     })),
-)
-
-const deleteTargets = computed(() =>
-  categories.value
-    .filter((c) => c.parentCategoryId !== null && c.id !== pendingDelete.value?.id)
-    .sort(byName),
-)
-
-const canConfirmDelete = computed(
-  () =>
-    !deleting.value &&
-    deleteUsage.value !== null &&
-    (deleteUsage.value === 0 || deleteTarget.value !== ''),
 )
 
 function apiDetail(err: unknown): string | undefined {
@@ -379,51 +304,13 @@ async function submitNew(parent: Category) {
   }
 }
 
-async function askDelete(category: Category) {
+function askDelete(category: Category) {
   pendingDelete.value = category
-  deleteTarget.value = ''
-  if (category.parentCategoryId === null) {
-    deleteUsage.value = 0
-    return
-  }
-  deleteUsage.value = null
-  let count = 0
-  try {
-    count = (await getCategoryUsage(category.id)).transactionCount
-  } catch {
-    // Sem a contagem segue sem destino: o 409 do backend avisa se houver transações
-  }
-  if (pendingDelete.value?.id === category.id) deleteUsage.value = count
 }
 
-function closeDelete() {
-  if (deleting.value) return
+function removeDeleted(deleted: Category) {
+  categories.value = categories.value.filter((c) => c.id !== deleted.id)
   pendingDelete.value = null
-}
-
-async function confirmDelete() {
-  const target = pendingDelete.value
-  if (!target || deleting.value) return
-  deleting.value = true
-  const request = deleteCategory(target.id, deleteTarget.value || undefined)
-  track(request)
-  try {
-    await request
-    categories.value = categories.value.filter((c) => c.id !== target.id)
-  } catch (err) {
-    if (apiErrorStatus(err) === 404) {
-      // Já tinha sido excluída (outra aba, por exemplo): só tira da lista
-      categories.value = categories.value.filter((c) => c.id !== target.id)
-    } else {
-      emit(
-        'error',
-        apiDetail(err) ?? 'Não foi possível excluir. Verifique sua conexão e tente novamente.',
-      )
-    }
-  } finally {
-    deleting.value = false
-    pendingDelete.value = null
-  }
 }
 
 async function finish(skipped: boolean) {

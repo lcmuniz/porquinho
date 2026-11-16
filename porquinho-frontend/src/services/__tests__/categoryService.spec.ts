@@ -82,8 +82,8 @@ describe('categoryService', () => {
   })
 
   it('getCategoryUsage faz GET em /api/v1/categories/{id}/usage', async () => {
-    mockGet.mockResolvedValueOnce({ data: { transactionCount: 3 } })
-    await expect(getCategoryUsage('c1')).resolves.toEqual({ transactionCount: 3 })
+    mockGet.mockResolvedValueOnce({ data: { transactionCount: 3, allocatedAmount: 300 } })
+    await expect(getCategoryUsage('c1')).resolves.toEqual({ transactionCount: 3, allocatedAmount: 300 })
     expect(mockGet).toHaveBeenCalledWith('/api/v1/categories/c1/usage')
   })
 })

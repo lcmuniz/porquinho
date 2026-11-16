@@ -1,6 +1,7 @@
 package com.porquinho.controller;
 
 import com.porquinho.config.TestWebSecurityConfig;
+import com.porquinho.dto.CategoryUsageResponse;
 import com.porquinho.entity.Category;
 import com.porquinho.exception.BadRequestException;
 import com.porquinho.exception.ConflictException;
@@ -20,6 +21,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -305,14 +307,15 @@ class CategoryControllerTest {
     }
 
     @Test
-    void deletePassesTheTargetAndUsageReturnsTheTransactionCount() throws Exception {
+    void deletePassesTheTargetAndUsageReturnsTheTransactionCountAndTheOpenAllocation() throws Exception {
         UUID id = UUID.randomUUID();
         UUID target = UUID.randomUUID();
-        when(categoryService.transactionCount(userId, id)).thenReturn(3L);
+        when(categoryService.usage(userId, id)).thenReturn(new CategoryUsageResponse(3, new BigDecimal("300.00")));
 
         mockMvc.perform(get("/api/v1/categories/" + id + "/usage").with(authentication(authToken)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.transactionCount").value(3));
+            .andExpect(jsonPath("$.transactionCount").value(3))
+            .andExpect(jsonPath("$.allocatedAmount").value(300.00));
         mockMvc.perform(delete("/api/v1/categories/" + id).param("targetCategoryId", target.toString())
                 .with(authentication(authToken)))
             .andExpect(status().isNoContent());

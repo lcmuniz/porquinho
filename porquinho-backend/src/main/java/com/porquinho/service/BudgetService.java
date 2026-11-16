@@ -197,6 +197,18 @@ public class BudgetService {
     }
 
     /**
+     * Pre-10.3: the child's allocation of the current month and of the future ones (the part {@link #moveAllocations}
+     * would move). Closed months do not count.
+     */
+    BigDecimal openAllocationTotal(UUID userId, UUID categoryId) {
+        LocalDate current = YearMonth.now(clock.withZone(SAO_PAULO)).atDay(1);
+        return budgetAllocationRepository
+            .findByUserIdAndCategoryIdAndMonthYearGreaterThanEqual(userId, categoryId, current).stream()
+            .map(BudgetAllocation::getAllocatedAmount)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /**
      * Every month of the child category with an allocation, up to the current one, oldest first (Story 6.8). 404 for a
      * group, removed, foreign or missing category. Read straight from the database (no cache): two queries.
      */

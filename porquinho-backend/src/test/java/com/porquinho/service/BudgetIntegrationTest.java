@@ -3,6 +3,7 @@ package com.porquinho.service;
 import com.porquinho.dto.BudgetResponse;
 import com.porquinho.dto.BudgetStatus;
 import com.porquinho.dto.CategoryBudgetHistoryResponse;
+import com.porquinho.dto.CategoryUsageResponse;
 import com.porquinho.dto.ReallocateBudgetRequest;
 import com.porquinho.dto.SaveBudgetRequest;
 import com.porquinho.dto.TransactionCreateRequest;
@@ -867,7 +868,8 @@ class BudgetIntegrationTest {
             + "VALUES (?, 'mercado', ?)", userId, food);
         BudgetResponse before = service.get(userId, CURRENT.toString());  // warms the spent cache
         BigDecimal nextTotal = service.get(userId, next.toString()).totalAllocated();
-        assertThat(categoryService.transactionCount(userId, food)).isEqualTo(2);
+        assertThat(categoryService.usage(userId, food))
+            .isEqualTo(new CategoryUsageResponse(2, new BigDecimal("350.00")));  // the closed month does not count
 
         categoryService.delete(userId, food, transport);
 
@@ -945,18 +947,56 @@ class BudgetIntegrationTest {
         assertThatThrownBy(() -> categoryService.delete(userId, empty, food))
             .isInstanceOf(BadRequestException.class).hasMessage(CategoryService.TARGET_INVALID_MESSAGE);
         assertThat(removed(empty)).isFalse();
-        assertThatThrownBy(() -> categoryService.transactionCount(userId, empty))
+        assertThatThrownBy(() -> categoryService.usage(userId, empty))
             .isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
-    void deletingAChildWithoutTransactionsNeedsNoTargetAndMovesNothing() {
-        allocationRow(food, CURRENT, "300");
-        assertThat(categoryService.transactionCount(userId, food)).isZero();
+    void anOpenAllocationAloneMovesWithATargetKeepingEachMonthsTotal() {
+        YearMonth next = CURRENT.plusMonths(1);
+        allocationRow(food, CURRENT, "200");
+        allocationRow(food, next, "100");
+        allocationRow(transport, CURRENT, "50");
+        BigDecimal currentTotal = service.get(userId, CURRENT.toString()).totalAllocated();
+        BigDecimal nextTotal = service.get(userId, next.toString()).totalAllocated();
 
-        categoryService.delete(userId, food, null);
+        categoryService.delete(userId, food, transport);
 
         assertThat(removed(food)).isTrue();
+        assertThat(service.get(userId, CURRENT.toString()).totalAllocated()).isEqualByComparingTo(currentTotal);
+        assertThat(service.get(userId, next.toString()).totalAllocated()).isEqualByComparingTo(nextTotal);
+        assertThat(of(service.get(userId, CURRENT.toString()), transport).allocated()).isEqualByComparingTo("250");
+        assertThat(of(service.get(userId, next.toString()), transport).allocated()).isEqualByComparingTo("100");
+    }
+
+    @Test
+    void anOpenAllocationAloneWithoutATargetIs409AndChangesNothing() {
+        allocationRow(food, CURRENT, "200");
+        allocationRow(food, CURRENT.plusMonths(1), "100");
+        assertThat(categoryService.usage(userId, food))
+            .isEqualTo(new CategoryUsageResponse(0, new BigDecimal("300.00")));
+
+        assertThatThrownBy(() -> categoryService.delete(userId, food, null))
+            .isInstanceOf(ConflictException.class).hasMessage(CategoryService.HAS_TRANSACTIONS_MESSAGE);
+
+        assertThat(removed(food)).isFalse();
+        assertThat(allocated(food)).isEqualByComparingTo("200");
+        assertThat(reallocations()).isZero();
+    }
+
+    @Test
+    void aZeroOrClosedMonthAllocationNeedsNoTargetAndMovesNothing() {
+        UUID closed = newCategory(userId, "Lazer", group);
+        allocationRow(food, CURRENT, "0");
+        allocationRow(closed, PAST, "300");
+        assertThat(categoryService.usage(userId, food).allocatedAmount()).isEqualByComparingTo("0");
+        assertThat(categoryService.usage(userId, closed).allocatedAmount()).isEqualByComparingTo("0");
+
+        categoryService.delete(userId, food, null);
+        categoryService.delete(userId, closed, null);
+
+        assertThat(removed(food)).isTrue();
+        assertThat(removed(closed)).isTrue();
         assertThat(allocated(transport)).isNull();
         assertThat(reallocations()).isZero();
     }

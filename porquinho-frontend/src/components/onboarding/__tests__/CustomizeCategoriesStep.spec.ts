@@ -98,7 +98,7 @@ describe('CustomizeCategoriesStep', () => {
     mockCreateCategory.mockReset()
     mockUpdateCategory.mockReset()
     mockDeleteCategory.mockReset().mockResolvedValue(undefined)
-    mockGetCategoryUsage.mockReset().mockResolvedValue({ transactionCount: 0 })
+    mockGetCategoryUsage.mockReset().mockResolvedValue({ transactionCount: 0, allocatedAmount: 0 })
     mockCompleteCustomization.mockReset().mockResolvedValue(PROGRESS)
   })
 
@@ -341,7 +341,7 @@ describe('CustomizeCategoriesStep', () => {
   })
 
   it('com transações exige o destino e envia targetCategoryId', async () => {
-    mockGetCategoryUsage.mockResolvedValue({ transactionCount: 3 })
+    mockGetCategoryUsage.mockResolvedValue({ transactionCount: 3, allocatedAmount: 0 })
     const wrapper = await mountStep()
 
     await wrapper.get('[data-testid="category-delete-c4"]').trigger('click')
@@ -364,7 +364,7 @@ describe('CustomizeCategoriesStep', () => {
     expect(wrapper.find('[data-testid="category-name-c4"]').exists()).toBe(false)
   })
 
-  it('excluir a última categoria (409) mantém a lista e emite o erro', async () => {
+  it('excluir a última categoria (409) mantém a lista e mostra o erro no diálogo', async () => {
     mockDeleteCategory.mockRejectedValue(apiError(409, 'Mantenha ao menos uma categoria'))
     const wrapper = await mountStep()
 
@@ -374,7 +374,10 @@ describe('CustomizeCategoriesStep', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-testid="category-name-c3"]').exists()).toBe(true)
-    expect(wrapper.emitted('error')?.[0]).toEqual(['Mantenha ao menos uma categoria'])
+    expect(document.body.querySelector('[data-testid="delete-error"]')?.textContent?.trim()).toBe(
+      'Mantenha ao menos uma categoria',
+    )
+    expect(wrapper.emitted('error')).toBeUndefined()
   })
 
   it('só grupos vazios mostram o botão de excluir', async () => {

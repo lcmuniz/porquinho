@@ -7,12 +7,16 @@ const mockList = vi.fn()
 const mockCreate = vi.fn()
 const mockUpdate = vi.fn()
 const mockExport = vi.fn()
+const mockDelete = vi.fn()
+const mockUsage = vi.fn()
 
 vi.mock('@/services/categoryService', () => ({
   listCategories: () => mockList(),
   getCategoryOptions: async () => ({ colors: ['#2563EB', '#EC4899'], icons: ['house', 'plane', 'folder'] }),
   createCategory: (...a: unknown[]) => mockCreate(...a),
   updateCategory: (...a: unknown[]) => mockUpdate(...a),
+  deleteCategory: (...a: unknown[]) => mockDelete(...a),
+  getCategoryUsage: (...a: unknown[]) => mockUsage(...a),
 }))
 vi.mock('@/services/budgetService', () => ({
   exportBudgetReport: (...a: unknown[]) => mockExport(...a),
@@ -201,6 +205,62 @@ describe('CategoriesView', () => {
     await new Promise((r) => setTimeout(r, 0))
     await flushPromises()
     expect(document.activeElement?.getAttribute('data-testid')).toBe('move-c1')
+  })
+
+  it('exclui uma filha com orçamento escolhendo o destino e devolve o foco ao título', async () => {
+    mockList.mockResolvedValue([...LIST, category('c2', 'Mercado', 'g1')])
+    mockUsage.mockResolvedValue({ transactionCount: 0, allocatedAmount: 200 })
+    mockDelete.mockResolvedValue(undefined)
+    await mountView()
+    const button = wrapper!.get('[data-testid="delete-c1"]')
+    expect(button.attributes('aria-label')).toBe('Excluir Moradia')
+    ;(button.element as HTMLElement).focus()
+    await button.trigger('click')
+    await flushPromises()
+    const select = inDialog<HTMLSelectElement>('delete-target')!
+    select.value = 'c2'
+    select.dispatchEvent(new Event('change'))
+    await flushPromises()
+    inDialog<HTMLButtonElement>('confirm-delete-button')!.click()
+    await flushPromises()
+
+    expect(mockDelete).toHaveBeenCalledWith('c1', 'c2')
+    expect(inDialog('delete-dialog')).toBeNull()
+    expect(wrapper!.find('[data-testid="category-c1"]').exists()).toBe(false)
+    expect(wrapper!.get('[data-testid="categories-success"]').text()).toBe('Categoria excluída')
+    await new Promise((r) => setTimeout(r, 0))
+    await flushPromises()
+    expect(document.activeElement?.textContent?.trim()).toBe('Categorias')
+  })
+
+  it('cancelar a exclusão devolve o foco ao botão Excluir', async () => {
+    mockUsage.mockResolvedValue({ transactionCount: 0, allocatedAmount: 0 })
+    await mountView()
+    await wrapper!.get('[data-testid="delete-c1"]').trigger('click')
+    await flushPromises()
+    inDialog<HTMLButtonElement>('cancel-delete-button')!.click()
+    await flushPromises()
+
+    expect(mockDelete).not.toHaveBeenCalled()
+    expect(inDialog('delete-dialog')).toBeNull()
+    await new Promise((r) => setTimeout(r, 0))
+    await flushPromises()
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('delete-c1')
+  })
+
+  it('só o grupo vazio tem Excluir; excluir tira o grupo da lista', async () => {
+    mockDelete.mockResolvedValue(undefined)
+    await mountView()
+    expect(wrapper!.find('[data-testid="delete-g1"]').exists()).toBe(false)
+    await wrapper!.get('[data-testid="delete-g2"]').trigger('click')
+    await flushPromises()
+    inDialog<HTMLButtonElement>('confirm-delete-button')!.click()
+    await flushPromises()
+
+    expect(mockUsage).not.toHaveBeenCalled()
+    expect(mockDelete).toHaveBeenCalledWith('g2', undefined)
+    expect(wrapper!.find('[data-testid="group-g2"]').exists()).toBe(false)
+    expect(wrapper!.get('[data-testid="categories-success"]').text()).toBe('Grupo excluído')
   })
 
   it('ao mover para um grupo recolhido, ele é expandido', async () => {

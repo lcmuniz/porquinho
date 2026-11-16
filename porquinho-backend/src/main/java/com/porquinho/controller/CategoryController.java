@@ -1,6 +1,7 @@
 package com.porquinho.controller;
 
 import com.porquinho.dto.CategoryResponse;
+import com.porquinho.dto.CategoryUsageResponse;
 import com.porquinho.dto.CreateCategoryRequest;
 import com.porquinho.dto.UpdateCategoryRequest;
 import com.porquinho.service.CategoryOptions;
@@ -22,7 +23,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -81,16 +81,20 @@ public class CategoryController {
             userId, id, request.name(), request.colorHex(), request.iconName(), request.parentId())));
     }
 
-    /** {@code { transactionCount }} of the user's active child category (retro Epic 6 A4); 404 otherwise. */
+    /**
+     * {@code { transactionCount, allocatedAmount }} of the user's active child category, the allocation counting the
+     * current and future months (retro Epic 6 A4, Pre-10.3); 404 otherwise.
+     */
     @GetMapping("/{id}/usage")
-    public ResponseEntity<Map<String, Long>> usage(@AuthenticationPrincipal Jwt jwt, @PathVariable("id") UUID id) {
+    public ResponseEntity<CategoryUsageResponse> usage(@AuthenticationPrincipal Jwt jwt, @PathVariable("id") UUID id) {
         UUID userId = UUID.fromString(jwt.getSubject());
-        return ResponseEntity.ok(Map.of("transactionCount", categoryService.transactionCount(userId, id)));
+        return ResponseEntity.ok(categoryService.usage(userId, id));
     }
 
     /**
      * Soft delete. 204; 400 for an invalid target (or any target on a group); 404 when not the user's; 409 for a group
-     * with children, the last child, or a child with transactions and no {@code targetCategoryId}.
+     * with children, the last child, or a child with transactions or open allocation and no
+     * {@code targetCategoryId}.
      */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@AuthenticationPrincipal Jwt jwt, @PathVariable("id") UUID id,
