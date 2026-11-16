@@ -1,5 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import router from '../index'
+
+// No CI não há .env: as views carregadas pelo guard importam o cliente do Supabase e o axios
+vi.mock('@/services/api', () => ({ default: {} }))
+vi.mock('@/services/supabase', () => ({
+  supabase: { auth: { getSession: vi.fn().mockResolvedValue({ data: { session: null } }), onAuthStateChange: vi.fn() } },
+}))
 
 describe('router', () => {
   it('resolve a revisão da importação, com autenticação (Story 5.9)', () => {
