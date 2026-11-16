@@ -2,6 +2,7 @@ package com.porquinho.config;
 
 import com.porquinho.controller.SubscriptionController;
 import com.porquinho.repository.UserRepository;
+import com.porquinho.repository.UserSessionRepository;
 import com.porquinho.service.JwtBlacklistService;
 import com.porquinho.service.SubscriptionService;
 import org.junit.jupiter.api.Test;
@@ -63,6 +64,10 @@ class SubscriptionAccessFilterIntegrationTest {
     // DeletedAccountFilter (retro Epic 1 A2): mock answers false, so no account here is in deletion
     @MockBean
     private UserRepository userRepository;
+
+    // JwtAuthenticationConverter checks revoked session_id claims (retro Epic 1 A2); the mock answers "not revoked"
+    @MockBean
+    private UserSessionRepository userSessionRepository;
 
     @Test
     void protectedRouteWithoutAccessReturns402ProblemDetail() throws Exception {

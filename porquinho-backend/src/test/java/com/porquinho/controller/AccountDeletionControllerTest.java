@@ -62,7 +62,7 @@ class AccountDeletionControllerTest {
                 OffsetDateTime.now(),
                 OffsetDateTime.now().plusDays(30));
 
-        when(accountDeletionService.requestDeletion(eq(userId), anyString())).thenReturn(response);
+        when(accountDeletionService.requestDeletion(eq(userId), anyString(), eq("test-token"))).thenReturn(response);
 
         mockMvc.perform(post("/api/v1/account-deletion")
                 .with(authentication(authToken)))
@@ -73,7 +73,7 @@ class AccountDeletionControllerTest {
 
     @Test
     void requestDeletionShouldReturn429WhenRateLimited() throws Exception {
-        when(accountDeletionService.requestDeletion(eq(userId), anyString()))
+        when(accountDeletionService.requestDeletion(eq(userId), anyString(), eq("test-token")))
                 .thenThrow(new RateLimitExceededException("Rate limit exceeded"));
 
         mockMvc.perform(post("/api/v1/account-deletion")
@@ -83,7 +83,7 @@ class AccountDeletionControllerTest {
 
     @Test
     void requestDeletionShouldReturn404WhenUserNotFound() throws Exception {
-        when(accountDeletionService.requestDeletion(eq(userId), anyString()))
+        when(accountDeletionService.requestDeletion(eq(userId), anyString(), eq("test-token")))
                 .thenThrow(new ResourceNotFoundException("User not found"));
 
         mockMvc.perform(post("/api/v1/account-deletion")

@@ -1,5 +1,6 @@
 package com.porquinho.config;
 
+import com.porquinho.repository.UserSessionRepository;
 import com.porquinho.service.JwtBlacklistService;
 import com.porquinho.service.SessionService;
 import org.springframework.core.convert.converter.Converter;
@@ -12,20 +13,28 @@ import org.springframework.security.oauth2.server.resource.InvalidBearerTokenExc
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.UUID;
 
 /**
  * Converter that extracts user_id from Supabase JWT "sub" claim.
  * The sub claim in Supabase contains the user's UUID.
  * The token's name is the user id: controllers read it via Authentication.getName().
  * (The principal is the Jwt object, so @AuthenticationPrincipal String resolves to null.)
- * Also checks JWT blacklist for revoked sessions.
+ * Also rejects revoked sessions: by the session_id claim, which survives Supabase's token refresh (user_sessions,
+ * retro Epic 1 A2), and by the token hash in the Redis blacklist (sessions recorded without session_id).
  */
 public class JwtAuthenticationConverter implements Converter<Jwt, AbstractAuthenticationToken> {
 
     private JwtBlacklistService jwtBlacklistService;
 
+    private UserSessionRepository userSessionRepository;
+
     public void setJwtBlacklistService(JwtBlacklistService jwtBlacklistService) {
         this.jwtBlacklistService = jwtBlacklistService;
+    }
+
+    public void setUserSessionRepository(UserSessionRepository userSessionRepository) {
+        this.userSessionRepository = userSessionRepository;
     }
 
     @Override
@@ -34,6 +43,12 @@ public class JwtAuthenticationConverter implements Converter<Jwt, AbstractAuthen
         if (jwtBlacklistService != null) {
             String tokenHash = SessionService.hashToken(jwt.getTokenValue());
             if (jwtBlacklistService.isBlacklisted(tokenHash)) {
+                throw new InvalidBearerTokenException("Token has been revoked");
+            }
+        }
+        if (userSessionRepository != null) {
+            UUID sessionId = SessionService.sessionId(jwt);
+            if (sessionId != null && userSessionRepository.isSessionIdRevoked(sessionId)) {
                 throw new InvalidBearerTokenException("Token has been revoked");
             }
         }

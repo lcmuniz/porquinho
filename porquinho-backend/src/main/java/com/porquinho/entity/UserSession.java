@@ -24,6 +24,10 @@ public class UserSession {
     @Column(name = "jwt_token_hash", nullable = false, length = 64)
     private String jwtTokenHash;
 
+    /** Claim session_id do JWT do Supabase: igual em todos os tokens renovados da mesma sessão. NULL em sessões antigas. */
+    @Column(name = "session_id")
+    private UUID sessionId;
+
     @Column(name = "device_info", length = 500)
     private String deviceInfo;
 
@@ -69,6 +73,14 @@ public class UserSession {
 
     public String getJwtTokenHash() { return jwtTokenHash; }
     public void setJwtTokenHash(String jwtTokenHash) { this.jwtTokenHash = jwtTokenHash; }
+
+    public UUID getSessionId() { return sessionId; }
+    public void setSessionId(UUID sessionId) { this.sessionId = sessionId; }
+
+    /** True when this row is the session of the request: same session_id, or the same token (rows without session_id). */
+    public boolean isCurrent(UUID currentSessionId, String currentTokenHash) {
+        return (currentSessionId != null && currentSessionId.equals(sessionId)) || jwtTokenHash.equals(currentTokenHash);
+    }
 
     public String getDeviceInfo() { return deviceInfo; }
     public void setDeviceInfo(String deviceInfo) { this.deviceInfo = deviceInfo; }

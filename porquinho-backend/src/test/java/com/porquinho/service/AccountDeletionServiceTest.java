@@ -176,7 +176,7 @@ class AccountDeletionServiceTest {
         UserSession session = new UserSession(userId, "hash1", "Chrome", "1.1.1.1",
             OffsetDateTime.now().plusDays(7));
         session.setId(UUID.randomUUID());
-        when(userSessionRepository.findByUserIdAndRevokedAtIsNullAndExpiresAtAfter(eq(userId), any()))
+        when(userSessionRepository.findAllByUserId(userId))
             .thenReturn(List.of(session));
 
         when(accountDeletionRepository.save(any(AccountDeletion.class))).thenAnswer(inv -> {
@@ -186,7 +186,7 @@ class AccountDeletionServiceTest {
             return d;
         });
 
-        AccountDeletionResponse response = service.requestDeletion(userId, "127.0.0.1");
+        AccountDeletionResponse response = service.requestDeletion(userId, "127.0.0.1", "user-token");
 
         assertNotNull(response);
         assertEquals(DeletionStatus.PENDING_PURGE, response.getStatus());
@@ -201,6 +201,9 @@ class AccountDeletionServiceTest {
         assertNotNull(session.getRevokedAt());
         verify(jwtBlacklistService).blacklistToken(eq("hash1"), any());
         verify(userSessionRepository).saveAll(anyList());
+
+        // Retro Epic 1 A2 (S6): every Supabase session signed out, post-commit
+        verify(supabaseAdminClient).signOut("user-token", "global");
 
         // Audit log written
         verify(auditLogService).log(eq("account_deletion_requested"), eq(userId), eq("127.0.0.1"), anyString());
@@ -219,7 +222,7 @@ class AccountDeletionServiceTest {
     void requestDeletionRaceOnPendingPurgeDoesNotStopBillingAgain() {
         when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(true);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(userSessionRepository.findByUserIdAndRevokedAtIsNullAndExpiresAtAfter(eq(userId), any()))
+        when(userSessionRepository.findAllByUserId(userId))
             .thenReturn(List.of());
         AccountDeletion concurrent = new AccountDeletion(userId, OffsetDateTime.now().plusDays(30), "127.0.0.1");
         concurrent.setId(UUID.randomUUID());
@@ -228,11 +231,12 @@ class AccountDeletionServiceTest {
         when(accountDeletionRepository.findByUserIdAndStatus(userId, DeletionStatus.PENDING_PURGE))
             .thenReturn(Optional.empty(), Optional.of(concurrent));
 
-        AccountDeletionResponse response = service.requestDeletion(userId, "127.0.0.1");
+        AccountDeletionResponse response = service.requestDeletion(userId, "127.0.0.1", "user-token");
 
         assertEquals(concurrent.getId(), response.getId());
         verify(subscriptionService, never()).cancelForAccountDeletion(any());
         verify(emailService, never()).sendAccountDeletionConfirmation(any(), any());
+        verify(supabaseAdminClient, never()).signOut(any(), any());
     }
 
     @Test
@@ -245,7 +249,7 @@ class AccountDeletionServiceTest {
             .thenReturn(Optional.of(existing));
         when(userRepository.findByIdIncludingDeleted(userId)).thenReturn(Optional.of(user));
 
-        AccountDeletionResponse response = service.requestDeletion(userId, "127.0.0.1");
+        AccountDeletionResponse response = service.requestDeletion(userId, "127.0.0.1", "user-token");
 
         assertNotNull(response);
         assertEquals(existing.getId(), response.getId());
@@ -261,6 +265,7 @@ class AccountDeletionServiceTest {
 
         // Email NOT re-sent on idempotent retry
         verify(emailService, never()).sendAccountDeletionConfirmation(any(), any());
+        verify(supabaseAdminClient, never()).signOut(any(), any());
 
         // Stripe NOT called again on idempotent retry
         verifyNoInteractions(subscriptionService, stripeBillingService);
@@ -273,7 +278,7 @@ class AccountDeletionServiceTest {
         when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(false);
 
         assertThrows(RateLimitExceededException.class,
-            () -> service.requestDeletion(userId, "127.0.0.1"));
+            () -> service.requestDeletion(userId, "127.0.0.1", "user-token"));
 
         verify(userRepository, never()).save(any());
         verify(accountDeletionRepository, never()).save(any());
@@ -288,7 +293,7 @@ class AccountDeletionServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class,
-            () -> service.requestDeletion(userId, "127.0.0.1"));
+            () -> service.requestDeletion(userId, "127.0.0.1", "user-token"));
 
         verify(emailService, never()).sendAccountDeletionConfirmation(any(), any());
     }
@@ -299,7 +304,7 @@ class AccountDeletionServiceTest {
             .thenReturn(Optional.empty());
         when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(true);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(userSessionRepository.findByUserIdAndRevokedAtIsNullAndExpiresAtAfter(eq(userId), any()))
+        when(userSessionRepository.findAllByUserId(userId))
             .thenReturn(List.of());
         when(accountDeletionRepository.save(any(AccountDeletion.class))).thenAnswer(inv -> {
             AccountDeletion d = inv.getArgument(0);
@@ -315,7 +320,7 @@ class AccountDeletionServiceTest {
         doThrow(new RuntimeException("SMTP down"))
             .when(emailService).sendAccountDeletionConfirmation(any(), any());
 
-        AccountDeletionResponse response = service.requestDeletion(userId, "127.0.0.1");
+        AccountDeletionResponse response = service.requestDeletion(userId, "127.0.0.1", "user-token");
 
         assertNotNull(response);
         assertEquals(DeletionStatus.PENDING_PURGE, response.getStatus());

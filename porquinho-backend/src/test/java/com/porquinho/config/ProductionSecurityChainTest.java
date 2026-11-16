@@ -79,6 +79,12 @@ class ProductionSecurityChainTest {
             return token -> Jwt.withTokenValue(token)
                 .header("alg", "none")
                 .subject(("deleted-token".equals(token) ? DELETED_USER_ID : USER_ID).toString())
+                // "sid-<uuid>" tokens carry that Supabase session_id (stable across refreshes)
+                .claims(c -> {
+                    if (token.startsWith("sid-")) {
+                        c.put("session_id", token.substring(4, 40));
+                    }
+                })
                 .issuedAt(Instant.now())
                 .expiresAt(Instant.now().plusSeconds(3600))
                 .build();
@@ -150,6 +156,30 @@ class ProductionSecurityChainTest {
         // Mesmo usuário com outro token passa da autenticação (402: sem assinatura no banco)
         mockMvc.perform(get("/api/v1/budgets/2026-11").header("Authorization", "Bearer live-token"))
             .andExpect(status().isPaymentRequired());
+    }
+
+    @Test
+    void refreshedTokenOfRevokedSessionGets401() throws Exception {
+        // Retro Epic 1 A2 (S4): revoked_at on the row with the session_id rejects any token of that session
+        UUID revokedSid = UUID.randomUUID();
+        UUID liveSid = UUID.randomUUID();
+        jdbcTemplate.update("INSERT INTO users (id, email, auth_provider, failed_login_attempts) "
+            + "VALUES (?, 'sessoes@example.com', 'EMAIL', 0)", USER_ID);
+        try {
+            jdbcTemplate.update("INSERT INTO user_sessions (user_id, jwt_token_hash, session_id, expires_at, revoked_at) "
+                + "VALUES (?, 'login-hash', ?, now() + interval '7 days', now())", USER_ID, revokedSid);
+            jdbcTemplate.update("INSERT INTO user_sessions (user_id, jwt_token_hash, session_id, expires_at) "
+                + "VALUES (?, 'live-hash', ?, now() + interval '7 days')", USER_ID, liveSid);
+
+            mockMvc.perform(get("/api/v1/budgets/2026-11").header("Authorization", "Bearer sid-" + revokedSid + "-refreshed"))
+                .andExpect(status().isUnauthorized());
+            // Live session passes authentication (402: no subscription in the database)
+            mockMvc.perform(get("/api/v1/budgets/2026-11").header("Authorization", "Bearer sid-" + liveSid + "-refreshed"))
+                .andExpect(status().isPaymentRequired());
+        } finally {
+            jdbcTemplate.update("DELETE FROM user_sessions WHERE user_id = ?", USER_ID);
+            jdbcTemplate.update("DELETE FROM users WHERE id = ?", USER_ID);
+        }
     }
 
     @Test

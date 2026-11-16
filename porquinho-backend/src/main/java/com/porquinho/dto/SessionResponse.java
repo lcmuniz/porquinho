@@ -26,14 +26,14 @@ public class SessionResponse {
         this.isCurrent = isCurrent;
     }
 
-    public static SessionResponse fromEntity(UserSession session, String currentTokenHash) {
+    public static SessionResponse fromEntity(UserSession session, UUID currentSessionId, String currentTokenHash) {
         return new SessionResponse(
             session.getId(),
             session.getDeviceInfo(),
             session.getIpAddress(),
             session.getCreatedAt(),
             session.getLastActivity(),
-            session.getJwtTokenHash().equals(currentTokenHash)
+            session.isCurrent(currentSessionId, currentTokenHash)
         );
     }
 

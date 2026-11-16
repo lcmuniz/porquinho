@@ -20,9 +20,16 @@ public interface UserSessionRepository extends JpaRepository<UserSession, UUID> 
 
     Optional<UserSession> findByJwtTokenHash(String jwtTokenHash);
 
-    @Modifying
-    @Query("UPDATE UserSession s SET s.revokedAt = :now WHERE s.userId = :userId AND s.id <> :sessionId AND s.revokedAt IS NULL")
-    int revokeAllByUserIdExceptSessionId(@Param("userId") UUID userId, @Param("sessionId") UUID sessionId, @Param("now") OffsetDateTime now);
+    /** Non-revoked row of a Supabase session (the @Where filter hides revoked ones). */
+    Optional<UserSession> findFirstBySessionId(UUID sessionId);
+
+    /**
+     * Whether a Supabase session (JWT session_id claim) was revoked (retro Epic 1 A2).
+     * Native SQL: the @Where(revoked_at IS NULL) filter on UserSession would hide exactly the revoked rows.
+     */
+    @Query(value = "SELECT EXISTS (SELECT 1 FROM user_sessions WHERE session_id = :sessionId AND revoked_at IS NOT NULL)",
+        nativeQuery = true)
+    boolean isSessionIdRevoked(@Param("sessionId") UUID sessionId);
 
     @Modifying
     @Query("UPDATE UserSession s SET s.lastActivity = :now WHERE s.jwtTokenHash = :jwtTokenHash AND s.revokedAt IS NULL")

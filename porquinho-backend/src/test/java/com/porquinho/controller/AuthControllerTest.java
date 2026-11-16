@@ -80,6 +80,7 @@ class AuthControllerTest {
             .subject(sub.toString())
             .claim("email", email)
             .claim("user_metadata", java.util.Map.of("sub", "google-sub", "provider_id", "google-sub"))
+            .claim("session_id", UUID.randomUUID().toString())
             .issuedAt(java.time.Instant.now())
             .expiresAt(java.time.Instant.now().plusSeconds(3600))
             .build();
@@ -100,7 +101,9 @@ class AuthControllerTest {
         when(authService.registerOrGetUserFromGoogle(anyString(), anyString(), anyString(), anyString()))
             .thenReturn(new AuthService.UserRegistrationResult(newUser, true));
 
-        mockMvc.perform(post("/api/v1/auth/register/google").with(csrf()).with(as(sub, "test@example.com")))
+        var auth = jwtAuth(sub, "test@example.com");
+        mockMvc.perform(post("/api/v1/auth/register/google").with(csrf())
+                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(auth)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.email").value("test@example.com"))
                 .andExpect(jsonPath("$.authProvider").value("GOOGLE"))
@@ -108,6 +111,8 @@ class AuthControllerTest {
 
         // retro Epic 1 A3 (R1): Google sign-in is a login too
         verify(auditLogService).log(eq("user_login"), eq(sub), anyString());
+        // Session recorded with the request's JWT, which carries the session_id claim (retro Epic 1 A2)
+        verify(sessionService).createSession(eq(sub), eq(auth.getToken()), any(), any());
     }
 
     @Test
@@ -294,7 +299,9 @@ class AuthControllerTest {
         verify(accountLockService).resetFailedAttempts(eq("attacker@example.com"), anyString());
         verify(accountLockService, org.mockito.Mockito.never()).resetFailedAttempts(eq("victim@example.com"), anyString());
         verify(auditLogService).log(eq("user_login"), eq(attacker), anyString());
-        verify(sessionService).createSession(eq(attacker), eq("attacker-token"), any(), anyString());
+        verify(sessionService).createSession(eq(attacker),
+            org.mockito.ArgumentMatchers.<org.springframework.security.oauth2.jwt.Jwt>argThat(j -> attacker.toString().equals(j.getSubject())),
+            any(), anyString());
     }
 
     @Test
@@ -416,6 +423,21 @@ class AuthControllerTest {
             org.mockito.ArgumentMatchers.eq(sub),
             anyString(),
             anyString());
+        // Retro Epic 1 A2 (S5): the new password logs out the other sessions
+        verify(sessionService).revokeAllOtherSessions(sub, jwt);
+    }
+
+    @Test
+    void passwordResetCompletedStillOkWhenCurrentSessionIsUnknown() throws Exception {
+        UUID sub = UUID.randomUUID();
+        when(sessionService.revokeAllOtherSessions(eq(sub), any()))
+            .thenThrow(new com.porquinho.exception.ResourceNotFoundException("Current session not found"));
+
+        mockMvc.perform(post("/api/v1/auth/password-reset/completed")
+                .with(csrf())
+                .with(as(sub, "x@example.com"))
+                .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk());
     }
 
     @Test

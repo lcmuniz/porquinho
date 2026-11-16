@@ -9,6 +9,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.springframework.http.HttpMethod.DELETE;
+import static org.springframework.http.HttpMethod.POST;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.*;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.*;
 
@@ -84,5 +85,39 @@ class SupabaseAdminClientTest {
     void deleteUserShouldSkipWhenServiceRoleKeyIsBlank() {
         SupabaseAdminClient client = new SupabaseAdminClient("https://test.supabase.co", "", builder);
         assertDoesNotThrow(() -> client.deleteUser(UUID.randomUUID()));
+    }
+
+    @Test
+    void signOutShouldCallLogoutWithUserJwt() {
+        String projectUrl = "https://test.supabase.co";
+        server.expect(requestTo(projectUrl + "/auth/v1/logout?scope=others"))
+            .andExpect(method(POST))
+            .andExpect(header("apikey", "key"))
+            .andExpect(header("Authorization", "Bearer user-jwt"))
+            .andRespond(withNoContent());
+
+        new SupabaseAdminClient(projectUrl, "key", builder, false).signOut("user-jwt", "others");
+
+        server.verify();
+    }
+
+    @Test
+    void signOutShouldNotThrowWhenServerReturns500() {
+        String projectUrl = "https://test.supabase.co";
+        server.expect(requestTo(projectUrl + "/auth/v1/logout?scope=global"))
+            .andRespond(withServerError());
+
+        SupabaseAdminClient client = new SupabaseAdminClient(projectUrl, "key", builder, false);
+
+        assertDoesNotThrow(() -> client.signOut("user-jwt", "global"));
+        server.verify();
+    }
+
+    @Test
+    void signOutShouldSkipWhenNotConfigured() {
+        // No HTTP expectation set: any call would fail server.verify()
+        new SupabaseAdminClient("", "key", builder, false).signOut("user-jwt", "others");
+        new SupabaseAdminClient("https://test.supabase.co", "key", builder, false).signOut(null, "others");
+        server.verify();
     }
 }

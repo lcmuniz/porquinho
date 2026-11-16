@@ -13,6 +13,7 @@ import com.porquinho.service.AccountLockService;
 import com.porquinho.service.SessionService;
 import com.porquinho.exception.RateLimitExceededException;
 import com.porquinho.exception.AccountLockedException;
+import com.porquinho.exception.ResourceNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -90,13 +91,8 @@ public class AuthController {
         // Every Google sign-in lands here (the frontend never calls /login for it): audit it as a login (retro Epic 1 A3)
         auditLogService.log("user_login", result.getUser().getId(), ipAddress);
 
-        // Register session if JWT token is available (AC5: session tracking on login)
-        String authHeader = httpRequest.getHeader("Authorization");
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            String jwtToken = authHeader.substring(7);
-            String deviceInfo = httpRequest.getHeader("User-Agent");
-            sessionService.createSession(result.getUser().getId(), jwtToken, deviceInfo, ipAddress);
-        }
+        // Register session (AC5: session tracking on login), keyed by the JWT session_id claim (retro Epic 1 A2)
+        sessionService.createSession(result.getUser().getId(), jwt, httpRequest.getHeader("User-Agent"), ipAddress);
 
         // Convert to response DTO
         UserResponse response = UserResponse.fromEntity(result.getUser());
@@ -249,12 +245,10 @@ public class AuthController {
         // Reset failed login attempts on successful login
         accountLockService.resetFailedAttempts(user.getEmail(), ipAddress);
 
-        // Register session if JWT token is available
-        String authHeader = httpRequest.getHeader("Authorization");
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            String jwtToken = authHeader.substring(7);
-            String deviceInfo = httpRequest.getHeader("User-Agent");
-            sessionService.createSession(user.getId(), jwtToken, deviceInfo, ipAddress);
+        // Register session, keyed by the JWT session_id claim (retro Epic 1 A2)
+        Jwt jwt = resolveJwt(authentication);
+        if (jwt != null) {
+            sessionService.createSession(user.getId(), jwt, httpRequest.getHeader("User-Agent"), ipAddress);
         }
 
         return ResponseEntity.ok().build();
@@ -323,7 +317,18 @@ public class AuthController {
 
         // Log audit event with user_id (null only when unauthenticated, e.g. test profile)
         if (userId != null) {
-            auditLogService.log("password_reset_completed", java.util.UUID.fromString(userId), ipAddress, metadata);
+            UUID userUuid = UUID.fromString(userId);
+            auditLogService.log("password_reset_completed", userUuid, ipAddress, metadata);
+
+            // The new password logs out every other device, also in Supabase (retro Epic 1 A2, S5)
+            Jwt jwt = resolveJwt(authentication);
+            if (jwt != null) {
+                try {
+                    sessionService.revokeAllOtherSessions(userUuid, jwt);
+                } catch (ResourceNotFoundException e) {
+                    // token without session_id and not recorded as a session: nothing to tell "others" from; the reset stands
+                }
+            }
         }
 
         return ResponseEntity.ok().build();
@@ -345,11 +350,12 @@ public class AuthController {
             throw new RateLimitExceededException("Too many requests. Please wait 1 minute.");
         }
 
-        String jwtToken = extractJwtToken(httpRequest);
-        String currentTokenHash = jwtToken != null ? SessionService.hashToken(jwtToken) : "";
+        Jwt jwt = resolveJwt(authentication);
+        UUID currentSessionId = jwt != null ? SessionService.sessionId(jwt) : null;
+        String currentTokenHash = jwt != null ? SessionService.hashToken(jwt.getTokenValue()) : "";
         List<UserSession> sessions = sessionService.getActiveSessions(UUID.fromString(userId));
         List<SessionResponse> response = sessions.stream()
-            .map(s -> SessionResponse.fromEntity(s, currentTokenHash))
+            .map(s -> SessionResponse.fromEntity(s, currentSessionId, currentTokenHash))
             .toList();
 
         return ResponseEntity.ok(response);
@@ -394,10 +400,12 @@ public class AuthController {
             throw new RateLimitExceededException("Too many requests. Please wait 1 minute.");
         }
 
+        Jwt jwt = resolveJwt(authentication);
+        if (jwt == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
         UUID userUuid = UUID.fromString(userId);
-        String jwtToken = extractJwtToken(httpRequest);
-        String currentTokenHash = jwtToken != null ? SessionService.hashToken(jwtToken) : "";
-        int revokedCount = sessionService.revokeAllOtherSessions(userUuid, currentTokenHash);
+        int revokedCount = sessionService.revokeAllOtherSessions(userUuid, jwt);
 
         String ipAddress = getClientIpAddress(httpRequest);
         auditLogService.log("remote_logout_all", userUuid, ipAddress,
@@ -412,20 +420,6 @@ public class AuthController {
     @GetMapping("/health")
     public ResponseEntity<String> health() {
         return ResponseEntity.ok("Auth service is running");
-    }
-
-    /**
-     * Extract JWT token from the Authorization header.
-     *
-     * @param request HTTP request
-     * @return JWT token string, or null if not present
-     */
-    private String extractJwtToken(HttpServletRequest request) {
-        String authHeader = request.getHeader("Authorization");
-        if (authHeader != null && authHeader.startsWith("Bearer ")) {
-            return authHeader.substring(7);
-        }
-        return null;
     }
 
     /**

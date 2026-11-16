@@ -14,10 +14,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
-import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -53,13 +55,41 @@ class AuthControllerSessionTest {
     private SessionService sessionService;
 
     private UUID userId;
-    private TestingAuthenticationToken authToken;
+    private UUID supabaseSessionId;
+    private Jwt jwt;
+    private JwtAuthenticationToken authToken;
     private static final String TEST_JWT = "test-jwt-token";
 
     @BeforeEach
     void setUp() {
         userId = UUID.randomUUID();
-        authToken = new TestingAuthenticationToken(userId.toString(), null, "ROLE_USER");
+        supabaseSessionId = UUID.randomUUID();
+        jwt = Jwt.withTokenValue(TEST_JWT)
+            .header("alg", "ES256")
+            .subject(userId.toString())
+            .claim("session_id", supabaseSessionId.toString())
+            .issuedAt(Instant.now())
+            .expiresAt(Instant.now().plusSeconds(3600))
+            .build();
+        authToken = new JwtAuthenticationToken(jwt, List.of(), userId.toString());
+    }
+
+    @Test
+    void getActiveSessionsMarksCurrentBySessionIdAfterRefresh() throws Exception {
+        // Retro Epic 1 A2: the row was recorded with the login token; the request carries a refreshed one
+        when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(true);
+        UserSession current = new UserSession(userId, "login-token-hash", "Chrome", "1.1.1.1", OffsetDateTime.now().plusDays(7));
+        current.setId(UUID.randomUUID());
+        current.setSessionId(supabaseSessionId);
+        UserSession other = new UserSession(userId, "other-hash", "Firefox", "2.2.2.2", OffsetDateTime.now().plusDays(7));
+        other.setId(UUID.randomUUID());
+        other.setSessionId(UUID.randomUUID());
+        when(sessionService.getActiveSessions(userId)).thenReturn(List.of(current, other));
+
+        mockMvc.perform(get("/api/v1/auth/sessions").with(authentication(authToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].current").value(true))
+                .andExpect(jsonPath("$[1].current").value(false));
     }
 
     @Test
@@ -103,14 +133,14 @@ class AuthControllerSessionTest {
     @Test
     void revokeAllOtherSessionsShouldReturn204AndAuditLog() throws Exception {
         when(rateLimitService.allowRequest(anyString(), anyInt(), anyInt())).thenReturn(true);
-        when(sessionService.revokeAllOtherSessions(eq(userId), anyString())).thenReturn(3);
+        when(sessionService.revokeAllOtherSessions(userId, jwt)).thenReturn(3);
 
         mockMvc.perform(delete("/api/v1/auth/sessions")
                 .with(authentication(authToken))
                 .header("Authorization", "Bearer " + TEST_JWT))
                 .andExpect(status().isNoContent());
 
-        verify(sessionService).revokeAllOtherSessions(eq(userId), anyString());
+        verify(sessionService).revokeAllOtherSessions(userId, jwt);
         verify(auditLogService).log(eq("remote_logout_all"), eq(userId), anyString(), contains("3"));
     }
 

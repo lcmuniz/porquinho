@@ -10,7 +10,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.oauth2.jwt.Jwt;
 
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -30,6 +32,9 @@ class SessionServiceTest {
     @Mock
     private JwtBlacklistService jwtBlacklistService;
 
+    @Mock
+    private SupabaseAdminClient supabaseAdminClient;
+
     @InjectMocks
     private SessionService sessionService;
 
@@ -42,6 +47,22 @@ class SessionServiceTest {
         userId = UUID.randomUUID();
         jwtToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test";
         tokenHash = SessionService.hashToken(jwtToken);
+    }
+
+    private static Jwt jwt(String tokenValue, UUID sessionId) {
+        Jwt.Builder builder = Jwt.withTokenValue(tokenValue).header("alg", "ES256").subject("sub")
+            .issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(3600));
+        if (sessionId != null) {
+            builder.claim("session_id", sessionId.toString());
+        }
+        return builder.build();
+    }
+
+    private UserSession session(String hash, UUID supabaseSessionId) {
+        UserSession s = new UserSession(userId, hash, "Chrome", "1.2.3.4", OffsetDateTime.now().plusDays(7));
+        s.setId(UUID.randomUUID());
+        s.setSessionId(supabaseSessionId);
+        return s;
     }
 
     @Test
@@ -57,7 +78,8 @@ class SessionServiceTest {
         });
 
         // Act
-        UserSession result = sessionService.createSession(userId, jwtToken, deviceInfo, ipAddress);
+        UUID supabaseSessionId = UUID.randomUUID();
+        UserSession result = sessionService.createSession(userId, jwt(jwtToken, supabaseSessionId), deviceInfo, ipAddress);
 
         // Assert
         ArgumentCaptor<UserSession> captor = ArgumentCaptor.forClass(UserSession.class);
@@ -66,6 +88,7 @@ class SessionServiceTest {
 
         assertEquals(userId, saved.getUserId());
         assertEquals(tokenHash, saved.getJwtTokenHash());
+        assertEquals(supabaseSessionId, saved.getSessionId());
         assertEquals(deviceInfo, saved.getDeviceInfo());
         assertEquals(ipAddress, saved.getIpAddress());
         assertNotNull(saved.getExpiresAt());
@@ -132,31 +155,93 @@ class SessionServiceTest {
     }
 
     @Test
-    void revokeAllOtherSessionsShouldBlacklistOtherTokensAndCallRepository() {
-        // Arrange
-        UUID currentSessionId = UUID.randomUUID();
-        UUID otherSessionId = UUID.randomUUID();
+    void createSessionReusesLiveRowOfSameSupabaseSession() {
+        UUID supabaseSessionId = UUID.randomUUID();
+        UserSession existing = session("login-hash", supabaseSessionId);
+        when(userSessionRepository.findFirstBySessionId(supabaseSessionId)).thenReturn(Optional.of(existing));
 
-        UserSession currentSession = new UserSession(userId, tokenHash, "Chrome", "1.2.3.4", OffsetDateTime.now().plusDays(7));
-        currentSession.setId(currentSessionId);
+        UserSession result = sessionService.createSession(userId, jwt("refreshed-token", supabaseSessionId), "Chrome", "1.1.1.1");
 
-        String otherTokenHash = SessionService.hashToken("other-token-value");
-        UserSession otherSession = new UserSession(userId, otherTokenHash, "Firefox", "5.6.7.8", OffsetDateTime.now().plusDays(5));
-        otherSession.setId(otherSessionId);
+        assertSame(existing, result);
+        verify(userSessionRepository, never()).save(any());
+    }
 
-        when(userSessionRepository.findByJwtTokenHash(tokenHash)).thenReturn(Optional.of(currentSession));
-        when(userSessionRepository.findByUserIdAndRevokedAtIsNullAndExpiresAtAfter(eq(userId), any()))
-            .thenReturn(List.of(currentSession, otherSession));
-        when(userSessionRepository.revokeAllByUserIdExceptSessionId(eq(userId), eq(currentSessionId), any()))
-            .thenReturn(1);
+    @Test
+    void createSessionWithoutSessionIdClaimKeepsItNull() {
+        when(userSessionRepository.save(any(UserSession.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        // Act
-        int result = sessionService.revokeAllOtherSessions(userId, tokenHash);
+        UserSession result = sessionService.createSession(userId, jwt(jwtToken, null), "Chrome", "1.1.1.1");
 
-        // Assert
+        assertNull(result.getSessionId());
+        assertEquals(tokenHash, result.getJwtTokenHash());
+    }
+
+    @Test
+    void revokeAllOtherSessionsFindsCurrentBySessionIdAfterRefresh() {
+        // Retro Epic 1 A2: the current row holds the login token's hash; the request carries a refreshed token
+        UUID currentSid = UUID.randomUUID();
+        UserSession current = session(SessionService.hashToken("login-token"), currentSid);
+        UserSession other = session(SessionService.hashToken("other-token"), UUID.randomUUID());
+        UserSession legacy = session(SessionService.hashToken("legacy-token"), null);
+        when(userSessionRepository.findAllByUserId(userId)).thenReturn(List.of(current, other, legacy));
+
+        Jwt refreshed = jwt("refreshed-token", currentSid);
+        int result = sessionService.revokeAllOtherSessions(userId, refreshed);
+
+        assertEquals(2, result);
+        assertNull(current.getRevokedAt());
+        assertNotNull(other.getRevokedAt());
+        assertNotNull(legacy.getRevokedAt());
+        verify(jwtBlacklistService).blacklistToken(eq(legacy.getJwtTokenHash()), any(OffsetDateTime.class));
+        verify(jwtBlacklistService, never()).blacklistToken(eq(current.getJwtTokenHash()), any(OffsetDateTime.class));
+        verify(userSessionRepository).saveAll(List.of(other, legacy));
+        verify(supabaseAdminClient).signOut("refreshed-token", "others");
+    }
+
+    @Test
+    void revokeAllOtherSessionsKeepsLegacyRowOfCurrentToken() {
+        // Row recorded before V41 (no session_id) for the very token of the request: it is the current one
+        UserSession currentLegacy = session(tokenHash, null);
+        UserSession other = session(SessionService.hashToken("other-token"), UUID.randomUUID());
+        when(userSessionRepository.findAllByUserId(userId)).thenReturn(List.of(currentLegacy, other));
+
+        int result = sessionService.revokeAllOtherSessions(userId, jwt(jwtToken, UUID.randomUUID()));
+
         assertEquals(1, result);
-        verify(jwtBlacklistService).blacklistToken(eq(otherTokenHash), any(OffsetDateTime.class));
+        assertNull(currentLegacy.getRevokedAt());
+        assertNotNull(other.getRevokedAt());
+    }
+
+    @Test
+    void revokeAllOtherSessionsWithoutSessionIdFallsBackToHash() {
+        UserSession current = session(tokenHash, null);
+        UserSession other = session(SessionService.hashToken("other-token"), null);
+        when(userSessionRepository.findAllByUserId(userId)).thenReturn(List.of(current, other));
+
+        int result = sessionService.revokeAllOtherSessions(userId, jwt(jwtToken, null));
+
+        assertEquals(1, result);
+        assertNull(current.getRevokedAt());
+        verify(jwtBlacklistService).blacklistToken(eq(other.getJwtTokenHash()), any(OffsetDateTime.class));
         verify(jwtBlacklistService, never()).blacklistToken(eq(tokenHash), any(OffsetDateTime.class));
+    }
+
+    @Test
+    void revokeAllOtherSessionsWithoutSessionIdAndUnknownTokenIs404() {
+        when(userSessionRepository.findAllByUserId(userId)).thenReturn(List.of(session("other-hash", null)));
+
+        assertThrows(ResourceNotFoundException.class, () ->
+            sessionService.revokeAllOtherSessions(userId, jwt(jwtToken, null)));
+        verify(supabaseAdminClient, never()).signOut(any(), any());
+    }
+
+    @Test
+    void sessionIdIgnoresMissingOrInvalidClaim() {
+        UUID sid = UUID.randomUUID();
+        assertEquals(sid, SessionService.sessionId(jwt("t", sid)));
+        assertNull(SessionService.sessionId(jwt("t", null)));
+        Jwt invalid = Jwt.withTokenValue("t").header("alg", "ES256").claim("session_id", "not-a-uuid").build();
+        assertNull(SessionService.sessionId(invalid));
     }
 
     @Test

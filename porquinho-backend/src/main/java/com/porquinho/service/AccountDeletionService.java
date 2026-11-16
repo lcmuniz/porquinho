@@ -198,8 +198,13 @@ public class AccountDeletionService {
      * Public entry point. Orchestrates the two phases so the email send (slow I/O) does
      * not hold a database transaction open during SMTP wait.
      */
-    public AccountDeletionResponse requestDeletion(UUID userId, String ipAddress) {
+    public AccountDeletionResponse requestDeletion(UUID userId, String ipAddress, String accessToken) {
         DeletionContext context = self.executeDeletionTransaction(userId, ipAddress);
+
+        // Post-commit, only for a new deletion: kill every Supabase refresh token (retro Epic 1 A2, S6). Best-effort.
+        if (context.newlyCreated()) {
+            supabaseAdminClient.signOut(accessToken, "global");
+        }
 
         // Phase 2: post-commit, best-effort email notification.
         // Skip on idempotent return: the email was already sent on the original call.
@@ -250,11 +255,11 @@ public class AccountDeletionService {
 
         String email = user.getEmail();
 
-        // Capture active sessions BEFORE soft-deleting the user.
-        List<UserSession> activeSessions = userSessionRepository
-            .findByUserIdAndRevokedAtIsNullAndExpiresAtAfter(userId, OffsetDateTime.now());
+        // Capture every non-revoked session BEFORE soft-deleting the user, also past expires_at: the Supabase session
+        // may still be refreshing, and revoked_at on its session_id is what JwtAuthenticationConverter checks.
+        List<UserSession> activeSessions = userSessionRepository.findAllByUserId(userId);
 
-        // Revoke each session and blacklist its JWT.
+        // Revoke each session (session_id) and blacklist its JWT hash (rows without session_id).
         OffsetDateTime now = OffsetDateTime.now();
         for (UserSession session : activeSessions) {
             session.setRevokedAt(now);

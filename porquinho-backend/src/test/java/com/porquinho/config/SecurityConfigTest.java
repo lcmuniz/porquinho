@@ -74,7 +74,7 @@ class SecurityConfigTest {
         // cross-origin frontend reads no X-Export-Count and shows "0 transações" (Story 9.1)
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/dashboard/layer3/export");
         request.addHeader("Origin", "http://localhost:5173");
-        CorsConfiguration config = new SecurityConfig(null, null, null)
+        CorsConfiguration config = new SecurityConfig(null, null, null, null)
             .corsConfigurationSource(List.of("http://localhost:5173")).getCorsConfiguration(request);
 
         assertThat(config).isNotNull();

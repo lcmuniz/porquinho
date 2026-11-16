@@ -54,7 +54,7 @@ public class AccountDeletionController {
         }
         String ipAddress = getClientIpAddress(request);
 
-        AccountDeletionResponse response = accountDeletionService.requestDeletion(userId, ipAddress);
+        AccountDeletionResponse response = accountDeletionService.requestDeletion(userId, ipAddress, jwt.getTokenValue());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 

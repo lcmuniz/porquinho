@@ -102,4 +102,35 @@ public class SupabaseAdminClient {
                 userId, e.getClass().getSimpleName(), e.getMessage());
         }
     }
+
+    /**
+     * Signs the user out in Supabase Auth with their own access token (retro Epic 1 A2): kills the refresh tokens of
+     * the other sessions ({@code scope=others}) or of all of them ({@code scope=global}). Access tokens already issued
+     * stay valid until they expire; the session_id check in JwtAuthenticationConverter covers that window.
+     *
+     * Best-effort: never throws. Logs warning on any failure. Never logs the token nor the key.
+     *
+     * @param accessToken the user's Supabase JWT (the request's bearer token)
+     * @param scope "others" or "global"
+     */
+    public void signOut(String accessToken, String scope) {
+        if (projectUrl == null || projectUrl.isBlank()
+                || serviceRoleKey == null || serviceRoleKey.isBlank()
+                || accessToken == null || accessToken.isBlank()) {
+            log.warn("Supabase not configured or no access token - skipping Supabase logout (scope={})", scope);
+            return;
+        }
+
+        try {
+            restClient.post()
+                .uri(projectUrl + "/auth/v1/logout?scope={scope}", scope)
+                .header("apikey", serviceRoleKey)
+                .header("Authorization", "Bearer " + accessToken)
+                .retrieve()
+                .toBodilessEntity();
+            log.info("Supabase logout done (scope={})", scope);
+        } catch (Exception e) {
+            log.warn("Supabase logout failed (scope={}): {} - {}", scope, e.getClass().getSimpleName(), e.getMessage());
+        }
+    }
 }
