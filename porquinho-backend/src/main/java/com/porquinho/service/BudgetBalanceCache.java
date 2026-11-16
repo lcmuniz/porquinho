@@ -63,7 +63,7 @@ public class BudgetBalanceCache {
 
     /** Clears every month of the user after the commit (right away without a transaction). */
     public void evict(UUID userId) {
-        SubscriptionService.afterCommit(() -> {
+        AfterCommit.run(() -> {
             try {
                 redisTemplate.delete(KEY_PREFIX + userId);
             } catch (RuntimeException e) {

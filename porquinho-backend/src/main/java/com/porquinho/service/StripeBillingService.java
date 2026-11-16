@@ -301,21 +301,14 @@ public class StripeBillingService {
      * @throws PaymentProviderUnavailableException Stripe not configured or the call failed
      */
     public OffsetDateTime cancelAtPeriodEnd(String stripeSubscriptionId) {
-        if (isBlank(stripeSubscriptionId)) {
-            throw new PaymentProviderUnavailableException("No Stripe subscription id to cancel");
-        }
-        if (client == null) {
-            log.warn("STRIPE_SECRET_KEY not configured - cannot cancel Stripe subscription {}", stripeSubscriptionId);
-            throw new PaymentProviderUnavailableException("STRIPE_SECRET_KEY not configured");
-        }
+        requireSubscriptionAndClient(stripeSubscriptionId, "cancel");
         try {
             Subscription updated = client.subscriptions().update(stripeSubscriptionId,
                 SubscriptionUpdateParams.builder().setCancelAtPeriodEnd(true).build());
             log.info("Stripe subscription {} scheduled to cancel at period end", stripeSubscriptionId);
             return toOffsetDateTime(periodEnd(updated));
         } catch (StripeException e) {
-            log.warn("Failed to schedule cancel of Stripe subscription {}: {}", stripeSubscriptionId, e.getMessage());
-            throw new PaymentProviderUnavailableException("Stripe unavailable", e);
+            throw unavailable("Failed to schedule cancel of Stripe subscription {}: {}", stripeSubscriptionId, e);
         }
     }
 
@@ -328,20 +321,13 @@ public class StripeBillingService {
      * @throws PaymentProviderUnavailableException Stripe not configured or the call failed
      */
     public String cancelImmediately(String stripeSubscriptionId) {
-        if (isBlank(stripeSubscriptionId)) {
-            throw new PaymentProviderUnavailableException("No Stripe subscription id to cancel");
-        }
-        if (client == null) {
-            log.warn("STRIPE_SECRET_KEY not configured - cannot cancel Stripe subscription {}", stripeSubscriptionId);
-            throw new PaymentProviderUnavailableException("STRIPE_SECRET_KEY not configured");
-        }
+        requireSubscriptionAndClient(stripeSubscriptionId, "cancel");
         try {
             Subscription cancelled = client.subscriptions().cancel(stripeSubscriptionId);
             log.info("Stripe subscription {} cancelled immediately", stripeSubscriptionId);
             return cancelled == null ? null : cancelled.getLatestInvoice();
         } catch (StripeException e) {
-            log.warn("Failed to cancel Stripe subscription {} immediately: {}", stripeSubscriptionId, e.getMessage());
-            throw new PaymentProviderUnavailableException("Stripe unavailable", e);
+            throw unavailable("Failed to cancel Stripe subscription {} immediately: {}", stripeSubscriptionId, e);
         }
     }
 
@@ -377,13 +363,7 @@ public class StripeBillingService {
      * @throws PaymentProviderUnavailableException Stripe not configured or the call failed
      */
     public OffsetDateTime resumeSubscription(String stripeSubscriptionId) {
-        if (isBlank(stripeSubscriptionId)) {
-            throw new PaymentProviderUnavailableException("No Stripe subscription id to resume");
-        }
-        if (client == null) {
-            log.warn("STRIPE_SECRET_KEY not configured - cannot resume Stripe subscription {}", stripeSubscriptionId);
-            throw new PaymentProviderUnavailableException("STRIPE_SECRET_KEY not configured");
-        }
+        requireSubscriptionAndClient(stripeSubscriptionId, "resume");
         try {
             Subscription updated = client.subscriptions().update(stripeSubscriptionId,
                 SubscriptionUpdateParams.builder().setCancelAtPeriodEnd(false).build());
@@ -406,9 +386,26 @@ public class StripeBillingService {
                 stripeSubscriptionId, status, e.getMessage());
             throw new PaymentProviderUnavailableException("Stripe refused resume", e);
         } catch (StripeException e) {
-            log.warn("Failed to resume Stripe subscription {}: {}", stripeSubscriptionId, e.getMessage());
-            throw new PaymentProviderUnavailableException("Stripe unavailable", e);
+            throw unavailable("Failed to resume Stripe subscription {}: {}", stripeSubscriptionId, e);
         }
+    }
+
+    // Guard of the synchronous (NOT best-effort) calls: no id or no Stripe key -> 503, nothing sent
+    private void requireSubscriptionAndClient(String stripeSubscriptionId, String verb) {
+        if (isBlank(stripeSubscriptionId)) {
+            throw new PaymentProviderUnavailableException("No Stripe subscription id to " + verb);
+        }
+        if (client == null) {
+            log.warn("STRIPE_SECRET_KEY not configured - cannot {} Stripe subscription {}", verb, stripeSubscriptionId);
+            throw new PaymentProviderUnavailableException("STRIPE_SECRET_KEY not configured");
+        }
+    }
+
+    // A failed synchronous call: logged at warn, mapped to 503 (the caller leaves the local row untouched)
+    private static PaymentProviderUnavailableException unavailable(String logFormat, String stripeSubscriptionId,
+                                                                   StripeException e) {
+        log.warn(logFormat, stripeSubscriptionId, e.getMessage());
+        return new PaymentProviderUnavailableException("Stripe unavailable", e);
     }
 
     static SubscriptionDetails toDetails(Subscription subscription) {

@@ -99,7 +99,7 @@ public class DashboardCache {
     }
 
     private void evict(UUID userId, List<Layer> layers) {
-        SubscriptionService.afterCommit(() -> {
+        AfterCommit.run(() -> {
             try {
                 redis.delete(layers.stream().map(l -> l.key(userId)).toList());
             } catch (RuntimeException e) {

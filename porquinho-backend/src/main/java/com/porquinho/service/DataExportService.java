@@ -226,7 +226,7 @@ public class DataExportService {
 
         UUID exportId = export.getId();
         char[] secret = password.toCharArray();
-        SubscriptionService.afterCommit(() -> self.processExport(exportId, secret, ipAddress));
+        AfterCommit.run(() -> self.processExport(exportId, secret, ipAddress));
 
         return DataExportResponse.fromEntity(export);
     }

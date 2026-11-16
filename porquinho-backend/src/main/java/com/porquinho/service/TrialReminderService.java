@@ -168,7 +168,7 @@ public class TrialReminderService {
 
         long daysLeft = daysLeft(subscription.getTrialEndDate(), now);
         OffsetDateTime trialEnd = subscription.getTrialEndDate();
-        SubscriptionService.afterCommit(() -> {
+        AfterCommit.run(() -> {
             try {
                 emailService.sendTrialReminder(email.get(), daysLeft, trialEnd, subscribeUrl);
             } catch (RuntimeException e) {

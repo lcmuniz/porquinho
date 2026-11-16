@@ -6,11 +6,11 @@ import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.service.StripeBillingService;
 import com.porquinho.service.StripeBillingService.SubscriptionDetails;
 import com.porquinho.service.StripeBillingService.WebhookEvent;
-import com.porquinho.service.SubscriptionService;
-import com.porquinho.service.SubscriptionService.FailureOutcome;
-import com.porquinho.service.SubscriptionService.InvoicePayment;
-import com.porquinho.service.SubscriptionService.PaymentFailure;
-import com.porquinho.service.SubscriptionService.PaymentOutcome;
+import com.porquinho.service.SubscriptionWebhookService;
+import com.porquinho.service.SubscriptionWebhookService.FailureOutcome;
+import com.porquinho.service.SubscriptionWebhookService.InvoicePayment;
+import com.porquinho.service.SubscriptionWebhookService.PaymentFailure;
+import com.porquinho.service.SubscriptionWebhookService.PaymentOutcome;
 import com.stripe.param.RefundCreateParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,12 +58,12 @@ public class StripeWebhookController {
     private static final Set<String> SETTLED_PAYMENT_STATUSES = Set.of("paid", "no_payment_required");
 
     private final StripeBillingService stripeBillingService;
-    private final SubscriptionService subscriptionService;
+    private final SubscriptionWebhookService subscriptionWebhookService;
 
     public StripeWebhookController(StripeBillingService stripeBillingService,
-                                   SubscriptionService subscriptionService) {
+                                   SubscriptionWebhookService subscriptionWebhookService) {
         this.stripeBillingService = stripeBillingService;
-        this.subscriptionService = subscriptionService;
+        this.subscriptionWebhookService = subscriptionWebhookService;
     }
 
     @PostMapping(path = "/api/v1/webhooks/stripe")
@@ -103,7 +103,7 @@ public class StripeWebhookController {
             ? text(latestInvoice, "id")
             : text(event.object(), "latest_invoice");
         // Unknown id / replay: service logs and changes nothing; always 200 so Stripe stops retrying
-        if (subscriptionService.expireByStripeSubscriptionId(stripeSubscriptionId, latestInvoiceId)) {
+        if (subscriptionWebhookService.expireByStripeSubscriptionId(stripeSubscriptionId, latestInvoiceId)) {
             log.info("Stripe subscription {} ended; local subscription expired or suspended (event {})",
                 stripeSubscriptionId, event.id());
         }
@@ -133,7 +133,7 @@ public class StripeWebhookController {
             text(invoice, "currency"),
             epochSeconds(path(invoice, "status_transitions"), "paid_at"),
             epochSeconds(path(path(invoice, "lines", "data"), 0, "period"), "end"));
-        PaymentOutcome outcome = subscriptionService.recordPayment(payment);
+        PaymentOutcome outcome = subscriptionWebhookService.recordPayment(payment);
 
         if (outcome == PaymentOutcome.UNKNOWN_SUBSCRIPTION) {
             String billingReason = text(invoice, "billing_reason");
@@ -182,7 +182,7 @@ public class StripeWebhookController {
             text(invoice, "hosted_invoice_url"),
             // null on the last attempt: Stripe will not retry and cancels the subscription (suspension)
             text(invoice, "next_payment_attempt") != null);
-        FailureOutcome outcome = subscriptionService.recordPaymentFailure(failure);
+        FailureOutcome outcome = subscriptionWebhookService.recordPaymentFailure(failure);
 
         if (outcome == FailureOutcome.UNKNOWN_SUBSCRIPTION) {
             // Typically the first invoice declined inside Checkout: the subscription was never activated
@@ -234,7 +234,7 @@ public class StripeWebhookController {
         String customerId = text(session, "customer") != null ? text(session, "customer") : details.customerId();
 
         try {
-            subscriptionService.activateMonthly(userId, customerId, stripeSubscriptionId,
+            subscriptionWebhookService.activateMonthly(userId, customerId, stripeSubscriptionId,
                 details.paymentMethodId(), details.currentPeriodEnd());
             log.info("Monthly plan activated for user {} (event {})", userId, event.id());
         } catch (ResourceNotFoundException e) {

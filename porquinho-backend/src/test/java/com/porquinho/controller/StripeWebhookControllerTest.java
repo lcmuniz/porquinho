@@ -8,11 +8,11 @@ import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.service.StripeBillingService;
 import com.porquinho.service.StripeBillingService.SubscriptionDetails;
 import com.porquinho.service.StripeBillingService.WebhookEvent;
-import com.porquinho.service.SubscriptionService;
-import com.porquinho.service.SubscriptionService.FailureOutcome;
-import com.porquinho.service.SubscriptionService.InvoicePayment;
-import com.porquinho.service.SubscriptionService.PaymentFailure;
-import com.porquinho.service.SubscriptionService.PaymentOutcome;
+import com.porquinho.service.SubscriptionWebhookService;
+import com.porquinho.service.SubscriptionWebhookService.FailureOutcome;
+import com.porquinho.service.SubscriptionWebhookService.InvoicePayment;
+import com.porquinho.service.SubscriptionWebhookService.PaymentFailure;
+import com.porquinho.service.SubscriptionWebhookService.PaymentOutcome;
 import com.stripe.param.RefundCreateParams;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,7 +52,7 @@ class StripeWebhookControllerTest {
     private StripeBillingService stripeBillingService;
 
     @MockBean
-    private SubscriptionService subscriptionService;
+    private SubscriptionWebhookService subscriptionWebhookService;
 
     private WebhookEvent checkoutCompleted(String paymentStatus) throws Exception {
         return new WebhookEvent("evt_1", "checkout.session.completed", JSON.readTree(
@@ -68,7 +68,7 @@ class StripeWebhookControllerTest {
         mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content("{}").header("Stripe-Signature", "t=1,v1=bad"))
             .andExpect(status().isBadRequest());
 
-        verifyNoInteractions(subscriptionService);
+        verifyNoInteractions(subscriptionWebhookService);
     }
 
     @Test
@@ -81,7 +81,7 @@ class StripeWebhookControllerTest {
         mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content("{}").header("Stripe-Signature", "sig"))
             .andExpect(status().isOk());
 
-        verify(subscriptionService).activateMonthly(USER_ID, "cus_1", "sub_1", "pm_1", periodEnd);
+        verify(subscriptionWebhookService).activateMonthly(USER_ID, "cus_1", "sub_1", "pm_1", periodEnd);
     }
 
     @Test
@@ -94,7 +94,7 @@ class StripeWebhookControllerTest {
         mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content("{}").header("Stripe-Signature", "sig"))
             .andExpect(status().isOk());
 
-        verify(subscriptionService).activateMonthly(USER_ID, "cus_1", "sub_1", "pm_1", trialEnd);
+        verify(subscriptionWebhookService).activateMonthly(USER_ID, "cus_1", "sub_1", "pm_1", trialEnd);
     }
 
     @Test
@@ -104,7 +104,7 @@ class StripeWebhookControllerTest {
         mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content("{}").header("Stripe-Signature", "sig"))
             .andExpect(status().isOk());
 
-        verifyNoInteractions(subscriptionService);
+        verifyNoInteractions(subscriptionWebhookService);
     }
 
     @Test
@@ -115,7 +115,7 @@ class StripeWebhookControllerTest {
         mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content("{}").header("Stripe-Signature", "sig"))
             .andExpect(status().isOk());
 
-        verifyNoInteractions(subscriptionService);
+        verifyNoInteractions(subscriptionWebhookService);
         verify(stripeBillingService, never()).retrieveSubscription(anyString());
     }
 
@@ -127,7 +127,7 @@ class StripeWebhookControllerTest {
         mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content("{}").header("Stripe-Signature", "sig"))
             .andExpect(status().isServiceUnavailable());
 
-        verifyNoInteractions(subscriptionService);
+        verifyNoInteractions(subscriptionWebhookService);
     }
 
     private WebhookEvent session(String json) throws Exception {
@@ -145,7 +145,7 @@ class StripeWebhookControllerTest {
         when(stripeBillingService.retrieveSubscription("sub_1"))
             .thenReturn(new SubscriptionDetails("cus_1", "pm_1", OffsetDateTime.parse("2026-11-30T12:00:00Z"), "active"));
         doThrow(new ResourceNotFoundException("Subscription not found"))
-            .when(subscriptionService).activateMonthly(any(), any(), any(), any(), any());
+            .when(subscriptionWebhookService).activateMonthly(any(), any(), any(), any(), any());
 
         postWebhook();
 
@@ -160,7 +160,7 @@ class StripeWebhookControllerTest {
 
         postWebhook();
 
-        verifyNoInteractions(subscriptionService);
+        verifyNoInteractions(subscriptionWebhookService);
         verify(stripeBillingService, never()).retrieveSubscription(anyString());
     }
 
@@ -171,7 +171,7 @@ class StripeWebhookControllerTest {
 
         postWebhook();
 
-        verifyNoInteractions(subscriptionService);
+        verifyNoInteractions(subscriptionWebhookService);
         verify(stripeBillingService, never()).retrieveSubscription(anyString());
     }
 
@@ -184,7 +184,7 @@ class StripeWebhookControllerTest {
 
         postWebhook();
 
-        verify(subscriptionService).activateMonthly(USER_ID, "cus_1", "sub_1", "pm_1", periodEnd);
+        verify(subscriptionWebhookService).activateMonthly(USER_ID, "cus_1", "sub_1", "pm_1", periodEnd);
     }
 
     // ---- Story 2.4 ----
@@ -193,11 +193,11 @@ class StripeWebhookControllerTest {
     void subscriptionDeletedExpiresLocalSubscription() throws Exception {
         when(stripeBillingService.verifyWebhook(anyString(), anyString())).thenReturn(new WebhookEvent(
             "evt_4", "customer.subscription.deleted", JSON.readTree("{\"id\":\"sub_1\",\"object\":\"subscription\"}")));
-        when(subscriptionService.expireByStripeSubscriptionId("sub_1", null)).thenReturn(true);
+        when(subscriptionWebhookService.expireByStripeSubscriptionId("sub_1", null)).thenReturn(true);
 
         postWebhook();
 
-        verify(subscriptionService).expireByStripeSubscriptionId("sub_1", null);
+        verify(subscriptionWebhookService).expireByStripeSubscriptionId("sub_1", null);
         verify(stripeBillingService, never()).retrieveSubscription(anyString());
     }
 
@@ -205,11 +205,11 @@ class StripeWebhookControllerTest {
     void subscriptionDeletedForUnknownIdIsAcknowledgedWith200() throws Exception {
         when(stripeBillingService.verifyWebhook(anyString(), anyString())).thenReturn(new WebhookEvent(
             "evt_5", "customer.subscription.deleted", JSON.readTree("{\"id\":\"sub_unknown\"}")));
-        when(subscriptionService.expireByStripeSubscriptionId("sub_unknown", null)).thenReturn(false);
+        when(subscriptionWebhookService.expireByStripeSubscriptionId("sub_unknown", null)).thenReturn(false);
 
         postWebhook();
 
-        verify(subscriptionService).expireByStripeSubscriptionId("sub_unknown", null);
+        verify(subscriptionWebhookService).expireByStripeSubscriptionId("sub_unknown", null);
     }
 
     @Test
@@ -220,7 +220,7 @@ class StripeWebhookControllerTest {
 
         postWebhook();
 
-        verify(subscriptionService).expireByStripeSubscriptionId("sub_1", "in_open");
+        verify(subscriptionWebhookService).expireByStripeSubscriptionId("sub_1", "in_open");
     }
 
     @Test
@@ -231,7 +231,7 @@ class StripeWebhookControllerTest {
 
         postWebhook();
 
-        verify(subscriptionService).expireByStripeSubscriptionId("sub_1", "in_open");
+        verify(subscriptionWebhookService).expireByStripeSubscriptionId("sub_1", "in_open");
     }
 
     @Test
@@ -241,7 +241,7 @@ class StripeWebhookControllerTest {
 
         postWebhook();
 
-        verifyNoInteractions(subscriptionService);
+        verifyNoInteractions(subscriptionWebhookService);
     }
 
     // ---- Story 2.6: invoice.paid ----
@@ -274,11 +274,11 @@ class StripeWebhookControllerTest {
     @Test
     void invoicePaidRecordsRenewalPayment() throws Exception {
         givenInvoicePaid(invoiceJson("subscription_cycle", 1990));
-        when(subscriptionService.recordPayment(EXPECTED_PAYMENT)).thenReturn(PaymentOutcome.RECORDED);
+        when(subscriptionWebhookService.recordPayment(EXPECTED_PAYMENT)).thenReturn(PaymentOutcome.RECORDED);
 
         postWebhook();
 
-        verify(subscriptionService).recordPayment(EXPECTED_PAYMENT);
+        verify(subscriptionWebhookService).recordPayment(EXPECTED_PAYMENT);
         // The period is fetched by the service (with fallback), not by the controller
         verify(stripeBillingService, never()).retrieveSubscription(anyString());
     }
@@ -289,11 +289,11 @@ class StripeWebhookControllerTest {
             + "\"billing_reason\":\"subscription_cycle\","
             + "\"status_transitions\":{\"paid_at\":" + PAID_AT.toEpochSecond() + "},"
             + "\"lines\":{\"data\":[{\"period\":{\"end\":" + PERIOD_END.toEpochSecond() + "}}]}}");
-        when(subscriptionService.recordPayment(EXPECTED_PAYMENT)).thenReturn(PaymentOutcome.RECORDED);
+        when(subscriptionWebhookService.recordPayment(EXPECTED_PAYMENT)).thenReturn(PaymentOutcome.RECORDED);
 
         postWebhook();
 
-        verify(subscriptionService).recordPayment(EXPECTED_PAYMENT);
+        verify(subscriptionWebhookService).recordPayment(EXPECTED_PAYMENT);
     }
 
     @Test
@@ -301,11 +301,11 @@ class StripeWebhookControllerTest {
         givenInvoicePaid("{\"id\":\"in_1\",\"subscription\":\"sub_1\",\"amount_paid\":1990,\"currency\":\"brl\","
             + "\"status_transitions\":{\"paid_at\":null},\"lines\":{\"data\":[]}}");
         InvoicePayment expected = new InvoicePayment("in_1", "sub_1", 1990, "brl", null, null);
-        when(subscriptionService.recordPayment(expected)).thenReturn(PaymentOutcome.RECORDED);
+        when(subscriptionWebhookService.recordPayment(expected)).thenReturn(PaymentOutcome.RECORDED);
 
         postWebhook();
 
-        verify(subscriptionService).recordPayment(expected);
+        verify(subscriptionWebhookService).recordPayment(expected);
     }
 
     @Test
@@ -315,7 +315,7 @@ class StripeWebhookControllerTest {
 
         postWebhook();
 
-        verifyNoInteractions(subscriptionService);
+        verifyNoInteractions(subscriptionWebhookService);
     }
 
     @Test
@@ -324,7 +324,7 @@ class StripeWebhookControllerTest {
 
         postWebhook();
 
-        verifyNoInteractions(subscriptionService);
+        verifyNoInteractions(subscriptionWebhookService);
     }
 
     @Test
@@ -333,23 +333,23 @@ class StripeWebhookControllerTest {
 
         postWebhook();
 
-        verifyNoInteractions(subscriptionService);
+        verifyNoInteractions(subscriptionWebhookService);
     }
 
     @Test
     void replayedInvoiceIsAcknowledgedWith200() throws Exception {
         givenInvoicePaid(invoiceJson("subscription_cycle", 1990));
-        when(subscriptionService.recordPayment(EXPECTED_PAYMENT)).thenReturn(PaymentOutcome.DUPLICATE);
+        when(subscriptionWebhookService.recordPayment(EXPECTED_PAYMENT)).thenReturn(PaymentOutcome.DUPLICATE);
 
         postWebhook();
 
-        verify(subscriptionService).recordPayment(EXPECTED_PAYMENT);
+        verify(subscriptionWebhookService).recordPayment(EXPECTED_PAYMENT);
     }
 
     @Test
     void firstInvoiceBeforeCheckoutReturns503SoStripeRetries() throws Exception {
         givenInvoicePaid(invoiceJson("subscription_create", 1990));
-        when(subscriptionService.recordPayment(EXPECTED_PAYMENT)).thenReturn(PaymentOutcome.UNKNOWN_SUBSCRIPTION);
+        when(subscriptionWebhookService.recordPayment(EXPECTED_PAYMENT)).thenReturn(PaymentOutcome.UNKNOWN_SUBSCRIPTION);
         when(stripeBillingService.retrieveSubscription("sub_1"))
             .thenReturn(new SubscriptionDetails("cus_1", "pm_1", PERIOD_END, "active"));
 
@@ -360,21 +360,21 @@ class StripeWebhookControllerTest {
     void firstInvoiceOfCancelledDuplicateIsAcknowledgedWith200() throws Exception {
         // Retro Epic 2 F2: the duplicate Checkout's subscription was cancelled on checkout.session.completed
         givenInvoicePaid(invoiceJson("subscription_create", 1990));
-        when(subscriptionService.recordPayment(EXPECTED_PAYMENT)).thenReturn(PaymentOutcome.UNKNOWN_SUBSCRIPTION);
+        when(subscriptionWebhookService.recordPayment(EXPECTED_PAYMENT)).thenReturn(PaymentOutcome.UNKNOWN_SUBSCRIPTION);
         when(stripeBillingService.retrieveSubscription("sub_1"))
             .thenReturn(new SubscriptionDetails("cus_1", "pm_1", PERIOD_END, "canceled"));
 
         postWebhook();
 
-        verify(subscriptionService).recordPayment(EXPECTED_PAYMENT);
-        verify(subscriptionService, never()).activateMonthly(any(), any(), any(), any(), any());
+        verify(subscriptionWebhookService).recordPayment(EXPECTED_PAYMENT);
+        verify(subscriptionWebhookService, never()).activateMonthly(any(), any(), any(), any(), any());
         verify(stripeBillingService, never()).cancelAndRefund(anyString(), any());
     }
 
     @Test
     void stripeDownWhileCheckingUnknownFirstInvoiceReturns503() throws Exception {
         givenInvoicePaid(invoiceJson("subscription_create", 1990));
-        when(subscriptionService.recordPayment(EXPECTED_PAYMENT)).thenReturn(PaymentOutcome.UNKNOWN_SUBSCRIPTION);
+        when(subscriptionWebhookService.recordPayment(EXPECTED_PAYMENT)).thenReturn(PaymentOutcome.UNKNOWN_SUBSCRIPTION);
         when(stripeBillingService.retrieveSubscription("sub_1")).thenThrow(new PaymentProviderUnavailableException("down"));
 
         postWebhookExpecting(503);
@@ -383,11 +383,11 @@ class StripeWebhookControllerTest {
     @Test
     void unknownSubscriptionForOtherBillingReasonIsAcknowledgedWith200() throws Exception {
         givenInvoicePaid(invoiceJson("subscription_cycle", 1990));
-        when(subscriptionService.recordPayment(EXPECTED_PAYMENT)).thenReturn(PaymentOutcome.UNKNOWN_SUBSCRIPTION);
+        when(subscriptionWebhookService.recordPayment(EXPECTED_PAYMENT)).thenReturn(PaymentOutcome.UNKNOWN_SUBSCRIPTION);
 
         postWebhook();
 
-        verify(subscriptionService).recordPayment(EXPECTED_PAYMENT);
+        verify(subscriptionWebhookService).recordPayment(EXPECTED_PAYMENT);
         verify(stripeBillingService, never()).retrieveSubscription(anyString());
     }
 
@@ -409,11 +409,11 @@ class StripeWebhookControllerTest {
         // last_finalization_error is not a decline reason and is not read (decision 3A)
         givenPaymentFailed(FAILED_INVOICE);
         PaymentFailure expected = new PaymentFailure("in_f", "sub_1", 2, "https://invoice.stripe.com/i/in_f", true);
-        when(subscriptionService.recordPaymentFailure(expected)).thenReturn(FailureOutcome.RECORDED);
+        when(subscriptionWebhookService.recordPaymentFailure(expected)).thenReturn(FailureOutcome.RECORDED);
 
         postWebhook();
 
-        verify(subscriptionService).recordPaymentFailure(expected);
+        verify(subscriptionWebhookService).recordPaymentFailure(expected);
         verify(stripeBillingService, never()).retrieveSubscription(anyString());
     }
 
@@ -423,11 +423,11 @@ class StripeWebhookControllerTest {
             + "\"hosted_invoice_url\":\"https://invoice.stripe.com/i/in_f\",\"next_payment_attempt\":null}");
         // next_payment_attempt null: last attempt, Stripe will not retry
         PaymentFailure expected = new PaymentFailure("in_f", "sub_1", 1, "https://invoice.stripe.com/i/in_f", false);
-        when(subscriptionService.recordPaymentFailure(expected)).thenReturn(FailureOutcome.IGNORED);
+        when(subscriptionWebhookService.recordPaymentFailure(expected)).thenReturn(FailureOutcome.IGNORED);
 
         postWebhook();
 
-        verify(subscriptionService).recordPaymentFailure(expected);
+        verify(subscriptionWebhookService).recordPaymentFailure(expected);
     }
 
     @Test
@@ -435,11 +435,11 @@ class StripeWebhookControllerTest {
         // First invoice declined inside Checkout: the subscription id is not known locally yet
         givenPaymentFailed("{\"id\":\"in_f\",\"billing_reason\":\"subscription_create\",\"attempt_count\":1,"
             + "\"parent\":{\"subscription_details\":{\"subscription\":\"sub_new\"}}}");
-        when(subscriptionService.recordPaymentFailure(any())).thenReturn(FailureOutcome.UNKNOWN_SUBSCRIPTION);
+        when(subscriptionWebhookService.recordPaymentFailure(any())).thenReturn(FailureOutcome.UNKNOWN_SUBSCRIPTION);
 
         postWebhook();
 
-        verify(subscriptionService).recordPaymentFailure(new PaymentFailure("in_f", "sub_new", 1, null, false));
+        verify(subscriptionWebhookService).recordPaymentFailure(new PaymentFailure("in_f", "sub_new", 1, null, false));
     }
 
     @Test
@@ -449,6 +449,6 @@ class StripeWebhookControllerTest {
         givenPaymentFailed("{\"id\":\"in_f\",\"attempt_count\":1}");
         postWebhook();
 
-        verifyNoInteractions(subscriptionService);
+        verifyNoInteractions(subscriptionWebhookService);
     }
 }
