@@ -197,7 +197,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { useFeedback } from '@/composables/useFeedback'
 import { RouterLink } from 'vue-router'
 import { CircleCheck } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
@@ -220,7 +221,6 @@ import type { Goal, GoalProgressPoint, GoalsSummary } from '@/types/goal'
  * leitura e fora dos totais; "Reabrir meta" as devolve às ativas com a alocação anterior.
  * Retro Epic 8 A3: diálogos e card ativo ficam em components/goals; a view cuida da lista e das mensagens.
  */
-const SUCCESS_TIMEOUT_MS = 5000
 const ACTION_FAILED = 'Não foi possível salvar. Verifique sua conexão e tente novamente.'
 
 const goals = ref<Goal[]>([])
@@ -231,7 +231,7 @@ const addButton = ref<{ $el: HTMLElement } | null>(null)
 const createDialog = ref<InstanceType<typeof GoalCreateDialog> | null>(null)
 const amountDialog = ref<InstanceType<typeof GoalAmountDialog> | null>(null)
 const completeDialog = ref<InstanceType<typeof GoalCompleteDialog> | null>(null)
-const successMessage = ref<string | null>(null)
+const { successMessage, setSuccess } = useFeedback()
 const actionError = ref<string | null>(null)
 const reopening = ref<string | null>(null)
 
@@ -297,14 +297,6 @@ async function load() {
   }
 }
 
-let successTimer: ReturnType<typeof setTimeout> | undefined
-
-function setSuccess(message: string) {
-  clearTimeout(successTimer)
-  successMessage.value = message
-  successTimer = setTimeout(() => (successMessage.value = null), SUCCESS_TIMEOUT_MS)
-}
-
 function replaceGoal(updated: Goal) {
   goals.value = goals.value.map((g) => (g.id === updated.id ? updated : g))
 }
@@ -363,5 +355,4 @@ onMounted(async () => {
   await load()
 })
 
-onBeforeUnmount(() => clearTimeout(successTimer))
 </script>

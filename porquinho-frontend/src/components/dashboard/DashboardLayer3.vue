@@ -265,6 +265,7 @@
 import { SELECT_CLASS } from '@/lib/formField'
 import { Input } from '@/components/ui/input'
 import { computed, nextTick, onMounted, ref } from 'vue'
+import { useFeedback } from '@/composables/useFeedback'
 import { ArrowLeftRight, CreditCard, Download } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import MultiSelect from '@/components/common/MultiSelect.vue'
@@ -284,7 +285,6 @@ import type { Transaction } from '@/types/transaction'
  */
 // Retro Epic 7 A4: `loaded` avisa a primeira carga (a view restaura o scroll)
 const emit = defineEmits<{ 'transaction-saved': []; loaded: [] }>()
-const SUCCESS_TIMEOUT_MS = 5000
 
 const {
   stored,
@@ -312,7 +312,7 @@ const {
 } = useDashboardDetails()
 
 const root = ref<HTMLElement | null>(null)
-const successMessage = ref<string | null>(null)
+const { successMessage, setSuccess: showSuccess } = useFeedback()
 const current = ref<Transaction | null>(null)
 const editOpen = ref(false)
 const exportOpen = ref(false)
@@ -348,14 +348,6 @@ function returnFocus(event: Event) {
     const visible = [...(buttons ?? [])].find((b) => b.offsetParent !== null) ?? buttons?.[0]
     visible?.focus()
   })
-}
-
-let successTimer: ReturnType<typeof setTimeout> | undefined
-
-function showSuccess(message: string) {
-  clearTimeout(successTimer)
-  successMessage.value = message
-  successTimer = setTimeout(() => (successMessage.value = null), SUCCESS_TIMEOUT_MS)
 }
 
 async function onSaved({ message }: { message: string }) {

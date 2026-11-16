@@ -311,7 +311,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
+import { useFeedback } from '@/composables/useFeedback'
 import { RouterLink } from 'vue-router'
 import BudgetExportDialog from '@/components/budget/BudgetExportDialog.vue'
 import BudgetStatusLabel from '@/components/budget/BudgetStatusLabel.vue'
@@ -336,7 +337,6 @@ import type { Category } from '@/types/category'
  * Story 6.7: chip com mensagem por status, estouradas (e seus grupos) no topo com fundo vermelho, percentual real ao
  * lado da barra e resumo por status. Tudo usa o status salvo: digitar sem salvar não reordena.
  */
-const SUCCESS_TIMEOUT_MS = 5000
 const LOAD_FAILED = 'Não foi possível carregar o orçamento.'
 const SAVE_FAILED = 'Não foi possível salvar o orçamento. Verifique sua conexão e tente novamente.'
 const REPEAT_FAILED = 'Não foi possível carregar o orçamento do mês anterior.'
@@ -356,7 +356,7 @@ const loadError = ref<string | null>(null)
 const saving = ref(false)
 const repeating = ref(false)
 const actionError = ref<string | null>(null)
-const successMessage = ref<string | null>(null)
+const { successMessage, setSuccess } = useFeedback()
 const notice = ref<string | null>(null)
 const reallocateOpen = ref(false)
 const exportOpen = ref(false)
@@ -475,14 +475,6 @@ function fill(data: Budget) {
   )
 }
 
-let successTimer: ReturnType<typeof setTimeout> | undefined
-
-function setSuccess(message: string) {
-  clearTimeout(successTimer)
-  successMessage.value = message
-  successTimer = setTimeout(() => (successMessage.value = null), SUCCESS_TIMEOUT_MS)
-}
-
 /** Sequência das cargas: só a resposta da carga mais recente é aplicada. */
 let request = 0
 
@@ -491,8 +483,7 @@ async function load() {
   loading.value = true
   loadError.value = null
   actionError.value = null
-  clearTimeout(successTimer)
-  successMessage.value = null
+  setSuccess(null)
   notice.value = null
   try {
     const [data, list] = await Promise.all([getBudget(month.value), listCategories()])
@@ -592,5 +583,4 @@ function onMoved(data: Budget, message: string) {
 }
 
 onMounted(load)
-onBeforeUnmount(() => clearTimeout(successTimer))
 </script>

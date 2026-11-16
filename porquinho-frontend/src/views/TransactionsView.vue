@@ -219,6 +219,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
+import { useFeedback } from '@/composables/useFeedback'
 import { ArrowLeftRight, CreditCard, Download } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import {
@@ -250,7 +251,6 @@ import type { Transaction } from '@/types/transaction'
  */
 
 const ACTION_FAILED = 'Não foi possível concluir a ação. Tente de novo.'
-const SUCCESS_TIMEOUT_MS = 5000
 
 interface ApiError {
   response?: { status?: number; data?: { detail?: string } }
@@ -268,7 +268,7 @@ const loading = ref(true)
 const loadFailed = ref(false)
 const optionsLoading = ref(false)
 const optionsFailed = ref(false)
-const successMessage = ref<string | null>(null)
+const { successMessage, setSuccess } = useFeedback()
 const actionError = ref<string | null>(null)
 /** A linha do diálogo aberto. Continua definida depois de fechar, para o foco voltar ao botão dela. */
 const current = ref<Transaction | null>(null)
@@ -298,14 +298,6 @@ const monthLabel = computed(() => {
 const futuresGoingAlong = computed(() =>
   current.value?.isInstallment && current.value.confirmedInstallments <= 1 ? current.value.remainingInstallments : 0,
 )
-
-let successTimer: ReturnType<typeof setTimeout> | undefined
-
-function setSuccess(message: string | null) {
-  clearTimeout(successTimer)
-  successMessage.value = message
-  if (message) successTimer = setTimeout(() => (successMessage.value = null), SUCCESS_TIMEOUT_MS)
-}
 
 /** Sequência das cargas: só a resposta da carga mais recente é aplicada. */
 let request = 0

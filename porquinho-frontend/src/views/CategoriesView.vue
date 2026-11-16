@@ -316,7 +316,8 @@
 <script setup lang="ts">
 import { SELECT_CLASS } from '@/lib/formField'
 import { Input } from '@/components/ui/input'
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { useFeedback } from '@/composables/useFeedback'
 import { RouterLink } from 'vue-router'
 import { Check, ChevronDown, ChevronRight } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
@@ -339,7 +340,7 @@ import type { Category, CategoryOptions } from '@/types/category'
  * Story 6.1: categorias do usuário agrupadas (grupo → filhas, por nome) e criação de uma categoria filha.
  * Cor e ícone são opcionais: vazios não são enviados e o backend usa a cor do grupo e o ícone `folder`.
  * Story 6.2: criar grupo (sem `parentId`), mover uma filha para outro grupo e recolher/expandir os grupos.
- */const SUCCESS_TIMEOUT_MS = 5000
+ */
 const NAME_REQUIRED = 'Informe o nome da categoria'
 const SAVE_FAILED = 'Não foi possível criar a categoria. Verifique sua conexão e tente novamente.'
 const MOVE_FAILED = 'Não foi possível mover a categoria. Verifique sua conexão e tente novamente.'
@@ -356,7 +357,7 @@ const saving = ref(false)
 const form = reactive({ name: '', parentId: '', colorHex: '', iconName: '' })
 const nameError = ref<string | null>(null)
 const formError = ref<string | null>(null)
-const successMessage = ref<string | null>(null)
+const { successMessage, setSuccess } = useFeedback()
 const exportOpen = ref(false)
 
 // Grupos começam expandidos: guarda só os recolhidos
@@ -421,14 +422,6 @@ async function load() {
   } finally {
     loading.value = false
   }
-}
-
-let successTimer: ReturnType<typeof setTimeout> | undefined
-
-function setSuccess(message: string) {
-  clearTimeout(successTimer)
-  successMessage.value = message
-  successTimer = setTimeout(() => (successMessage.value = null), SUCCESS_TIMEOUT_MS)
 }
 
 function openCreate() {
@@ -521,5 +514,4 @@ onMounted(async () => {
   await load()
 })
 
-onBeforeUnmount(() => clearTimeout(successTimer))
 </script>
