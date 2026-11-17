@@ -39,6 +39,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -111,7 +112,7 @@ class StripeBillingServiceTest {
 
     @Test
     void checkoutWithoutSecretKeyIsUnavailable() {
-        assertThatThrownBy(() -> service.createCheckoutSession(UUID.randomUUID(), "a@b.com", null))
+        assertThatThrownBy(() -> service.createCheckoutSession(UUID.randomUUID(), null, "a@b.com", null))
             .isInstanceOf(PaymentProviderUnavailableException.class);
     }
 
@@ -128,7 +129,7 @@ class StripeBillingServiceTest {
         UUID userId = UUID.randomUUID();
         Instant trialEnd = Instant.parse("2026-11-30T12:00:00Z");
 
-        SessionCreateParams params = service.buildSessionParams(userId, "ana@example.com", trialEnd);
+        SessionCreateParams params = service.buildSessionParams(userId, null, "ana@example.com", trialEnd);
 
         assertThat(params.getMode()).isEqualTo(SessionCreateParams.Mode.SUBSCRIPTION);
         assertThat(params.getClientReferenceId()).isEqualTo(userId.toString());
@@ -150,10 +151,81 @@ class StripeBillingServiceTest {
 
     @Test
     void sessionParamsWithoutTrialEndChargeImmediately() {
-        SessionCreateParams params = service.buildSessionParams(UUID.randomUUID(), null, null);
+        SessionCreateParams params = service.buildSessionParams(UUID.randomUUID(), null, null, null);
 
         assertThat(params.getSubscriptionData().getTrialEnd()).isNull();
         assertThat(params.getCustomerEmail()).isNull();
+    }
+
+    @Test
+    void sessionParamsReuseExistingCustomerWithoutEmail() {
+        SessionCreateParams params = service.buildSessionParams(UUID.randomUUID(), "cus_1", "ana@example.com", null);
+
+        assertThat(params.getCustomer()).isEqualTo("cus_1");
+        assertThat(params.getCustomerEmail()).isNull();
+    }
+
+    private com.stripe.service.checkout.SessionService mockSessions(StripeClient client) {
+        com.stripe.service.CheckoutService checkout = mock(com.stripe.service.CheckoutService.class);
+        com.stripe.service.checkout.SessionService sessions = mock(com.stripe.service.checkout.SessionService.class);
+        when(client.checkout()).thenReturn(checkout);
+        when(checkout.sessions()).thenReturn(sessions);
+        return sessions;
+    }
+
+    private static com.stripe.model.checkout.Session sessionWithUrl(String url) {
+        com.stripe.model.checkout.Session session = new com.stripe.model.checkout.Session();
+        session.setUrl(url);
+        return session;
+    }
+
+    @Test
+    void checkoutReusesExistingCustomer() throws Exception {
+        StripeClient client = mock(StripeClient.class);
+        com.stripe.service.checkout.SessionService sessions = mockSessions(client);
+        when(sessions.create(any(SessionCreateParams.class))).thenReturn(sessionWithUrl("https://checkout/x"));
+
+        String url = new StripeBillingService(client, SECRET, "http://localhost:5173", new ObjectMapper())
+            .createCheckoutSession(UUID.randomUUID(), "cus_1", "ana@example.com", null);
+
+        assertThat(url).isEqualTo("https://checkout/x");
+        ArgumentCaptor<SessionCreateParams> params = ArgumentCaptor.forClass(SessionCreateParams.class);
+        verify(sessions).create(params.capture());
+        assertThat(params.getValue().getCustomer()).isEqualTo("cus_1");
+        assertThat(params.getValue().getCustomerEmail()).isNull();
+    }
+
+    @Test
+    void checkoutWithDeletedCustomerRetriesWithEmail() throws Exception {
+        StripeClient client = mock(StripeClient.class);
+        com.stripe.service.checkout.SessionService sessions = mockSessions(client);
+        when(sessions.create(any(SessionCreateParams.class)))
+            .thenThrow(new com.stripe.exception.InvalidRequestException(
+                "No such customer: 'cus_1'", "customer", "req_1", "resource_missing", 400, null))
+            .thenReturn(sessionWithUrl("https://checkout/y"));
+
+        String url = new StripeBillingService(client, SECRET, "http://localhost:5173", new ObjectMapper())
+            .createCheckoutSession(UUID.randomUUID(), "cus_1", "ana@example.com", null);
+
+        assertThat(url).isEqualTo("https://checkout/y");
+        ArgumentCaptor<SessionCreateParams> params = ArgumentCaptor.forClass(SessionCreateParams.class);
+        verify(sessions, times(2)).create(params.capture());
+        assertThat(params.getAllValues().get(1).getCustomer()).isNull();
+        assertThat(params.getAllValues().get(1).getCustomerEmail()).isEqualTo("ana@example.com");
+    }
+
+    @Test
+    void checkoutRefusedForAnotherReasonDoesNotRetry() throws Exception {
+        StripeClient client = mock(StripeClient.class);
+        com.stripe.service.checkout.SessionService sessions = mockSessions(client);
+        when(sessions.create(any(SessionCreateParams.class)))
+            .thenThrow(new com.stripe.exception.InvalidRequestException(
+                "Invalid currency", "currency", "req_1", null, 400, null));
+
+        assertThatThrownBy(() -> new StripeBillingService(client, SECRET, "http://localhost:5173", new ObjectMapper())
+            .createCheckoutSession(UUID.randomUUID(), "cus_1", "ana@example.com", null))
+            .isInstanceOf(PaymentProviderUnavailableException.class);
+        verify(sessions, times(1)).create(any(SessionCreateParams.class));
     }
 
     // ---- Subscription mapping ----

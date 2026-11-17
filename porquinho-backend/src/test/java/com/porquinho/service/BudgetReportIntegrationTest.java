@@ -29,7 +29,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @ActiveProfiles("test")
 class BudgetReportIntegrationTest {
 
-    private static final String HEADER = "﻿Categoria;Grupo;Alocado;Gasto;Restante;% usado;Status";
+    private static final String HEADER = "﻿Categoria;Grupo;Alocado;Gasto;Restante;% usado;Status;Gasto sem orçamento";
     private static final YearMonth NOV = YearMonth.of(2026, 11);
 
     @Autowired
@@ -140,9 +140,9 @@ class BudgetReportIntegrationTest {
         String csv = service.csv(userId, "2026-11", "2026-11", false, false);
 
         assertThat(lines(csv)).containsExactly(HEADER,
-            "Água;Essenciais;100,00;120,00;-20,00;120;Estourada",
-            "Transporte;Essenciais;;0,00;;;",
-            "Aluguel;Moradia;1000,00;950,00;50,00;95;Saldo baixo");
+            "Água;Essenciais;100,00;120,00;-20,00;120;Estourada;0,00",
+            "Transporte;Essenciais;;0,00;;;;",
+            "Aluguel;Moradia;1000,00;950,00;50,00;95;Saldo baixo;0,00");
     }
 
     @Test
@@ -158,9 +158,9 @@ class BudgetReportIntegrationTest {
         String csv = service.csv(userId, "2026-09", "2026-11", false, false);
 
         assertThat(lines(csv)).containsExactly(HEADER,
-            "Água;Essenciais;300,00;300,50;-0,50;100;Estourada",
-            "Transporte;Essenciais;;0,00;;;",
-            "Aluguel;Moradia;;0,00;;;");
+            "Água;Essenciais;300,00;300,50;-0,50;100;Estourada;0,00",
+            "Transporte;Essenciais;;0,00;;;;",
+            "Aluguel;Moradia;;0,00;;;;");
     }
 
     @Test
@@ -174,9 +174,9 @@ class BudgetReportIntegrationTest {
 
         String csv = service.csv(userId, "2026-11", "2026-11", true, false);
 
-        assertThat(lines(csv)).containsExactly(HEADER + ";Gasto sem orçamento",
+        assertThat(lines(csv)).containsExactly(HEADER,
             "Essenciais;;100,00;50,00;50,00;50;Saudável;200,00",
-            "Água;Essenciais;100,00;50,00;50,00;50;Saudável;",
+            "Água;Essenciais;100,00;50,00;50,00;50;Saudável;0,00",
             "Transporte;Essenciais;;200,00;;;;",
             "Moradia;;;800,00;;;;",
             "Aluguel;Moradia;;800,00;;;;");
@@ -194,12 +194,35 @@ class BudgetReportIntegrationTest {
 
         // group: win3 900 (food), win6 900 + 180 -> 300,00 and 180,00
         assertThat(lines(csv)).containsExactly(
-            HEADER + ";Gasto sem orçamento;Média 3 meses;Média 6 meses;Tendência",
+            HEADER + ";Média 3 meses;Média 6 meses;Tendência",
             "Essenciais;;100,00;30,00;70,00;30;Saudável;40,00;300,00;180,00;Subindo",
-            "Água;Essenciais;100,00;30,00;70,00;30;Saudável;;300,00;150,00;Subindo",
+            "Água;Essenciais;100,00;30,00;70,00;30;Saudável;0,00;300,00;150,00;Subindo",
             "Transporte;Essenciais;;40,00;;;;;0,00;30,00;Caindo",
             "Moradia;;;0,00;;;;;0,00;0,00;Estável",
             "Aluguel;Moradia;;0,00;;;;;0,00;0,00;Estável");
+    }
+
+    @Test
+    void partialBudgetSendsTheSpentOfMonthsWithoutBudgetToTheUnbudgetedColumn() {
+        // pre-10.4, decision A: Jan R$ 100 budgeted and R$ 80 spent; Feb no budget and R$ 50 spent
+        YearMonth jan = YearMonth.of(2026, 1);
+        YearMonth feb = YearMonth.of(2026, 2);
+        allocate(userId, food, jan, "100.00");
+        spend(food, jan, "80.00");
+        spend(food, feb, "50.00");
+        spend(rent, feb, "30.00"); // never budgeted: spent of every month, column empty
+
+        assertThat(lines(service.csv(userId, "2026-01", "2026-02", true, false))).containsExactly(HEADER,
+            "Essenciais;;100,00;80,00;20,00;80;Saldo baixo;50,00",
+            "Água;Essenciais;100,00;80,00;20,00;80;Saldo baixo;50,00",
+            "Transporte;Essenciais;;0,00;;;;",
+            "Moradia;;;30,00;;;;",
+            "Aluguel;Moradia;;30,00;;;;");
+        // without hierarchy the column is there too, so the R$ 50 never vanishes from the file
+        assertThat(lines(service.csv(userId, "2026-01", "2026-02", false, false))).containsExactly(HEADER,
+            "Água;Essenciais;100,00;80,00;20,00;80;Saldo baixo;50,00",
+            "Transporte;Essenciais;;0,00;;;;",
+            "Aluguel;Moradia;;30,00;;;;");
     }
 
     @Test
@@ -210,7 +233,7 @@ class BudgetReportIntegrationTest {
 
         String csv = service.csv(other, "2026-11", "2026-11", true, false);
 
-        assertThat(lines(csv)).containsExactly(HEADER + ";Gasto sem orçamento",
+        assertThat(lines(csv)).containsExactly(HEADER,
             "\"Casa \"\"nova\"\"\";;;0,00;;;;",
             "\"'=SOMA(1;2)\";\"Casa \"\"nova\"\"\";;0,00;;;;");
     }
@@ -224,7 +247,7 @@ class BudgetReportIntegrationTest {
 
         String csv = service.csv(userId, "2026-09", "2026-11", false, true);
 
-        assertThat(lines(csv)).contains("Aluguel;Moradia;;29997,00;;;;100,00;100,00;Estável");
+        assertThat(lines(csv)).contains("Aluguel;Moradia;;29997,00;;;;;100,00;100,00;Estável");
     }
 
     @Test
@@ -242,9 +265,9 @@ class BudgetReportIntegrationTest {
 
         assertThat(lines(csv)).containsExactly(
             HEADER + ";Média 3 meses;Média 6 meses;Tendência",
-            "Água;Essenciais;;0,00;;;;300,00;150,00;Subindo",
-            "Transporte;Essenciais;;0,00;;;;0,00;50,00;Caindo",
-            "Aluguel;Moradia;;5000,00;;;;100,00;100,00;Estável");
+            "Água;Essenciais;;0,00;;;;;300,00;150,00;Subindo",
+            "Transporte;Essenciais;;0,00;;;;;0,00;50,00;Caindo",
+            "Aluguel;Moradia;;5000,00;;;;;100,00;100,00;Estável");
     }
 
     @Test
@@ -263,7 +286,7 @@ class BudgetReportIntegrationTest {
         UUID lonely = newUser();
         newCategory(lonely, "Só grupo", null);
 
-        assertThat(service.csv(lonely, "2026-11", "2026-11", true, false)).isEqualTo(HEADER + ";Gasto sem orçamento\r\n");
+        assertThat(service.csv(lonely, "2026-11", "2026-11", true, false)).isEqualTo(HEADER + "\r\n");
     }
 
     @Test
@@ -327,7 +350,7 @@ class BudgetReportIntegrationTest {
         System.out.printf("Story 9.2: 12 meses x 50 categorias em %d ms%n", millis);
 
         assertThat(lines(csv)).hasSize(1 + 3 + 2 + 51); // header, Essenciais + 2, Moradia + 1, Muitas + 50
-        assertThat(csv).contains("Categoria 0;Muitas;6000,00;1480,80;4519,20;25;Saudável;;123,40;123,40;Estável");
+        assertThat(csv).contains("Categoria 0;Muitas;6000,00;1480,80;4519,20;25;Saudável;0,00;123,40;123,40;Estável");
         assertThat(millis).isLessThan(3000);
     }
 }

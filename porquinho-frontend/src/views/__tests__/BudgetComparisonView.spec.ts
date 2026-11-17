@@ -278,12 +278,14 @@ describe('BudgetComparisonView', () => {
     await w.get('[data-testid="custom-to"]').setValue('2026-10')
     await flushPromises()
     expect(mockGet.mock.calls.map((c) => c[0])).toEqual(['2026-09', '2026-10'])
-    // alocado em um mês só já conta como "com orçamento"
+    // alocado em um mês só já conta como "com orçamento"; o gasto do mês sem orçamento vai à parte (decisão A)
     const mercado = w
       .get('[data-testid="row-c1"]')
       .findAll('td')
       .map((td) => plain(td.text()))
-    expect(mercado).toEqual(['R$ 100,00', 'R$ 70,00', 'R$ 30,00', '70%', 'Saudável'])
+    expect(mercado).toEqual(['R$ 100,00', 'R$ 50,00', 'R$ 50,00', '50%', 'Saudável'])
+    expect(plain(w.get('[data-testid="unbudgeted-c1"]').text())).toBe('Sem orçamento: R$ 20,00')
+    expect(w.find('[data-testid="unbudgeted-c4"]').exists()).toBe(false)
     expect(w.get('[data-testid="row-c4"]').text()).toContain('Sem orçamento')
     expect(w.get('[data-testid="period-label"]').text()).toBe('setembro de 2026 a outubro de 2026')
 
@@ -329,9 +331,65 @@ describe('BudgetComparisonView', () => {
     const bytes = new Uint8Array(buffer)
     expect(Array.from(bytes.slice(0, 3))).toEqual([0xef, 0xbb, 0xbf])
     expect(new TextDecoder().decode(bytes.slice(3)).split('\r\n')).toEqual([
-      'Grupo;Categoria;Alocado;Gasto;Diferença;Percentual;Status',
-      'Casa;Luz;0,00;0,00;0,00;;Saldo baixo - R$ 0,00 restantes',
-      'Essenciais;Farmácia;1.500,00;1.234,56;265,44;82;Saldo baixo - R$ 265,44 restantes',
+      'Grupo;Categoria;Alocado;Gasto;Diferença;Percentual;Status;Gasto sem orçamento',
+      'Casa;Luz;0,00;0,00;0,00;;Saldo baixo - R$ 0,00 restantes;0,00',
+      'Essenciais;Farmácia;1.500,00;1.234,56;265,44;82;Saldo baixo - R$ 265,44 restantes;0,00',
+      '',
+    ])
+  })
+
+  it('orçamento parcial: a filha mostra só os meses orçados e o resto em "Sem orçamento" (tela e CSV)', async () => {
+    let blob: Blob | null = null
+    URL.createObjectURL = vi.fn((b: Blob) => {
+      blob = b
+      return 'blob:x'
+    })
+    URL.revokeObjectURL = vi.fn()
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    // jan: R$ 100 orçado e R$ 80 gasto; fev: sem orçamento e R$ 50 gasto; Lazer nunca orçada
+    mockGet.mockImplementation(async (month: string) =>
+      month === '2026-01'
+        ? budget(month, [cb('c1', 100, 80), cb('c4', null, 5)])
+        : budget(month, [cb('c1', null, 50), cb('c4', null, 7)]),
+    )
+    const w = await mountView()
+    await w.get('[data-testid="period-custom"]').trigger('click')
+    await w.get('[data-testid="custom-from"]').setValue('2026-01')
+    await w.get('[data-testid="custom-to"]').setValue('2026-02')
+    await flushPromises()
+
+    const cells = (id: string) =>
+      w
+        .get(`[data-testid="${id}"]`)
+        .findAll('td')
+        .map((td) => plain(td.text()))
+    expect(cells('row-c1')).toEqual([
+      'R$ 100,00',
+      'R$ 80,00',
+      'R$ 20,00',
+      '80%',
+      'Saldo baixo - R$ 20,00 restantes',
+    ])
+    expect(plain(w.get('[data-testid="unbudgeted-c1"]').text())).toBe('Sem orçamento: R$ 50,00')
+    // Lazer sem orçamento em nenhum mês: como antes, gasto total e nenhuma linha "Sem orçamento"
+    expect(cells('row-c4')[1]).toBe('R$ 12,00')
+    expect(w.find('[data-testid="unbudgeted-c4"]').exists()).toBe(false)
+    // grupo e total: R$ 50 da filha orçada + R$ 12 da Lazer
+    expect(cells('group-g1')[1]).toBe('R$ 80,00')
+    expect(plain(w.get('[data-testid="unbudgeted-g1"]').text())).toBe('Sem orçamento: R$ 62,00')
+    expect(plain(w.get('[data-testid="total-spent"]').text())).toBe('R$ 80,00')
+    expect(plain(w.get('[data-testid="total-unbudgeted"]').text())).toBe('R$ 62,00')
+
+    await w.get('[data-testid="export-csv"]').trigger('click')
+    const text = await new Promise<string>((resolve) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.readAsText(blob!)
+    })
+    expect(text.replace(/^\uFEFF/, '').split('\r\n')).toEqual([
+      'Grupo;Categoria;Alocado;Gasto;Diferença;Percentual;Status;Gasto sem orçamento',
+      'Essenciais;Mercado;100,00;80,00;20,00;80;Saldo baixo - R$ 20,00 restantes;50,00',
+      'Essenciais;Lazer;;12,00;;;Sem orçamento;',
       '',
     ])
   })

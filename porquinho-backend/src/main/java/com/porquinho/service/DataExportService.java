@@ -62,6 +62,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
@@ -75,6 +77,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -107,6 +110,12 @@ public class DataExportService {
 
     /** Tables whose key in the export differs from the table name (kept from the Story 1-6 format). */
     private static final Map<String, String> TABLE_KEYS = Map.of("users", "user_profile", "user_sessions", "sessions");
+
+    /** A PROCESSING export older than this has no job running anymore (the job takes seconds). */
+    static final Duration STUCK_AGE = Duration.ofHours(1);
+
+    /** Taken when the bean is created, before the web server accepts requests: older PROCESSING rows are orphans. */
+    private final LocalDateTime startedAt = LocalDateTime.now();
 
     private final DataExportRepository dataExportRepository;
     private final UserRepository userRepository;
@@ -870,17 +879,17 @@ public class DataExportService {
     public void cleanupExpiredExports() {
         LocalDateTime now = LocalDateTime.now();
 
+        // PROCESSING for more than 1 h: the job died (e.g. the database failed inside its catch). Redis down must not
+        // stop the READY cleanup below (expired ZIPs hold personal data)
+        try {
+            failStuckExports(now.minus(STUCK_AGE), "stale");
+        } catch (Exception e) {
+            log.error("Could not fail stuck data exports: {}", e.getMessage(), e);
+        }
+
         // Clean READY exports that have expired
-        List<DataExport> expiredReady = dataExportRepository
+        List<DataExport> toCleanup = dataExportRepository
                 .findByStatusAndExpiresAtBefore(ExportStatus.READY, now);
-
-        // Clean stuck PROCESSING exports that have expired
-        List<DataExport> stuckProcessing = dataExportRepository
-                .findByStatusAndExpiresAtBefore(ExportStatus.PROCESSING, now);
-
-        List<DataExport> toCleanup = new ArrayList<>();
-        toCleanup.addAll(expiredReady);
-        toCleanup.addAll(stuckProcessing);
 
         for (DataExport export : toCleanup) {
             if (export.getFilePath() != null) {
@@ -895,7 +904,44 @@ public class DataExportService {
         }
 
         if (!toCleanup.isEmpty()) {
-            log.info("Cleaned up {} expired/stuck data exports", toCleanup.size());
+            log.info("Cleaned up {} expired data exports", toCleanup.size());
+        }
+    }
+
+    /**
+     * At startup: every export still PROCESSING created before this backend came up has no job running (the
+     * restart killed it). Never blocks the boot: Redis or the database down only leaves a log.
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    public void failExportsInterruptedByRestart() {
+        try {
+            failStuckExports(startedAt, "interrupted by restart");
+        } catch (Exception e) {
+            log.error("Could not fail data exports interrupted by restart: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * PROCESSING exports created before the cutoff become FAILED, like the catch of {@link #processExport}: partial
+     * file deleted, rate limit freed so "Tentar de novo" works right away.
+     */
+    void failStuckExports(LocalDateTime createdBefore, String reason) {
+        List<DataExport> stuck = dataExportRepository.findByStatusAndCreatedAtBefore(ExportStatus.PROCESSING, createdBefore);
+        for (DataExport export : stuck) {
+            if (export.getFilePath() != null) {
+                try {
+                    Files.deleteIfExists(Paths.get(export.getFilePath()));
+                } catch (IOException e) {
+                    log.warn("Failed to delete partial export file {}: {}", export.getFilePath(), e.getMessage());
+                }
+            }
+            rateLimitService.reset("data_export:" + export.getUserId());
+            export.setFilePath(null);
+            export.setStatus(ExportStatus.FAILED);
+            dataExportRepository.save(export);
+        }
+        if (!stuck.isEmpty()) {
+            log.info("{} data export(s) stuck in PROCESSING marked as failed ({})", stuck.size(), reason);
         }
     }
 

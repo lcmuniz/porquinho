@@ -5,6 +5,7 @@ import com.porquinho.config.TestWebSecurityConfig;
 import com.porquinho.exception.InvalidWebhookSignatureException;
 import com.porquinho.exception.PaymentProviderUnavailableException;
 import com.porquinho.exception.ResourceNotFoundException;
+import com.porquinho.repository.StripeWebhookEventRepository;
 import com.porquinho.service.StripeBillingService;
 import com.porquinho.service.StripeBillingService.SubscriptionDetails;
 import com.porquinho.service.StripeBillingService.WebhookEvent;
@@ -53,6 +54,9 @@ class StripeWebhookControllerTest {
 
     @MockBean
     private SubscriptionWebhookService subscriptionWebhookService;
+
+    @MockBean
+    private StripeWebhookEventRepository stripeWebhookEventRepository;
 
     private WebhookEvent checkoutCompleted(String paymentStatus) throws Exception {
         return new WebhookEvent("evt_1", "checkout.session.completed", JSON.readTree(
@@ -450,5 +454,79 @@ class StripeWebhookControllerTest {
         postWebhook();
 
         verifyNoInteractions(subscriptionWebhookService);
+    }
+
+    // --- Dedup (pre-10.4, grupo A) ---
+
+    @Test
+    void handledEventIsRecordedAfterSuccess() throws Exception {
+        OffsetDateTime periodEnd = OffsetDateTime.parse("2026-11-30T12:00:00Z");
+        when(stripeBillingService.verifyWebhook(anyString(), anyString())).thenReturn(checkoutCompleted("paid"));
+        when(stripeBillingService.retrieveSubscription("sub_1"))
+            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", periodEnd, "active"));
+
+        postWebhook();
+
+        verify(stripeWebhookEventRepository).existsById("evt_1");
+        verify(stripeWebhookEventRepository).insertIfAbsent("evt_1", "checkout.session.completed");
+    }
+
+    @Test
+    void redeliveredCheckoutAfterResubscriptionIsAcknowledgedWithNoEffect() throws Exception {
+        // An old checkout.session.completed re-delivered after a re-subscription would hit the duplicate-Checkout
+        // branch and refund the current subscription; already processed -> nothing runs
+        when(stripeBillingService.verifyWebhook(anyString(), anyString())).thenReturn(checkoutCompleted("paid"));
+        when(stripeWebhookEventRepository.existsById("evt_1")).thenReturn(true);
+
+        postWebhook();
+
+        verifyNoInteractions(subscriptionWebhookService);
+        verify(stripeBillingService, never()).retrieveSubscription(anyString());
+        verify(stripeBillingService, never()).cancelAndRefund(anyString(), any());
+        verify(stripeWebhookEventRepository, never()).insertIfAbsent(anyString(), anyString());
+    }
+
+    @Test
+    void redeliveredInvoiceEventIsAcknowledgedWithNoEffect() throws Exception {
+        givenPaymentFailed("{\"id\":\"in_f\",\"attempt_count\":1,\"subscription\":\"sub_1\"}");
+        when(stripeWebhookEventRepository.existsById("evt_f")).thenReturn(true);
+
+        postWebhook();
+
+        verifyNoInteractions(subscriptionWebhookService);
+    }
+
+    @Test
+    void eventAnswered503IsNotRecordedSoTheRetryProcessesIt() throws Exception {
+        givenInvoicePaid(invoiceJson("subscription_create", 1990));
+        when(subscriptionWebhookService.recordPayment(EXPECTED_PAYMENT)).thenReturn(PaymentOutcome.UNKNOWN_SUBSCRIPTION);
+        when(stripeBillingService.retrieveSubscription("sub_1"))
+            .thenReturn(new SubscriptionDetails("cus_1", "pm_1", PERIOD_END, "active"));
+
+        postWebhookExpecting(503);
+
+        verify(stripeWebhookEventRepository, never()).insertIfAbsent(anyString(), anyString());
+    }
+
+    @Test
+    void eventThatThrowsIsNotRecorded() throws Exception {
+        when(stripeBillingService.verifyWebhook(anyString(), anyString())).thenReturn(checkoutCompleted("paid"));
+        when(stripeBillingService.retrieveSubscription("sub_1")).thenThrow(new PaymentProviderUnavailableException("down"));
+
+        mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content("{}").header("Stripe-Signature", "sig"))
+            .andExpect(status().isServiceUnavailable());
+
+        verify(stripeWebhookEventRepository, never()).insertIfAbsent(anyString(), anyString());
+    }
+
+    @Test
+    void unhandledTypeWithRealInvoicePayloadTouchesNothing() throws Exception {
+        when(stripeBillingService.verifyWebhook(anyString(), anyString())).thenReturn(new WebhookEvent("evt_u",
+            "invoice.finalized", JSON.readTree("{\"id\":\"in_1\",\"attempt_count\":1,\"subscription\":\"sub_1\"}")));
+
+        postWebhook();
+
+        verifyNoInteractions(subscriptionWebhookService, stripeWebhookEventRepository);
+        verify(subscriptionWebhookService, never()).recordPaymentFailure(any());
     }
 }

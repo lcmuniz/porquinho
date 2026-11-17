@@ -207,7 +207,7 @@ class SubscriptionServiceTest {
         OffsetDateTime trialEnd = NOW_UTC.plusDays(10);
         when(subscriptionRepository.findByUserId(userId)).thenReturn(Optional.of(trialEndingAt(trialEnd)));
         when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
-        when(stripeBillingService.createCheckoutSession(userId, "ana@example.com", trialEnd.toInstant()))
+        when(stripeBillingService.createCheckoutSession(userId, null, "ana@example.com", trialEnd.toInstant()))
             .thenReturn("https://checkout.stripe.com/c/pay/cs_test_1");
 
         assertThat(service.createCheckout(userId)).isEqualTo("https://checkout.stripe.com/c/pay/cs_test_1");
@@ -217,7 +217,7 @@ class SubscriptionServiceTest {
     void createCheckoutWithExpiredTrialChargesImmediately() {
         when(subscriptionRepository.findByUserId(userId)).thenReturn(Optional.of(trialEndingAt(NOW_UTC.minusDays(1))));
         when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
-        when(stripeBillingService.createCheckoutSession(eq(userId), eq("ana@example.com"), isNull()))
+        when(stripeBillingService.createCheckoutSession(eq(userId), isNull(), eq("ana@example.com"), isNull()))
             .thenReturn("https://checkout.stripe.com/x");
 
         assertThat(service.createCheckout(userId)).isEqualTo("https://checkout.stripe.com/x");
@@ -237,7 +237,7 @@ class SubscriptionServiceTest {
         when(subscriptionRepository.findByUserId(userId)).thenReturn(Optional.of(monthly));
 
         assertThatThrownBy(() -> service.createCheckout(userId)).isInstanceOf(ConflictException.class);
-        verify(stripeBillingService, never()).createCheckoutSession(any(), any(), any());
+        verify(stripeBillingService, never()).createCheckoutSession(any(), any(), any(), any());
     }
 
     @Test
@@ -245,7 +245,7 @@ class SubscriptionServiceTest {
         Subscription trial = trialEndingAt(NOW_UTC.plusDays(10));
         when(subscriptionRepository.findByUserId(userId)).thenReturn(Optional.of(trial));
         when(userRepository.findById(userId)).thenReturn(Optional.empty());
-        when(stripeBillingService.createCheckoutSession(eq(userId), isNull(), any()))
+        when(stripeBillingService.createCheckoutSession(eq(userId), isNull(), isNull(), any()))
             .thenThrow(new PaymentProviderUnavailableException("down"));
 
         assertThatThrownBy(() -> service.createCheckout(userId)).isInstanceOf(PaymentProviderUnavailableException.class);
@@ -260,7 +260,7 @@ class SubscriptionServiceTest {
         cancelled.setStatus(Status.CANCELLED);
         when(subscriptionRepository.findByUserId(userId)).thenReturn(Optional.of(cancelled));
         when(userRepository.findById(userId)).thenReturn(Optional.empty());
-        when(stripeBillingService.createCheckoutSession(eq(userId), isNull(), isNull())).thenReturn("https://checkout.stripe.com/y");
+        when(stripeBillingService.createCheckoutSession(eq(userId), isNull(), isNull(), isNull())).thenReturn("https://checkout.stripe.com/y");
 
         assertThat(service.createCheckout(userId)).isEqualTo("https://checkout.stripe.com/y");
     }
@@ -412,7 +412,7 @@ class SubscriptionServiceTest {
 
         assertThatThrownBy(() -> service.createCheckout(userId)).isInstanceOf(ConflictException.class);
 
-        verify(stripeBillingService, never()).createCheckoutSession(any(), any(), any());
+        verify(stripeBillingService, never()).createCheckoutSession(any(), any(), any(), any());
     }
 
     // ---- Story 2.5: reactivate ----
@@ -436,7 +436,7 @@ class SubscriptionServiceTest {
             assertThat(result.getCancellationDate()).isNull();
             assertThat(result.getNextBillingDate()).isEqualTo(stripePeriodEnd);
             assertThat(result.getStripeSubscriptionId()).isEqualTo("sub_1");
-            verify(stripeBillingService, never()).createCheckoutSession(any(), any(), any());
+            verify(stripeBillingService, never()).createCheckoutSession(any(), any(), any(), any());
             ArgumentCaptor<String> metadata = ArgumentCaptor.forClass(String.class);
             verify(auditLogService).log(eq("subscription_reactivated"), eq(userId), eq("10.0.0.1"), metadata.capture());
             assertThat(metadata.getValue()).contains("\"stripe_subscription_id\":\"sub_1\"")
@@ -537,7 +537,7 @@ class SubscriptionServiceTest {
             .isInstanceOf(ConflictException.class)
             .hasMessageContaining("fatura pendente");
 
-        verify(stripeBillingService, never()).createCheckoutSession(any(), any(), any());
+        verify(stripeBillingService, never()).createCheckoutSession(any(), any(), any(), any());
         verify(stripeBillingService, never()).resumeSubscription(any());
     }
 
@@ -545,7 +545,8 @@ class SubscriptionServiceTest {
     void createCheckoutForSuspendedIsAllowed() {
         when(subscriptionRepository.findByUserId(userId)).thenReturn(Optional.of(monthly(Status.SUSPENDED, NOW_UTC)));
         when(userRepository.findById(userId)).thenReturn(Optional.of(userWithEmail("ana@example.com")));
-        when(stripeBillingService.createCheckoutSession(eq(userId), eq("ana@example.com"), isNull()))
+        // Re-subscription reuses the Stripe Customer of the earlier subscription (pre-10.4)
+        when(stripeBillingService.createCheckoutSession(eq(userId), eq("cus_1"), eq("ana@example.com"), isNull()))
             .thenReturn("https://checkout.stripe.com/x");
 
         assertThat(service.createCheckout(userId)).isEqualTo("https://checkout.stripe.com/x");

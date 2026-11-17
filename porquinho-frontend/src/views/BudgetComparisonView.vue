@@ -202,17 +202,27 @@
                   </th>
                 </tr>
                 <template v-if="!collapsed.has(group.row.id)">
-                  <tr
-                    v-for="row in group.children"
-                    :key="row.id"
-                    class="border-b border-gray-100"
-                    :data-testid="`row-${row.id}`"
-                  >
-                    <th scope="row" class="py-2 pr-3 pl-8 text-left font-normal text-gray-900">
-                      {{ row.name }}
-                    </th>
-                    <RowCells :row="row" />
-                  </tr>
+                  <template v-for="row in group.children" :key="row.id">
+                    <tr class="border-b border-gray-100" :data-testid="`row-${row.id}`">
+                      <th scope="row" class="py-2 pr-3 pl-8 text-left font-normal text-gray-900">
+                        {{ row.name }}
+                      </th>
+                      <RowCells :row="row" />
+                    </tr>
+                    <tr
+                      v-if="row.unbudgeted > 0"
+                      class="border-b border-gray-100 text-gray-600"
+                      :data-testid="`unbudgeted-${row.id}`"
+                    >
+                      <th
+                        scope="row"
+                        :colspan="COLUMNS.length"
+                        class="py-2 pr-3 pl-12 text-left font-normal"
+                      >
+                        {{ NO_BUDGET }}: {{ formatBRL(row.unbudgeted) }}
+                      </th>
+                    </tr>
+                  </template>
                 </template>
               </tbody>
             </table>
@@ -298,7 +308,11 @@ interface Row {
   difference: number | null
   percent: number | null
   status: BudgetStatus | null
-  /** Gasto das filhas sem orçamento, à parte do alocado (retro do Epic 6, A3); 0 nas filhas. */
+  /**
+   * Gasto fora do orçamento, à parte do alocado (retro do Epic 6, A3): no grupo, o das filhas sem orçamento mais o
+   * das filhas orçadas nos meses sem orçamento; na filha orçada em algum mês, o dos meses sem orçamento (pré-10.4,
+   * decisão A); 0 na filha sem orçamento em nenhum mês.
+   */
   unbudgeted: number
 }
 
@@ -376,8 +390,9 @@ function makeRow(id: string, name: string, allocatedCents: number | null, spentC
 }
 
 /**
- * Soma em centavos só das linhas com orçamento; o gasto das demais fica em `unbudgeted`, sem entrar no status. Se
- * nenhuma linha tiver orçamento, o alocado é nulo e o gasto é o de todas, como uma filha sem orçamento.
+ * Soma em centavos só das linhas com orçamento; o gasto das demais, mais o `unbudgeted` das orçadas, fica em
+ * `unbudgeted`, sem entrar no status. Se nenhuma linha tiver orçamento, o alocado é nulo e o gasto é o de todas, como
+ * uma filha sem orçamento.
  */
 function sumRows(id: string, name: string, rows: Row[]): Row {
   const cents = (v: number) => Math.round(v * 100)
@@ -390,26 +405,40 @@ function sumRows(id: string, name: string, rows: Row[]): Row {
     withBudget.reduce((t, r) => t + cents(r.allocated!), 0),
     spent(withBudget),
   )
-  row.unbudgeted = (spent(rows) - spent(withBudget)) / 100
+  const budgetedUnbudgeted = withBudget.reduce((t, r) => t + cents(r.unbudgeted), 0)
+  row.unbudgeted = (spent(rows) - spent(withBudget) + budgetedUnbudgeted) / 100
   return row
 }
 
-/** Uma linha por filha devolvida em algum mês do período, somando os meses. */
+/**
+ * Uma linha por filha devolvida em algum mês do período, somando os meses. Na filha orçada em algum mês, alocado e
+ * gasto são só dos meses com orçamento e o gasto dos outros vai para `unbudgeted` (pré-10.4, decisão A).
+ */
 const childRows = computed(() => {
-  const sums = new Map<string, { allocated: number | null; spent: number }>()
+  const sums = new Map<string, { allocated: number | null; budgeted: number; unbudgeted: number }>()
   for (const budget of data.value?.budgets ?? []) {
     for (const c of budget.categories) {
-      const sum = sums.get(c.categoryId) ?? { allocated: null, spent: 0 }
-      if (c.allocated !== null) sum.allocated = (sum.allocated ?? 0) + Math.round(c.allocated * 100)
-      sum.spent += Math.round(c.spent * 100)
+      const sum = sums.get(c.categoryId) ?? { allocated: null, budgeted: 0, unbudgeted: 0 }
+      const spent = Math.round(c.spent * 100)
+      if (c.allocated !== null) {
+        sum.allocated = (sum.allocated ?? 0) + Math.round(c.allocated * 100)
+        sum.budgeted += spent
+      } else sum.unbudgeted += spent
       sums.set(c.categoryId, sum)
     }
   }
   const rows = new Map<string, Row>()
   for (const c of data.value?.categories ?? []) {
     const sum = sums.get(c.id)
-    if (c.parentCategoryId !== null && sum)
-      rows.set(c.id, makeRow(c.id, c.categoryName, sum.allocated, sum.spent))
+    if (c.parentCategoryId === null || !sum) continue
+    // Sem orçamento em nenhum mês: gasto total, como antes
+    if (sum.allocated === null) {
+      rows.set(c.id, makeRow(c.id, c.categoryName, null, sum.unbudgeted))
+      continue
+    }
+    const row = makeRow(c.id, c.categoryName, sum.allocated, sum.budgeted)
+    row.unbudgeted = sum.unbudgeted / 100
+    rows.set(c.id, row)
   }
   return rows
 })
@@ -530,7 +559,7 @@ function print() {
 function exportCsv() {
   const money = (v: number | null) => (v === null ? '' : formatBRLInput(v))
   const lines = [
-    'Grupo;Categoria;Alocado;Gasto;Diferença;Percentual;Status',
+    'Grupo;Categoria;Alocado;Gasto;Diferença;Percentual;Status;Gasto sem orçamento',
     ...groups.value.flatMap((g) =>
       g.children.map((r) =>
         csvLine([
@@ -541,6 +570,8 @@ function exportCsv() {
           money(r.difference),
           r.percent === null ? '' : String(r.percent),
           statusText(r),
+          // vazia na filha sem orçamento em nenhum mês: o gasto dela já está todo em Gasto
+          r.allocated === null ? '' : money(r.unbudgeted),
         ]),
       ),
     ),

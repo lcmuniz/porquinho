@@ -196,7 +196,8 @@ public class SubscriptionService {
         }
 
         String email = userRepository.findById(userId).map(User::getEmail).orElse(null);
-        return stripeBillingService.createCheckoutSession(userId, email, firstChargeAt(subscription));
+        return stripeBillingService.createCheckoutSession(userId, subscription.getStripeCustomerId(), email,
+            firstChargeAt(subscription));
     }
 
     /**

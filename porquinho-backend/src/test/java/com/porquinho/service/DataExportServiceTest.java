@@ -1214,6 +1214,33 @@ class DataExportServiceTest {
         verify(dataExportRepository).save(export);
     }
 
+    @Test
+    void hourlyCleanupStillExpiresReadyExportsWhenRedisIsDown() {
+        DataExport stuck = createTestExport();
+        DataExport ready = createTestExport();
+        ready.setStatus(ExportStatus.READY);
+        when(dataExportRepository.findByStatusAndCreatedAtBefore(eq(ExportStatus.PROCESSING), any()))
+            .thenReturn(List.of(stuck));
+        when(dataExportRepository.findByStatusAndExpiresAtBefore(eq(ExportStatus.READY), any()))
+            .thenReturn(List.of(ready));
+        doThrow(new RuntimeException("Redis down")).when(rateLimitService).reset(anyString());
+
+        assertDoesNotThrow(() -> dataExportService.cleanupExpiredExports());
+
+        assertEquals(ExportStatus.EXPIRED, ready.getStatus());
+        verify(dataExportRepository).save(ready);
+    }
+
+    @Test
+    void startupSweepNeverBlocksTheBootWhenRedisIsDown() {
+        DataExport stuck = createTestExport();
+        when(dataExportRepository.findByStatusAndCreatedAtBefore(eq(ExportStatus.PROCESSING), any()))
+            .thenReturn(List.of(stuck));
+        doThrow(new RuntimeException("Redis down")).when(rateLimitService).reset(anyString());
+
+        assertDoesNotThrow(() -> dataExportService.failExportsInterruptedByRestart());
+    }
+
     private DataExport createTestExport() {
         DataExport export = new DataExport(userId);
         export.setId(UUID.randomUUID());

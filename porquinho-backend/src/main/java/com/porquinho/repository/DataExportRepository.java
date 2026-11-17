@@ -26,6 +26,9 @@ public interface DataExportRepository extends JpaRepository<DataExport, UUID> {
 
     List<DataExport> findByStatusAndExpiresAtBefore(ExportStatus status, LocalDateTime dateTime);
 
+    /** Exports still in a status created before the cutoff (stuck PROCESSING sweep, pre-10.4). */
+    List<DataExport> findByStatusAndCreatedAtBefore(ExportStatus status, LocalDateTime dateTime);
+
     /**
      * Find all exports for a user (Story 1.7 - needed to iterate file paths before purge).
      */

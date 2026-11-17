@@ -17,10 +17,12 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -52,7 +54,8 @@ public class BudgetReportService {
 
     /**
      * One row's figures: allocated is null without any allocation; win3/win6 are the spent of the windows; unbudgeted
-     * is the spent of the children without allocation, only on a group row with some allocated child.
+     * is the spent outside the budget (pre-10.4): on a child with allocation in some month, its spent of the months
+     * without allocation; on a group with some allocated child, that plus the spent of the children with none.
      */
     private record Line(String name, String group, BigDecimal allocated, BigDecimal spent, BigDecimal win3,
                         BigDecimal win6, BigDecimal unbudgeted) {}
@@ -77,13 +80,17 @@ public class BudgetReportService {
             .toList();
 
         Map<UUID, BigDecimal> allocated = new HashMap<>();
+        Set<Map.Entry<UUID, YearMonth>> budgetedMonths = new HashSet<>();
         for (YearMonth m = from; !m.isAfter(to); m = m.plusMonths(1)) {
             for (BudgetAllocation a : budgetAllocationRepository.findByUserIdAndMonthYear(userId, m.atDay(1))) {
                 allocated.merge(a.getCategoryId(), a.getAllocatedAmount(), BigDecimal::add);
+                budgetedMonths.add(Map.entry(a.getCategoryId(), m));
             }
         }
 
+        // spent of the months with allocation (or of every month for a child never allocated) vs. of the others
         Map<UUID, BigDecimal> spent = new HashMap<>();
+        Map<UUID, BigDecimal> unbudgeted = new HashMap<>();
         Map<UUID, BigDecimal> win3 = new HashMap<>();
         Map<UUID, BigDecimal> win6 = new HashMap<>();
         for (Object[] r : transactionRepository.sumSpentByCategoryAndMonth(userId,
@@ -94,7 +101,8 @@ public class BudgetReportService {
             YearMonth month = YearMonth.of(((Number) r[1]).intValue(), ((Number) r[2]).intValue());
             BigDecimal sum = (BigDecimal) r[3];
             if (!month.isBefore(from)) {
-                spent.merge(id, sum, BigDecimal::add);
+                boolean outsideBudget = allocated.containsKey(id) && !budgetedMonths.contains(Map.entry(id, month));
+                (outsideBudget ? unbudgeted : spent).merge(id, sum, BigDecimal::add);
             } else {
                 win6.merge(id, sum, BigDecimal::add);
                 if (!month.isBefore(from.minusMonths(3))) win3.merge(id, sum, BigDecimal::add);
@@ -107,44 +115,51 @@ public class BudgetReportService {
             byGroup.computeIfAbsent(c.getParentCategoryId(), k -> new ArrayList<>()).add(new Line(c.getCategoryName(),
                 groups.getOrDefault(c.getParentCategoryId(), ""), allocated.get(c.getId()),
                 spent.getOrDefault(c.getId(), BigDecimal.ZERO), win3.getOrDefault(c.getId(), BigDecimal.ZERO),
-                win6.getOrDefault(c.getId(), BigDecimal.ZERO), null));
+                win6.getOrDefault(c.getId(), BigDecimal.ZERO),
+                allocated.containsKey(c.getId()) ? unbudgeted.getOrDefault(c.getId(), BigDecimal.ZERO) : null));
         }
 
-        StringBuilder csv = new StringBuilder(CsvPtBr.BOM + "Categoria;Grupo;Alocado;Gasto;Restante;% usado;Status");
-        if (hierarchy) csv.append(";Gasto sem orçamento");
+        // Always present: with or without hierarchy, the spent outside the budget must not vanish from the file
+        StringBuilder csv = new StringBuilder(CsvPtBr.BOM + "Categoria;Grupo;Alocado;Gasto;Restante;% usado;Status"
+            + ";Gasto sem orçamento");
         if (averages) csv.append(";Média 3 meses;Média 6 meses;Tendência");
         csv.append(CsvPtBr.CRLF);
         for (Map.Entry<UUID, List<Line>> entry : byGroup.entrySet()) {
-            if (hierarchy) append(csv, groupLine(groups.getOrDefault(entry.getKey(), ""), entry.getValue()), true, averages);
-            for (Line l : entry.getValue()) append(csv, l, hierarchy, averages);
+            if (hierarchy) append(csv, groupLine(groups.getOrDefault(entry.getKey(), ""), entry.getValue()), averages);
+            for (Line l : entry.getValue()) append(csv, l, averages);
         }
         return csv.toString();
     }
 
     /**
      * The 6.9 rule (sumRows in BudgetComparisonView): with some allocated child, allocated and spent use only those and
-     * the others' spent goes to unbudgeted; with none, spent sums every child. Averages always sum every child.
+     * the others' spent plus the allocated children's own unbudgeted go to unbudgeted; with none, spent sums every
+     * child. Averages always sum every child.
      */
     private static Line groupLine(String name, List<Line> children) {
         BigDecimal allocated = null;
         BigDecimal budgetedSpent = BigDecimal.ZERO;
         BigDecimal allSpent = BigDecimal.ZERO;
+        BigDecimal unbudgeted = BigDecimal.ZERO;
         BigDecimal win3 = BigDecimal.ZERO;
         BigDecimal win6 = BigDecimal.ZERO;
         for (Line l : children) {
             if (l.allocated() != null) {
                 allocated = allocated == null ? l.allocated() : allocated.add(l.allocated());
                 budgetedSpent = budgetedSpent.add(l.spent());
+                unbudgeted = unbudgeted.add(l.unbudgeted());
+            } else {
+                unbudgeted = unbudgeted.add(l.spent());
             }
             allSpent = allSpent.add(l.spent());
             win3 = win3.add(l.win3());
             win6 = win6.add(l.win6());
         }
         return allocated == null ? new Line(name, "", null, allSpent, win3, win6, null)
-            : new Line(name, "", allocated, budgetedSpent, win3, win6, allSpent.subtract(budgetedSpent));
+            : new Line(name, "", allocated, budgetedSpent, win3, win6, unbudgeted);
     }
 
-    private static void append(StringBuilder csv, Line l, boolean hierarchy, boolean averages) {
+    private static void append(StringBuilder csv, Line l, boolean averages) {
         BigDecimal remaining = l.allocated() == null ? null : l.allocated().subtract(l.spent());
         String percent = l.allocated() == null || l.allocated().signum() == 0 ? ""
             : l.spent().multiply(HUNDRED).divide(l.allocated(), 0, RoundingMode.HALF_UP).toPlainString();
@@ -156,7 +171,7 @@ public class BudgetReportService {
             CsvPtBr.money(remaining),
             percent,
             statusLabel(BudgetService.status(l.allocated(), remaining))));
-        if (hierarchy) csv.append(';').append(CsvPtBr.money(l.unbudgeted()));
+        csv.append(';').append(CsvPtBr.money(l.unbudgeted()));
         if (averages) {
             csv.append(';').append(CsvPtBr.money(l.win3().divide(BigDecimal.valueOf(3), 2, RoundingMode.HALF_UP)))
                 .append(';').append(CsvPtBr.money(l.win6().divide(BigDecimal.valueOf(6), 2, RoundingMode.HALF_UP)))

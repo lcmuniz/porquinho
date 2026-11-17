@@ -88,17 +88,30 @@ public class StripeBillingService {
     /**
      * Create a hosted Checkout session for the monthly plan and return its URL.
      *
+     * @param customerId the user's Stripe Customer from an earlier subscription, reused so a re-subscription does
+     *                   not create another Customer; null on the first subscription (Stripe creates one from the
+     *                   e-mail). A Customer deleted in Stripe falls back to the e-mail.
      * @param trialEnd when non-null, Stripe holds the first charge until this instant
      *                 (user keeps the remaining trial days). Null charges immediately.
      */
-    public String createCheckoutSession(UUID userId, String customerEmail, Instant trialEnd) {
+    public String createCheckoutSession(UUID userId, String customerId, String customerEmail, Instant trialEnd) {
         if (client == null) {
             log.error("STRIPE_SECRET_KEY not configured - cannot create Checkout session");
             throw new PaymentProviderUnavailableException("Pagamento indisponível no momento. Tente novamente mais tarde.");
         }
 
         try {
-            Session session = client.checkout().sessions().create(buildSessionParams(userId, customerEmail, trialEnd));
+            Session session;
+            try {
+                session = client.checkout().sessions().create(buildSessionParams(userId, customerId, customerEmail, trialEnd));
+            } catch (InvalidRequestException e) {
+                if (isBlank(customerId) || !"resource_missing".equals(e.getCode()) || !"customer".equals(e.getParam())) {
+                    throw e;
+                }
+                log.warn("Stripe Customer {} of user {} no longer exists; creating the Checkout session by e-mail",
+                    customerId, userId);
+                session = client.checkout().sessions().create(buildSessionParams(userId, null, customerEmail, trialEnd));
+            }
             return session.getUrl();
         } catch (StripeException e) {
             log.error("Stripe Checkout session creation failed for user {}: {}", userId, e.getMessage());
@@ -106,8 +119,11 @@ public class StripeBillingService {
         }
     }
 
-    /** Checkout params: subscription mode, card, inline R$ 19,90/month price, return URLs. */
-    SessionCreateParams buildSessionParams(UUID userId, String customerEmail, Instant trialEnd) {
+    /**
+     * Checkout params: subscription mode, card, inline R$ 19,90/month price, return URLs. Stripe accepts either
+     * customer or customer_email, never both: the existing Customer wins.
+     */
+    SessionCreateParams buildSessionParams(UUID userId, String customerId, String customerEmail, Instant trialEnd) {
         SessionCreateParams.SubscriptionData.Builder subscriptionData = SessionCreateParams.SubscriptionData.builder()
             .putMetadata("user_id", userId.toString());
         if (trialEnd != null) {
@@ -135,7 +151,9 @@ public class StripeBillingService {
                         .build())
                     .build())
                 .build());
-        if (!isBlank(customerEmail)) {
+        if (!isBlank(customerId)) {
+            params.setCustomer(customerId);
+        } else if (!isBlank(customerEmail)) {
             params.setCustomerEmail(customerEmail);
         }
         return params.build();

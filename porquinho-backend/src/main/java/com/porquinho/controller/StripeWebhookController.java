@@ -3,6 +3,7 @@ package com.porquinho.controller;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.porquinho.exception.InvalidWebhookSignatureException;
 import com.porquinho.exception.ResourceNotFoundException;
+import com.porquinho.repository.StripeWebhookEventRepository;
 import com.porquinho.service.StripeBillingService;
 import com.porquinho.service.StripeBillingService.SubscriptionDetails;
 import com.porquinho.service.StripeBillingService.WebhookEvent;
@@ -40,6 +41,10 @@ import java.util.UUID;
  * (billing_reason=subscription_create) arriving before checkout.session.completed -> 503, so the
  * retry records it once the subscription is known; unless Stripe says that subscription is canceled
  * (duplicate Checkout or deleted user, cancelled and refunded on checkout) -> 200.
+ *
+ * Dedup (pre-10.4): the id of a handled event is recorded only after a 2xx, so a 503/500 still lets Stripe
+ * retry; an event already recorded (retry or manual re-send) gets 200 with no effect. Concurrent first
+ * deliveries stay covered by the business keys (lock in activateMonthly, invoice UNIQUE).
  */
 @RestController
 public class StripeWebhookController {
@@ -50,6 +55,8 @@ public class StripeWebhookController {
     static final String SUBSCRIPTION_DELETED = "customer.subscription.deleted";
     static final String INVOICE_PAID = "invoice.paid";
     static final String INVOICE_PAYMENT_FAILED = "invoice.payment_failed";
+    private static final Set<String> HANDLED_TYPES =
+        Set.of(CHECKOUT_COMPLETED, SUBSCRIPTION_DELETED, INVOICE_PAID, INVOICE_PAYMENT_FAILED);
 
     private static final String BILLING_REASON_SUBSCRIPTION_CREATE = "subscription_create";
     private static final String STRIPE_STATUS_CANCELED = "canceled";
@@ -59,11 +66,14 @@ public class StripeWebhookController {
 
     private final StripeBillingService stripeBillingService;
     private final SubscriptionWebhookService subscriptionWebhookService;
+    private final StripeWebhookEventRepository stripeWebhookEventRepository;
 
     public StripeWebhookController(StripeBillingService stripeBillingService,
-                                   SubscriptionWebhookService subscriptionWebhookService) {
+                                   SubscriptionWebhookService subscriptionWebhookService,
+                                   StripeWebhookEventRepository stripeWebhookEventRepository) {
         this.stripeBillingService = stripeBillingService;
         this.subscriptionWebhookService = subscriptionWebhookService;
+        this.stripeWebhookEventRepository = stripeWebhookEventRepository;
     }
 
     @PostMapping(path = "/api/v1/webhooks/stripe")
@@ -77,18 +87,30 @@ public class StripeWebhookController {
             throw e;
         }
 
+        if (!HANDLED_TYPES.contains(event.type())) {
+            log.debug("Ignoring Stripe event {} ({})", event.id(), event.type());
+            return ResponseEntity.ok().build();
+        }
+        if (stripeWebhookEventRepository.existsById(event.id())) {
+            log.info("Ignoring Stripe event {} ({}): already processed", event.id(), event.type());
+            return ResponseEntity.ok().build();
+        }
+
+        ResponseEntity<Void> response = ResponseEntity.ok().build();
         if (CHECKOUT_COMPLETED.equals(event.type())) {
             handleCheckoutCompleted(event);
         } else if (SUBSCRIPTION_DELETED.equals(event.type())) {
             handleSubscriptionDeleted(event);
         } else if (INVOICE_PAID.equals(event.type())) {
-            return handleInvoicePaid(event);
+            response = handleInvoicePaid(event);
         } else if (INVOICE_PAYMENT_FAILED.equals(event.type())) {
             handleInvoicePaymentFailed(event);
-        } else {
-            log.debug("Ignoring Stripe event {} ({})", event.id(), event.type());
         }
-        return ResponseEntity.ok().build();
+        // Only after success: an exception or 503 leaves the id out, so Stripe's retry processes it
+        if (response.getStatusCode().is2xxSuccessful()) {
+            stripeWebhookEventRepository.insertIfAbsent(event.id(), event.type());
+        }
+        return response;
     }
 
     private void handleSubscriptionDeleted(WebhookEvent event) {
