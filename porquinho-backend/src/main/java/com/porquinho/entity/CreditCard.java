@@ -50,6 +50,11 @@ public class CreditCard {
     @Column(name = "deleted_by")
     private UUID deletedBy;
 
+    /** Optimistic version (V48): every change of the row increments it; the edit sends it back (409 if stale). */
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version;
+
     public CreditCard() {
     }
 
@@ -104,4 +109,6 @@ public class CreditCard {
 
     public UUID getDeletedBy() { return deletedBy; }
     public void setDeletedBy(UUID deletedBy) { this.deletedBy = deletedBy; }
+    public Long getVersion() { return version; }
+    public void setVersion(Long version) { this.version = version; }
 }

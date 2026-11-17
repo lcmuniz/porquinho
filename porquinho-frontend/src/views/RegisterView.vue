@@ -180,6 +180,8 @@ import { Input } from '@/components/ui/input'
 import PasswordStrengthIndicator from '@/components/PasswordStrengthIndicator.vue'
 import { useAuth } from '@/composables/useAuth'
 import { authService } from '@/services/authService'
+import { endSession } from '@/services/session'
+import { apiErrorDetail, isRegistrationRefused } from '@/lib/apiError'
 
 const router = useRouter()
 
@@ -240,6 +242,12 @@ const handleEmailSubmit = async () => {
           })
         }
       } catch (backendError: any) {
+        // Backend recusou (conta em exclusão ou e-mail de outra conta): mostra o motivo, encerra a sessão e fica no cadastro
+        if (isRegistrationRefused(backendError)) {
+          errorMessage.value = apiErrorDetail(backendError, 'Não foi possível entrar com esta conta.')
+          endSession()
+          return
+        }
         // If backend sync fails, log but don't block user (they can continue with Supabase-only)
         console.warn('Backend user sync failed (non-critical):', backendError)
       }

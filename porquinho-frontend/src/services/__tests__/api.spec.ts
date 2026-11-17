@@ -123,6 +123,16 @@ describe('api response interceptor', () => {
     })
   })
 
+  it('409 não encerra a sessão', async () => {
+    const api = await loadApi()
+
+    await expect(
+      api.get('/api/v1/budgets', { adapter: respondWith(409, { detail: 'Conflito' }) }),
+    ).rejects.toBeInstanceOf(AxiosError)
+    expect(mockClearUser).not.toHaveBeenCalled()
+    expect(mockPush).not.toHaveBeenCalled()
+  })
+
   it('outro 403 não encerra a sessão', async () => {
     const api = await loadApi()
 

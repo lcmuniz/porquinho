@@ -120,6 +120,20 @@ class TransactionImportReviewServiceTest {
         return jdbc.queryForMap("SELECT * FROM transactions WHERE id = ?", id);
     }
 
+    /** Sets the counters of an import the way the processor leaves them. */
+    private void counters(UUID importId, int total, int imported, int duplicates) {
+        jdbc.update("UPDATE transaction_imports SET total_transactions = ?, imported_transactions = ?, "
+            + "duplicates_found = ? WHERE id = ?", total, imported, duplicates, importId);
+    }
+
+    /** total, imported and duplicates of an import. */
+    private List<Integer> countersOf(UUID importId) {
+        Map<String, Object> row = jdbc.queryForMap("SELECT total_transactions, imported_transactions, duplicates_found "
+            + "FROM transaction_imports WHERE id = ?", importId);
+        return List.of((Integer) row.get("total_transactions"), (Integer) row.get("imported_transactions"),
+            (Integer) row.get("duplicates_found"));
+    }
+
     private String statusOf(UUID importId) {
         return jdbc.queryForObject("SELECT status FROM transaction_imports WHERE id = ?", String.class, importId);
     }
@@ -296,8 +310,14 @@ class TransactionImportReviewServiceTest {
         UUID future = newRow(review, 92, null);
         jdbc.update("UPDATE transactions SET is_future_installment = TRUE WHERE id = ?", future);
         UUID untouched = newRow(other, 92, null);
+        counters(review, 2, 2, 0);
+        counters(other, 2, 1, 1);
 
         ImportReviewActionResponse response = reviewService.discard(userId, review, IP);
+
+        // no row confirmed by another import: no counter changes
+        assertThat(countersOf(review)).containsExactly(2, 2, 0);
+        assertThat(countersOf(other)).containsExactly(2, 1, 1);
 
         assertThat(response.status()).isEqualTo("DISCARDED");
         assertThat(response.affectedTransactions()).isEqualTo(2);
@@ -319,15 +339,38 @@ class TransactionImportReviewServiceTest {
         UUID sibling = newRow(creator, 92, null);
         UUID confirmed = newRow(creator, 92, null);
         jdbc.update("UPDATE transactions SET confirmed_by_import_id = ? WHERE id = ?", confirmer, confirmed);
+        counters(creator, 2, 2, 0);
+        counters(confirmer, 1, 0, 1);
 
         reviewService.discard(userId, creator, IP);
 
+        // the confirmer counted the row as a duplicate; now it is its transaction ("Concluída: 1 transação")
+        assertThat(countersOf(confirmer)).containsExactly(1, 1, 0);
+        assertThat(countersOf(creator)).containsExactly(2, 2, 0);
         Map<String, Object> row = rowOf(confirmed);
         assertThat(row.get("import_id")).isEqualTo(confirmer);
         assertThat(row.get("confirmed_by_import_id")).isNull();
         assertThat(row.get("review_status")).isEqualTo("CONFIRMED");
         assertThat(row.get("deleted_at")).isNull();
         assertThat(rowOf(sibling).get("deleted_at")).isNotNull();
+    }
+
+    @Test
+    void discardingTheCreatorMovesTheCountersToEachConfirmer() {
+        UUID creator = newImport("REVIEW");
+        UUID b = newImport("COMPLETED");
+        UUID c = newImport("REVIEW");
+        for (UUID confirmer : List.of(b, b, c)) {
+            UUID row = newRow(creator, 92, null);
+            jdbc.update("UPDATE transactions SET confirmed_by_import_id = ? WHERE id = ?", confirmer, row);
+        }
+        counters(b, 5, 3, 2);
+        counters(c, 4, 3, 1);
+
+        reviewService.discard(userId, creator, IP);
+
+        assertThat(countersOf(b)).containsExactly(5, 5, 0);
+        assertThat(countersOf(c)).containsExactly(4, 4, 0);
     }
 
     @Test

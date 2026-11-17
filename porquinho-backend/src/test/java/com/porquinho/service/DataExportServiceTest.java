@@ -1101,7 +1101,9 @@ class DataExportServiceTest {
     private static void assertExportsEveryColumn(Class<?> entity, Map<String, Object> exported) {
         for (Field field : entity.getDeclaredFields()) {
             Column column = field.getAnnotation(Column.class);
-            if (column != null) {
+            // The card's @Version is a technical column, not personal data: its export leaves it out (triagem 16/11, grupo B)
+            boolean cardVersion = entity == CreditCard.class && field.isAnnotationPresent(jakarta.persistence.Version.class);
+            if (column != null && !cardVersion) {
                 assertTrue(exported.containsKey(column.name()), entity.getSimpleName() + " column not exported: " + column.name());
             }
         }

@@ -2,8 +2,11 @@ package com.porquinho.controller;
 
 import com.porquinho.config.TestWebSecurityConfig;
 import com.porquinho.dto.CreateCreditCardRequest;
+import com.porquinho.dto.UpdateCreditCardRequest;
 import com.porquinho.entity.CreditCard;
+import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
+import com.porquinho.exception.StaleDataMessages;
 import com.porquinho.service.CreditCardService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -79,6 +82,16 @@ class CreditCardControllerTest {
     private String body(String name, String bank, String limit, String dueDay) {
         return "{\"cardName\":" + name + ",\"bankName\":" + bank + ",\"cardLimit\":" + limit
             + ",\"dueDay\":" + dueDay + "}";
+    }
+
+    /** PUT body: the POST fields plus the version read when the form opened. */
+    private String updateBody(String name, String bank, String limit, String dueDay, String version) {
+        return "{\"cardName\":" + name + ",\"bankName\":" + bank + ",\"cardLimit\":" + limit
+            + ",\"dueDay\":" + dueDay + ",\"version\":" + version + "}";
+    }
+
+    private String updateBody(String name, String bank, String limit, String dueDay) {
+        return updateBody(name, bank, limit, dueDay, "0");
     }
 
     @Test
@@ -299,20 +312,23 @@ class CreditCardControllerTest {
         UUID id = UUID.randomUUID();
         CreditCard updated = card("Nubank", "6000.00", 20);
         updated.setId(id);
-        when(creditCardService.update(eq(userId), eq(id), any(CreateCreditCardRequest.class))).thenReturn(updated);
+        updated.setVersion(1L);
+        when(creditCardService.update(eq(userId), eq(id), any(UpdateCreditCardRequest.class))).thenReturn(updated);
 
         mockMvc.perform(put("/api/v1/credit-cards/" + id).with(authentication(authToken))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(body("\" Nubank \"", "\"Nubank\"", "6000.00", "20")))
+                .content(updateBody("\" Nubank \"", "\"Nubank\"", "6000.00", "20")))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.id").value(id.toString()))
             .andExpect(jsonPath("$.cardLimit").value(6000.0))
-            .andExpect(jsonPath("$.dueDay").value(20));
+            .andExpect(jsonPath("$.dueDay").value(20))
+            .andExpect(jsonPath("$.version").value(1));
 
-        ArgumentCaptor<CreateCreditCardRequest> captor = ArgumentCaptor.forClass(CreateCreditCardRequest.class);
+        ArgumentCaptor<UpdateCreditCardRequest> captor = ArgumentCaptor.forClass(UpdateCreditCardRequest.class);
         verify(creditCardService).update(eq(userId), eq(id), captor.capture());
         assertThat(captor.getValue().cardName()).isEqualTo("Nubank");
         assertThat(captor.getValue().dueDayValue()).isEqualTo(20);
+        assertThat(captor.getValue().version()).isZero();
     }
 
     @ParameterizedTest
@@ -320,7 +336,7 @@ class CreditCardControllerTest {
     void putWithDueDayOutside1To31Is400(String dueDay) throws Exception {
         mockMvc.perform(put("/api/v1/credit-cards/" + UUID.randomUUID()).with(authentication(authToken))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(body("\"Cartão\"", "null", "100.00", dueDay)))
+                .content(updateBody("\"Cartão\"", "null", "100.00", dueDay)))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.errors.dueDay").value(DUE_DAY_MESSAGE));
 
@@ -331,7 +347,7 @@ class CreditCardControllerTest {
     void putWithBlankNameOrNegativeLimitIs400() throws Exception {
         mockMvc.perform(put("/api/v1/credit-cards/" + UUID.randomUUID()).with(authentication(authToken))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(body("\"  \"", "null", "-1.00", "10")))
+                .content(updateBody("\"  \"", "null", "-1.00", "10")))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.errors.cardName").value("Informe o nome do cartão"))
             .andExpect(jsonPath("$.errors.cardLimit").value("O limite não pode ser negativo"));
@@ -342,12 +358,60 @@ class CreditCardControllerTest {
     @Test
     void putOfAnotherUsersOrRemovedCardIs404() throws Exception {
         UUID id = UUID.randomUUID();
-        when(creditCardService.update(eq(userId), eq(id), any(CreateCreditCardRequest.class)))
+        when(creditCardService.update(eq(userId), eq(id), any(UpdateCreditCardRequest.class)))
             .thenThrow(new ResourceNotFoundException("Cartão não encontrado"));
 
         mockMvc.perform(put("/api/v1/credit-cards/" + id).with(authentication(authToken))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(body("\"Cartão\"", "null", "100.00", "10")))
+                .content(updateBody("\"Cartão\"", "null", "100.00", "10")))
             .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void putWithoutVersionIs400() throws Exception {
+        mockMvc.perform(put("/api/v1/credit-cards/" + UUID.randomUUID()).with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(updateBody("\"Cartão\"", "null", "100.00", "10", "null")))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errors.version").value("Versão obrigatória"));
+
+        verifyNoInteractions(creditCardService);
+    }
+
+    @Test
+    void putWithANegativeVersionIs400() throws Exception {
+        mockMvc.perform(put("/api/v1/credit-cards/" + UUID.randomUUID()).with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(updateBody("\"Cartão\"", "null", "100.00", "10", "-1")))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errors.version").value("Versão inválida"));
+
+        verifyNoInteractions(creditCardService);
+    }
+
+    @Test
+    void putWithAStaleVersionIs409() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(creditCardService.update(eq(userId), eq(id), any(UpdateCreditCardRequest.class)))
+            .thenThrow(new ConflictException(StaleDataMessages.CARD));
+
+        mockMvc.perform(put("/api/v1/credit-cards/" + id).with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(updateBody("\"Cartão\"", "null", "100.00", "10")))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.detail").value("Este cartão foi alterado em outra tela. Abra a edição de novo."));
+    }
+
+    @Test
+    void aVersionCollisionAtFlushIsTheSame409() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(creditCardService.update(eq(userId), eq(id), any(UpdateCreditCardRequest.class)))
+            .thenThrow(new org.springframework.orm.ObjectOptimisticLockingFailureException(CreditCard.class, id));
+
+        mockMvc.perform(put("/api/v1/credit-cards/" + id).with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(updateBody("\"Cartão\"", "null", "100.00", "10")))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.detail").value("Este cartão foi alterado em outra tela. Abra a edição de novo."));
     }
 }

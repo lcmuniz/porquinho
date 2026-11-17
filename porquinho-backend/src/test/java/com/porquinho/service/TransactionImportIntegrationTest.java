@@ -1498,9 +1498,14 @@ class TransactionImportIntegrationTest {
         UUID confirmer = transactionImportService.create(userId, null, nubank, novemberCsv(false), "127.0.0.1").id();
         assertThat(awaitDone(confirmer).get("status")).isEqualTo("COMPLETED");
         assertThat(fourthInstallment().get("confirmed_by_import_id")).isEqualTo(confirmer);
+        assertThat(row(confirmer)).containsEntry("imported_transactions", 0).containsEntry("duplicates_found", 1);
+        int total = (Integer) row(confirmer).get("total_transactions");
 
         reviewService.discard(userId, creator, "127.0.0.1");
 
+        // the confirmer now owns the installment: one transaction, no duplicate
+        assertThat(row(confirmer)).containsEntry("imported_transactions", 1).containsEntry("duplicates_found", 0)
+            .containsEntry("total_transactions", total);
         Map<String, Object> confirmed = fourthInstallment();
         assertThat(confirmed.get("import_id")).isEqualTo(confirmer);
         assertThat(confirmed.get("review_status")).isEqualTo("CONFIRMED");

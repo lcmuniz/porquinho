@@ -7,6 +7,8 @@ export interface CreditCard {
   /** Dia do vencimento da fatura, de 1 a 31. */
   dueDay: number
   createdAt: string
+  /** Versão otimista: volta no PUT da edição (409 se outra tela gravou antes). */
+  version: number
 }
 
 export interface CreateCreditCardInput {
@@ -14,4 +16,9 @@ export interface CreateCreditCardInput {
   bankName: string | null
   cardLimit: number
   dueDay: number
+}
+
+/** PUT da edição: os campos da criação mais a versão lida ao abrir o formulário. */
+export interface UpdateCreditCardInput extends CreateCreditCardInput {
+  version: number
 }

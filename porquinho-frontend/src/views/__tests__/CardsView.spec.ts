@@ -29,6 +29,7 @@ function card(overrides: Partial<CreditCard> = {}): CreditCard {
     cardLimit: 5000,
     dueDay: 10,
     createdAt: '2026-11-01T12:00:00Z',
+    version: 0,
     ...overrides,
   }
 }
@@ -471,6 +472,7 @@ describe('CardsView — editar cartão (Story 4.3)', () => {
       bankName: 'Nubank',
       cardLimit: 6000,
       dueDay: 20,
+      version: 0,
     })
     expect(mockCreate).not.toHaveBeenCalled()
     expect(editDialog()).toBeNull()
@@ -537,6 +539,52 @@ describe('CardsView — editar cartão (Story 4.3)', () => {
     expect(wrapper.get('[data-testid="cards-success"]').text()).toBe('')
     await flushPromises()
     expect(document.activeElement?.getAttribute('data-testid')).toBe('open-add-card')
+  })
+
+  const STALE = 'Este cartão foi alterado em outra tela. Abra a edição de novo.'
+
+  it('409 ao salvar fecha o diálogo, recarrega a lista com os dados da outra aba e avisa', async () => {
+    mockUpdate.mockRejectedValue({ response: { status: 409, data: { detail: STALE } } })
+    const wrapper = await mountView()
+    const form = await openEdit(wrapper)
+    // Outra aba salvou o Nubank com limite de R$ 7.000,00
+    mockList.mockResolvedValue([
+      card({ id: 'c1', cardName: 'Nubank Aba 1', cardLimit: 7000, dueDay: 10, version: 1 }),
+      card({ id: 'c2', cardName: 'Inter', bankName: null, cardLimit: 1000, dueDay: 3 }),
+    ])
+    await form.get('[data-testid="card-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(mockUpdate).toHaveBeenCalledWith('c1', expect.objectContaining({ version: 0 }))
+    expect(editDialog()).toBeNull()
+    expect(mockList).toHaveBeenCalledTimes(2)
+    expect(wrapper.get('[data-testid="card-item-c1"]').text()).toContain('Nubank Aba 1')
+    expect(plain(wrapper.get('[data-testid="cards-total"]').text())).toBe('R$ 8.000,00')
+    const notice = wrapper.get('[data-testid="cards-notice"]')
+    expect(notice.text()).toBe(STALE)
+    expect(notice.attributes('role')).toBe('alert')
+    expect(wrapper.get('[data-testid="cards-success"]').text()).toBe('')
+
+    // Reabrir a edição usa a versão nova
+    mockUpdate.mockReset().mockImplementation(async (id: string, data) => ({ ...card({ id, version: 2 }), ...data }))
+    const reopened = await openEdit(wrapper)
+    await reopened.get('[data-testid="card-form"]').trigger('submit')
+    await flushPromises()
+    expect(mockUpdate).toHaveBeenCalledWith('c1', expect.objectContaining({ version: 1 }))
+  })
+
+  it('409 com falha na recarga mantém o aviso e pede para recarregar', async () => {
+    mockUpdate.mockRejectedValue({ response: { status: 409, data: {} } })
+    const wrapper = await mountView()
+    const form = await openEdit(wrapper)
+    mockList.mockRejectedValue(new Error('Network Error'))
+    await form.get('[data-testid="card-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(editDialog()).toBeNull()
+    expect(wrapper.get('[data-testid="cards-notice"]').text()).toBe(
+      `${STALE} Não foi possível atualizar a lista. Recarregue a página.`,
+    )
   })
 
   it('outra falha mostra a mensagem no diálogo, que continua aberto com os dados', async () => {

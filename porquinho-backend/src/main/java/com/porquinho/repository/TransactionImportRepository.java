@@ -45,6 +45,21 @@ public interface TransactionImportRepository extends JpaRepository<TransactionIm
     @Query("SELECT i FROM TransactionImport i WHERE i.userId = :userId AND i.id IN :ids")
     List<TransactionImport> findByUserIdAndIdIn(@Param("userId") UUID userId, @Param("ids") Collection<UUID> ids);
 
+    /**
+     * Triagem 16/11, grupo B: the import {@code importId} is being discarded and its installments confirmed by another
+     * import are about to go to that import ({@code TransactionRepository.transferConfirmedInstallments}, same filter).
+     * The confirming import counted each of them as a duplicate; now each is one of its transactions. Must run before
+     * the transfer. Other counters do not change.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = "UPDATE transaction_imports i SET imported_transactions = i.imported_transactions + c.n, "
+        + "duplicates_found = GREATEST(i.duplicates_found - c.n, 0), updated_at = :now "
+        + "FROM (SELECT confirmed_by_import_id AS id, count(*) AS n FROM transactions WHERE user_id = :userId "
+        + "AND import_id = :importId AND confirmed_by_import_id IS NOT NULL AND deleted_at IS NULL GROUP BY 1) c "
+        + "WHERE i.id = c.id", nativeQuery = true)
+    int moveTransferredInstallmentCounters(@Param("userId") UUID userId, @Param("importId") UUID importId,
+                                           @Param("now") OffsetDateTime now);
+
     /** One of the user's imports; empty when it does not exist or belongs to someone else (Story 5.3). */
     Optional<TransactionImport> findByIdAndUserId(UUID id, UUID userId);
 

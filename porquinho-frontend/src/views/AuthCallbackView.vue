@@ -30,6 +30,8 @@ import { Button } from '@/components/ui/button'
 import { useAuth } from '@/composables/useAuth'
 import { authService } from '@/services/authService'
 import { useAuthStore } from '@/stores/auth'
+import { endSession } from '@/services/session'
+import { apiErrorDetail, isRegistrationRefused } from '@/lib/apiError'
 
 const router = useRouter()
 const { getSession } = useAuth()
@@ -75,6 +77,11 @@ onMounted(async () => {
     router.push('/onboarding')
   } catch (error) {
     console.error('Error processing OAuth callback:', error)
+    if (isRegistrationRefused(error)) {
+      errorMessage.value = apiErrorDetail(error, 'Não foi possível entrar com esta conta.')
+      endSession()
+      return
+    }
     errorMessage.value =
       error instanceof Error
         ? error.message

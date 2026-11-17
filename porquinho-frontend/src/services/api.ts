@@ -2,6 +2,7 @@ import axios from 'axios'
 import { supabase } from './supabase'
 import router from '@/router'
 import { endSession } from './session'
+import { isDeletedAccountError } from '@/lib/apiError'
 
 const apiBaseURL = import.meta.env.VITE_API_BASE_URL
 
@@ -59,9 +60,6 @@ api.interceptors.request.use(
 
 export const SUBSCRIPTION_ROUTE = '/assinatura'
 
-/** title do ProblemDetail que o backend devolve (403) para conta em exclusão. */
-const DELETED_ACCOUNT_TITLE = 'Conta em exclusão'
-
 // Response interceptor: 402 -> tela de assinatura (Story 2.2); 403 conta em exclusão e 401 sem refresh -> /login
 api.interceptors.response.use(
   (response) => response,
@@ -77,7 +75,7 @@ api.interceptors.response.use(
     }
 
     // 403 do DeletedAccountFilter: a conta está em exclusão e o login não vale mais.
-    if (error.response?.status === 403 && error.response.data?.title === DELETED_ACCOUNT_TITLE) {
+    if (isDeletedAccountError(error)) {
       endSession({ msg: 'account-deletion-scheduled' })
       return Promise.reject(error)
     }

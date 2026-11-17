@@ -176,6 +176,8 @@ const emit = defineEmits<{
   updated: [card: CreditCard]
   /** Story 4.3: o cartão editado não existe mais (404). */
   notFound: []
+  /** O cartão mudou em outra tela depois de o formulário abrir (409). */
+  conflict: [detail: string | undefined]
   failed: [detail: string | undefined]
   /** Toda tentativa de envio, antes da validação (o pai limpa o erro anterior). */
   attempt: []
@@ -275,7 +277,7 @@ async function submit() {
   }
   try {
     if (editing) {
-      emit('updated', await updateCard(editing.id, input))
+      emit('updated', await updateCard(editing.id, { ...input, version: editing.version }))
     } else {
       const created = await createCard(input)
       reset()
@@ -287,6 +289,8 @@ async function submit() {
     const known = entries.filter(([key]) => FIELDS.includes(key as Field))
     if (editing && response?.status === 404) {
       emit('notFound')
+    } else if (editing && response?.status === 409) {
+      emit('conflict', response.data?.detail)
     } else if (response?.status === 400 && known.length > 0) {
       Object.assign(errors, Object.fromEntries(known))
       // Há erros de campos que o formulário não mostra: a mensagem geral não pode se perder

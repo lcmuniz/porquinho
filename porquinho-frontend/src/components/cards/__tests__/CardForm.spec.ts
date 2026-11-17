@@ -19,6 +19,7 @@ function created(overrides: Partial<CreditCard> = {}): CreditCard {
     cardLimit: 3000,
     dueDay: 15,
     createdAt: '2026-11-03T12:00:00Z',
+    version: 0,
     ...overrides,
   }
 }
@@ -268,6 +269,7 @@ describe('CardForm — edição (Story 4.3)', () => {
     cardLimit: 5000,
     dueDay: 10,
     createdAt: '2026-11-01T12:00:00Z',
+    version: 3,
   }
 
   beforeEach(() => {
@@ -302,6 +304,7 @@ describe('CardForm — edição (Story 4.3)', () => {
       bankName: 'Nubank',
       cardLimit: 6000,
       dueDay: 20,
+      version: 3,
     })
     const updated = wrapper.emitted('updated')?.[0]?.[0] as CreditCard
     expect(updated.dueDay).toBe(20)
@@ -330,6 +333,23 @@ describe('CardForm — edição (Story 4.3)', () => {
 
     expect(wrapper.emitted('notFound')).toHaveLength(1)
     expect(wrapper.emitted('failed')).toBeUndefined()
+  })
+
+  it('409 emite conflict com o detail da API (e não failed)', async () => {
+    mockUpdate.mockRejectedValue({
+      response: {
+        status: 409,
+        data: { detail: 'Este cartão foi alterado em outra tela. Abra a edição de novo.' },
+      },
+    })
+    const wrapper = mountForm({ card: editing })
+    await submit(wrapper)
+
+    expect(wrapper.emitted('conflict')?.[0]).toEqual([
+      'Este cartão foi alterado em outra tela. Abra a edição de novo.',
+    ])
+    expect(wrapper.emitted('failed')).toBeUndefined()
+    expect(wrapper.emitted('notFound')).toBeUndefined()
   })
 
   it('400 do servidor aparece no campo', async () => {

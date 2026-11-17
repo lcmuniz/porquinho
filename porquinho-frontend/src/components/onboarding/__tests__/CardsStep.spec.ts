@@ -26,6 +26,7 @@ function card(overrides: Partial<CreditCard> = {}): CreditCard {
     cardLimit: 5000,
     dueDay: 10,
     createdAt: '2026-11-02T12:00:00Z',
+    version: 0,
     ...overrides,
   }
 }

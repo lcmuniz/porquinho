@@ -8,6 +8,8 @@ import { useAuth } from '@/composables/useAuth'
 import { useAuthStore } from '@/stores/auth'
 import { authService } from '@/services/authService'
 import { safeRedirect } from '@/lib/redirect'
+import { endSession } from '@/services/session'
+import { apiErrorDetail, isRegistrationRefused } from '@/lib/apiError'
 
 const router = useRouter()
 const route = useRoute()
@@ -27,6 +29,15 @@ const infoMessage = computed(() => {
   }
   return ''
 })
+
+/**
+ * Backend recusou a conta (em exclusão ou e-mail de outra conta): mostra o motivo e encerra a sessão
+ * (sem setUser, sem redirect, sem contar como falha).
+ */
+function blockRefusedAccount(err: unknown) {
+  errorMessage.value = apiErrorDetail(err, 'Não foi possível entrar com esta conta.')
+  endSession()
+}
 
 const isFormValid = computed(() => {
   return email.value.length > 0 && password.value.length > 0
@@ -67,6 +78,10 @@ async function handleEmailLogin() {
     try {
       await authService.logLogin(email.value, session.access_token)
     } catch (backendError: any) {
+      if (isRegistrationRefused(backendError)) {
+        blockRefusedAccount(backendError)
+        return
+      }
       // If user doesn't exist in backend (404), create them now (lazy sync)
       if (backendError.response?.status === 404) {
         try {
@@ -77,6 +92,10 @@ async function handleEmailLogin() {
           // Retry logging the login
           await authService.logLogin(email.value, session.access_token)
         } catch (syncError: any) {
+          if (isRegistrationRefused(syncError)) {
+            blockRefusedAccount(syncError)
+            return
+          }
           console.warn('Failed to sync user to backend:', syncError)
         }
       } else {

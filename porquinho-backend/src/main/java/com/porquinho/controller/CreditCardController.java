@@ -2,6 +2,7 @@ package com.porquinho.controller;
 
 import com.porquinho.dto.CreateCreditCardRequest;
 import com.porquinho.dto.CreditCardResponse;
+import com.porquinho.dto.UpdateCreditCardRequest;
 import com.porquinho.entity.CreditCard;
 import com.porquinho.service.CreditCardService;
 import com.porquinho.exception.BadRequestException;
@@ -69,10 +70,11 @@ public class CreditCardController {
             .body(CreditCardResponse.of(creditCardService.create(userId, request)));
     }
 
-    /** Story 4.3: 200 with the edited card; 400 when invalid (same rules as POST); 404 if not the user's active card. */
+    /** Story 4.3: 200 with the edited card; 400 when invalid (same rules as POST); 404 if not the user's active card;
+     * 409 when the version sent is stale. */
     @PutMapping("/{id}")
     public ResponseEntity<CreditCardResponse> update(@AuthenticationPrincipal Jwt jwt, @PathVariable("id") UUID id,
-                                                     @Valid @RequestBody CreateCreditCardRequest request) {
+                                                     @Valid @RequestBody UpdateCreditCardRequest request) {
         UUID userId = UUID.fromString(jwt.getSubject());
         return ResponseEntity.ok(CreditCardResponse.of(creditCardService.update(userId, id, request)));
     }

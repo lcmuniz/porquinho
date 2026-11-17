@@ -1,6 +1,8 @@
 package com.porquinho.service;
 
 import com.porquinho.dto.CreateCreditCardRequest;
+import com.porquinho.dto.UpdateCreditCardRequest;
+import com.porquinho.exception.ConflictException;
 import com.porquinho.entity.CreditCard;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.CreditCardRepository;
@@ -147,11 +149,12 @@ class CreditCardServiceTest {
     void updateChangesNameBankLimitAndDueDay() {
         UUID cardId = UUID.randomUUID();
         CreditCard card = new CreditCard(userId, "Nubank", "Nubank", new BigDecimal("5000.00"), 10);
+        card.setVersion(2L);
         when(creditCardRepository.findActiveByIdForUpdate(cardId, userId)).thenReturn(Optional.of(card));
         when(creditCardRepository.save(any(CreditCard.class))).thenAnswer(inv -> inv.getArgument(0));
 
         CreditCard updated = service.update(userId, cardId,
-            new CreateCreditCardRequest(" Nubank Ultravioleta ", "  ", new BigDecimal("6000"), new BigDecimal("20")));
+            new UpdateCreditCardRequest(" Nubank Ultravioleta ", "  ", new BigDecimal("6000"), new BigDecimal("20"), 2L));
 
         assertSame(card, updated);
         assertEquals("Nubank Ultravioleta", updated.getCardName());
@@ -168,7 +171,24 @@ class CreditCardServiceTest {
         when(creditCardRepository.findActiveByIdForUpdate(cardId, userId)).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class, () -> service.update(userId, cardId,
-            new CreateCreditCardRequest("Nubank", null, BigDecimal.ONE, BigDecimal.ONE)));
+            new UpdateCreditCardRequest("Nubank", null, BigDecimal.ONE, BigDecimal.ONE, 0L)));
+        verify(creditCardRepository, never()).save(any());
+    }
+
+    @Test
+    void updateWithAStaleVersionIsAConflictAndWritesNothing() {
+        // Another tab saved the card: version went from 3 to 4
+        UUID cardId = UUID.randomUUID();
+        CreditCard card = new CreditCard(userId, "Nubank", "Nubank", new BigDecimal("5000.00"), 10);
+        card.setVersion(4L);
+        when(creditCardRepository.findActiveByIdForUpdate(cardId, userId)).thenReturn(Optional.of(card));
+
+        ConflictException ex = assertThrows(ConflictException.class, () -> service.update(userId, cardId,
+            new UpdateCreditCardRequest("Nubank PJ", null, new BigDecimal("9000"), new BigDecimal("20"), 3L)));
+
+        assertEquals("Este cartão foi alterado em outra tela. Abra a edição de novo.", ex.getMessage());
+        assertEquals("Nubank", card.getCardName());
+        assertEquals(new BigDecimal("5000.00"), card.getCardLimit());
         verify(creditCardRepository, never()).save(any());
     }
 }

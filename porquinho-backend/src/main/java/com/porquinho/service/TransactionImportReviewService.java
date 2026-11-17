@@ -234,7 +234,8 @@ public class TransactionImportReviewService {
      * Discards the import and soft-deletes its rows, future installments included, so they stop being candidates of the
      * duplicate check and of the installment groups. Under the advisory lock of the target, like the import itself: a
      * file of the same target being saved sees either all of this or none of it. Decision 3A: what another import
-     * confirmed goes to it first, and what this one confirmed for another import goes back to being future.
+     * confirmed goes to it first (and counts as its transaction, not a duplicate), and what this one confirmed for
+     * another import goes back to being future.
      */
     @Transactional
     public ImportReviewActionResponse discard(UUID userId, UUID importId, String ipAddress) {
@@ -245,6 +246,7 @@ public class TransactionImportReviewService {
         if (transactionImportRepository.markDiscarded(importId, now) == 0) {
             throw new ConflictException(NOT_IN_REVIEW_MESSAGE);
         }
+        transactionImportRepository.moveTransferredInstallmentCounters(userId, importId, now);
         int transferred = transactionRepository.transferConfirmedInstallments(userId, importId, now);
         int reverted = transactionRepository.revertConfirmedInstallments(userId, importId, now);
         int discarded = transactionRepository.softDeleteByImport(userId, importId, now);

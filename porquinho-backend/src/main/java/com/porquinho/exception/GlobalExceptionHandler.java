@@ -1,6 +1,7 @@
 package com.porquinho.exception;
 
 import com.porquinho.entity.Account;
+import com.porquinho.entity.CreditCard;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -45,16 +46,16 @@ public class GlobalExceptionHandler {
 
     /**
      * Handle a version collision detected at flush and return 409 (retro do Epic 4): the stale-edit message for an
-     * account, a generic one for any other entity.
+     * account or a card, a generic one for any other entity.
      */
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
     public ProblemDetail handleObjectOptimisticLockingFailureException(ObjectOptimisticLockingFailureException ex) {
         log.warn("Optimistic lock collision on {} {}", ex.getPersistentClassName(), ex.getIdentifier());
-        boolean account = Account.class.getName().equals(ex.getPersistentClassName());
-        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(
-            HttpStatus.CONFLICT,
-            account ? StaleDataMessages.ACCOUNT : StaleDataMessages.GENERIC
-        );
+        String entity = ex.getPersistentClassName();
+        String detail = Account.class.getName().equals(entity) ? StaleDataMessages.ACCOUNT
+            : CreditCard.class.getName().equals(entity) ? StaleDataMessages.CARD
+            : StaleDataMessages.GENERIC;
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, detail);
         problemDetail.setTitle("Conflict");
         problemDetail.setType(URI.create("https://api.porquinho.com/errors/conflict"));
         return problemDetail;

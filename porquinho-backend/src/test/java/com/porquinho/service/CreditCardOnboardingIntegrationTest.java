@@ -2,6 +2,7 @@ package com.porquinho.service;
 
 import com.porquinho.dto.CreateAccountRequest;
 import com.porquinho.dto.CreateCreditCardRequest;
+import com.porquinho.dto.UpdateCreditCardRequest;
 import com.porquinho.entity.CreditCard;
 import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
@@ -282,8 +283,8 @@ class CreditCardOnboardingIntegrationTest {
             "SELECT updated_at FROM credit_cards WHERE id = ?", java.time.OffsetDateTime.class, card.getId());
         Thread.sleep(5);
 
-        creditCardService.update(userId, card.getId(),
-            new CreateCreditCardRequest("Nubank Ultravioleta", "Nubank", new BigDecimal("6000.00"), new BigDecimal("20")));
+        creditCardService.update(userId, card.getId(), new UpdateCreditCardRequest("Nubank Ultravioleta", "Nubank",
+            new BigDecimal("6000.00"), new BigDecimal("20"), card.getVersion()));
         creditCardRepository.flush();
 
         Map<String, Object> row = jdbc.queryForMap(
@@ -301,8 +302,8 @@ class CreditCardOnboardingIntegrationTest {
         CreditCard removed = add(userId, "Removido", "1.00", 5);
         creditCardService.delete(userId, removed.getId(), "127.0.0.1");
         creditCardRepository.flush();
-        CreateCreditCardRequest request =
-            new CreateCreditCardRequest("Meu", null, new BigDecimal("999.00"), new BigDecimal("15"));
+        UpdateCreditCardRequest request =
+            new UpdateCreditCardRequest("Meu", null, new BigDecimal("999.00"), new BigDecimal("15"), 0L);
 
         assertThatThrownBy(() -> creditCardService.update(userId, foreign.getId(), request))
             .isInstanceOf(ResourceNotFoundException.class);

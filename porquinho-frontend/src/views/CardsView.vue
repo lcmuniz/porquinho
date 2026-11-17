@@ -275,6 +275,7 @@
           @created="onCreated"
           @updated="onUpdated"
           @not-found="onNotFound"
+          @conflict="onConflict"
           @failed="onFailed"
         />
         <Button
@@ -499,6 +500,26 @@ function onNotFound() {
   dialogOpen.value = false
   setSuccess(null)
   notice.value = 'Este cartão não existe mais'
+}
+
+/** 409 ao salvar: o cartão mudou em outra tela. Fecha a edição, avisa e recarrega a lista (como AccountsView). */
+async function onConflict(detail: string | undefined) {
+  const id = editing.value?.id
+  dialogOpen.value = false
+  setSuccess(null)
+  const message = detail ?? 'Este cartão foi alterado em outra tela. Abra a edição de novo.'
+  notice.value = message
+  try {
+    await fetchCards()
+  } catch {
+    // O aviso do conflito continua visível, junto com o da recarga
+    notice.value = `${message} Não foi possível atualizar a lista. Recarregue a página.`
+    return
+  }
+  if (cards.value.some((x) => x.id === id)) return
+  await nextTick()
+  const active = document.activeElement
+  if (!active || active === document.body) fallbackFocus()?.focus()
 }
 
 function onFailed(detail: string | undefined) {

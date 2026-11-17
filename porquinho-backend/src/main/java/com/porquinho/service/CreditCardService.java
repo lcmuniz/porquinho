@@ -1,6 +1,9 @@
 package com.porquinho.service;
 
 import com.porquinho.dto.CreateCreditCardRequest;
+import com.porquinho.dto.UpdateCreditCardRequest;
+import com.porquinho.exception.ConflictException;
+import com.porquinho.exception.StaleDataMessages;
 import com.porquinho.entity.CreditCard;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.CreditCardRepository;
@@ -10,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -43,12 +47,16 @@ public class CreditCardService {
 
     /**
      * Edits name, bank, limit and due day (Story 4.3), with the same rules as the creation.
-     * 404 when the card does not exist, belongs to someone else or was removed.
+     * 404 when the card does not exist, belongs to someone else or was removed. 409 when the version sent is not the
+     * current one (another screen saved after the form opened): checked after the row lock, so nothing is written.
      */
     @Transactional
-    public CreditCard update(UUID userId, UUID cardId, CreateCreditCardRequest request) {
+    public CreditCard update(UUID userId, UUID cardId, UpdateCreditCardRequest request) {
         CreditCard card = creditCardRepository.findActiveByIdForUpdate(cardId, userId)
             .orElseThrow(() -> new ResourceNotFoundException(NOT_FOUND_MESSAGE));
+        if (!Objects.equals(card.getVersion(), request.version())) {
+            throw new ConflictException(StaleDataMessages.CARD);
+        }
         card.setCardName(request.cardName());
         card.setBankName(request.bankName());
         card.setCardLimit(request.cardLimit().setScale(2, RoundingMode.UNNECESSARY));

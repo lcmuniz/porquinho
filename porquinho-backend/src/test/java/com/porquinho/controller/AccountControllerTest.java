@@ -453,7 +453,7 @@ class AccountControllerTest {
         UUID id = UUID.randomUUID();
         when(accountService.update(eq(userId), eq(id), any(UpdateAccountRequest.class)))
             .thenThrow(new org.springframework.orm.ObjectOptimisticLockingFailureException(
-                com.porquinho.entity.CreditCard.class, id));
+                com.porquinho.entity.Goal.class, id));
 
         mockMvc.perform(put("/api/v1/accounts/" + id).with(authentication(authToken))
                 .contentType(MediaType.APPLICATION_JSON)

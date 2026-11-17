@@ -1,5 +1,5 @@
 import { api } from './api'
-import type { CreateCreditCardInput, CreditCard } from '@/types/creditCard'
+import type { CreateCreditCardInput, CreditCard, UpdateCreditCardInput } from '@/types/creditCard'
 
 /** Story 3.3: cartões ativos do usuário logado, do mais antigo para o mais novo. */
 export async function listCards(): Promise<CreditCard[]> {
@@ -15,9 +15,10 @@ export async function createCard(input: CreateCreditCardInput): Promise<CreditCa
 
 /**
  * Story 4.3: edita nome, banco, limite e vencimento (mesmas regras da criação). 400 traz `errors` por
- * campo; 404 se o cartão não for do usuário ou já tiver sido removido.
+ * campo; 404 se o cartão não for do usuário ou já tiver sido removido; 409 se outra tela gravou depois de a
+ * edição abrir (`version` velha).
  */
-export async function updateCard(id: string, input: CreateCreditCardInput): Promise<CreditCard> {
+export async function updateCard(id: string, input: UpdateCreditCardInput): Promise<CreditCard> {
   const response = await api.put<CreditCard>(`/api/v1/credit-cards/${id}`, input)
   return response.data
 }
