@@ -97,3 +97,8 @@ management:
     # SMTP fora do ar não derruba o healthcheck do compose (e-mail é best-effort).
     mail:
       enabled: false
+  metrics:
+    web:
+      server:
+        # O padrão é 100 URIs; acima disso as novas rotas somem do painel de admin e dos snapshots (Story 10.1)
+        max-uri-tags: 200

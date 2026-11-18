@@ -6,8 +6,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.interceptor.TransactionAspectSupport;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -15,10 +18,14 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 
 /** Story 10.1: the admin panel queries against the real database (Testcontainers + Flyway). */
 @SpringBootTest
 @ActiveProfiles("test")
+// The @SpyBean gives this class its own context (and Hikari pool); closing it keeps the suite under max_connections
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class SystemHealthSnapshotRepositoryIntegrationTest {
 
     @Autowired
@@ -29,6 +36,8 @@ class SystemHealthSnapshotRepositoryIntegrationTest {
     private UserSessionRepository userSessionRepository;
     @Autowired
     private UserRepository userRepository;
+    @SpyBean
+    private SystemHealthSnapshotRepository snapshotRepository;
 
     private final UUID userId = UUID.randomUUID();
 
@@ -71,6 +80,20 @@ class SystemHealthSnapshotRepositoryIntegrationTest {
             + "WHERE recorded_at < now() - interval '1 day' ORDER BY recorded_at", Long.class);
         assertThat(left).containsExactly(2L);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM system_health_snapshots", Long.class)).isEqualTo(2);
+    }
+
+    @Test
+    void failedPurgeKeepsTheSavedSnapshot() {
+        // The purge runs outside the save's transaction: its failure must not roll the new row back. The stub fails the
+        // way a real one does inside a shared transaction (rollback-only); with no surrounding transaction it just throws.
+        doAnswer(inv -> {
+            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+            throw new RuntimeException("purge failed");
+        }).when(snapshotRepository).deleteRecordedBefore(any());
+
+        healthSnapshotService.recordSnapshot();
+
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM system_health_snapshots", Long.class)).isEqualTo(1);
     }
 
     @Test

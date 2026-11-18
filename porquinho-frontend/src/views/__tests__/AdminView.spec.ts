@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mount, flushPromises, RouterLinkStub } from '@vue/test-utils'
+import { mount, flushPromises, RouterLinkStub, enableAutoUnmount } from '@vue/test-utils'
 import AdminView from '../AdminView.vue'
 import type { SystemHealth } from '@/types/admin'
 
@@ -28,9 +28,16 @@ function health(overrides: Partial<SystemHealth> = {}): SystemHealth {
   }
 }
 
+function setVisibility(state: 'visible' | 'hidden') {
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state })
+}
+
 function mountView() {
   return mount(AdminView, { global: { stubs: { RouterLink: RouterLinkStub } } })
 }
+
+// Views montadas em outros testes deixariam o listener de visibilitychange no document
+enableAutoUnmount(afterEach)
 
 describe('AdminView', () => {
   beforeEach(() => {
@@ -40,6 +47,7 @@ describe('AdminView', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+    setVisibility('visible')
   })
 
   it('mostra cards com status, tabela por endpoint e gráficos', async () => {
@@ -126,6 +134,66 @@ describe('AdminView', () => {
     expect(wrapper.get('[data-testid="admin-retry"]').attributes('disabled')).toBeDefined()
     expect(wrapper.text()).not.toContain('Carregando...')
     expect(wrapper.find('[data-testid="admin-error"]').exists()).toBe(true)
+  })
+
+  it('dia com requisições e zero erros mostra o gráfico de erros', async () => {
+    mockGetSystemHealth.mockResolvedValue(
+      health({
+        hourly: Array.from({ length: 24 }, (_, i) => ({
+          hour: new Date(Date.UTC(2026, 10, 17, 13 + i)).toISOString(),
+          requests: 10,
+          errors: 0,
+          avgMs: 100,
+        })),
+      }),
+    )
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="chart-errors"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="chart-errors-empty"]').exists()).toBe(false)
+  })
+
+  it('formata o tempo arredondando antes de escolher ms ou s', async () => {
+    mockGetSystemHealth.mockResolvedValue(
+      health({
+        responseTime: { avgMs24h: 999.6, status: 'GREEN' },
+        endpoints: [{ method: 'GET', uri: '/api/v1/x', count: 1, avgMs: 999.4, errors: 0, status: 'GREEN' }],
+      }),
+    )
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="card-response"]').text()).toContain('1 s')
+    expect(wrapper.get('[data-testid="card-response"]').text()).not.toContain('1000 ms')
+    expect(wrapper.get('[data-testid="endpoints-table"]').text()).toContain('999 ms')
+  })
+
+  it('com a aba escondida não consulta no intervalo', async () => {
+    mountView()
+    await flushPromises()
+    setVisibility('hidden')
+
+    await vi.advanceTimersByTimeAsync(90_000)
+
+    expect(mockGetSystemHealth).toHaveBeenCalledTimes(1)
+  })
+
+  it('ao voltar a aba consulta na hora e remove o listener ao sair', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    setVisibility('hidden')
+    await vi.advanceTimersByTimeAsync(30_000)
+
+    setVisibility('visible')
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flushPromises()
+    expect(mockGetSystemHealth).toHaveBeenCalledTimes(2)
+
+    wrapper.unmount()
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flushPromises()
+    expect(mockGetSystemHealth).toHaveBeenCalledTimes(2)
   })
 
   it('erro de rede mostra a mensagem e mantém os dados anteriores', async () => {

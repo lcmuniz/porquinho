@@ -185,7 +185,9 @@ function formatPercent(value: number | null) {
 }
 
 function formatMs(value: number) {
-  return value >= 1000 ? `${percent.format(value / 1000)} s` : `${Math.round(value)} ms`
+  // Arredonda antes de escolher a unidade: 999,6 ms vira "1 s", não "1000 ms"
+  const ms = Math.round(value)
+  return ms >= 1000 ? `${percent.format(ms / 1000)} s` : `${ms} ms`
 }
 
 function formatBytes(value: number | null) {
@@ -295,10 +297,21 @@ function stop() {
   timer = undefined
 }
 
+// Aba escondida não consulta: cada chamada renova last_activity e manteria a sessão viva para sempre
+function onVisibilityChange() {
+  if (document.visibilityState === 'visible' && !forbidden.value) void load()
+}
+
 onMounted(() => {
   void load()
-  timer = setInterval(() => void load(), REFRESH_MS)
+  timer = setInterval(() => {
+    if (document.visibilityState !== 'hidden') void load()
+  }, REFRESH_MS)
+  document.addEventListener('visibilitychange', onVisibilityChange)
 })
 
-onBeforeUnmount(stop)
+onBeforeUnmount(() => {
+  stop()
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+})
 </script>
