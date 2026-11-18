@@ -17,7 +17,7 @@ class EmailServiceAutoConfigTest {
 
     @Test
     void emptyHostStillCreatesAJavaMailSenderButIsNotConfigured() {
-        runner.withPropertyValues("spring.mail.host=").run(ctx -> {
+        runner.withPropertyValues("spring.mail.host=", "app.mail.from=nao-responda@example.com").run(ctx -> {
             assertThat(ctx).hasSingleBean(JavaMailSender.class);
             assertThat(ctx.getBean(EmailService.class).isConfigured()).isFalse();
         });
@@ -25,7 +25,7 @@ class EmailServiceAutoConfigTest {
 
     @Test
     void realHostIsConfigured() {
-        runner.withPropertyValues("spring.mail.host=smtp.example.com").run(ctx ->
+        runner.withPropertyValues("spring.mail.host=smtp.example.com", "app.mail.from=nao-responda@example.com").run(ctx ->
             assertThat(ctx.getBean(EmailService.class).isConfigured()).isTrue());
     }
 }

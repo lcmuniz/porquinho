@@ -38,13 +38,18 @@ public class EmailService {
         this.mailSender = host == null || host.isBlank() ? null : mailSender.getIfAvailable();
         this.from = from;
         if (this.mailSender == null) {
-            log.warn("SMTP not configured (SMTP_HOST empty) - no e-mail will be sent; retention warnings and purges are postponed");
+            log.warn("SMTP not configured (SMTP_HOST empty) - no e-mail will be sent; retention warnings are postponed");
+        } else if (from == null || from.isBlank()) {
+            log.warn("MAIL_FROM empty - the SMTP provider may reject every e-mail; retention warnings are postponed");
         }
     }
 
-    /** False when spring.mail.host is not set: every send* method then skips the e-mail. */
+    /**
+     * True when e-mails can go out: an SMTP host and a From. Without a host every send* method skips the e-mail;
+     * without a From they still try, but Resend rejects them, so jobs that must not lose a warning check this first.
+     */
     public boolean isConfigured() {
-        return mailSender != null;
+        return mailSender != null && from != null && !from.isBlank();
     }
 
     private SimpleMailMessage newMessage(String to, String subject) {

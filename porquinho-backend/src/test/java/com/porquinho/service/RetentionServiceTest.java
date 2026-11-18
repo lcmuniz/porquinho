@@ -128,7 +128,7 @@ class RetentionServiceTest {
 
         verify(accountDeletionService).createRetentionDeletion(s.getUserId());
         verify(accountDeletionService).purgeUser(deletion);
-        verifyNoInteractions(emailService);
+        verify(emailService, never()).sendRetentionWarning(anyString(), anyLong(), any(), anyString(), anyString());
     }
 
     @Test
@@ -261,5 +261,22 @@ class RetentionServiceTest {
 
         assertThat(service.processRetention(s.getUserId())).get()
             .extracting(RetentionService.Outcome::action).isEqualTo(Action.PURGE);
+    }
+
+    @Test
+    void runWithoutEmailPostponesWarningsButStillPurgesWarnedUsers() {
+        when(emailService.isConfigured()).thenReturn(false);
+        Subscription toWarn = trialEndedAt(NOW.minusDays(23));
+        Subscription warned = trialEndedAt(NOW.minusDays(30).minusHours(1));
+        warned.setRetentionWarning1dSentAt(NOW.minusHours(25));
+        AccountDeletion deletion = new AccountDeletion(warned.getUserId(), NOW, null);
+        when(accountDeletionService.createRetentionDeletion(warned.getUserId())).thenReturn(deletion);
+        when(subscriptionRepository.findRetentionCandidates(any())).thenReturn(List.of(toWarn, warned));
+
+        service.runRetention();
+
+        verify(subscriptionRepository, never()).findByUserIdForUpdate(toWarn.getUserId());
+        assertThat(toWarn.getRetentionWarning7dSentAt()).isNull();
+        verify(accountDeletionService).purgeUser(deletion);
     }
 }

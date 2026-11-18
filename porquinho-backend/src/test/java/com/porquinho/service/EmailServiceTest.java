@@ -432,9 +432,10 @@ class EmailServiceTest {
     }
 
     @Test
-    void isConfiguredOnlyWithMailSender() {
-        assertThat(serviceWith(mock(JavaMailSender.class), "").isConfigured()).isTrue();
-        assertThat(serviceWith(null, "").isConfigured()).isFalse();
+    void isConfiguredNeedsMailSenderAndFrom() {
+        assertThat(serviceWith(mock(JavaMailSender.class), "nao-responda@example.com").isConfigured()).isTrue();
+        assertThat(serviceWith(mock(JavaMailSender.class), " ").isConfigured()).isFalse();
+        assertThat(serviceWith(null, "nao-responda@example.com").isConfigured()).isFalse();
     }
 
     @Test
