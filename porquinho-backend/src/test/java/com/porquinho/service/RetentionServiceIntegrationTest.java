@@ -7,6 +7,7 @@ import com.porquinho.entity.Subscription.PlanType;
 import com.porquinho.entity.Subscription.Status;
 import com.porquinho.repository.SubscriptionRepository;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -24,6 +25,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * Pre-Epic 10 through the real Spring proxies, the real candidate query and PostgreSQL: the retention purge erases
@@ -55,6 +57,11 @@ class RetentionServiceIntegrationTest {
 
     private final List<UUID> users = new CopyOnWriteArrayList<>();
     private final List<String> hashes = new CopyOnWriteArrayList<>();
+
+    @BeforeEach
+    void smtpConfigured() {
+        when(emailService.isConfigured()).thenReturn(true);
+    }
 
     @AfterEach
     void tearDown() {

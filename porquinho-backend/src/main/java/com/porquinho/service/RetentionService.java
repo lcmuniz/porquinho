@@ -37,6 +37,9 @@ import java.util.UUID;
  * audit commit first and the e-mail goes after commit (a lost warning is acceptable, a duplicate is not).
  * The purge needs the 1-day warning sent at least 24 h before, so a job stopped for days still warns first.
  * Soft-deleted users (deletion requested by the user) are left to the Story 1.7 job.
+ * Without an SMTP host or a From no warning is marked, so nobody is purged unwarned for that reason (pre-Epic 10,
+ * item 7); runRetention logs one WARN per run with the postponed count.
+ * A send that fails with SMTP configured (bad credentials, rejected From) still keeps the mark, as before.
  */
 @Service
 public class RetentionService {
@@ -118,12 +121,20 @@ public class RetentionService {
         List<Subscription> candidates = subscriptionRepository
             .findRetentionCandidates(now.plusDays(WARNING_WINDOW_DAYS).minusDays(RETENTION_DAYS));
 
+        // Counts and skips postponed warnings here; processRetention checks again under lock as the real guard
+        boolean mailOn = candidates.isEmpty() || emailService.isConfigured();
         int warned = 0;
         int purged = 0;
         int failed = 0;
+        int postponed = 0;
         for (Subscription candidate : candidates) {
             // Cheap pre-check on the unlocked snapshot; processRetention decides again under lock
-            if (dueAction(candidate, now).isEmpty()) {
+            Optional<Action> due = dueAction(candidate, now);
+            if (due.isEmpty()) {
+                continue;
+            }
+            if (!mailOn && due.get() != Action.PURGE) {
+                postponed++;
                 continue;
             }
             UUID userId = candidate.getUserId();
@@ -146,9 +157,13 @@ public class RetentionService {
             }
         }
 
+        if (postponed > 0) {
+            log.warn("E-mail not configured: {} retention warning(s) postponed; their purge waits until the e-mail is back",
+                postponed);
+        }
         if (!candidates.isEmpty()) {
-            log.info("Retention job done: {} candidates, {} warnings, {} purged, {} failed",
-                candidates.size(), warned, purged, failed);
+            log.info("Retention job done: {} candidates, {} warnings, {} purged, {} postponed, {} failed",
+                candidates.size(), warned, purged, postponed, failed);
         }
     }
 
@@ -180,6 +195,12 @@ public class RetentionService {
         if (action == Action.PURGE) {
             AccountDeletion deletion = accountDeletionService.createRetentionDeletion(userId);
             return Optional.of(new Outcome(action, deletion));
+        }
+
+        // Without e-mail the warning would be marked but never sent, and the purge only needs the 1-day mark:
+        // keep the data (longer retention) rather than delete an account that was never warned.
+        if (!emailService.isConfigured()) {
+            return Optional.empty();
         }
 
         if (action == Action.WARN_1D) {

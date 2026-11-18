@@ -63,6 +63,7 @@ class RetentionServiceTest {
             accountDeletionService, subscriptionService, auditLogService, emailService, clock,
             "https://app.example.com/", null);
         ReflectionTestUtils.setField(service, "self", service);
+        lenient().when(emailService.isConfigured()).thenReturn(true);
     }
 
     private Subscription stored(Subscription s) {
@@ -127,7 +128,8 @@ class RetentionServiceTest {
 
         verify(accountDeletionService).createRetentionDeletion(s.getUserId());
         verify(accountDeletionService).purgeUser(deletion);
-        verifyNoInteractions(emailService);
+        verify(emailService).isConfigured();
+        verifyNoMoreInteractions(emailService);
     }
 
     @Test
@@ -228,5 +230,54 @@ class RetentionServiceTest {
         assertThat(service.processRetention(s.getUserId())).isEmpty();
 
         verifyNoInteractions(accountDeletionService);
+    }
+
+    @Test
+    void withoutSmtpNoWarningIsMarkedSoNobodyIsPurgedUnwarned() {
+        when(emailService.isConfigured()).thenReturn(false);
+        Subscription sevenDays = trialEndedAt(NOW.minusDays(23));
+        Subscription oneDay = trialEndedAt(NOW.minusDays(29));
+        oneDay.setRetentionWarning7dSentAt(NOW.minusDays(6));
+
+        assertThat(service.processRetention(sevenDays.getUserId())).isEmpty();
+        assertThat(service.processRetention(oneDay.getUserId())).isEmpty();
+
+        assertThat(sevenDays.getRetentionWarning7dSentAt()).isNull();
+        assertThat(oneDay.getRetentionWarning1dSentAt()).isNull();
+        verify(subscriptionRepository, never()).save(any());
+        verifyNoInteractions(auditLogService, accountDeletionService);
+        verify(emailService, never()).sendRetentionWarning(anyString(), anyLong(), any(), anyString(), anyString());
+        // Without the 1-day mark the purge never becomes due, even past day 30
+        assertThat(service.dueAction(oneDay, NOW.plusDays(5))).contains(Action.WARN_1D);
+    }
+
+    @Test
+    void withoutSmtpAOneDayWarningSentBeforeStillPurges() {
+        // The 1-day mark was recorded while SMTP worked: the user was warned, so the purge goes on
+        lenient().when(emailService.isConfigured()).thenReturn(false);
+        Subscription s = trialEndedAt(NOW.minusDays(30).minusHours(1));
+        s.setRetentionWarning1dSentAt(NOW.minusHours(25));
+        AccountDeletion deletion = new AccountDeletion(s.getUserId(), NOW, null);
+        when(accountDeletionService.createRetentionDeletion(s.getUserId())).thenReturn(deletion);
+
+        assertThat(service.processRetention(s.getUserId())).get()
+            .extracting(RetentionService.Outcome::action).isEqualTo(Action.PURGE);
+    }
+
+    @Test
+    void runWithoutEmailPostponesWarningsButStillPurgesWarnedUsers() {
+        when(emailService.isConfigured()).thenReturn(false);
+        Subscription toWarn = trialEndedAt(NOW.minusDays(23));
+        Subscription warned = trialEndedAt(NOW.minusDays(30).minusHours(1));
+        warned.setRetentionWarning1dSentAt(NOW.minusHours(25));
+        AccountDeletion deletion = new AccountDeletion(warned.getUserId(), NOW, null);
+        when(accountDeletionService.createRetentionDeletion(warned.getUserId())).thenReturn(deletion);
+        when(subscriptionRepository.findRetentionCandidates(any())).thenReturn(List.of(toWarn, warned));
+
+        service.runRetention();
+
+        verify(subscriptionRepository, never()).findByUserIdForUpdate(toWarn.getUserId());
+        assertThat(toWarn.getRetentionWarning7dSentAt()).isNull();
+        verify(accountDeletionService).purgeUser(deletion);
     }
 }

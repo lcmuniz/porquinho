@@ -30,10 +30,26 @@ public class EmailService {
 
     // ObjectProvider: JavaMailSender only exists when spring.mail.host is set (e.g. absent in tests).
     // @Autowired(required = false) on a single constructor does NOT make the parameter optional.
+    // host: application.yml maps an unset SMTP_HOST to "", and Boot still creates the JavaMailSender for an empty
+    // host (it would try localhost), so a blank host counts as not configured.
     // from: providers like Resend reject messages without a From on a verified domain.
-    public EmailService(ObjectProvider<JavaMailSender> mailSender, @Value("${app.mail.from:}") String from) {
-        this.mailSender = mailSender.getIfAvailable();
+    public EmailService(ObjectProvider<JavaMailSender> mailSender, @Value("${spring.mail.host:}") String host,
+                        @Value("${app.mail.from:}") String from) {
+        this.mailSender = host == null || host.isBlank() ? null : mailSender.getIfAvailable();
         this.from = from;
+        if (this.mailSender == null) {
+            log.warn("SMTP not configured (SMTP_HOST empty) - no e-mail will be sent; retention warnings are postponed");
+        } else if (from == null || from.isBlank()) {
+            log.warn("MAIL_FROM empty - the SMTP provider may reject every e-mail; retention warnings are postponed");
+        }
+    }
+
+    /**
+     * True when e-mails can go out: an SMTP host and a From. Without a host every send* method skips the e-mail;
+     * without a From they still try, but Resend rejects them, so jobs that must not lose a warning check this first.
+     */
+    public boolean isConfigured() {
+        return mailSender != null && from != null && !from.isBlank();
     }
 
     private SimpleMailMessage newMessage(String to, String subject) {
