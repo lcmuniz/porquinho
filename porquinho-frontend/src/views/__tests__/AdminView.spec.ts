@@ -4,8 +4,12 @@ import AdminView from '../AdminView.vue'
 import type { SystemHealth } from '@/types/admin'
 
 const mockGetSystemHealth = vi.fn()
+const mockGetImportMetrics = vi.fn()
 vi.mock('@/services/adminService', () => ({
   getSystemHealth: () => mockGetSystemHealth(),
+  getImportMetrics: (...a: unknown[]) => mockGetImportMetrics(...a),
+  getImportBankDetail: vi.fn(),
+  exportImportErrors: vi.fn(),
 }))
 
 function health(overrides: Partial<SystemHealth> = {}): SystemHealth {
@@ -43,6 +47,7 @@ describe('AdminView', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     mockGetSystemHealth.mockReset().mockResolvedValue(health())
+    mockGetImportMetrics.mockReset().mockResolvedValue({ from: '2026-10-19', to: '2026-11-17', target: 5, banks: [] })
   })
 
   afterEach(() => {
@@ -205,5 +210,45 @@ describe('AdminView', () => {
 
     expect(wrapper.get('[data-testid="admin-error"]').text()).toContain('Não foi possível carregar')
     expect(wrapper.find('[data-testid="card-uptime"]').exists()).toBe(true)
+  })
+
+  it('troca para a aba Importações e o poll da saúde para fora dela', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.get('[data-testid="tab-health"]').attributes('aria-current')).toBe('page')
+
+    // A aba já aberta não recarrega
+    await wrapper.get('[data-testid="tab-health"]').trigger('click')
+    await flushPromises()
+    expect(mockGetSystemHealth).toHaveBeenCalledTimes(1)
+
+    await wrapper.get('[data-testid="tab-imports"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="tab-imports"]').attributes('aria-current')).toBe('page')
+    expect(wrapper.get('[data-testid="tab-health"]').attributes('aria-current')).toBeUndefined()
+    expect(mockGetImportMetrics).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[data-testid="card-uptime"]').exists()).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(90_000)
+    setVisibility('visible')
+    document.dispatchEvent(new Event('visibilitychange'))
+    await flushPromises()
+    expect(mockGetSystemHealth).toHaveBeenCalledTimes(1)
+
+    await wrapper.get('[data-testid="tab-health"]').trigger('click')
+    await flushPromises()
+    expect(mockGetSystemHealth).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(mockGetSystemHealth).toHaveBeenCalledTimes(3)
+  })
+
+  it('403 na aba Importações mostra "Acesso restrito"', async () => {
+    mockGetImportMetrics.mockRejectedValue({ response: { status: 403 } })
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-testid="tab-imports"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="admin-forbidden"]').text()).toContain('Acesso restrito')
   })
 })

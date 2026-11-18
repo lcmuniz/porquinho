@@ -41,6 +41,16 @@ export interface TransactionImport {
 /** Código do banco detectado no OFX (Story 5.3). OTHER: banco fora dos cinco suportados (decisão 2A). */
 export type BankCode = 'NUBANK' | 'BANCO_DO_BRASIL' | 'ITAU' | 'BRADESCO' | 'CAIXA' | 'OTHER'
 
+/** Story 5.3: OTHER é um OFX de banco fora dos cinco suportados (decisão 2A). No CSV o layout já define o banco (Story 5.2). */
+export const BANK_LABELS: Record<BankCode, string> = {
+  NUBANK: 'Nubank',
+  BANCO_DO_BRASIL: 'Banco do Brasil',
+  ITAU: 'Itaú',
+  BRADESCO: 'Bradesco',
+  CAIXA: 'Caixa',
+  OTHER: 'Banco não identificado',
+}
+
 /** Destino escolhido antes do envio (decisão D2 do Epic 5). */
 export type ImportTarget = { kind: 'account'; id: string } | { kind: 'card'; id: string }
 

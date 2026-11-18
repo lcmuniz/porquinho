@@ -163,7 +163,8 @@ import { listCards } from '@/services/cardService'
 import { getImport, listImports, uploadImport } from '@/services/transactionImportService'
 import type { Account } from '@/types/account'
 import type { CreditCard } from '@/types/creditCard'
-import type { BankCode, ImportTarget, TransactionImport, TransactionImportStatus } from '@/types/transactionImport'
+import { BANK_LABELS } from '@/types/transactionImport'
+import type { ImportTarget, TransactionImport, TransactionImportStatus } from '@/types/transactionImport'
 import { formatDateTimeBR } from '@/lib/date'
 import { apiErrorDetail, apiErrorStatus } from '@/lib/apiError'
 
@@ -200,16 +201,6 @@ const STATUS_LABELS: Record<TransactionImportStatus, string> = {
   COMPLETED: 'Concluída',
   FAILED: 'Falhou',
   DISCARDED: 'Descartada — nenhuma transação foi importada',
-}
-
-/** Story 5.3: OTHER é um OFX de banco fora dos cinco suportados (decisão 2A). No CSV o layout já define o banco (Story 5.2). */
-const BANK_LABELS: Record<BankCode, string> = {
-  NUBANK: 'Nubank',
-  BANCO_DO_BRASIL: 'Banco do Brasil',
-  ITAU: 'Itaú',
-  BRADESCO: 'Bradesco',
-  CAIXA: 'Caixa',
-  OTHER: 'Banco não identificado',
 }
 
 const accounts = ref<Account[]>([])

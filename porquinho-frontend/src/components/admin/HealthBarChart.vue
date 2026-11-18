@@ -1,13 +1,13 @@
 <template>
   <p v-if="!hasData" class="py-8 text-center text-sm text-gray-700" :data-testid="`${testId}-empty`">
-    Sem dados nas últimas 24 horas
+    {{ emptyText }}
   </p>
   <template v-else>
   <svg
     :viewBox="`0 0 ${WIDTH} ${HEIGHT}`"
     class="h-auto w-full"
     role="img"
-    :aria-label="`${label}. Os valores de cada hora estão na tabela a seguir.`"
+    :aria-label="`${label}. Os valores de cada ${columnLabel.toLowerCase()} estão na tabela a seguir.`"
     :data-testid="testId"
   >
     <line
@@ -31,12 +31,12 @@
         :y="BASE - heightOf(point.value)"
         :width="barWidth - 2"
         :height="heightOf(point.value)"
-        :fill="color"
+        :fill="point.color ?? color"
       >
         <title>{{ point.label }}: {{ format(point.value) }}</title>
       </rect>
       <text
-        v-if="i % 4 === 0"
+        v-if="i % labelEvery === 0"
         :x="xOf(i) + barWidth / 2"
         :y="BASE + 16"
         text-anchor="middle"
@@ -50,7 +50,7 @@
   <table class="sr-only" :data-testid="`${testId}-table`">
     <caption>{{ label }}</caption>
     <thead>
-      <tr><th scope="col">Hora</th><th scope="col">Valor</th></tr>
+      <tr><th scope="col">{{ columnLabel }}</th><th scope="col">Valor</th></tr>
     </thead>
     <tbody>
       <tr v-for="(point, i) in points" :key="i">
@@ -65,16 +65,24 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-// Story 10.1: barras simples em SVG próprio (sem biblioteca de gráfico), uma por hora
-const props = defineProps<{
-  points: { label: string; value: number | null }[]
+// Story 10.1: barras simples em SVG próprio (sem biblioteca de gráfico), uma por hora. Story 10.2: também por banco
+// e por dia, com texto vazio, rótulo a cada N, cabeçalho da tabela e cor por barra configuráveis
+const props = withDefaults(defineProps<{
+  points: { label: string; value: number | null; color?: string }[]
   label: string
   color: string
   testId: string
   format: (value: number) => string
   // Vem do pai (houve requisição): um dia sem nenhum erro ainda tem dados
   hasData: boolean
-}>()
+  emptyText?: string
+  labelEvery?: number
+  columnLabel?: string
+}>(), {
+  emptyText: 'Sem dados nas últimas 24 horas',
+  labelEvery: 4,
+  columnLabel: 'Hora',
+})
 
 const WIDTH = 600
 const HEIGHT = 180

@@ -6,7 +6,7 @@ vi.mock('../api', () => ({
   api: { get: (...a: unknown[]) => mockGet(...a) },
 }))
 
-import { getAdminAccess, getSystemHealth } from '../adminService'
+import { exportImportErrors, getAdminAccess, getImportBankDetail, getImportMetrics, getSystemHealth } from '../adminService'
 
 describe('adminService', () => {
   beforeEach(() => {
@@ -23,5 +23,29 @@ describe('adminService', () => {
     mockGet.mockResolvedValue({ status: 200, data: { generatedAt: 'x' } })
     await expect(getSystemHealth()).resolves.toEqual({ generatedAt: 'x' })
     expect(mockGet).toHaveBeenCalledWith('/api/v1/admin/health')
+  })
+
+  it('getImportMetrics manda os filtros para /api/v1/admin/imports', async () => {
+    mockGet.mockResolvedValue({ status: 200, data: { banks: [] } })
+    await expect(getImportMetrics({ from: '2026-11-01', to: '2026-11-17', bank: 'NUBANK' })).resolves.toEqual({ banks: [] })
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/admin/imports', {
+      params: { from: '2026-11-01', to: '2026-11-17', bank: 'NUBANK' },
+    })
+  })
+
+  it('getImportBankDetail lê /api/v1/admin/imports/detail', async () => {
+    mockGet.mockResolvedValue({ status: 200, data: { bank: 'ITAU' } })
+    await expect(getImportBankDetail({ bank: 'ITAU', status: 'FAILED' })).resolves.toEqual({ bank: 'ITAU' })
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/admin/imports/detail', { params: { bank: 'ITAU', status: 'FAILED' } })
+  })
+
+  it('exportImportErrors baixa o CSV como blob', async () => {
+    const blob = new Blob(['x'])
+    mockGet.mockResolvedValue({ status: 200, data: blob })
+    await expect(exportImportErrors({ status: 'ALL' })).resolves.toBe(blob)
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/admin/imports/export', {
+      params: { status: 'ALL' },
+      responseType: 'blob',
+    })
   })
 })

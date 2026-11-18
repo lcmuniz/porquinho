@@ -201,4 +201,65 @@ public interface TransactionImportRepository extends JpaRepository<TransactionIm
         + "AND i.updatedAt < :updatedBefore AND i.importedTransactions = 0")
     int failOrphansWithoutRows(@Param("updatedBefore") OffsetDateTime updatedBefore,
                                @Param("message") String message, @Param("now") OffsetDateTime now);
+
+    // Story 10.2: aggregates of the admin panel over every user. Only idx_transaction_imports_user_created exists, so
+    // these scan the table; fine at the current volume. A null bank_name (failed before the detection) is UNKNOWN.
+
+    /** Per bank, the finished imports of [from, to): FAILED is a failure, REVIEW/COMPLETED/DISCARDED a success. */
+    interface BankCounts {
+        String getBank();
+        long getSuccesses();
+        long getFailures();
+    }
+
+    /** Per bank (all when {@code bank} is null), PROCESSING kept as a bank row with nothing counted. */
+    @Query(value = "SELECT COALESCE(bank_name, 'UNKNOWN') AS bank, "
+        + "count(*) FILTER (WHERE status IN ('REVIEW', 'COMPLETED', 'DISCARDED')) AS successes, "
+        + "count(*) FILTER (WHERE status = 'FAILED') AS failures "
+        + "FROM transaction_imports WHERE created_at >= :from AND created_at < :to "
+        + "AND (CAST(:bank AS varchar) IS NULL OR COALESCE(bank_name, 'UNKNOWN') = CAST(:bank AS varchar)) "
+        + "GROUP BY 1", nativeQuery = true)
+    List<BankCounts> countByBank(@Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to,
+                                 @Param("bank") String bank);
+
+    interface MessageCount {
+        String getMessage();
+        long getCount();
+    }
+
+    /** The FAILED imports of one bank in [from, to) per error message. */
+    @Query(value = "SELECT error_message AS message, count(*) AS count FROM transaction_imports "
+        + "WHERE status = 'FAILED' AND created_at >= :from AND created_at < :to "
+        + "AND COALESCE(bank_name, 'UNKNOWN') = :bank GROUP BY error_message", nativeQuery = true)
+    List<MessageCount> countFailuresByMessage(@Param("bank") String bank, @Param("from") OffsetDateTime from,
+                                              @Param("to") OffsetDateTime to);
+
+    interface DayCounts {
+        /** YYYY-MM-DD in America/Sao_Paulo. */
+        String getDay();
+        long getSuccesses();
+        long getFailures();
+    }
+
+    /** One bank per day (America/Sao_Paulo) in [from, to); days without imports are absent. */
+    @Query(value = "SELECT to_char(created_at AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD') AS day, "
+        + "count(*) FILTER (WHERE status IN ('REVIEW', 'COMPLETED', 'DISCARDED')) AS successes, "
+        + "count(*) FILTER (WHERE status = 'FAILED') AS failures "
+        + "FROM transaction_imports WHERE created_at >= :from AND created_at < :to "
+        + "AND COALESCE(bank_name, 'UNKNOWN') = :bank GROUP BY 1", nativeQuery = true)
+    List<DayCounts> countByDay(@Param("bank") String bank, @Param("from") OffsetDateTime from,
+                               @Param("to") OffsetDateTime to);
+
+    /**
+     * The finished imports of [from, to), most recent first, at most {@code limit}. {@code bank} null is every bank;
+     * {@code outcome} is ALL, FAILED or SUCCESS.
+     */
+    @Query(value = "SELECT * FROM transaction_imports WHERE status <> 'PROCESSING' "
+        + "AND created_at >= :from AND created_at < :to "
+        + "AND (CAST(:bank AS varchar) IS NULL OR COALESCE(bank_name, 'UNKNOWN') = CAST(:bank AS varchar)) "
+        + "AND (:outcome = 'ALL' OR (status = 'FAILED') = (:outcome = 'FAILED')) "
+        + "ORDER BY created_at DESC, id DESC LIMIT :limit", nativeQuery = true)
+    List<TransactionImport> findFinished(@Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to,
+                                         @Param("bank") String bank, @Param("outcome") String outcome,
+                                         @Param("limit") int limit);
 }
