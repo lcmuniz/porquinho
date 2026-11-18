@@ -28,4 +28,18 @@ class EmailServiceAutoConfigTest {
         runner.withPropertyValues("spring.mail.host=smtp.example.com", "app.mail.from=nao-responda@example.com").run(ctx ->
             assertThat(ctx.getBean(EmailService.class).isConfigured()).isTrue());
     }
+
+    @Test
+    void noHostPropertyCreatesNoJavaMailSender() {
+        runner.withPropertyValues("app.mail.from=nao-responda@example.com").run(ctx -> {
+            assertThat(ctx).doesNotHaveBean(JavaMailSender.class);
+            assertThat(ctx.getBean(EmailService.class).isConfigured()).isFalse();
+        });
+    }
+
+    @Test
+    void realHostWithoutFromIsNotConfigured() {
+        runner.withPropertyValues("spring.mail.host=smtp.example.com", "app.mail.from=").run(ctx ->
+            assertThat(ctx.getBean(EmailService.class).isConfigured()).isFalse());
+    }
 }

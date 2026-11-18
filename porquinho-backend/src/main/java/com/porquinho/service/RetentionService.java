@@ -121,6 +121,7 @@ public class RetentionService {
         List<Subscription> candidates = subscriptionRepository
             .findRetentionCandidates(now.plusDays(WARNING_WINDOW_DAYS).minusDays(RETENTION_DAYS));
 
+        // Counts and skips postponed warnings here; processRetention checks again under lock as the real guard
         boolean mailOn = candidates.isEmpty() || emailService.isConfigured();
         int warned = 0;
         int purged = 0;
@@ -157,7 +158,7 @@ public class RetentionService {
         }
 
         if (postponed > 0) {
-            log.warn("E-mail not configured: {} retention warning(s) postponed, their data is kept past the 30 days",
+            log.warn("E-mail not configured: {} retention warning(s) postponed; their purge waits until the e-mail is back",
                 postponed);
         }
         if (!candidates.isEmpty()) {

@@ -128,7 +128,8 @@ class RetentionServiceTest {
 
         verify(accountDeletionService).createRetentionDeletion(s.getUserId());
         verify(accountDeletionService).purgeUser(deletion);
-        verify(emailService, never()).sendRetentionWarning(anyString(), anyLong(), any(), anyString(), anyString());
+        verify(emailService).isConfigured();
+        verifyNoMoreInteractions(emailService);
     }
 
     @Test

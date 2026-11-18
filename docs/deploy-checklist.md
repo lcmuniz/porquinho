@@ -17,7 +17,7 @@ de pagamento indisponível (503), a chave está vazia ou errada.
 
 - [ ] `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD` e `MAIL_FROM` preenchidos. Sem `SMTP_HOST` ou sem `MAIL_FROM`, a retenção de quem não converte para de mandar avisos e, por isso, não apaga ninguém que ainda não foi avisado: esses dados ficam guardados além dos 30 dias até o e-mail voltar. Quem já recebeu o aviso de 1 dia continua sendo apagado no prazo.
 
-Como verificar: no log da subida não aparece `SMTP not configured (SMTP_HOST empty)` nem `MAIL_FROM empty`, e o e-mail de exportação pronta (Dashboard → "Exportar meus dados", em `/auth/data-export`) chega na caixa de entrada. A recuperação de senha não serve de teste: quem manda esse e-mail é o Supabase. Credencial errada não aparece na subida, só no envio (`Failed to send`), e ainda deixa a retenção apagar sem aviso (ver `deferred-work.md`).
+Como verificar: no log da subida não aparece `SMTP not configured (SMTP_HOST empty)` nem `MAIL_FROM empty`, e o e-mail de exportação pronta (Dashboard → "Exportar meus dados", em `/auth/data-export`) chega na caixa de entrada. A recuperação de senha não serve de teste: quem manda esse e-mail é o Supabase. Com o e-mail desligado, o job diário de retenção também loga `E-mail not configured: N retention warning(s) postponed`. Credencial errada não aparece na subida, só no envio (`Failed to send`), e ainda deixa a retenção apagar sem aviso (ver `deferred-work.md`).
 
 ## 2. Webhook endpoint
 
