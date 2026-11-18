@@ -20,6 +20,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -132,6 +133,18 @@ class ImportMetricsIntegrationTest {
         assertThat(csv.split("\r\n")).hasSize(2);
         assertThat(csv).contains("13/03/2020 09:00;Nubank;OFX;Concluída;;").doesNotContain("joao-silva")
             .doesNotContain(admin.toString());
+    }
+
+    @Test
+    void detailListsAtMostThe20MostRecent() throws Exception {
+        for (int day = 1; day <= 21; day++) {
+            insert("CAIXA", "COMPLETED", null, String.format("2020-03-%02dT12:00:00Z", day));
+        }
+        mockMvc.perform(get("/api/v1/admin/imports/detail?bank=CAIXA&" + PERIOD)
+                .with(jwt().jwt(j -> j.subject(admin.toString()))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.recent.length()").value(20))
+            .andExpect(jsonPath("$.recent[0].createdAt").value(startsWith("2020-03-21")));
     }
 
     @Test

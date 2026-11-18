@@ -22,7 +22,7 @@
         </select>
       </label>
       <label class="text-sm text-gray-700">
-        Status (detalhe e CSV)
+        Status (lista do detalhe e CSV)
         <select v-model="form.status" :class="SELECT_CLASS" data-testid="filter-status">
           <option value="ALL">Todos</option>
           <option value="FAILED">Falhas</option>
@@ -110,7 +110,8 @@
                   <button
                     type="button"
                     class="min-h-[44px] text-left font-medium text-purple-700 underline-offset-2 hover:underline"
-                    :aria-pressed="selected === b.bank"
+                    :aria-expanded="selected === b.bank"
+                    aria-controls="bank-detail"
                     :data-testid="`bank-open-${b.bank}`"
                     @click="openDetail(b.bank)"
                   >
@@ -156,6 +157,7 @@
       v-if="selected"
       aria-labelledby="bank-detail-heading"
       class="space-y-4 rounded-lg border border-gray-200 bg-white p-4"
+      id="bank-detail"
       data-testid="bank-detail"
     >
       <h2 id="bank-detail-heading" class="text-base font-semibold text-gray-900">{{ LABELS[selected] }}</h2>
@@ -180,7 +182,7 @@
               <thead class="text-gray-700">
                 <tr>
                   <th scope="col" class="py-2 pr-4 font-medium">Data</th>
-                  <th scope="col" class="py-2 pr-4 font-medium">Arquivo</th>
+                  <th scope="col" class="py-2 pr-4 font-medium">Tipo de arquivo</th>
                   <th scope="col" class="py-2 pr-4 font-medium">Status</th>
                   <th scope="col" class="py-2 pr-4 font-medium">Tipo de erro</th>
                   <th scope="col" class="py-2 font-medium">Mensagem</th>

@@ -157,6 +157,21 @@ describe('ImportMetricsPanel', () => {
     expect(wrapper.emitted('forbidden')).toHaveLength(1)
   })
 
+  it('falha no detalhe mostra o erro e 403 sobe para a view', async () => {
+    mockGetImportBankDetail.mockRejectedValueOnce(new Error('rede'))
+    const wrapper = mount(ImportMetricsPanel)
+    await flushPromises()
+    await wrapper.get('[data-testid="bank-open-NUBANK"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="detail-error"]').text()).toContain('Não foi possível carregar o detalhe do banco.')
+    expect(wrapper.get('[data-testid="bank-open-NUBANK"]').attributes('aria-expanded')).toBe('true')
+
+    mockGetImportBankDetail.mockRejectedValueOnce({ response: { status: 403 } })
+    await wrapper.get('[data-testid="bank-open-NUBANK"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.emitted('forbidden')).toHaveLength(1)
+  })
+
   it('trend: dia acima da meta em vermelho e os outros em verde', async () => {
     const d = detail()
     d.trend = d.trend.map((p, i) => (i === 0 ? { ...p, total: 10, failures: 1, errorRate: 10 } : i === 1 ? { ...p, total: 50, failures: 1, errorRate: 2 } : p))
