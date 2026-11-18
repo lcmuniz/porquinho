@@ -4,8 +4,9 @@ import com.porquinho.entity.SystemHealthSnapshot;
 import com.porquinho.repository.SystemHealthSnapshotRepository;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -25,6 +26,8 @@ import java.util.concurrent.TimeUnit;
  */
 @Service
 public class HealthSnapshotService {
+
+    private static final Logger log = LoggerFactory.getLogger(HealthSnapshotService.class);
 
     static final String HTTP_METRIC = "http.server.requests";
     static final Duration RETENTION = Duration.ofDays(31);
@@ -63,7 +66,7 @@ public class HealthSnapshotService {
         return status != null && status.startsWith("5");
     }
 
-    @Transactional
+    /** Not @Transactional: the save commits on its own before the counters move, and the purge runs apart. */
     public synchronized void recordSnapshot() {
         long requests = 0;
         long errors = 0;
@@ -85,7 +88,12 @@ public class HealthSnapshotService {
         lastRequests = requests;
         lastErrors = errors;
         lastTotalMs = totalMs;
-        repository.deleteRecordedBefore(now.minus(RETENTION));
+        try {
+            repository.deleteRecordedBefore(now.minus(RETENTION));
+        } catch (RuntimeException e) {
+            // The snapshot is saved: the next run retries the purge
+            log.warn("Health snapshot purge failed: {}", e.getMessage());
+        }
     }
 
     public Totals totalsSince(OffsetDateTime from) {

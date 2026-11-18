@@ -16,7 +16,14 @@ export interface SystemHealth {
     status: HealthStatus
   }
   responseTime: { avgMs24h: number | null; status: HealthStatus }
-  endpoints: { method: string; uri: string; count: number; avgMs: number; errors: number }[]
+  endpoints: {
+    method: string
+    uri: string
+    count: number
+    avgMs: number
+    errors: number
+    status: HealthStatus
+  }[]
   hourly: { hour: string; requests: number; errors: number; avgMs: number | null }[]
   database: {
     active: number

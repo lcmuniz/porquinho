@@ -189,14 +189,14 @@ class AdminServiceTest {
     void endpointsLeaveTheActuatorOutAndComeSlowestFirst() {
         record(registry, "GET", "/api/v1/accounts", "200", 100);
         record(registry, "GET", "/api/v1/accounts", "500", 300);
-        record(registry, "POST", "/api/v1/imports", "201", 900);
+        record(registry, "POST", "/api/v1/imports", "201", 1500);
         record(registry, "GET", "/actuator/health", "200", 5000);
 
         List<AdminHealthResponse.Endpoint> endpoints = service.endpoints();
 
         assertThat(endpoints).containsExactly(
-            new AdminHealthResponse.Endpoint("POST", "/api/v1/imports", 1, 900.0, 0),
-            new AdminHealthResponse.Endpoint("GET", "/api/v1/accounts", 2, 200.0, 1));
+            new AdminHealthResponse.Endpoint("POST", "/api/v1/imports", 1, 1500.0, 0, Status.YELLOW),
+            new AdminHealthResponse.Endpoint("GET", "/api/v1/accounts", 2, 200.0, 1, Status.GREEN));
     }
 
     private static void record(SimpleMeterRegistry registry, String method, String uri, String status, long millis) {

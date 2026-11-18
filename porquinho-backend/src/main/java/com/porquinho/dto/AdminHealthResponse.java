@@ -33,8 +33,8 @@ public record AdminHealthResponse(
     public record ResponseTime(Double avgMs24h, Status status) {
     }
 
-    /** Since the last start of the backend (Micrometer timer), the slowest first. */
-    public record Endpoint(String method, String uri, long count, double avgMs, long errors) {
+    /** Since the last start of the backend (Micrometer timer), the slowest first; colored by the average time. */
+    public record Endpoint(String method, String uri, long count, double avgMs, long errors, Status status) {
     }
 
     /** One hour of the last 24h (start of the hour, UTC); {@code avgMs} null without requests. */

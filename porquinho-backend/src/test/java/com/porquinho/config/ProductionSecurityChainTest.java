@@ -156,6 +156,10 @@ class ProductionSecurityChainTest {
             mockMvc.perform(get("/api/v1/admin/access").header("Authorization", "Bearer admin-token"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.admin").value(true));
+            // Real admin route, no subscription: 200, not 402 (Redis may be unreachable here: it degrades to red)
+            mockMvc.perform(get("/api/v1/admin/health").header("Authorization", "Bearer admin-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.uptime.target").value(99.5));
 
             jdbcTemplate.update("UPDATE users SET is_admin = false WHERE id = ?", USER_ID);
             mockMvc.perform(get("/api/v1/admin/health").header("Authorization", "Bearer user-token"))

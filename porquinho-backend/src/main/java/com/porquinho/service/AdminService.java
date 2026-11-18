@@ -128,7 +128,9 @@ public class AdminService {
         counts.forEach((key, c) -> {
             if (c[0] == 0) return;
             int space = key.indexOf(' ');
-            result.add(new Endpoint(key.substring(0, space), key.substring(space + 1), c[0], times.get(key) / c[0], c[1]));
+            double avgMs = times.get(key) / c[0];
+            result.add(new Endpoint(key.substring(0, space), key.substring(space + 1), c[0], avgMs, c[1],
+                responseTimeStatus(avgMs)));
         });
         result.sort(Comparator.comparingDouble(Endpoint::avgMs).reversed());
         return result;

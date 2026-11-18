@@ -152,6 +152,37 @@ class HealthSnapshotServiceTest {
     }
 
     @Test
+    void failedPurgeKeepsTheSavedRowAndTheNextDeltaIsExact() {
+        request("/api/v1/accounts", "500", 100);
+        when(repository.deleteRecordedBefore(any())).thenThrow(new RuntimeException("purge failed")).thenReturn(0);
+
+        service.recordSnapshot();
+        request("/api/v1/accounts", "200", 50);
+        service.recordSnapshot();
+
+        List<SystemHealthSnapshot> rows = saved(2);
+        assertThat(rows.get(0).getRequestCount()).isEqualTo(1);
+        assertThat(rows.get(0).getErrorCount()).isEqualTo(1);
+        assertThat(rows.get(1).getRequestCount()).isEqualTo(1);
+        assertThat(rows.get(1).getErrorCount()).isZero();
+        assertThat(rows.get(1).getTotalTimeMs()).isEqualTo(50.0);
+    }
+
+    @Test
+    void lastDayBucketsTheSameWithSnapshotsAtMinus3() {
+        OffsetDateTime currentHour = NOW_UTC.withMinute(0).withSecond(0);
+        ZoneOffset sp = ZoneOffset.ofHours(-3);
+        when(repository.findByRecordedAtGreaterThanEqualOrderByRecordedAt(currentHour.minusHours(23))).thenReturn(List.of(
+            new SystemHealthSnapshot(currentHour.withOffsetSameInstant(sp), 2, 1, 300),
+            new SystemHealthSnapshot(currentHour.plusMinutes(1).withOffsetSameInstant(sp), 2, 0, 100)));
+
+        List<HealthSnapshotService.HourTotals> hours = service.lastDayByHour();
+
+        assertThat(hours.get(22)).isEqualTo(new HealthSnapshotService.HourTotals(currentHour.minusHours(1), 2, 1, 150.0));
+        assertThat(hours.get(23)).isEqualTo(new HealthSnapshotService.HourTotals(currentHour, 2, 0, 50.0));
+    }
+
+    @Test
     void totalsWithoutRowsAreZero() {
         when(repository.totalsSince(any())).thenReturn(List.<Object[]>of(new Object[]{0L, null, null, null}));
 

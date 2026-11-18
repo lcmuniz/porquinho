@@ -14,7 +14,7 @@ function health(overrides: Partial<SystemHealth> = {}): SystemHealth {
     uptime: { last24h: 100, last30d: 99.8, target: 99.5, status: 'GREEN' },
     errors: { last24h: 3, last7d: 10, last30d: 20, errorRate24h: 0.5, status: 'GREEN' },
     responseTime: { avgMs24h: 120, status: 'GREEN' },
-    endpoints: [{ method: 'GET', uri: '/api/v1/accounts', count: 10, avgMs: 85, errors: 1 }],
+    endpoints: [{ method: 'GET', uri: '/api/v1/accounts', count: 10, avgMs: 85, errors: 1, status: 'GREEN' }],
     hourly: Array.from({ length: 24 }, (_, i) => ({
       hour: new Date(Date.UTC(2026, 10, 17, 13 + i)).toISOString(),
       requests: 10,
@@ -49,7 +49,9 @@ describe('AdminView', () => {
     expect(wrapper.get('[data-testid="card-uptime"]').text()).toContain('99,8 %')
     expect(wrapper.get('[data-testid="card-uptime"]').text()).toContain('Meta: 99,5 %')
     expect(wrapper.get('[data-testid="status-uptime"]').text()).toBe('Saudável')
-    expect(wrapper.get('[data-testid="card-errors"]').text()).toContain('7 dias: 10 · 30 dias: 20')
+    expect(wrapper.get('[data-testid="card-errors"]').text()).toContain('0,5 %')
+    expect(wrapper.get('[data-testid="card-errors"]').text()).toContain('24 h: 3 · 7 dias: 10 · 30 dias: 20')
+    expect(wrapper.get('[data-testid="endpoint-status"]').text()).toBe('Saudável')
     expect(wrapper.get('[data-testid="card-redis"]').text()).toContain('Hit rate: 80 %')
     expect(wrapper.get('[data-testid="card-sessions"]').text()).toContain('4')
     expect(wrapper.get('[data-testid="endpoints-table"]').text()).toContain('GET /api/v1/accounts')
@@ -110,6 +112,20 @@ describe('AdminView', () => {
     await flushPromises()
     await vi.advanceTimersByTimeAsync(30_000)
     expect(mockGetSystemHealth).toHaveBeenCalledTimes(2)
+  })
+
+  it('com erro e nova tentativa pendente, não mostra "Carregando..." e desabilita o botão', async () => {
+    mockGetSystemHealth.mockRejectedValue(new Error('rede'))
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.get('[data-testid="admin-retry"]').attributes('disabled')).toBeUndefined()
+
+    mockGetSystemHealth.mockReturnValue(new Promise(() => {}))
+    await wrapper.get('[data-testid="admin-retry"]').trigger('click')
+
+    expect(wrapper.get('[data-testid="admin-retry"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).not.toContain('Carregando...')
+    expect(wrapper.find('[data-testid="admin-error"]').exists()).toBe(true)
   })
 
   it('erro de rede mostra a mensagem e mantém os dados anteriores', async () => {

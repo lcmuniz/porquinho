@@ -154,6 +154,8 @@ UPDATE users SET is_admin = true WHERE email = 'admin@exemplo.com' AND deleted_a
 - [ ] Logado com essa conta, o Dashboard mostra o link "Admin" e `/admin` abre a aba "Saúde do sistema".
 - [ ] Logado com outra conta, o link não aparece e `/admin` mostra "Acesso restrito".
 
+O uptime do painel é a fração dos minutos em que o backend gravou o snapshot: mede o backend no ar, não o nginx nem o frontend.
+
 Para tirar o papel, rode o mesmo `UPDATE` com `is_admin = false`. O papel é lido do banco a cada chamada, então vale na
 hora, sem novo login. O uptime do painel só começa a contar depois do primeiro snapshot (1 por minuto após o deploy);
 antes disso ele mostra "sem dados".

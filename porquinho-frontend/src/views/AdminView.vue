@@ -32,7 +32,7 @@
           </span>
         </nav>
 
-        <div v-if="!health && loading" role="status" class="py-12 text-center text-sm text-gray-700">
+        <div v-if="!health && loading && !error" role="status" class="py-12 text-center text-sm text-gray-700">
           Carregando...
         </div>
 
@@ -45,7 +45,9 @@
           <span>{{ error }}</span>
           <button
             type="button"
-            class="inline-flex min-h-[44px] items-center rounded-lg border border-red-300 px-4 py-2 font-medium hover:bg-red-100"
+            data-testid="admin-retry"
+            class="inline-flex min-h-[44px] items-center rounded-lg border border-red-300 px-4 py-2 font-medium hover:bg-red-100 disabled:opacity-50"
+            :disabled="loading"
             @click="load"
           >
             Tentar novamente
@@ -119,7 +121,8 @@
                     <th scope="col" class="py-2 pr-4 font-medium">Endpoint</th>
                     <th scope="col" class="py-2 pr-4 text-right font-medium">Requisições</th>
                     <th scope="col" class="py-2 pr-4 text-right font-medium">Tempo médio</th>
-                    <th scope="col" class="py-2 text-right font-medium">Erros</th>
+                    <th scope="col" class="py-2 pr-4 text-right font-medium">Erros</th>
+                    <th scope="col" class="py-2 font-medium">Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -131,7 +134,16 @@
                     <td class="py-2 pr-4 font-mono text-xs">{{ e.method }} {{ e.uri }}</td>
                     <td class="py-2 pr-4 text-right">{{ e.count }}</td>
                     <td class="py-2 pr-4 text-right">{{ formatMs(e.avgMs) }}</td>
-                    <td class="py-2 text-right">{{ e.errors }}</td>
+                    <td class="py-2 pr-4 text-right">{{ e.errors }}</td>
+                    <td class="py-2">
+                      <span
+                        class="rounded-full px-2 py-0.5 text-xs font-medium"
+                        :class="STATUS_STYLE[e.status].badge"
+                        data-testid="endpoint-status"
+                      >
+                        {{ STATUS_STYLE[e.status].label }}
+                      </span>
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -208,13 +220,10 @@ const cards = computed(() => {
     },
     {
       key: 'errors',
-      title: 'Erros (24 h)',
+      title: 'Taxa de erro (24 h)',
       status: h.errors.status,
-      value: String(h.errors.last24h),
-      lines: [
-        `Taxa: ${formatPercent(h.errors.errorRate24h)}`,
-        `7 dias: ${h.errors.last7d} · 30 dias: ${h.errors.last30d}`,
-      ],
+      value: formatPercent(h.errors.errorRate24h),
+      lines: [`Erros: 24 h: ${h.errors.last24h} · 7 dias: ${h.errors.last7d} · 30 dias: ${h.errors.last30d}`],
     },
     {
       key: 'response',

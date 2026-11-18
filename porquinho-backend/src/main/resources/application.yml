@@ -42,11 +42,6 @@ spring:
   threads:
     virtual:
       enabled: true
-  task:
-    scheduling:
-      pool:
-        # Jobs que disparam juntos (alerta de orçamento e snapshot de saúde às :00) não podem pular minutos do snapshot
-        size: 4
   servlet:
     multipart:
       # Story 5.1: extratos de até 10MB (o padrão do Spring é 1MB); a requisição leva o arquivo e o destino
