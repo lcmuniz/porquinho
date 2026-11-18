@@ -6,6 +6,7 @@ import type { SystemHealth } from '@/types/admin'
 const mockGetSystemHealth = vi.fn()
 const mockGetImportMetrics = vi.fn()
 const mockGetAiMetrics = vi.fn()
+const mockGetUserMetrics = vi.fn()
 vi.mock('@/services/adminService', () => ({
   getSystemHealth: () => mockGetSystemHealth(),
   getImportMetrics: (...a: unknown[]) => mockGetImportMetrics(...a),
@@ -14,6 +15,8 @@ vi.mock('@/services/adminService', () => ({
   getAiMetrics: (...a: unknown[]) => mockGetAiMetrics(...a),
   getAiBankDetail: vi.fn(),
   exportAiMetrics: vi.fn(),
+  getUserMetrics: () => mockGetUserMetrics(),
+  exportUserMetrics: vi.fn(),
 }))
 
 function health(overrides: Partial<SystemHealth> = {}): SystemHealth {
@@ -61,6 +64,26 @@ describe('AdminView', () => {
       banks: [],
       months: ['2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11'],
       trend: [],
+    })
+    mockGetUserMetrics.mockReset().mockResolvedValue({
+      generatedAt: '2026-11-18T12:00:00Z',
+      total: 3,
+      active24h: 1,
+      active7d: 2,
+      active30d: 3,
+      trials: 1,
+      paid: 1,
+      churn: { rate: null, target: 5, status: 'UNKNOWN' },
+      weeklyCheckins: null,
+      onboarding: { rate: 66.7, target: 70, status: 'YELLOW' },
+      conversion: null,
+      adoption: [],
+      months: Array.from({ length: 12 }, (_, i) => `2026-${String(i + 1).padStart(2, '0')}`),
+      growth: Array(12).fill(3),
+      conversionByMonth: Array(12).fill(null),
+      weeks: Array.from({ length: 12 }, (_, i) => `2026-09-${String(i + 1).padStart(2, '0')}`),
+      activeWeekly: Array(12).fill(2),
+      activeMonthly: Array(12).fill(3),
     })
   })
 
@@ -285,6 +308,36 @@ describe('AdminView', () => {
     const wrapper = mountView()
     await flushPromises()
     await wrapper.get('[data-testid="tab-ai"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="admin-forbidden"]').text()).toContain('Acesso restrito')
+  })
+
+  it('aba Usuários mostra as métricas de usuários, atualiza a cada 5 minutos e sem o poll da saúde', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-testid="tab-users"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="tab-users"]').text()).toBe('Usuários')
+    expect(wrapper.get('[data-testid="tab-users"]').attributes('aria-current')).toBe('page')
+    expect(wrapper.get('[data-testid="users-card-total"]').text()).toContain('3')
+    expect(mockGetUserMetrics).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(5 * 60_000)
+    expect(mockGetUserMetrics).toHaveBeenCalledTimes(2)
+    expect(mockGetSystemHealth).toHaveBeenCalledTimes(1)
+
+    // Fora da aba o painel desmonta e para de consultar
+    await wrapper.get('[data-testid="tab-ai"]').trigger('click')
+    await vi.advanceTimersByTimeAsync(10 * 60_000)
+    expect(mockGetUserMetrics).toHaveBeenCalledTimes(2)
+  })
+
+  it('403 na aba Usuários mostra "Acesso restrito"', async () => {
+    mockGetUserMetrics.mockRejectedValue({ response: { status: 403 } })
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-testid="tab-users"]').trigger('click')
     await flushPromises()
 
     expect(wrapper.get('[data-testid="admin-forbidden"]').text()).toContain('Acesso restrito')

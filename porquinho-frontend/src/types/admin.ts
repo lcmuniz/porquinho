@@ -130,3 +130,46 @@ export interface AiBankDetail {
   patterns: { pattern: string; users: number; usage: number }[]
   suggestions: string[]
 }
+
+/** Story 10.4: meta com cor; rate null = sem denominador ("sem dados"). */
+export interface UserMetricsGoal {
+  rate: number | null
+  target: number
+  status: HealthStatus
+}
+
+export type UserFeature =
+  | 'ACCOUNTS'
+  | 'CREDIT_CARDS'
+  | 'IMPORTS'
+  | 'BUDGETS'
+  | 'GOALS'
+  | 'TRANSFERS'
+  | 'RECONCILIATIONS'
+
+/** Story 10.4: usuários "agora" (sem período), só agregados; percentuais com 1 casa, null = sem dados. */
+export interface UserMetrics {
+  generatedAt: string
+  total: number
+  active24h: number
+  active7d: number
+  active30d: number
+  trials: number
+  paid: number
+  /** Meta: até 5 % é verde, acima é vermelho. */
+  churn: UserMetricsGoal
+  /** Semanas com importação concluída por usuário ativo em 30 d (média das 4 últimas semanas completas). */
+  weeklyCheckins: number | null
+  /** Meta: 70 % ou mais é verde, abaixo amarelo. */
+  onboarding: UserMetricsGoal
+  conversion: number | null
+  adoption: { feature: UserFeature; users: number; rate: number | null }[]
+  /** AAAA-MM, os últimos 12 meses até o atual. */
+  months: string[]
+  growth: number[]
+  conversionByMonth: (number | null)[]
+  /** AAAA-MM-DD (segunda-feira), as últimas 12 semanas até a atual. */
+  weeks: string[]
+  activeWeekly: number[]
+  activeMonthly: number[]
+}

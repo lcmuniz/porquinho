@@ -6,9 +6,11 @@ import com.porquinho.dto.AdminAiMetricsResponse;
 import com.porquinho.dto.AdminHealthResponse;
 import com.porquinho.dto.AdminImportBankDetailResponse;
 import com.porquinho.dto.AdminImportMetricsResponse;
+import com.porquinho.dto.AdminUserMetricsResponse;
 import com.porquinho.service.AdminService;
 import com.porquinho.service.AiMetricsService;
 import com.porquinho.service.ImportMetricsService;
+import com.porquinho.service.UserMetricsService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -33,12 +35,14 @@ public class AdminController {
     private final AdminService adminService;
     private final ImportMetricsService importMetricsService;
     private final AiMetricsService aiMetricsService;
+    private final UserMetricsService userMetricsService;
 
     public AdminController(AdminService adminService, ImportMetricsService importMetricsService,
-                           AiMetricsService aiMetricsService) {
+                           AiMetricsService aiMetricsService, UserMetricsService userMetricsService) {
         this.adminService = adminService;
         this.importMetricsService = importMetricsService;
         this.aiMetricsService = aiMetricsService;
+        this.userMetricsService = userMetricsService;
     }
 
     @GetMapping("/access")
@@ -120,5 +124,22 @@ public class AdminController {
             .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
             .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + name + "\"")
             .body(aiMetricsService.csv(filters));
+    }
+
+    // Story 10.4: no filter, the numbers are "now"
+
+    @GetMapping("/users")
+    public AdminUserMetricsResponse users(@AuthenticationPrincipal Jwt jwt) {
+        adminService.requireAdmin(UUID.fromString(jwt.getSubject()));
+        return userMetricsService.metrics();
+    }
+
+    @GetMapping(value = "/users/export", produces = "text/csv")
+    public ResponseEntity<String> usersExport(@AuthenticationPrincipal Jwt jwt) {
+        adminService.requireAdmin(UUID.fromString(jwt.getSubject()));
+        return ResponseEntity.ok()
+            .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + userMetricsService.fileName() + "\"")
+            .body(userMetricsService.csv());
     }
 }

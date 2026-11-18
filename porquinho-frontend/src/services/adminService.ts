@@ -9,6 +9,7 @@ import type {
   ImportMetricsFilters,
   ImportOutcome,
   SystemHealth,
+  UserMetrics,
 } from '@/types/admin'
 
 /** Story 10.1: se o usuário é admin (link "Admin" do dashboard). */
@@ -60,5 +61,17 @@ export async function getAiBankDetail(params: ImportMetricsFilters & { bank: Adm
 /** Story 10.3: CSV pt-BR com uma linha por banco e a linha Total. */
 export async function exportAiMetrics(params: ImportMetricsFilters): Promise<Blob> {
   const response = await api.get<Blob>('/api/v1/admin/ai/export', { params, responseType: 'blob' })
+  return response.data
+}
+
+/** Story 10.4: usuários ativos, assinaturas, engajamento e adoção, agora; 403 não admin. */
+export async function getUserMetrics(): Promise<UserMetrics> {
+  const response = await api.get<UserMetrics>('/api/v1/admin/users')
+  return response.data
+}
+
+/** Story 10.4: CSV pt-BR com uma linha por métrica (Métrica;Valor). */
+export async function exportUserMetrics(): Promise<Blob> {
+  const response = await api.get<Blob>('/api/v1/admin/users/export', { responseType: 'blob' })
   return response.data
 }

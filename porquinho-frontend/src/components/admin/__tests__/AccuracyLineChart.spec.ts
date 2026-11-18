@@ -50,4 +50,31 @@ describe('AccuracyLineChart', () => {
     expect(wrapper.get('[data-testid="c-empty"]').text()).toBe('Nenhuma classificação nos últimos 6 meses')
     expect(wrapper.find('svg').exists()).toBe(false)
   })
+
+  it('max, tickFormat e seriesHeader trocam o eixo e a tabela', () => {
+    const wrapper = mount(AccuracyLineChart, {
+      props: {
+        months: ['01/26', '02/26'],
+        series: [{ label: 'Usuários', color: '#7c3aed', values: [0, 400] }],
+        label: 'Crescimento',
+        testId: 'c',
+        format: (v: number) => String(v),
+        max: 400,
+        tickFormat: (t: number) => `${t} usuários`,
+        seriesHeader: 'Série',
+      },
+    })
+    const ticks = wrapper.findAll('[data-testid="c"] > g > text').map((t) => t.text())
+    expect(ticks).toEqual(['0 usuários', '200 usuários', '400 usuários'])
+    const circles = wrapper.findAll('[data-testid="c-series"] circle')
+    // 400 de 400 fica no topo (y = 10), 0 na base (y = 176)
+    expect(circles.map((c) => c.attributes('cy'))).toEqual(['176', '10'])
+    expect(wrapper.get('[data-testid="c-table"] thead th').text()).toBe('Série')
+  })
+
+  it('sem max o eixo continua de 0 a 100 %', () => {
+    const wrapper = mountChart([{ label: 'Nubank', color: '#7c3aed', values: [100, 50, 0, 0] }])
+    expect(wrapper.findAll('[data-testid="c"] > g > text').map((t) => t.text())).toEqual(['0 %', '50 %', '100 %'])
+    expect(wrapper.get('[data-testid="c-series"] circle').attributes('cy')).toBe('10')
+  })
 })

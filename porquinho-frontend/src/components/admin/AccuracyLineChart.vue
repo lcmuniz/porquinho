@@ -10,10 +10,10 @@
       :aria-label="`${label}. Os valores de cada mês estão na tabela a seguir.`"
       :data-testid="testId"
     >
-      <g v-for="tick in TICKS" :key="tick">
+      <g v-for="tick in ticks" :key="tick">
         <line :x1="PAD_LEFT" :x2="WIDTH - PAD_RIGHT" :y1="yOf(tick)" :y2="yOf(tick)" stroke="#e5e7eb" stroke-width="1" />
         <text :x="PAD_LEFT - 6" :y="yOf(tick)" text-anchor="end" dominant-baseline="middle" font-size="11" fill="#6b7280">
-          {{ tick }} %
+          {{ tickFormat(tick) }}
         </text>
       </g>
       <text
@@ -48,7 +48,7 @@
       <caption>{{ label }}</caption>
       <thead>
         <tr>
-          <th scope="col">Banco</th>
+          <th scope="col">{{ seriesHeader }}</th>
           <th v-for="month in months" :key="month" scope="col">{{ month }}</th>
         </tr>
       </thead>
@@ -65,7 +65,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-// Story 10.3: linhas em SVG próprio (sem biblioteca), uma por banco, eixo de 0 a 100 %. Um mês null interrompe a linha
+// Story 10.3: linhas em SVG próprio (sem biblioteca), uma por banco, eixo de 0 a 100 %. Um mês null interrompe a linha.
+// Story 10.4: `max` e `tickFormat` trocam o eixo (contagens de usuários), `seriesHeader` a coluna da tabela acessível
 const props = withDefaults(defineProps<{
   months: string[]
   series: { label: string; color: string; dash?: string; values: (number | null)[] }[]
@@ -73,8 +74,14 @@ const props = withDefaults(defineProps<{
   testId: string
   format: (value: number) => string
   emptyText?: string
+  max?: number
+  tickFormat?: (tick: number) => string
+  seriesHeader?: string
 }>(), {
   emptyText: 'Nenhuma classificação nos últimos 6 meses',
+  max: 100,
+  tickFormat: (tick: number) => `${tick} %`,
+  seriesHeader: 'Banco',
 })
 
 const WIDTH = 600
@@ -83,13 +90,16 @@ const PAD_LEFT = 48
 const PAD_RIGHT = 24
 const TOP = 10
 const BASE = HEIGHT - 24
-const TICKS = [0, 50, 100]
 // Traço próprio por série: a linha não depende só da cor (WCAG 1.4.1)
 const DASHES = ['none', '6 3', '2 3', '10 3 2 3', '1 5', '12 6', '6 2 2 2 2 2']
 
 function dashOf(i: number) {
   return DASHES[i % DASHES.length]
 }
+
+// Zero, meio e topo; max 0 (sem nenhum usuário) não divide por zero
+const top = computed(() => Math.max(props.max, 1))
+const ticks = computed(() => [0, top.value / 2, top.value])
 
 const hasData = computed(() => props.series.some((s) => s.values.some((v) => v !== null)))
 
@@ -99,7 +109,7 @@ function xOf(i: number) {
 }
 
 function yOf(value: number) {
-  return BASE - (value / 100) * (BASE - TOP)
+  return BASE - (value / top.value) * (BASE - TOP)
 }
 
 // "M" recomeça a linha depois de um mês sem dado

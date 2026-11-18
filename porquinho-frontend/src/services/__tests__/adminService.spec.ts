@@ -15,6 +15,8 @@ import {
   getImportBankDetail,
   getImportMetrics,
   getSystemHealth,
+  getUserMetrics,
+  exportUserMetrics,
 } from '../adminService'
 
 describe('adminService', () => {
@@ -78,5 +80,18 @@ describe('adminService', () => {
       params: { to: '2026-11-17' },
       responseType: 'blob',
     })
+  })
+
+  it('getUserMetrics lê /api/v1/admin/users', async () => {
+    mockGet.mockResolvedValue({ status: 200, data: { total: 3 } })
+    await expect(getUserMetrics()).resolves.toEqual({ total: 3 })
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/admin/users')
+  })
+
+  it('exportUserMetrics baixa o CSV como blob', async () => {
+    const blob = new Blob(['x'])
+    mockGet.mockResolvedValue({ status: 200, data: blob })
+    await expect(exportUserMetrics()).resolves.toBe(blob)
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/admin/users/export', { responseType: 'blob' })
   })
 })

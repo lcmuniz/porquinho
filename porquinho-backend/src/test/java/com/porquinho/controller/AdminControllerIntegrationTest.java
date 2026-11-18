@@ -91,7 +91,8 @@ class AdminControllerIntegrationTest {
         }
         assertThat(checked).contains("GET /api/v1/admin/health", "GET /api/v1/admin/imports",
             "GET /api/v1/admin/imports/detail", "GET /api/v1/admin/imports/export", "GET /api/v1/admin/ai",
-            "GET /api/v1/admin/ai/detail", "GET /api/v1/admin/ai/export");
+            "GET /api/v1/admin/ai/detail", "GET /api/v1/admin/ai/export", "GET /api/v1/admin/users",
+            "GET /api/v1/admin/users/export");
         assertThat(opened).as("admin routes open to non-admins").isEmpty();
     }
 
