@@ -37,6 +37,8 @@ import java.util.UUID;
  * audit commit first and the e-mail goes after commit (a lost warning is acceptable, a duplicate is not).
  * The purge needs the 1-day warning sent at least 24 h before, so a job stopped for days still warns first.
  * Soft-deleted users (deletion requested by the user) are left to the Story 1.7 job.
+ * Without an SMTP host no warning is marked, so nobody is purged unwarned for that reason (pre-Epic 10, item 7).
+ * A send that fails with SMTP configured (bad credentials, rejected From) still keeps the mark, as before.
  */
 @Service
 public class RetentionService {
@@ -180,6 +182,13 @@ public class RetentionService {
         if (action == Action.PURGE) {
             AccountDeletion deletion = accountDeletionService.createRetentionDeletion(userId);
             return Optional.of(new Outcome(action, deletion));
+        }
+
+        // Without SMTP the warning would be marked but never sent, and the purge only needs the 1-day mark:
+        // keep the data (longer retention) rather than delete an account that was never warned.
+        if (!emailService.isConfigured()) {
+            log.warn("SMTP not configured - retention warning {} for user {} postponed", action.code, userId);
+            return Optional.empty();
         }
 
         if (action == Action.WARN_1D) {

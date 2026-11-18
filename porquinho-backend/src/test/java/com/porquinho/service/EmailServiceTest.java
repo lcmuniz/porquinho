@@ -20,7 +20,7 @@ class EmailServiceTest {
     private EmailService serviceWith(JavaMailSender sender, String from) {
         ObjectProvider<JavaMailSender> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(sender);
-        return new EmailService(provider, from);
+        return new EmailService(provider, "smtp.example.com", from);
     }
 
     @Test
@@ -428,6 +428,26 @@ class EmailServiceTest {
     void budgetAlertWithoutSmtpDoesNotThrow() {
         @SuppressWarnings("unchecked")
         ObjectProvider<JavaMailSender> provider = mock(ObjectProvider.class);
-        new EmailService(provider, "").sendBudgetAlert("user@example.com", List.of(), "a", "b");
+        new EmailService(provider, "", "").sendBudgetAlert("user@example.com", List.of(), "a", "b");
+    }
+
+    @Test
+    void isConfiguredOnlyWithMailSender() {
+        assertThat(serviceWith(mock(JavaMailSender.class), "").isConfigured()).isTrue();
+        assertThat(serviceWith(null, "").isConfigured()).isFalse();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void blankHostIsNotConfiguredAndSendsNothing() {
+        // Unset SMTP_HOST becomes "" in application.yml, and Boot still creates a JavaMailSender for it
+        JavaMailSender sender = mock(JavaMailSender.class);
+        ObjectProvider<JavaMailSender> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(sender);
+        EmailService service = new EmailService(provider, " ", "");
+
+        assertThat(service.isConfigured()).isFalse();
+        service.sendRetentionWarning("user@example.com", 7, java.time.OffsetDateTime.now(), "a", "b");
+        verifyNoInteractions(sender);
     }
 }

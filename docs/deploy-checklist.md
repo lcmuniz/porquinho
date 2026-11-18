@@ -9,6 +9,7 @@ Só marque um item depois de executar a verificação dele.
 - [ ] `STRIPE_SECRET_KEY` é a chave `sk_live_...` (em homologação, `sk_test_...`) da mesma conta onde o webhook foi criado.
 - [ ] `STRIPE_WEBHOOK_SECRET` é o `whsec_...` do endpoint do item 2, e não o do `stripe listen` local.
 - [ ] `FRONTEND_URL` é a URL pública do front (o Checkout volta para ela).
+- [ ] `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD` e `MAIL_FROM` preenchidos (Resend). Sem `SMTP_HOST`, nenhum e-mail sai, e a retenção de quem não converte não avisa nem apaga ninguém: os dados ficam guardados além dos 30 dias até o e-mail voltar. Como verificar: no log da subida não aparece `SMTP not configured (SMTP_HOST empty)`, e o e-mail de exportação pronta (Minha Conta → Exportar dados) chega na caixa de entrada. A recuperação de senha não serve de teste: quem manda esse e-mail é o Supabase.
 
 Como verificar: abra `/assinatura` e inicie um Checkout. Se a tela do Stripe abrir, a chave está ok. Se aparecer a mensagem
 de pagamento indisponível (503), a chave está vazia ou errada.
