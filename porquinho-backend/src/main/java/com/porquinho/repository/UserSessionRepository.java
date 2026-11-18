@@ -56,4 +56,9 @@ public interface UserSessionRepository extends JpaRepository<UserSession, UUID> 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(value = "DELETE FROM user_sessions WHERE user_id = :userId", nativeQuery = true)
     int deleteByUserId(@Param("userId") UUID userId);
+
+    /** Story 10.1: sessions not revoked, not expired and used since {@code activeSince} (admin panel). */
+    @Query(value = "SELECT COUNT(*) FROM user_sessions WHERE revoked_at IS NULL AND expires_at > :now "
+        + "AND last_activity >= :activeSince", nativeQuery = true)
+    long countActive(@Param("now") OffsetDateTime now, @Param("activeSince") OffsetDateTime activeSince);
 }

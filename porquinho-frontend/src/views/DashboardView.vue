@@ -157,6 +157,14 @@
           >
             Exportar meus dados
           </RouterLink>
+          <RouterLink
+            v-if="isAdmin"
+            to="/admin"
+            data-testid="admin-link"
+            class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+          >
+            Admin
+          </RouterLink>
         </nav>
         <!-- Pré-Epic 10: chave global do alerta de orçamento; some se a leitura falhar (ex.: sem acesso, 402) -->
         <label
@@ -212,6 +220,7 @@ import DashboardGps from '@/components/dashboard/DashboardGps.vue'
 import FinancialHealthSemaphore from '@/components/dashboard/FinancialHealthSemaphore.vue'
 import { getMySubscription } from '@/services/subscriptionService'
 import { getMyPreferences, updateMyPreferences } from '@/services/userPreferencesService'
+import { getAdminAccess } from '@/services/adminService'
 import { supabase } from '@/services/supabase'
 import { useAuthStore } from '@/stores/auth'
 import type { Subscription } from '@/types/subscription'
@@ -299,8 +308,19 @@ async function toggleBudgetAlert(enabled: boolean) {
   }
 }
 
+// Story 10.1: o link "Admin" só aparece para admin; falha na leitura esconde o link
+const isAdmin = ref(false)
+async function loadAdminAccess() {
+  try {
+    isAdmin.value = (await getAdminAccess()).admin
+  } catch {
+    isAdmin.value = false
+  }
+}
+
 onMounted(async () => {
   void loadPreferences()
+  void loadAdminAccess()
   try {
     subscription.value = await getMySubscription()
   } catch {

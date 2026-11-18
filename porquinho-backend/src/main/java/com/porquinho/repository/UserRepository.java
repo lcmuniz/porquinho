@@ -68,4 +68,7 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     /** Retro Epic 1 A2 (S6): true while the account waits for the purge. Primary-key lookup, runs on every API request. */
     @Query(value = "SELECT EXISTS (SELECT 1 FROM users WHERE id = :id AND deleted_at IS NOT NULL)", nativeQuery = true)
     boolean isDeletionPending(@Param("id") UUID id);
+
+    /** Story 10.1: read on every admin call (the Supabase JWT does not carry the role). Soft-deleted users are never admin. */
+    boolean existsByIdAndAdminTrue(UUID id);
 }

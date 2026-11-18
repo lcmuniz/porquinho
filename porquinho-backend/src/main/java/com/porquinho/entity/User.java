@@ -58,6 +58,10 @@ public class User {
     @Column(name = "budget_alert_email_enabled", nullable = false)
     private boolean budgetAlertEmailEnabled = true;
 
+    /** Story 10.1: administrator (the /api/v1/admin/* routes). Promoted by hand in the database, no screen (V49). */
+    @Column(name = "is_admin", nullable = false)
+    private boolean admin = false;
+
     // Constructors
     public User() {
     }
@@ -185,6 +189,14 @@ public class User {
 
     public void setBudgetAlertEmailEnabled(boolean budgetAlertEmailEnabled) {
         this.budgetAlertEmailEnabled = budgetAlertEmailEnabled;
+    }
+
+    public boolean isAdmin() {
+        return admin;
+    }
+
+    public void setAdmin(boolean admin) {
+        this.admin = admin;
     }
 
     /**

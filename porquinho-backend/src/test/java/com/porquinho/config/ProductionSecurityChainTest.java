@@ -148,6 +148,28 @@ class ProductionSecurityChainTest {
     }
 
     @Test
+    void adminWithoutSubscriptionPassesAndNonAdminGets403() throws Exception {
+        // Story 10.1: /api/v1/admin/ is exempt from the 402; the role (users.is_admin) gives the 403
+        jdbcTemplate.update("INSERT INTO users (id, email, auth_provider, failed_login_attempts, is_admin) "
+            + "VALUES (?, 'admin@example.com', 'EMAIL', 0, true)", USER_ID);
+        try {
+            mockMvc.perform(get("/api/v1/admin/access").header("Authorization", "Bearer admin-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.admin").value(true));
+
+            jdbcTemplate.update("UPDATE users SET is_admin = false WHERE id = ?", USER_ID);
+            mockMvc.perform(get("/api/v1/admin/health").header("Authorization", "Bearer user-token"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.title").value("Acesso restrito"));
+            mockMvc.perform(get("/api/v1/admin/access").header("Authorization", "Bearer user-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.admin").value(false));
+        } finally {
+            jdbcTemplate.update("DELETE FROM users WHERE id = ?", USER_ID);
+        }
+    }
+
+    @Test
     void revokedTokenGets401() throws Exception {
         when(jwtBlacklistService.isBlacklisted(SessionService.hashToken("revoked-token"))).thenReturn(true);
 

@@ -140,3 +140,20 @@ Com uma chave errada, ele sobe sem nenhum aviso, e tudo o que for importado fica
   `AI batch of ... failed: com.anthropic.errors.UnauthorizedException`.
 - [ ] Decisão: validar a chave também na subida do backend (uma chamada a `/v1/models` com log de erro), ou ficar só
   com esta conferência manual.
+
+## 5. Painel de admin (Story 10.1)
+
+Não há tela para promover administrador. O primeiro admin é promovido direto no banco (SQL Editor do Supabase), depois
+que a pessoa já tem conta no Porquinho:
+
+```sql
+UPDATE users SET is_admin = true WHERE email = 'admin@exemplo.com' AND deleted_at IS NULL;
+```
+
+- [ ] O `UPDATE` acima afetou 1 linha.
+- [ ] Logado com essa conta, o Dashboard mostra o link "Admin" e `/admin` abre a aba "Saúde do sistema".
+- [ ] Logado com outra conta, o link não aparece e `/admin` mostra "Acesso restrito".
+
+Para tirar o papel, rode o mesmo `UPDATE` com `is_admin = false`. O papel é lido do banco a cada chamada, então vale na
+hora, sem novo login. O uptime do painel só começa a contar depois do primeiro snapshot (1 por minuto após o deploy);
+antes disso ele mostra "sem dados".

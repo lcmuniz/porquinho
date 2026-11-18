@@ -39,7 +39,8 @@ public class SubscriptionAccessFilter extends OncePerRequestFilter {
         "/api/v1/auth/",              // registration, login, sessions, password reset
         "/api/v1/subscriptions/",     // user must see own status (and subscribe in 2.2)
         "/api/v1/data-export/",       // LGPD right: independent of payment
-        "/api/v1/account-deletion/"   // LGPD right: independent of payment
+        "/api/v1/account-deletion/",  // LGPD right: independent of payment
+        "/api/v1/admin/"              // Story 10.1: the admin does not need to subscribe (403 for non-admins)
     );
 
     private final SubscriptionService subscriptionService;

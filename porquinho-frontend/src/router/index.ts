@@ -188,6 +188,13 @@ const router = createRouter({
       component: () => import('../views/AccountDeletionView.vue'),
       meta: { requiresAuth: true },
     },
+    {
+      // Story 10.1: painel de admin (o 403 vem do backend; a tela mostra "Acesso restrito")
+      path: '/admin',
+      name: 'admin',
+      component: () => import('../views/AdminView.vue'),
+      meta: { requiresAuth: true },
+    },
 
     // Rotas de desenvolvimento (sem restricao): só existem no `vite dev`, nunca no build de produção
     ...(import.meta.env.DEV

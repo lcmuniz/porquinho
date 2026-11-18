@@ -14,3 +14,7 @@ spring:
       - org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
       - org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration
       - org.springframework.boot.actuate.autoconfigure.security.servlet.ManagementWebSecurityAutoConfiguration
+app:
+  # Story 10.1: o cron do snapshot de saúde não grava linhas nos testes; eles chamam recordSnapshot() direto
+  health-snapshot:
+    enabled: false

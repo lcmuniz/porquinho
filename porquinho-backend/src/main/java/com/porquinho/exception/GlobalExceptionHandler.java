@@ -128,6 +128,18 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handle ForbiddenException and return 403 (Story 10.1). The title differs from the DeletedAccountFilter one
+     * ("Conta em exclusão"), so the frontend does not end the session on this 403.
+     */
+    @ExceptionHandler(ForbiddenException.class)
+    public ProblemDetail handleForbiddenException(ForbiddenException ex) {
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, ex.getMessage());
+        problemDetail.setTitle("Acesso restrito");
+        problemDetail.setType(URI.create("https://api.porquinho.com/errors/forbidden"));
+        return problemDetail;
+    }
+
+    /**
      * Handle ResourceNotFoundException and return 404 Not Found status.
      *
      * @param ex ResourceNotFoundException

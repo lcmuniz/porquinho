@@ -35,6 +35,11 @@ vi.mock('@/services/userPreferencesService', () => ({
   updateMyPreferences: (...args: unknown[]) => mockUpdateMyPreferences(...args),
 }))
 
+const mockGetAdminAccess = vi.fn()
+vi.mock('@/services/adminService', () => ({
+  getAdminAccess: () => mockGetAdminAccess(),
+}))
+
 vi.mock('@/services/subscriptionService', () => ({
   getMySubscription: (...args: unknown[]) => mockGetMySubscription(...args),
 }))
@@ -69,6 +74,7 @@ describe('DashboardView', () => {
     vi.stubGlobal('location', { ...window.location, assign })
     setActivePinia(createPinia())
     mockGetMySubscription.mockReset()
+    mockGetAdminAccess.mockReset().mockResolvedValue({ admin: false })
     mockGetMyPreferences.mockReset().mockResolvedValue({ budgetAlertEmail: true })
     mockUpdateMyPreferences.mockReset()
     mockGetFinancialHealth.mockReset().mockResolvedValue({
@@ -99,6 +105,26 @@ describe('DashboardView', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
+  })
+
+  it('mostra o link Admin só para admin (Story 10.1)', async () => {
+    mockGetMySubscription.mockResolvedValue(null)
+    const user = mountView()
+    await flushPromises()
+    expect(user.find('[data-testid="admin-link"]').exists()).toBe(false)
+
+    mockGetAdminAccess.mockResolvedValue({ admin: true })
+    const admin = mountView()
+    await flushPromises()
+    expect(admin.get('[data-testid="admin-link"]').text()).toBe('Admin')
+  })
+
+  it('esconde o link Admin quando a leitura do papel falha', async () => {
+    mockGetMySubscription.mockResolvedValue(null)
+    mockGetAdminAccess.mockRejectedValue(new Error('rede'))
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.find('[data-testid="admin-link"]').exists()).toBe(false)
   })
 
   it('mostra o badge do trial quando a API responde', async () => {

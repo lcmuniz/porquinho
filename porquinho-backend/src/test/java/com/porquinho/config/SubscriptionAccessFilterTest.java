@@ -108,6 +108,8 @@ class SubscriptionAccessFilterTest {
         "/api/v1/data-export",
         "/api/v1/data-export/status",
         "/api/v1/account-deletion",
+        "/api/v1/admin/health",
+        "/api/v1/admin/access",
         "/actuator/health"
     })
     void shouldAlwaysPassOnExemptRoutes(String path) throws Exception {
