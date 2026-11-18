@@ -7,8 +7,8 @@ import java.util.List;
 
 /**
  * Story 10.3: one bank in [from, to]: accuracy per transaction type (PIX, INSTALLMENT, DEBIT, CREDIT) and per AI
- * confidence band (0-49, 50-79, 80-100), the correction patterns shared by at least 3 users (every bank: patterns
- * have none) and the suggestions. No user id, category name, amount or other description.
+ * confidence band (0-49, 50-79, 80-100), the patterns shared by at least 3 users (patterns have
+ * no bank, so they cover every bank) and the suggestions. No user id, category name, amount or other description.
  */
 public record AdminAiBankDetailResponse(
     String bank,

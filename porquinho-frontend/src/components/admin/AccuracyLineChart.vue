@@ -27,8 +27,8 @@
       >
         {{ month }}
       </text>
-      <g v-for="s in series" :key="s.label" :data-testid="`${testId}-series`">
-        <path :d="pathOf(s.values)" fill="none" :stroke="s.color" stroke-width="2" />
+      <g v-for="(s, si) in series" :key="s.label" :data-testid="`${testId}-series`">
+        <path :d="pathOf(s.values)" fill="none" :stroke="s.color" stroke-width="2" :stroke-dasharray="dashOf(si)" />
         <template v-for="(value, i) in s.values" :key="i">
           <circle v-if="value !== null" :cx="xOf(i)" :cy="yOf(value)" r="3" :fill="s.color">
             <title>{{ s.label }}, {{ months[i] }}: {{ format(value) }}</title>
@@ -37,8 +37,10 @@
       </g>
     </svg>
     <ul class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-700" :data-testid="`${testId}-legend`" aria-hidden="true">
-      <li v-for="s in series" :key="s.label" class="flex items-center gap-1">
-        <span class="inline-block h-2 w-4 rounded" :style="{ backgroundColor: s.color }" />
+      <li v-for="(s, si) in series" :key="s.label" class="flex items-center gap-1">
+        <svg width="24" height="8" aria-hidden="true">
+          <line x1="0" x2="24" y1="4" y2="4" :stroke="s.color" stroke-width="2" :stroke-dasharray="dashOf(si)" />
+        </svg>
         {{ s.label }}
       </li>
     </ul>
@@ -82,6 +84,12 @@ const PAD_RIGHT = 24
 const TOP = 10
 const BASE = HEIGHT - 24
 const TICKS = [0, 50, 100]
+// Traço próprio por série: a linha não depende só da cor (WCAG 1.4.1)
+const DASHES = ['none', '6 3', '2 3', '10 3 2 3', '1 5', '12 6', '6 2 2 2 2 2']
+
+function dashOf(i: number) {
+  return DASHES[i % DASHES.length]
+}
 
 const hasData = computed(() => props.series.some((s) => s.values.some((v) => v !== null)))
 

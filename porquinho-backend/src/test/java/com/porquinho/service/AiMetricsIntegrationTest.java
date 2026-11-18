@@ -125,23 +125,27 @@ class AiMetricsIntegrationTest {
         classified(nubank, "DEBIT", false, false, "PENDING", false, 90, true, "2020-03-10T12:00:00Z");
         classified(nubank, "DEBIT", false, false, "CONFIRMED", true, 90, true, "2020-03-10T12:00:00Z");
         classified(nubank, "DEBIT", false, false, "CONFIRMED", false, 90, true, "2020-04-01T12:00:00Z"); // outside
+        classified(nubank, "DEBIT", false, false, "CONFIRMED", false, 90, false, "2020-03-31T23:30:00-03:00"); // last day
+        classified(nubank, "DEBIT", false, false, "CONFIRMED", false, 90, true, "2020-04-01T00:00:00-03:00"); // outside
         UUID unknown = importOf(null);
         classified(unknown, "CREDIT", false, false, "APPROVED", false, 90, false, "2020-03-11T12:00:00Z");
 
         mockMvc.perform(get("/api/v1/admin/ai?" + PERIOD).with(jwt().jwt(j -> j.subject(admin.toString()))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.target").value(85.0))
-            .andExpect(jsonPath("$.overall.classifications").value(5))
+            .andExpect(jsonPath("$.overall.classifications").value(6))
             .andExpect(jsonPath("$.overall.corrections").value(1))
-            .andExpect(jsonPath("$.overall.accuracy").value(80.0))
+            .andExpect(jsonPath("$.overall.accuracy").value(83.3))
             .andExpect(jsonPath("$.banks.length()").value(2))
             .andExpect(jsonPath("$.banks[0].bank").value("NUBANK"))
-            .andExpect(jsonPath("$.banks[0].classifications").value(4))
-            .andExpect(jsonPath("$.banks[0].accuracy").value(75.0))
+            .andExpect(jsonPath("$.banks[0].classifications").value(5))
+            .andExpect(jsonPath("$.banks[0].accuracy").value(80.0))
             .andExpect(jsonPath("$.banks[0].status").value("YELLOW"))
             .andExpect(jsonPath("$.banks[1].bank").value("UNKNOWN"))
             .andExpect(jsonPath("$.banks[1].status").value("GREEN"))
-            .andExpect(jsonPath("$.months.length()").value(6));
+            .andExpect(jsonPath("$.months.length()").value(6))
+            .andExpect(content().string(not(containsString(admin.toString()))))
+            .andExpect(content().string(not(containsString("Categoria Secreta"))));
 
         String csv = mockMvc.perform(get("/api/v1/admin/ai/export?" + PERIOD)
                 .with(jwt().jwt(j -> j.subject(admin.toString()))))
@@ -149,7 +153,8 @@ class AiMetricsIntegrationTest {
             .andExpect(header().string("Content-Disposition", "attachment; filename=\"precisao_ia_2020-03-01_2020-03-31.csv\""))
             .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
         assertThat(csv).isEqualTo("﻿Banco;Classificações;Correções;Precisão (%)\r\n"
-            + "Nubank;4;1;75,00\r\nNão identificado;1;0;100,00\r\nTotal;5;1;80,00\r\n");
+            + "Nubank;5;1;80,00\r\nNão identificado;1;0;100,00\r\nTotal;6;1;83,30\r\n");
+        assertThat(csv).doesNotContain(admin.toString()).doesNotContain("Categoria Secreta");
     }
 
     @Test
@@ -183,6 +188,8 @@ class AiMetricsIntegrationTest {
         classified(itau, "DEBIT", false, true, "CONFIRMED", false, 60, false, "2020-03-10T12:00:00Z"); // INSTALLMENT
         classified(itau, "CREDIT", false, false, "CONFIRMED", false, 80, false, "2020-03-10T12:00:00Z");
         reviewed(importOf("NUBANK"), true); // another bank: out of the ITAU detail
+        classified(itau, "CREDIT", false, false, "CONFIRMED", false, 90, false, "2020-03-31T23:30:00-03:00"); // last day
+        classified(itau, "CREDIT", false, false, "CONFIRMED", false, 90, true, "2020-04-01T00:00:00-03:00"); // outside
 
         mockMvc.perform(get("/api/v1/admin/ai/detail?bank=ITAU&" + PERIOD).with(jwt().jwt(j -> j.subject(admin.toString()))))
             .andExpect(status().isOk())
@@ -191,7 +198,8 @@ class AiMetricsIntegrationTest {
             .andExpect(jsonPath("$.types[0].accuracy").value(0.0))
             .andExpect(jsonPath("$.types[0].status").value("RED"))
             .andExpect(jsonPath("$.types[?(@.key == 'DEBIT')]").isEmpty())
-            .andExpect(jsonPath("$.confidence[2].classifications").value(1))
+            .andExpect(jsonPath("$.confidence[2].classifications").value(2))
+            .andExpect(jsonPath("$.confidence[2].corrections").value(0))
             .andExpect(jsonPath("$.types[*].key", hasItem("INSTALLMENT")))
             .andExpect(jsonPath("$.confidence[0].key").value("0-49"))
             .andExpect(jsonPath("$.confidence[1].key").value("50-79"))

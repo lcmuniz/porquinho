@@ -149,8 +149,10 @@ public class AiMetricsService {
         return out;
     }
 
+    /** Rounded once to 1 decimal, so the color, the JSON, the CSV and the texts use the same value. */
     static Double accuracy(long classifications, long corrections) {
-        return classifications == 0 ? null : (1 - (double) corrections / classifications) * 100;
+        if (classifications == 0) return null;
+        return Math.round((1 - (double) corrections / classifications) * 1000) / 10.0;
     }
 
     static Status status(Double accuracy) {

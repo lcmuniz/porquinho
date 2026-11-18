@@ -264,7 +264,7 @@ const BANK_COLORS: Record<AdminBankCode, string> = {
   ITAU: '#ea580c',
   BRADESCO: '#db2777',
   CAIXA: '#2563eb',
-  OTHER: '#0d9488',
+  OTHER: '#92400e',
   UNKNOWN: '#6b7280',
 }
 

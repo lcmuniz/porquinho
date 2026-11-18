@@ -100,6 +100,9 @@ describe('ImportMetricsPanel', () => {
     await flushPromises()
 
     expect(mockGetImportBankDetail).toHaveBeenCalledWith({ bank: 'NUBANK', status: 'ALL' })
+    expect(wrapper.get('[data-testid="bank-open-NUBANK"]').attributes('aria-controls')).toBe('bank-detail')
+    expect(wrapper.get('[data-testid="bank-open-ITAU"]').attributes('aria-controls')).toBeUndefined()
+    expect(wrapper.get('[data-testid="bank-open-UNKNOWN"]').attributes('aria-controls')).toBeUndefined()
     expect(wrapper.get('[data-testid="detail-error-types"]').text()).toContain('Problema de formato: 2')
     expect(wrapper.get('[data-testid="detail-error-types"]').text()).toContain('Interrompida: 1')
     expect(wrapper.get('[data-testid="detail-recent"]').text()).toContain('Formato de CSV não reconhecido.')

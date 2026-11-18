@@ -65,6 +65,10 @@ class AiMetricsServiceTest {
     void accuracyIsNullWithoutClassificationsAndColorsAt75And85() {
         assertThat(AiMetricsService.accuracy(0, 0)).isNull();
         assertThat(AiMetricsService.accuracy(20, 3)).isEqualTo(85.0);
+        // Rounded to 1 decimal before the color: 84.96 is 85.0 and GREEN, like the screen shows it
+        assertThat(AiMetricsService.accuracy(1999, 1)).isEqualTo(99.9);
+        assertThat(AiMetricsService.accuracy(2500, 376)).isEqualTo(85.0);
+        assertThat(AiMetricsService.status(AiMetricsService.accuracy(2500, 376))).isEqualTo(Status.GREEN);
         assertThat(AiMetricsService.status(null)).isEqualTo(Status.UNKNOWN);
         assertThat(AiMetricsService.status(85.0)).isEqualTo(Status.GREEN);
         assertThat(AiMetricsService.status(84.99)).isEqualTo(Status.YELLOW);
@@ -146,6 +150,6 @@ class AiMetricsServiceTest {
             new Bank("NUBANK", 3, 1), new Bank("UNKNOWN", 1, 0)));
         assertThat(service.csv(importMetrics.filters(null, null, null, null)))
             .isEqualTo("﻿Banco;Classificações;Correções;Precisão (%)\r\n"
-                + "Nubank;3;1;66,67\r\nNão identificado;1;0;100,00\r\nTotal;4;1;75,00\r\n");
+                + "Nubank;3;1;66,70\r\nNão identificado;1;0;100,00\r\nTotal;4;1;75,00\r\n");
     }
 }

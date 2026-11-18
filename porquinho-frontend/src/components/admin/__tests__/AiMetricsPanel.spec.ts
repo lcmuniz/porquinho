@@ -232,4 +232,11 @@ describe('AiMetricsPanel', () => {
     expect(wrapper.find('[data-testid="ai-detail"]').exists()).toBe(false)
     expect(mockGetAiBankDetail).toHaveBeenCalledTimes(1)
   })
+
+  it('400 avisa filtro inválido', async () => {
+    mockGetAiMetrics.mockRejectedValueOnce({ response: { status: 400 } })
+    const wrapper = mount(AiMetricsPanel)
+    await flushPromises()
+    expect(wrapper.get('[data-testid="ai-error"]').text()).toContain('Filtro inválido')
+  })
 })
