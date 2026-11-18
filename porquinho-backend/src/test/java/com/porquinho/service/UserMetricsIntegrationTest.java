@@ -190,13 +190,18 @@ class UserMetricsIntegrationTest {
     void deletedUserIsOutOfEverything() {
         Summary before = summary();
         Adoption adoptionBefore = repository.adoption();
+        MonthCounts monthBefore = currentMonth();
+        List<WeekCounts> weeksBefore = weeks();
         UUID gone = user(false, true);
         session(gone, Duration.ofHours(3), Duration.ofHours(1));
         subscription(gone, "MONTHLY", "ACTIVE", null);
         onboarding(gone, true);
         completedImport(gone, account(gone, false), weekStart.minusWeeks(2).toOffsetDateTime());
+        subscription(user(false, true), "TRIAL", "ACTIVE", now.plusDays(10));
+        subscription(user(false, true), "TRIAL", "EXPIRED", now.minusDays(1));
 
         Summary after = summary();
+        MonthCounts monthAfter = currentMonth();
 
         assertThat(after.getTotal()).isEqualTo(before.getTotal());
         assertThat(after.getActive24h()).isEqualTo(before.getActive24h());
@@ -204,7 +209,25 @@ class UserMetricsIntegrationTest {
         assertThat(after.getMonthly()).isEqualTo(before.getMonthly());
         assertThat(after.getOnboarded()).isEqualTo(before.getOnboarded());
         assertThat(after.getCheckins()).isEqualTo(before.getCheckins());
+        assertThat(after.getTrials()).isEqualTo(before.getTrials());
+        assertThat(after.getEndedTrials()).isEqualTo(before.getEndedTrials());
         assertThat(repository.adoption().getAccounts()).isEqualTo(adoptionBefore.getAccounts());
+        assertThat(repository.adoption().getImports()).isEqualTo(adoptionBefore.getImports());
+        assertThat(monthAfter.getUsers()).isEqualTo(monthBefore.getUsers());
+        assertThat(monthAfter.getPaid()).isEqualTo(monthBefore.getPaid());
+        assertThat(monthAfter.getEligible()).isEqualTo(monthBefore.getEligible());
+        assertThat(weeks().get(11).getActive7d()).isEqualTo(weeksBefore.get(11).getActive7d());
+        assertThat(weeks().get(11).getActive30d()).isEqualTo(weeksBefore.get(11).getActive30d());
+    }
+
+    @Test
+    void lastWeekIsMeasuredNowNotAtTheEndOfTheWeek() {
+        List<WeekCounts> before = weeks();
+        // Active less than 7 days ago but before this Monday: out of the window ending next Monday, in the one of now
+        OffsetDateTime last = weekStart.minusMinutes(1).toOffsetDateTime();
+        session(user(false, false), Duration.between(last.minusHours(1), now), Duration.between(last, now));
+
+        assertThat(weeks().get(11).getActive7d() - before.get(11).getActive7d()).isEqualTo(1);
     }
 
     @Test
@@ -214,14 +237,17 @@ class UserMetricsIntegrationTest {
         subscription(user(false, false), "TRIAL", "ACTIVE", now.minusDays(1)); // ended: not a trial
         subscription(user(false, false), "MONTHLY", "ACTIVE", null);
         subscription(user(false, false), "MONTHLY", "CANCELLED", null);
+        subscription(user(false, false), "MONTHLY", "EXPIRED", null); // cancelled, paid period over
+        subscription(user(false, false), "MONTHLY", "SUSPENDED", null); // payment failed for good
+        subscription(user(false, false), "MONTHLY", "PAYMENT_FAILED", null); // still retrying: not churn
 
         Summary after = summary();
 
         assertThat(after.getTrials() - before.getTrials()).isEqualTo(1);
         assertThat(after.getEndedTrials() - before.getEndedTrials()).isEqualTo(1);
         assertThat(after.getPaid() - before.getPaid()).isEqualTo(1);
-        assertThat(after.getMonthly() - before.getMonthly()).isEqualTo(2);
-        assertThat(after.getCancelled() - before.getCancelled()).isEqualTo(1);
+        assertThat(after.getMonthly() - before.getMonthly()).isEqualTo(5);
+        assertThat(after.getCancelled() - before.getCancelled()).isEqualTo(3);
     }
 
     @Test
@@ -313,6 +339,13 @@ class UserMetricsIntegrationTest {
         assertThat(after.getTransfers() - before.getTransfers()).isEqualTo(1);
         assertThat(after.getReconciliations() - before.getReconciliations()).isEqualTo(1);
         assertThat(after.getImports()).isEqualTo(before.getImports());
+
+        UUID importer = user(false, false);
+        completedImport(importer, account(importer, false), now);
+        UUID failed = user(false, false);
+        jdbc.update("INSERT INTO transaction_imports (user_id, account_id, file_name, file_type, file_size_kb, status) "
+            + "VALUES (?, ?, 'x.ofx', 'OFX', 1, 'FAILED')", failed, account(failed, false));
+        assertThat(repository.adoption().getImports() - before.getImports()).isEqualTo(1);
     }
 
     /** A credit card, a goal and a transfer of {@code user}, deleted or not. */
@@ -344,6 +377,8 @@ class UserMetricsIntegrationTest {
         assertThat(m.get("activeMonthly")).hasSize(12);
         assertThat(m.get("adoption")).hasSize(7);
         assertThat(m.get("growth").get(11).asLong()).isEqualTo(m.get("total").asLong());
+        assertThat(m.get("activeWeekly").get(11).asLong()).isEqualTo(m.get("active7d").asLong());
+        assertThat(m.get("activeMonthly").get(11).asLong()).isEqualTo(m.get("active30d").asLong());
         assertThat(m.get("churn").get("target").asDouble()).isEqualTo(5.0);
         assertThat(m.get("onboarding").get("target").asDouble()).isEqualTo(70.0);
         assertThat(body).doesNotContain(u.toString()).doesNotContain(admin.toString()).doesNotContain("@example.com");
@@ -365,6 +400,7 @@ class UserMetricsIntegrationTest {
             .andExpect(status().isForbidden())
             .andExpect(jsonPath("$.title").value("Acesso restrito"));
         mockMvc.perform(get("/api/v1/admin/users/export").with(jwt().jwt(j -> j.subject(plain.toString()))))
-            .andExpect(status().isForbidden());
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.title").value("Acesso restrito"));
     }
 }

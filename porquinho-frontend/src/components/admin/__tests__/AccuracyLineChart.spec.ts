@@ -43,6 +43,7 @@ describe('AccuracyLineChart', () => {
     expect(table.findAll('thead th').map((th) => th.text())).toEqual(['Banco', '06/26', '07/26', '08/26', '09/26'])
     expect(table.get('tbody tr').text()).toContain('sem dados')
     expect(wrapper.get('svg').attributes('role')).toBe('img')
+    expect(wrapper.get('svg').attributes('aria-label')).toBe('Precisão. Os valores de cada ponto estão na tabela a seguir.')
   })
 
   it('sem nenhum dado mostra o texto vazio', () => {

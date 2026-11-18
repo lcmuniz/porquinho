@@ -42,7 +42,10 @@ public interface UserMetricsRepository extends Repository<User, UUID> {
         long getPaid();
         /** MONTHLY, any status. */
         long getMonthly();
-        /** MONTHLY and CANCELLED. */
+        /**
+         * MONTHLY that left: CANCELLED, EXPIRED (the cancelled one at the end of the paid period, via the webhook) or
+         * SUSPENDED (payment failed for good). PAYMENT_FAILED is still retrying and does not count.
+         */
         long getCancelled();
         /** TRIAL with trial_end_date already past (and after trial_start_date), any status. */
         long getEndedTrials();
@@ -61,7 +64,7 @@ public interface UserMetricsRepository extends Repository<User, UUID> {
         + SUBS + "s.plan_type = 'TRIAL' AND s.status = 'ACTIVE' AND s.trial_end_date > " + NOW + ") AS \"trials\", "
         + SUBS + "s.plan_type = 'MONTHLY' AND s.status = 'ACTIVE') AS \"paid\", "
         + SUBS + "s.plan_type = 'MONTHLY') AS \"monthly\", "
-        + SUBS + "s.plan_type = 'MONTHLY' AND s.status = 'CANCELLED') AS \"cancelled\", "
+        + SUBS + "s.plan_type = 'MONTHLY' AND s.status IN ('CANCELLED', 'EXPIRED', 'SUSPENDED')) AS \"cancelled\", "
         + SUBS + "s.plan_type = 'TRIAL' AND " + TRIAL_ENDED + ") AS \"endedTrials\", "
         + "(SELECT count(*) FROM onboarding_progress o JOIN base b ON b.id = o.user_id WHERE o.is_completed) "
         + "AS \"onboarded\", "

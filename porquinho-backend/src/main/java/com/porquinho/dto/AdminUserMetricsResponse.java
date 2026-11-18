@@ -17,7 +17,7 @@ public record AdminUserMetricsResponse(
     long active30d,
     long trials,
     long paid,
-    /** MONTHLY CANCELLED over every MONTHLY; GREEN up to the target, RED above. */
+    /** MONTHLY CANCELLED, EXPIRED or SUSPENDED over every MONTHLY; GREEN up to the target, RED above. */
     Goal churn,
     /** Weeks with a completed import per user active in 30 days, average of the last 4 complete weeks (2 decimals). */
     Double weeklyCheckins,

@@ -7,7 +7,7 @@
       :viewBox="`0 0 ${WIDTH} ${HEIGHT}`"
       class="h-auto w-full"
       role="img"
-      :aria-label="`${label}. Os valores de cada mês estão na tabela a seguir.`"
+      :aria-label="`${label}. Os valores de cada ponto estão na tabela a seguir.`"
       :data-testid="testId"
     >
       <g v-for="tick in ticks" :key="tick">
