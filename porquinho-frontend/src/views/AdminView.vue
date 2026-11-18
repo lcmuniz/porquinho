@@ -22,7 +22,7 @@
       </div>
 
       <template v-else>
-        <!-- Abas das stories 10.3 a 10.5 entram aqui -->
+        <!-- Abas das stories 10.4 e 10.5 entram aqui -->
         <nav aria-label="Seções do admin" class="flex gap-2 border-b border-gray-200">
           <button
             v-for="t in TABS"
@@ -40,6 +40,10 @@
 
         <div v-if="tab === 'imports'">
           <ImportMetricsPanel @forbidden="onForbidden" />
+        </div>
+
+        <div v-else-if="tab === 'ai'">
+          <AiMetricsPanel @forbidden="onForbidden" />
         </div>
 
         <div v-else class="space-y-6">
@@ -171,6 +175,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import HealthBarChart from '@/components/admin/HealthBarChart.vue'
+import AiMetricsPanel from '@/components/admin/AiMetricsPanel.vue'
 import ImportMetricsPanel from '@/components/admin/ImportMetricsPanel.vue'
 import { getSystemHealth } from '@/services/adminService'
 import { apiErrorStatus } from '@/lib/apiError'
@@ -178,10 +183,11 @@ import type { HealthStatus, SystemHealth } from '@/types/admin'
 
 const REFRESH_MS = 30_000
 
-type Tab = 'health' | 'imports'
+type Tab = 'health' | 'imports' | 'ai'
 const TABS: { key: Tab; label: string }[] = [
   { key: 'health', label: 'Saúde do sistema' },
   { key: 'imports', label: 'Importações' },
+  { key: 'ai', label: 'IA' },
 ]
 const tab = ref<Tab>('health')
 

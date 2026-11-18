@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
@@ -39,4 +40,54 @@ public interface AiClassificationHistoryRepository extends JpaRepository<AiClass
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(value = "DELETE FROM ai_classification_history WHERE user_id = :userId", nativeQuery = true)
     int deleteByUserId(@Param("userId") UUID userId);
+
+    // Story 10.3: aggregates of the admin panel over every user. A row counts once its transaction left the review
+    // (not PENDING) and was not deleted (a discarded import deletes them); was_corrected is an AI error. The bank is
+    // the one of the import, a null bank_name is UNKNOWN. No index for these: they scan, fine at the current volume.
+
+    String COUNTED = "FROM ai_classification_history h JOIN transactions t ON t.id = h.transaction_id "
+        + "LEFT JOIN transaction_imports i ON i.id = t.import_id "
+        + "WHERE t.deleted_at IS NULL AND t.review_status <> 'PENDING' "
+        + "AND h.created_at >= :from AND h.created_at < :to ";
+
+    interface BankCounts {
+        String getBank();
+        long getClassifications();
+        long getCorrections();
+    }
+
+    @Query(value = "SELECT COALESCE(i.bank_name, 'UNKNOWN') AS bank, count(*) AS classifications, "
+        + "count(*) FILTER (WHERE h.was_corrected) AS corrections " + COUNTED
+        + "AND (CAST(:bank AS varchar) IS NULL OR COALESCE(i.bank_name, 'UNKNOWN') = CAST(:bank AS varchar)) "
+        + "GROUP BY 1", nativeQuery = true)
+    List<BankCounts> countByBank(@Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to,
+                                 @Param("bank") String bank);
+
+    interface MonthCounts extends BankCounts {
+        /** YYYY-MM in America/Sao_Paulo. */
+        String getMonth();
+    }
+
+    @Query(value = "SELECT COALESCE(i.bank_name, 'UNKNOWN') AS bank, "
+        + "to_char(h.created_at AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM') AS month, count(*) AS classifications, "
+        + "count(*) FILTER (WHERE h.was_corrected) AS corrections " + COUNTED
+        + "GROUP BY 1, 2", nativeQuery = true)
+    List<MonthCounts> countByBankAndMonth(@Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to);
+
+    interface KindCounts {
+        /** PIX, INSTALLMENT, DEBIT or CREDIT, in this precedence. */
+        String getType();
+        /** 0-49, 50-79 or 80-100. */
+        String getBand();
+        long getClassifications();
+        long getCorrections();
+    }
+
+    @Query(value = "SELECT CASE WHEN t.is_pix THEN 'PIX' WHEN t.is_installment THEN 'INSTALLMENT' "
+        + "ELSE t.transaction_type END AS type, "
+        + "CASE WHEN h.confidence < 50 THEN '0-49' WHEN h.confidence < 80 THEN '50-79' ELSE '80-100' END AS band, "
+        + "count(*) AS classifications, count(*) FILTER (WHERE h.was_corrected) AS corrections " + COUNTED
+        + "AND COALESCE(i.bank_name, 'UNKNOWN') = :bank GROUP BY 1, 2", nativeQuery = true)
+    List<KindCounts> countByTypeAndBand(@Param("bank") String bank, @Param("from") OffsetDateTime from,
+                                        @Param("to") OffsetDateTime to);
 }

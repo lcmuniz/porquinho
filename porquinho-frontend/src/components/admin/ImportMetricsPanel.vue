@@ -111,7 +111,7 @@
                     type="button"
                     class="min-h-[44px] text-left font-medium text-purple-700 underline-offset-2 hover:underline"
                     :aria-expanded="selected === b.bank"
-                    aria-controls="bank-detail"
+                    :aria-controls="selected === b.bank ? 'bank-detail' : undefined"
                     :data-testid="`bank-open-${b.bank}`"
                     @click="openDetail(b.bank)"
                   >

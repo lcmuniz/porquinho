@@ -6,7 +6,16 @@ vi.mock('../api', () => ({
   api: { get: (...a: unknown[]) => mockGet(...a) },
 }))
 
-import { exportImportErrors, getAdminAccess, getImportBankDetail, getImportMetrics, getSystemHealth } from '../adminService'
+import {
+  exportAiMetrics,
+  exportImportErrors,
+  getAdminAccess,
+  getAiBankDetail,
+  getAiMetrics,
+  getImportBankDetail,
+  getImportMetrics,
+  getSystemHealth,
+} from '../adminService'
 
 describe('adminService', () => {
   beforeEach(() => {
@@ -45,6 +54,28 @@ describe('adminService', () => {
     await expect(exportImportErrors({ status: 'ALL' })).resolves.toBe(blob)
     expect(mockGet).toHaveBeenCalledWith('/api/v1/admin/imports/export', {
       params: { status: 'ALL' },
+      responseType: 'blob',
+    })
+  })
+
+  it('getAiMetrics manda os filtros para /api/v1/admin/ai', async () => {
+    mockGet.mockResolvedValue({ status: 200, data: { banks: [] } })
+    await expect(getAiMetrics({ from: '2026-11-01', bank: 'ITAU' })).resolves.toEqual({ banks: [] })
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/admin/ai', { params: { from: '2026-11-01', bank: 'ITAU' } })
+  })
+
+  it('getAiBankDetail lê /api/v1/admin/ai/detail', async () => {
+    mockGet.mockResolvedValue({ status: 200, data: { bank: 'NUBANK' } })
+    await expect(getAiBankDetail({ bank: 'NUBANK' })).resolves.toEqual({ bank: 'NUBANK' })
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/admin/ai/detail', { params: { bank: 'NUBANK' } })
+  })
+
+  it('exportAiMetrics baixa o CSV como blob', async () => {
+    const blob = new Blob(['x'])
+    mockGet.mockResolvedValue({ status: 200, data: blob })
+    await expect(exportAiMetrics({ to: '2026-11-17' })).resolves.toBe(blob)
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/admin/ai/export', {
+      params: { to: '2026-11-17' },
       responseType: 'blob',
     })
   })

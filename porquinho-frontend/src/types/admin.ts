@@ -93,3 +93,40 @@ export interface ImportBankDetail {
   /** Últimos 30 dias até hoje, sem depender do período; errorRate null num dia sem importação terminada. */
   trend: { date: string; total: number; failures: number; errorRate: number | null }[]
 }
+
+/** Story 10.3: classificações, correções e precisão (%); accuracy null = sem classificação. */
+export interface AiAccuracy {
+  classifications: number
+  corrections: number
+  accuracy: number | null
+  status: HealthStatus
+}
+
+/** Story 10.3: precisão da IA no período, geral e por banco, e por mês nos últimos 6 meses (sem depender do período). */
+export interface AiMetrics {
+  from: string
+  to: string
+  target: number
+  overall: AiAccuracy & { bank: 'TOTAL' }
+  /** delta em pontos percentuais; null quando um dos dois meses não tem dado. */
+  monthChange: { current: number | null; previous: number | null; delta: number | null }
+  banks: (AiAccuracy & { bank: AdminBankCode })[]
+  /** AAAA-MM, do mais antigo ao mês atual. */
+  months: string[]
+  /** Um valor por mês de `months`; null num mês sem classificação. */
+  trend: { bank: AdminBankCode; accuracy: (number | null)[] }[]
+}
+
+export type AiTransactionType = 'PIX' | 'INSTALLMENT' | 'DEBIT' | 'CREDIT'
+export type AiConfidenceBand = '0-49' | '50-79' | '80-100'
+
+export interface AiBankDetail {
+  bank: AdminBankCode
+  from: string
+  to: string
+  types: (AiAccuracy & { key: AiTransactionType })[]
+  confidence: (AiAccuracy & { key: AiConfidenceBand })[]
+  /** Padrões que pelo menos 3 usuários têm; valem para todos os bancos. */
+  patterns: { pattern: string; users: number; usage: number }[]
+  suggestions: string[]
+}

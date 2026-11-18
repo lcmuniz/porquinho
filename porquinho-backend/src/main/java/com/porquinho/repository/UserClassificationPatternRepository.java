@@ -65,4 +65,20 @@ public interface UserClassificationPatternRepository extends JpaRepository<UserC
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(value = "DELETE FROM user_classification_patterns WHERE user_id = :userId", nativeQuery = true)
     int deleteByUserId(@Param("userId") UUID userId);
+
+    interface SharedPattern {
+        String getPattern();
+        long getUsers();
+        long getUsage();
+    }
+
+    /**
+     * Story 10.3: patterns that at least {@code minUsers} distinct users have, for the admin panel. No user id and no
+     * category: one person's history never shows up.
+     */
+    @Query(value = "SELECT description_pattern AS pattern, count(DISTINCT user_id) AS users, sum(usage_count) AS usage "
+        + "FROM user_classification_patterns GROUP BY description_pattern "
+        + "HAVING count(DISTINCT user_id) >= :minUsers ORDER BY users DESC, usage DESC, pattern LIMIT :limit",
+        nativeQuery = true)
+    List<SharedPattern> findShared(@Param("minUsers") int minUsers, @Param("limit") int limit);
 }

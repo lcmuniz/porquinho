@@ -78,10 +78,13 @@ const props = withDefaults(defineProps<{
   emptyText?: string
   labelEvery?: number
   columnLabel?: string
+  // Topo fixo da escala (ex.: 100 para %); sem valor, o maior ponto
+  max?: number
 }>(), {
   emptyText: 'Sem dados nas últimas 24 horas',
   labelEvery: 4,
   columnLabel: 'Hora',
+  max: undefined,
 })
 
 const WIDTH = 600
@@ -90,7 +93,7 @@ const PAD_LEFT = 56
 const TOP = 10
 const BASE = HEIGHT - 24
 
-const max = computed(() => Math.max(0, ...props.points.map((p) => p.value ?? 0)))
+const max = computed(() => props.max ?? Math.max(0, ...props.points.map((p) => p.value ?? 0)))
 const barWidth = computed(() => (WIDTH - PAD_LEFT) / Math.max(1, props.points.length))
 
 function xOf(i: number) {

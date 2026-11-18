@@ -74,3 +74,28 @@ describe('HealthBarChart configurável (Story 10.2)', () => {
     expect(empty.get('[data-testid="chart-empty"]').text()).toBe('Nada')
   })
 })
+
+describe('HealthBarChart com max (Story 10.3)', () => {
+  const pct = [
+    { label: 'A', value: 50 },
+    { label: 'B', value: 85 },
+  ]
+  const heights = (max?: number) =>
+    mount(HealthBarChart, {
+      props: { points: pct, label: 'Precisão', color: '#16a34a', testId: 'c', format: String, hasData: true, max },
+    })
+      .findAll('rect')
+      .map((r) => Number(r.attributes('height')))
+
+  it('sem max, o maior ponto ocupa a altura toda', () => {
+    const [a, b] = heights()
+    expect(b).toBe(146)
+    expect(a! / b!).toBeCloseTo(50 / 85)
+  })
+
+  it('com max 100, a escala vai de 0 a 100', () => {
+    const [a, b] = heights(100)
+    expect(b).toBeCloseTo(0.85 * 146)
+    expect(a).toBeCloseTo(0.5 * 146)
+  })
+})

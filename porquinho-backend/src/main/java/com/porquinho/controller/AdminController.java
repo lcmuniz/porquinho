@@ -1,10 +1,13 @@
 package com.porquinho.controller;
 
 import com.porquinho.dto.AdminAccessResponse;
+import com.porquinho.dto.AdminAiBankDetailResponse;
+import com.porquinho.dto.AdminAiMetricsResponse;
 import com.porquinho.dto.AdminHealthResponse;
 import com.porquinho.dto.AdminImportBankDetailResponse;
 import com.porquinho.dto.AdminImportMetricsResponse;
 import com.porquinho.service.AdminService;
+import com.porquinho.service.AiMetricsService;
 import com.porquinho.service.ImportMetricsService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -29,10 +32,13 @@ public class AdminController {
 
     private final AdminService adminService;
     private final ImportMetricsService importMetricsService;
+    private final AiMetricsService aiMetricsService;
 
-    public AdminController(AdminService adminService, ImportMetricsService importMetricsService) {
+    public AdminController(AdminService adminService, ImportMetricsService importMetricsService,
+                           AiMetricsService aiMetricsService) {
         this.adminService = adminService;
         this.importMetricsService = importMetricsService;
+        this.aiMetricsService = aiMetricsService;
     }
 
     @GetMapping("/access")
@@ -80,5 +86,39 @@ public class AdminController {
             .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
             .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + name + "\"")
             .body(importMetricsService.csv(filters));
+    }
+
+    // Story 10.3: same filters as 10.2, without the status
+
+    @GetMapping("/ai")
+    public AdminAiMetricsResponse ai(@AuthenticationPrincipal Jwt jwt,
+                                     @RequestParam(required = false) String from,
+                                     @RequestParam(required = false) String to,
+                                     @RequestParam(required = false) String bank) {
+        adminService.requireAdmin(UUID.fromString(jwt.getSubject()));
+        return aiMetricsService.metrics(importMetricsService.filters(from, to, bank, null));
+    }
+
+    @GetMapping("/ai/detail")
+    public AdminAiBankDetailResponse aiDetail(@AuthenticationPrincipal Jwt jwt,
+                                              @RequestParam(required = false) String bank,
+                                              @RequestParam(required = false) String from,
+                                              @RequestParam(required = false) String to) {
+        adminService.requireAdmin(UUID.fromString(jwt.getSubject()));
+        return aiMetricsService.detail(importMetricsService.filters(from, to, bank, null));
+    }
+
+    @GetMapping(value = "/ai/export", produces = "text/csv")
+    public ResponseEntity<String> aiExport(@AuthenticationPrincipal Jwt jwt,
+                                           @RequestParam(required = false) String from,
+                                           @RequestParam(required = false) String to,
+                                           @RequestParam(required = false) String bank) {
+        adminService.requireAdmin(UUID.fromString(jwt.getSubject()));
+        ImportMetricsService.Filters filters = importMetricsService.filters(from, to, bank, null);
+        String name = "precisao_ia_" + filters.from() + "_" + filters.to() + ".csv";
+        return ResponseEntity.ok()
+            .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + name + "\"")
+            .body(aiMetricsService.csv(filters));
     }
 }

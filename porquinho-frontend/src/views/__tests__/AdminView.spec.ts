@@ -5,11 +5,15 @@ import type { SystemHealth } from '@/types/admin'
 
 const mockGetSystemHealth = vi.fn()
 const mockGetImportMetrics = vi.fn()
+const mockGetAiMetrics = vi.fn()
 vi.mock('@/services/adminService', () => ({
   getSystemHealth: () => mockGetSystemHealth(),
   getImportMetrics: (...a: unknown[]) => mockGetImportMetrics(...a),
   getImportBankDetail: vi.fn(),
   exportImportErrors: vi.fn(),
+  getAiMetrics: (...a: unknown[]) => mockGetAiMetrics(...a),
+  getAiBankDetail: vi.fn(),
+  exportAiMetrics: vi.fn(),
 }))
 
 function health(overrides: Partial<SystemHealth> = {}): SystemHealth {
@@ -48,6 +52,16 @@ describe('AdminView', () => {
     vi.useFakeTimers()
     mockGetSystemHealth.mockReset().mockResolvedValue(health())
     mockGetImportMetrics.mockReset().mockResolvedValue({ from: '2026-10-19', to: '2026-11-17', target: 5, banks: [] })
+    mockGetAiMetrics.mockReset().mockResolvedValue({
+      from: '2026-10-19',
+      to: '2026-11-17',
+      target: 85,
+      overall: { bank: 'TOTAL', classifications: 0, corrections: 0, accuracy: null, status: 'UNKNOWN' },
+      monthChange: { current: null, previous: null, delta: null },
+      banks: [],
+      months: ['2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11'],
+      trend: [],
+    })
   })
 
   afterEach(() => {
@@ -247,6 +261,30 @@ describe('AdminView', () => {
     const wrapper = mountView()
     await flushPromises()
     await wrapper.get('[data-testid="tab-imports"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="admin-forbidden"]').text()).toContain('Acesso restrito')
+  })
+
+  it('aba IA mostra a precisão da IA sem o poll da saúde', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-testid="tab-ai"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="tab-ai"]').text()).toBe('IA')
+    expect(wrapper.get('[data-testid="tab-ai"]').attributes('aria-current')).toBe('page')
+    expect(mockGetAiMetrics).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('[data-testid="ai-empty"]').text()).toBe('Nenhuma classificação no período')
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(mockGetSystemHealth).toHaveBeenCalledTimes(1)
+  })
+
+  it('403 na aba IA mostra "Acesso restrito"', async () => {
+    mockGetAiMetrics.mockRejectedValue({ response: { status: 403 } })
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-testid="tab-ai"]').trigger('click')
     await flushPromises()
 
     expect(wrapper.get('[data-testid="admin-forbidden"]').text()).toContain('Acesso restrito')
