@@ -224,7 +224,9 @@ class UserMetricsIntegrationTest {
     void lastWeekIsMeasuredNowNotAtTheEndOfTheWeek() {
         List<WeekCounts> before = weeks();
         // Active less than 7 days ago but before this Monday: out of the window ending next Monday, in the one of now
-        OffsetDateTime last = weekStart.minusMinutes(1).toOffsetDateTime();
+        // Midpoint between now - 7 days and this Monday: always strictly inside, even late on Sunday
+        OffsetDateTime weekAgo = now.minusDays(7);
+        OffsetDateTime last = weekAgo.plus(Duration.between(weekAgo, weekStart.toOffsetDateTime()).dividedBy(2));
         session(user(false, false), Duration.between(last.minusHours(1), now), Duration.between(last, now));
 
         assertThat(weeks().get(11).getActive7d() - before.get(11).getActive7d()).isEqualTo(1);
