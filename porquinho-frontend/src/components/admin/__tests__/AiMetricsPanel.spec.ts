@@ -87,7 +87,10 @@ describe('AiMetricsPanel', () => {
       '#ca8a04',
       '#16a34a',
     ])
-    expect(wrapper.findAll('[data-testid="ai-chart-trend-series"]')).toHaveLength(2)
+    const series = wrapper.findAll('[data-testid="ai-chart-trend-series"]')
+    expect(series).toHaveLength(2)
+    // traço fixo por banco, não pela posição: Itaú vem primeiro e mantém o seu
+    expect(series.map((g) => g.get('path').attributes('stroke-dasharray'))).toEqual(['2 3', 'none'])
     expect(wrapper.get('[data-testid="ai-chart-trend-table"]').text()).toContain('11/26')
     expect(wrapper.get('[data-testid="ai-filter-from"]').element).toHaveProperty('value', '2026-10-19')
   })

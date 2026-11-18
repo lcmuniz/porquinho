@@ -153,7 +153,7 @@ class AiMetricsIntegrationTest {
             .andExpect(header().string("Content-Disposition", "attachment; filename=\"precisao_ia_2020-03-01_2020-03-31.csv\""))
             .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
         assertThat(csv).isEqualTo("﻿Banco;Classificações;Correções;Precisão (%)\r\n"
-            + "Nubank;5;1;80,00\r\nNão identificado;1;0;100,00\r\nTotal;6;1;83,30\r\n");
+            + "Nubank;5;1;80,0\r\nNão identificado;1;0;100,0\r\nTotal;6;1;83,3\r\n");
         assertThat(csv).doesNotContain(admin.toString()).doesNotContain("Categoria Secreta");
     }
 
@@ -178,7 +178,7 @@ class AiMetricsIntegrationTest {
             .andExpect(status().isOk())
             .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
         assertThat(csv).isEqualTo("\uFEFFBanco;Classificações;Correções;Precisão (%)\r\n"
-            + "Nubank;2;1;50,00\r\nTotal;2;1;50,00\r\n");
+            + "Nubank;2;1;50,0\r\nTotal;2;1;50,0\r\n");
     }
 
     @Test
@@ -200,6 +200,8 @@ class AiMetricsIntegrationTest {
             .andExpect(jsonPath("$.types[?(@.key == 'DEBIT')]").isEmpty())
             .andExpect(jsonPath("$.confidence[2].classifications").value(2))
             .andExpect(jsonPath("$.confidence[2].corrections").value(0))
+            .andExpect(jsonPath("$.types[?(@.key == 'CREDIT')].classifications", hasItem(2)))
+            .andExpect(jsonPath("$.types[?(@.key == 'CREDIT')].corrections", hasItem(0)))
             .andExpect(jsonPath("$.types[*].key", hasItem("INSTALLMENT")))
             .andExpect(jsonPath("$.confidence[0].key").value("0-49"))
             .andExpect(jsonPath("$.confidence[1].key").value("50-79"))

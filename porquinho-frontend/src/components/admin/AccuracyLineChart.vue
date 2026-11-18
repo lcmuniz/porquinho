@@ -28,7 +28,7 @@
         {{ month }}
       </text>
       <g v-for="(s, si) in series" :key="s.label" :data-testid="`${testId}-series`">
-        <path :d="pathOf(s.values)" fill="none" :stroke="s.color" stroke-width="2" :stroke-dasharray="dashOf(si)" />
+        <path :d="pathOf(s.values)" fill="none" :stroke="s.color" stroke-width="2" :stroke-dasharray="s.dash ?? dashOf(si)" />
         <template v-for="(value, i) in s.values" :key="i">
           <circle v-if="value !== null" :cx="xOf(i)" :cy="yOf(value)" r="3" :fill="s.color">
             <title>{{ s.label }}, {{ months[i] }}: {{ format(value) }}</title>
@@ -39,7 +39,7 @@
     <ul class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-700" :data-testid="`${testId}-legend`" aria-hidden="true">
       <li v-for="(s, si) in series" :key="s.label" class="flex items-center gap-1">
         <svg width="24" height="8" aria-hidden="true">
-          <line x1="0" x2="24" y1="4" y2="4" :stroke="s.color" stroke-width="2" :stroke-dasharray="dashOf(si)" />
+          <line x1="0" x2="24" y1="4" y2="4" :stroke="s.color" stroke-width="2" :stroke-dasharray="s.dash ?? dashOf(si)" />
         </svg>
         {{ s.label }}
       </li>
@@ -68,7 +68,7 @@ import { computed } from 'vue'
 // Story 10.3: linhas em SVG próprio (sem biblioteca), uma por banco, eixo de 0 a 100 %. Um mês null interrompe a linha
 const props = withDefaults(defineProps<{
   months: string[]
-  series: { label: string; color: string; values: (number | null)[] }[]
+  series: { label: string; color: string; dash?: string; values: (number | null)[] }[]
   label: string
   testId: string
   format: (value: number) => string

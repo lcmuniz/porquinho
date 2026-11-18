@@ -68,6 +68,7 @@ class AiMetricsServiceTest {
         // Rounded to 1 decimal before the color: 84.96 is 85.0 and GREEN, like the screen shows it
         assertThat(AiMetricsService.accuracy(1999, 1)).isEqualTo(99.9);
         assertThat(AiMetricsService.accuracy(2500, 376)).isEqualTo(85.0);
+        assertThat(AiMetricsService.accuracy(80, 49)).isEqualTo(38.8); // exact half rounds up
         assertThat(AiMetricsService.status(AiMetricsService.accuracy(2500, 376))).isEqualTo(Status.GREEN);
         assertThat(AiMetricsService.status(null)).isEqualTo(Status.UNKNOWN);
         assertThat(AiMetricsService.status(85.0)).isEqualTo(Status.GREEN);
@@ -112,6 +113,15 @@ class AiMetricsServiceTest {
     }
 
     @Test
+    void monthChangeDeltaIsRoundedToOneDecimal() {
+        when(history.countByBankAndMonth(any(), any())).thenReturn(List.of(
+            new Month("NUBANK", "2026-11", 6, 1), new Month("NUBANK", "2026-10", 5, 1)));
+        AdminAiMetricsResponse r = service.metrics(importMetrics.filters(null, null, null, null));
+        assertThat(r.monthChange().current()).isEqualTo(83.3);
+        assertThat(r.monthChange().delta()).isEqualTo(3.3);
+    }
+
+    @Test
     void detailMergesTypesAndBandsAndSuggestsFrom20Classifications() {
         when(history.countByTypeAndBand(eq("NUBANK"), any(), any())).thenReturn(List.of(
             new Kind("PIX", "80-100", 15, 5), new Kind("PIX", "0-49", 5, 1), // PIX 20 at 70 %
@@ -150,6 +160,6 @@ class AiMetricsServiceTest {
             new Bank("NUBANK", 3, 1), new Bank("UNKNOWN", 1, 0)));
         assertThat(service.csv(importMetrics.filters(null, null, null, null)))
             .isEqualTo("﻿Banco;Classificações;Correções;Precisão (%)\r\n"
-                + "Nubank;3;1;66,70\r\nNão identificado;1;0;100,00\r\nTotal;4;1;75,00\r\n");
+                + "Nubank;3;1;66,7\r\nNão identificado;1;0;100,0\r\nTotal;4;1;75,0\r\n");
     }
 }

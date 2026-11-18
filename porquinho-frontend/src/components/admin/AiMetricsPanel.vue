@@ -268,6 +268,17 @@ const BANK_COLORS: Record<AdminBankCode, string> = {
   UNKNOWN: '#6b7280',
 }
 
+// Traço fixo por banco (WCAG 1.4.1): o mesmo banco tem o mesmo traço com qualquer filtro
+const BANK_DASHES: Record<AdminBankCode, string> = {
+  NUBANK: 'none',
+  BANCO_DO_BRASIL: '6 3',
+  ITAU: '2 3',
+  BRADESCO: '10 3 2 3',
+  CAIXA: '1 5',
+  OTHER: '12 6',
+  UNKNOWN: '6 2 2 2 2 2',
+}
+
 const TYPE_LABELS: Record<AiTransactionType, string> = {
   PIX: 'Pix',
   INSTALLMENT: 'Parcelas',
@@ -336,7 +347,7 @@ const bankPoints = computed(() =>
 )
 
 const trendSeries = computed(() =>
-  (metrics.value?.trend ?? []).map((s) => ({ label: LABELS[s.bank], color: BANK_COLORS[s.bank], values: s.accuracy })),
+  (metrics.value?.trend ?? []).map((s) => ({ label: LABELS[s.bank], color: BANK_COLORS[s.bank], dash: BANK_DASHES[s.bank], values: s.accuracy })),
 )
 
 type Row = AiAccuracy & { key: string; label: string }
