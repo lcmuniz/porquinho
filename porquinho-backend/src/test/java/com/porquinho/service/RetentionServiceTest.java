@@ -26,12 +26,13 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /**
  * Pre-Epic 10: I/O matrix of the retention job. Clock fixed at the 09:00 Sao Paulo run (12:00 UTC) of
- * 2026-11-23; no transaction is active, so the "after commit" e-mail runs inline.
+ * 2026-11-23. The e-mail is sent before the mark, which is written only when the send was accepted.
  */
 @ExtendWith(MockitoExtension.class)
 class RetentionServiceTest {
@@ -64,6 +65,8 @@ class RetentionServiceTest {
             "https://app.example.com/", null);
         ReflectionTestUtils.setField(service, "self", service);
         lenient().when(emailService.isConfigured()).thenReturn(true);
+        lenient().when(emailService.sendRetentionWarning(anyString(), anyLong(), any(), anyString(), anyString()))
+            .thenReturn(true);
     }
 
     private Subscription stored(Subscription s) {
@@ -92,15 +95,33 @@ class RetentionServiceTest {
     }
 
     @Test
-    void failedEmailKeepsTheMark() {
+    void refusedEmailWritesNothingAndIsRetriedNextRun() {
         Subscription s = trialEndedAt(NOW.minusDays(23));
-        doThrow(new RuntimeException("smtp down")).when(emailService)
-            .sendRetentionWarning(anyString(), anyLong(), any(), anyString(), anyString());
+        when(subscriptionRepository.findRetentionCandidates(any())).thenReturn(List.of(s));
+        when(emailService.sendRetentionWarning(anyString(), anyLong(), any(), anyString(), anyString()))
+            .thenReturn(false);
 
-        assertThat(service.processRetention(s.getUserId())).isPresent();
+        service.runRetention();  // counted as a failure, not thrown
 
-        assertThat(s.getRetentionWarning7dSentAt()).isEqualTo(NOW);
-        verify(subscriptionRepository).save(s);
+        assertThat(s.getRetentionWarning7dSentAt()).isNull();
+        verify(subscriptionRepository, never()).save(any());
+        verifyNoInteractions(auditLogService);
+        // Same warning due again on the next run
+        assertThat(service.dueAction(s, NOW.plusDays(1))).contains(Action.WARN_7D);
+    }
+
+    @Test
+    void refusedOneDayWarningNeverLetsThePurgeGoAhead() {
+        Subscription s = trialEndedAt(NOW.minusDays(29));
+        s.setRetentionWarning7dSentAt(NOW.minusDays(6));
+        when(emailService.sendRetentionWarning(anyString(), anyLong(), any(), anyString(), anyString()))
+            .thenReturn(false);
+
+        assertThatThrownBy(() -> service.processRetention(s.getUserId())).isInstanceOf(IllegalStateException.class);
+
+        assertThat(s.getRetentionWarning1dSentAt()).isNull();
+        verifyNoInteractions(auditLogService, accountDeletionService);
+        assertThat(service.dueAction(s, NOW.plusDays(5))).contains(Action.WARN_1D);
     }
 
     @Test
@@ -155,21 +176,76 @@ class RetentionServiceTest {
     }
 
     @Test
-    void jobStoppedForDaysSendsOnlyOneDayWarningThisRun() {
+    void longOutageWithoutSevenDayMarkSendsSevenDayWarningAndPostponesThePurge() {
         Subscription s = trialEndedAt(NOW.minusDays(35));
+
+        assertThat(service.processRetention(s.getUserId())).get()
+            .extracting(RetentionService.Outcome::action).isEqualTo(Action.WARN_7D);
+
+        assertThat(s.getRetentionWarning7dSentAt()).isEqualTo(NOW);
+        assertThat(s.getRetentionWarning1dSentAt()).isNull();
+        verifyNoInteractions(accountDeletionService);
+        // The purge date is long past: the e-mail announces the postponed one, 7 days from now
+        verify(emailService).sendRetentionWarning(EMAIL, 7, NOW.plusDays(7),
+            "https://app.example.com/assinatura", "https://app.example.com/auth/data-export");
+        assertThat(service.dueAction(s, NOW.plusDays(5))).isEmpty();
+        assertThat(service.dueAction(s, NOW.plusDays(6))).contains(Action.WARN_1D);
+    }
+
+    @Test
+    void lateSevenDayWarningAnnouncesNowPlusSevenDays() {
+        Subscription s = trialEndedAt(NOW.minusDays(27));  // purgeAt in 3 days
+
+        assertThat(service.processRetention(s.getUserId())).get()
+            .extracting(RetentionService.Outcome::action).isEqualTo(Action.WARN_7D);
+
+        verify(emailService).sendRetentionWarning(eq(EMAIL), eq(7L), eq(NOW.plusDays(7)), anyString(), anyString());
+        // The 1-day warning comes the day before the announced date, not before the original purgeAt
+        assertThat(service.dueAction(s, NOW.plusDays(2))).isEmpty();
+        assertThat(service.dueAction(s, NOW.plusDays(6))).contains(Action.WARN_1D);
+    }
+
+    @Test
+    void oneDayWarningAfterLateSevenDayUsesTheEffectivePurge() {
+        Subscription s = trialEndedAt(NOW.minusDays(31));  // original purgeAt already past
+        s.setRetentionWarning7dSentAt(NOW.minusDays(6));
 
         assertThat(service.processRetention(s.getUserId())).get()
             .extracting(RetentionService.Outcome::action).isEqualTo(Action.WARN_1D);
 
         assertThat(s.getRetentionWarning1dSentAt()).isEqualTo(NOW);
-        assertThat(s.getRetentionWarning7dSentAt()).isNull();
-        verifyNoInteractions(accountDeletionService);
-        // The purge date is long past: the e-mail announces the real one, 24 h from now (tomorrow)
-        verify(emailService).sendRetentionWarning(EMAIL, 1, NOW.plusHours(24),
-            "https://app.example.com/assinatura", "https://app.example.com/auth/data-export");
-        // The next run, less than 24 h later, still does not purge
-        assertThat(service.dueAction(s, NOW.plusHours(23))).isEmpty();
-        assertThat(service.dueAction(s, NOW.plusHours(24))).contains(Action.PURGE);
+        // 7-day mark + 7 days = tomorrow, already >= now + 24 h
+        verify(emailService).sendRetentionWarning(eq(EMAIL), eq(1L), eq(NOW.plusDays(1)), anyString(), anyString());
+    }
+
+    @Test
+    void lateOneDayWarningAnnouncesNowPlus24h() {
+        Subscription s = trialEndedAt(NOW.minusDays(31));
+        s.setRetentionWarning7dSentAt(NOW.minusDays(10));  // effective purge = NOW - 1 day, already past
+
+        assertThat(service.processRetention(s.getUserId())).get()
+            .extracting(RetentionService.Outcome::action).isEqualTo(Action.WARN_1D);
+
+        verify(emailService).sendRetentionWarning(eq(EMAIL), eq(1L), eq(NOW.plusHours(24)), anyString(), anyString());
+    }
+
+    @Test
+    void purgeWaitsForTheEffectiveDate() {
+        Subscription s = trialEndedAt(NOW.minusDays(31));
+        s.setRetentionWarning7dSentAt(NOW.minusDays(6));
+        s.setRetentionWarning1dSentAt(NOW.minusHours(25));
+
+        assertThat(service.dueAction(s, NOW)).isEmpty();
+        assertThat(service.dueAction(s, NOW.plusDays(1))).contains(Action.PURGE);
+    }
+
+    @Test
+    void oldRowWithOnlyTheOneDayMarkPurgesWithoutANewSevenDayWarning() {
+        Subscription s = trialEndedAt(NOW.minusDays(31));
+        s.setRetentionWarning1dSentAt(NOW.minusHours(23));
+
+        assertThat(service.dueAction(s, NOW)).isEmpty();
+        assertThat(service.dueAction(s, NOW.plusHours(1))).contains(Action.PURGE);
     }
 
     @Test

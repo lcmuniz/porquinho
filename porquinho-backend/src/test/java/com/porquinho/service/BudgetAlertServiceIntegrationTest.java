@@ -7,6 +7,7 @@ import com.porquinho.entity.Subscription.Status;
 import com.porquinho.repository.SubscriptionRepository;
 import com.porquinho.service.EmailService.BudgetAlertLine;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,6 +55,11 @@ class BudgetAlertServiceIntegrationTest {
 
     private final List<UUID> users = new CopyOnWriteArrayList<>();
     private final LocalDate month = YearMonth.now(ZoneId.of("America/Sao_Paulo")).atDay(1);
+
+    @BeforeEach
+    void smtpConfigured() {
+        when(emailService.isConfigured()).thenReturn(true);
+    }
 
     @AfterEach
     void tearDown() {

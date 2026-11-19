@@ -33,18 +33,26 @@ import java.util.UUID;
  *
  * End of access = access_ended_at; else trial_end_date (TRIAL) or next_billing_date (MONTHLY CANCELLED).
  * Daily at 09:00 Sao Paulo and once at startup, like TrialReminderService: warnings 7 days and 1 day before the
- * purge (Sao Paulo calendar days), at most one action per user per run, each warning at most once. The mark and
- * audit commit first and the e-mail goes after commit (a lost warning is acceptable, a duplicate is not).
+ * purge (Sao Paulo calendar days), at most one action per user per run, each warning at most once.
+ * The e-mail goes out inside the user's transaction, before the mark: mark and audit are written only when the
+ * SMTP server accepted it (decision 2026-11-18, pre-Epic 10 item 8). A refused send (bad credentials, rejected From)
+ * writes nothing and counts as a failure; the warning is tried again next run and the purge waits. A duplicate
+ * warning is accepted for any failure after an accepted send (save, audit or commit). The 5 s timeouts per SMTP
+ * operation bound the time holding the lock (a few multiples of 5 s at worst).
+ * The 7-day warning always comes first (even when the job or the e-mail was down for days) and the purge is at
+ * least 7 days after it: effective purge = later of purgeAt and the 7-day mark + 7 days (no extra column).
  * The purge needs the 1-day warning sent at least 24 h before, so a job stopped for days still warns first.
  * Soft-deleted users (deletion requested by the user) are left to the Story 1.7 job.
- * Without an SMTP host or a From no warning is marked, so nobody is purged unwarned for that reason (pre-Epic 10,
- * item 7); runRetention logs one WARN per run with the postponed count.
- * A send that fails with SMTP configured (bad credentials, rejected From) still keeps the mark, as before.
+ * Without an SMTP host or a From no warning is sent nor marked, so nobody is purged unwarned for that reason
+ * (pre-Epic 10, item 7); runRetention logs one WARN per run with the postponed count.
  */
 @Service
 public class RetentionService {
 
     static final int RETENTION_DAYS = 30;
+
+    /** Minimum notice of the 7-day warning: the purge is never before its mark + 7 days. */
+    static final int SEVEN_DAY_NOTICE_DAYS = 7;
 
     /** The 7-day warning spans at most 8 days from the 09:00 run (same window as TrialReminderService). */
     private static final int WARNING_WINDOW_DAYS = 8;
@@ -203,6 +211,13 @@ public class RetentionService {
             return Optional.empty();
         }
 
+        // Send first, mark only if the SMTP server accepted it: an unsent warning must never let the purge go ahead
+        OffsetDateTime purgeAt = shownPurgeAt(subscription, action, now);
+        long daysLeft = TrialReminderService.daysLeft(purgeAt, now);
+        if (!emailService.sendRetentionWarning(email.get(), daysLeft, purgeAt, subscribeUrl, exportUrl)) {
+            throw new IllegalStateException("retention warning " + action.code + " e-mail not sent");
+        }
+
         if (action == Action.WARN_1D) {
             subscription.setRetentionWarning1dSentAt(now);
         } else {
@@ -212,32 +227,23 @@ public class RetentionService {
         auditLogService.log("retention_warning_sent", userId, null,
             String.format("{\"warning\":\"%s\"}", action.code));
 
-        // Late run: the purge waits >= 24 h after the 1-day warning, so never announce a date before that
-        OffsetDateTime purgeAt = shownPurgeAt(subscription, now);
-        long daysLeft = TrialReminderService.daysLeft(purgeAt, now);
-        AfterCommit.run(() -> {
-            try {
-                emailService.sendRetentionWarning(email.get(), daysLeft, purgeAt, subscribeUrl, exportUrl);
-            } catch (RuntimeException e) {
-                // Already marked as sent: a lost warning is acceptable, a duplicate is not.
-                log.warn("Retention warning {} e-mail failed for user {}: {} - {}",
-                    action.code, userId, e.getClass().getSimpleName(), e.getMessage());
-            }
-        });
-
         return Optional.of(new Outcome(action, null));
     }
 
-    /** What is due now, if anything. Never two actions at once: a late run sends only the 1-day warning. */
+    /**
+     * What is due now, if anything. Never two actions at once: a late run without the 7-day mark sends the
+     * 7-day warning (which postpones the purge), never the 1-day one.
+     */
     Optional<Action> dueAction(Subscription subscription, OffsetDateTime now) {
         if (subscriptionService.hasAccess(subscription)) {
             return Optional.empty();
         }
-        OffsetDateTime purgeAt = purgeAt(subscription);
+        OffsetDateTime purgeAt = effectivePurgeAt(subscription);
         if (purgeAt == null) {
             return Optional.empty();
         }
 
+        // Rows marked before pre-Epic 10 item 8 may have the 1-day mark alone: they purge, no new 7-day warning
         OffsetDateTime oneDaySentAt = subscription.getRetentionWarning1dSentAt();
         if (oneDaySentAt != null) {
             return !now.isBefore(purgeAt) && !now.isBefore(oneDaySentAt.plusHours(24))
@@ -245,20 +251,31 @@ public class RetentionService {
         }
 
         long daysLeft = TrialReminderService.daysLeft(purgeAt, now);
-        if (daysLeft <= 1) {
-            return Optional.of(Action.WARN_1D);
+        if (subscription.getRetentionWarning7dSentAt() == null) {
+            return daysLeft <= 7 ? Optional.of(Action.WARN_7D) : Optional.empty();
         }
-        if (daysLeft <= 7 && subscription.getRetentionWarning7dSentAt() == null) {
-            return Optional.of(Action.WARN_7D);
-        }
-        return Optional.empty();
+        return daysLeft <= 1 ? Optional.of(Action.WARN_1D) : Optional.empty();
     }
 
-    /** Purge date told in the warning: the later of purgeAt and now + 24 h (the purge needs 24 h after the 1-day warning). */
-    static OffsetDateTime shownPurgeAt(Subscription subscription, OffsetDateTime now) {
+    /**
+     * Purge date told in the warning. 7 days: the later of purgeAt and now + 7 days (the effective purge once marked).
+     * 1 day: the later of the effective purge and now + 24 h (the purge needs 24 h after the 1-day warning).
+     */
+    static OffsetDateTime shownPurgeAt(Subscription subscription, Action action, OffsetDateTime now) {
+        OffsetDateTime earliest = action == Action.WARN_7D ? now.plusDays(SEVEN_DAY_NOTICE_DAYS) : now.plusHours(24);
+        return later(effectivePurgeAt(subscription), earliest);
+    }
+
+    /** The later of purgeAt and the 7-day mark + 7 days: a late 7-day warning postpones the purge. */
+    static OffsetDateTime effectivePurgeAt(Subscription subscription) {
         OffsetDateTime purgeAt = purgeAt(subscription);
-        OffsetDateTime earliest = now.plusHours(24);
-        return purgeAt.isAfter(earliest) ? purgeAt : earliest;
+        OffsetDateTime sevenDaySentAt = subscription.getRetentionWarning7dSentAt();
+        return purgeAt == null || sevenDaySentAt == null ? purgeAt
+            : later(purgeAt, sevenDaySentAt.plusDays(SEVEN_DAY_NOTICE_DAYS));
+    }
+
+    private static OffsetDateTime later(OffsetDateTime a, OffsetDateTime b) {
+        return a.isAfter(b) ? a : b;
     }
 
     /** End of access + 30 days, or null when the row has no end (should not happen without access). */

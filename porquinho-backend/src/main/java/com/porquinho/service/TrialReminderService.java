@@ -36,7 +36,8 @@ import java.util.UUID;
  * trial is still running. Only one of them is sent per run, and each at most once (sent_at columns).
  *
  * The sent_at mark and the audit are committed first; the e-mail goes after commit. If SMTP fails the
- * reminder is lost (best-effort) instead of being sent twice. Single backend instance: no distributed lock.
+ * reminder is lost (best-effort) instead of being sent twice. Without SMTP configured nothing is marked,
+ * so the reminder still goes out when the e-mail is back (if still due). Single backend instance: no distributed lock.
  */
 @Service
 public class TrialReminderService {
@@ -153,6 +154,11 @@ public class TrialReminderService {
         Optional<String> email = userRepository.findById(userId).map(User::getEmail);
         if (email.isEmpty()) {
             log.warn("No active user {} for trial reminder; skipped", userId);
+            return Optional.empty();
+        }
+
+        // Without e-mail the mark would be recorded but nothing sent: leave it due for when the e-mail is back
+        if (!emailService.isConfigured()) {
             return Optional.empty();
         }
 
