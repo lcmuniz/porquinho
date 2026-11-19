@@ -12,8 +12,8 @@ import java.util.List;
 
 public interface SystemHealthSnapshotRepository extends JpaRepository<SystemHealthSnapshot, Long> {
 
-    /** One row: [minutes with a snapshot, requests, errors, total ms]; the sums are null without rows. */
-    @Query("SELECT COUNT(s), SUM(s.requestCount), SUM(s.errorCount), SUM(s.totalTimeMs) "
+    /** One row: [minutes with a snapshot, requests, errors, total ms, 2xx requests]; the sums are null without rows. */
+    @Query("SELECT COUNT(s), SUM(s.requestCount), SUM(s.errorCount), SUM(s.totalTimeMs), SUM(s.okRequests) "
         + "FROM SystemHealthSnapshot s WHERE s.recordedAt >= :from")
     List<Object[]> totalsSince(@Param("from") OffsetDateTime from);
 

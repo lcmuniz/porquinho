@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mockGet = vi.fn()
+const mockPost = vi.fn()
 
 vi.mock('../api', () => ({
-  api: { get: (...a: unknown[]) => mockGet(...a) },
+  api: { get: (...a: unknown[]) => mockGet(...a), post: (...a: unknown[]) => mockPost(...a) },
 }))
 
 import {
@@ -17,6 +18,8 @@ import {
   getSystemHealth,
   getUserMetrics,
   exportUserMetrics,
+  getAlerts,
+  resolveAlert,
 } from '../adminService'
 
 describe('adminService', () => {
@@ -93,5 +96,17 @@ describe('adminService', () => {
     mockGet.mockResolvedValue({ status: 200, data: blob })
     await expect(exportUserMetrics()).resolves.toBe(blob)
     expect(mockGet).toHaveBeenCalledWith('/api/v1/admin/users/export', { responseType: 'blob' })
+  })
+
+  it('getAlerts lê /api/v1/admin/alerts', async () => {
+    mockGet.mockResolvedValue({ status: 200, data: { openCount: 1 } })
+    await expect(getAlerts()).resolves.toEqual({ openCount: 1 })
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/admin/alerts')
+  })
+
+  it('resolveAlert faz POST em /api/v1/admin/alerts/{id}/resolve', async () => {
+    mockPost.mockResolvedValue({ status: 200, data: { id: 7, resolvedAt: 'x' } })
+    await expect(resolveAlert(7)).resolves.toEqual({ id: 7, resolvedAt: 'x' })
+    expect(mockPost).toHaveBeenCalledWith('/api/v1/admin/alerts/7/resolve')
   })
 })

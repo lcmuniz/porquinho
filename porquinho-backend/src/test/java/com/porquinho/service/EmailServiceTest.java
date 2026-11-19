@@ -464,4 +464,39 @@ class EmailServiceTest {
         assertThat(serviceWith(sender, "x@example.com")
             .sendRetentionWarning("user@example.com", 7, OffsetDateTime.now(), "a", "b")).isFalse();
     }
+
+    // ---- Story 10.5: system alert ----
+
+    private static com.porquinho.entity.SystemAlert redisAlert() {
+        return new com.porquinho.entity.SystemAlert("REDIS_DOWN", "REDIS_DOWN", null, BigDecimal.ZERO, BigDecimal.ONE,
+            OffsetDateTime.of(2026, 11, 19, 13, 20, 0, 0, ZoneOffset.UTC));
+    }
+
+    @Test
+    void systemAlertHasTheMetricInTheSubjectAndTheDescribeTextInTheBody() {
+        JavaMailSender sender = mock(JavaMailSender.class);
+        com.porquinho.entity.SystemAlert alert = redisAlert();
+        String link = "https://app.example.com/admin?tab=health";
+        assertThat(serviceWith(sender, "x@example.com").sendSystemAlert("admin@example.com", alert, link)).isTrue();
+
+        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(sender).send(captor.capture());
+        assertThat(captor.getValue().getSubject()).isEqualTo("Porquinho - Alerta: Redis");
+        assertThat(captor.getValue().getTo()).containsExactly("admin@example.com");
+        assertThat(captor.getValue().getText()).contains(SystemAlertService.describe(alert, link));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void systemAlertIsFalseWithoutSmtp() {
+        ObjectProvider<JavaMailSender> provider = mock(ObjectProvider.class);
+        assertThat(new EmailService(provider, "", "").sendSystemAlert("admin@example.com", redisAlert(), "l")).isFalse();
+    }
+
+    @Test
+    void systemAlertSwallowsSmtpFailure() {
+        JavaMailSender sender = mock(JavaMailSender.class);
+        doThrow(new org.springframework.mail.MailSendException("down")).when(sender).send(any(SimpleMailMessage.class));
+        assertThat(serviceWith(sender, "x@example.com").sendSystemAlert("admin@example.com", redisAlert(), "l")).isFalse();
+    }
 }

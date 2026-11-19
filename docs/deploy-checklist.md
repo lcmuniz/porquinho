@@ -160,3 +160,18 @@ hora, sem novo login.
 O uptime do painel é a fração dos minutos em que o backend gravou o snapshot: mede o backend no ar e gravando no
 banco (banco fora também conta como fora), não o nginx nem o frontend. Ele só começa a contar depois do primeiro
 snapshot (1 por minuto após o deploy); antes disso mostra "sem dados".
+
+### 5.1 Alertas de métricas críticas (Story 10.5)
+
+- [ ] Opcional: `SLACK_WEBHOOK_URL` com a URL de um Incoming Webhook do Slack. Vazio, os alertas vão só por e-mail
+  (para todo admin) e para a aba "Alertas" do `/admin`. A URL é segredo: não aparece no log.
+- [ ] Sem SMTP (`SMTP_HOST`/`MAIL_FROM`), o alerta é gravado e aparece no painel, que avisa "E-mail não configurado".
+
+- [ ] `FRONTEND_URL` com o endereço público do frontend: o link do e-mail e do Slack é `{FRONTEND_URL}/admin?tab=...`.
+  Sem ela, o link aponta para `http://localhost:5173`.
+
+O job roda a cada 5 minutos, então o alerta pode levar até 5 minutos para sair. Como verificar: com o Redis parado
+por alguns minutos, os admins recebem o e-mail "Porquinho - Alerta: Redis" e a aba "Alertas" mostra o alerta aberto.
+Repetir o teste dentro de 1 hora não alerta de novo: há no máximo um alerta por métrica por hora, e um alerta só volta
+depois que a métrica normaliza (Redis de pé por uma execução). Queda total do backend não gera alerta (o job cai junto):
+para isso use um monitor externo do healthcheck.

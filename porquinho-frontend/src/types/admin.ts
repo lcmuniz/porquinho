@@ -173,3 +173,46 @@ export interface UserMetrics {
   activeWeekly: number[]
   activeMonthly: number[]
 }
+
+/** Story 10.5: abas do /admin, também na query `?tab=`. */
+export type AdminTab = 'health' | 'imports' | 'ai' | 'users' | 'alerts'
+
+export type SystemAlertType =
+  | 'ERROR_RATE'
+  | 'UPTIME'
+  | 'RESPONSE_TIME'
+  | 'IMPORT_ERROR_RATE'
+  | 'AI_ACCURACY'
+  | 'ACTIVE_SESSIONS'
+  | 'REDIS_DOWN'
+  | 'DB_POOL_EXHAUSTED'
+
+/** Story 10.5: um alerta de métrica crítica; os rótulos são os textos do e-mail e do Slack. */
+export interface SystemAlert {
+  id: number
+  key: string
+  type: SystemAlertType
+  metric: string
+  bank: string | null
+  bankLabel: string | null
+  value: number
+  threshold: number
+  valueLabel: string
+  thresholdLabel: string
+  action: string
+  tab: AdminTab
+  link: string
+  triggeredAt: string
+  /** Quando a métrica voltou ao normal; null enquanto viola. */
+  normalizedAt: string | null
+  /** Quando um admin marcou como resolvido; null = aberto. */
+  resolvedAt: string | null
+}
+
+/** Story 10.5: os 100 alertas mais recentes e quantos estão abertos. */
+export interface SystemAlerts {
+  openCount: number
+  emailConfigured: boolean
+  slackConfigured: boolean
+  alerts: SystemAlert[]
+}

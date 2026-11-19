@@ -1,6 +1,7 @@
 package com.porquinho.controller;
 
 import com.porquinho.dto.AdminAccessResponse;
+import com.porquinho.dto.AdminAlertsResponse;
 import com.porquinho.dto.AdminAiBankDetailResponse;
 import com.porquinho.dto.AdminAiMetricsResponse;
 import com.porquinho.dto.AdminHealthResponse;
@@ -10,6 +11,7 @@ import com.porquinho.dto.AdminUserMetricsResponse;
 import com.porquinho.service.AdminService;
 import com.porquinho.service.AiMetricsService;
 import com.porquinho.service.ImportMetricsService;
+import com.porquinho.service.SystemAlertService;
 import com.porquinho.service.UserMetricsService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -17,6 +19,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -36,13 +40,16 @@ public class AdminController {
     private final ImportMetricsService importMetricsService;
     private final AiMetricsService aiMetricsService;
     private final UserMetricsService userMetricsService;
+    private final SystemAlertService systemAlertService;
 
     public AdminController(AdminService adminService, ImportMetricsService importMetricsService,
-                           AiMetricsService aiMetricsService, UserMetricsService userMetricsService) {
+                           AiMetricsService aiMetricsService, UserMetricsService userMetricsService,
+                           SystemAlertService systemAlertService) {
         this.adminService = adminService;
         this.importMetricsService = importMetricsService;
         this.aiMetricsService = aiMetricsService;
         this.userMetricsService = userMetricsService;
+        this.systemAlertService = systemAlertService;
     }
 
     @GetMapping("/access")
@@ -126,5 +133,17 @@ public class AdminController {
             .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
             .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + userMetricsService.fileName() + "\"")
             .body(userMetricsService.csv());
+    }
+
+    // Story 10.5: the alerts of the critical metrics
+
+    @GetMapping("/alerts")
+    public AdminAlertsResponse alerts() {
+        return systemAlertService.list();
+    }
+
+    @PostMapping("/alerts/{id}/resolve")
+    public AdminAlertsResponse.Alert resolveAlert(@PathVariable long id, @AuthenticationPrincipal Jwt jwt) {
+        return systemAlertService.resolve(id, UUID.fromString(jwt.getSubject()));
     }
 }

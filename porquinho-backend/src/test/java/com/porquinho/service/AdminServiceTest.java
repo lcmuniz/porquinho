@@ -203,4 +203,17 @@ class AdminServiceTest {
         Timer.builder("http.server.requests").tags("method", method, "uri", uri, "status", status)
             .register(registry).record(Duration.ofMillis(millis));
     }
+
+    @Test
+    void poolReadsOnlyTheHikariMxBean() {
+        when(pool.getActiveConnections()).thenReturn(20);
+        when(pool.getIdleConnections()).thenReturn(0);
+        when(pool.getThreadsAwaitingConnection()).thenReturn(3);
+
+        AdminService.Pool p = service.pool();
+
+        assertThat(p).isEqualTo(new AdminService.Pool(20, 0, 20, 3, Status.RED));
+        // Story 10.5: with the pool exhausted a query would wait for a connection and the alert would never fire
+        org.mockito.Mockito.verifyNoInteractions(jdbcTemplate);
+    }
 }

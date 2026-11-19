@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -71,4 +72,8 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
     /** Story 10.1: read on every admin call (the Supabase JWT does not carry the role). Soft-deleted users are never admin. */
     boolean existsByIdAndAdminTrue(UUID id);
+
+    /** Story 10.5: who gets the system alert e-mails. Soft-deleted users are out (@Where). */
+    @Query("SELECT u.email FROM User u WHERE u.admin = true ORDER BY u.email")
+    List<String> findAdminEmails();
 }

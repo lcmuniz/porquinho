@@ -26,6 +26,10 @@ public class SystemHealthSnapshot {
     @Column(name = "total_time_ms", nullable = false)
     private double totalTimeMs;
 
+    /** Story 10.5: 2xx outside /actuator and /api/v1/webhooks/ (the traffic of the "0 active sessions" alert). */
+    @Column(name = "ok_requests", nullable = false)
+    private long okRequests;
+
     public SystemHealthSnapshot() {
     }
 
@@ -36,9 +40,16 @@ public class SystemHealthSnapshot {
         this.totalTimeMs = totalTimeMs;
     }
 
+    public SystemHealthSnapshot(OffsetDateTime recordedAt, long requestCount, long errorCount, double totalTimeMs,
+                                long okRequests) {
+        this(recordedAt, requestCount, errorCount, totalTimeMs);
+        this.okRequests = okRequests;
+    }
+
     public Long getId() { return id; }
     public OffsetDateTime getRecordedAt() { return recordedAt; }
     public long getRequestCount() { return requestCount; }
     public long getErrorCount() { return errorCount; }
     public double getTotalTimeMs() { return totalTimeMs; }
+    public long getOkRequests() { return okRequests; }
 }

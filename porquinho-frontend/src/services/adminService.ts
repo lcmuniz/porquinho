@@ -8,6 +8,8 @@ import type {
   ImportMetrics,
   ImportMetricsFilters,
   ImportOutcome,
+  SystemAlert,
+  SystemAlerts,
   SystemHealth,
   UserMetrics,
 } from '@/types/admin'
@@ -73,5 +75,17 @@ export async function getUserMetrics(): Promise<UserMetrics> {
 /** Story 10.4: CSV pt-BR com uma linha por métrica (Métrica;Valor). */
 export async function exportUserMetrics(): Promise<Blob> {
   const response = await api.get<Blob>('/api/v1/admin/users/export', { responseType: 'blob' })
+  return response.data
+}
+
+/** Story 10.5: os 100 alertas mais recentes e a contagem dos abertos; 403 não admin. */
+export async function getAlerts(): Promise<SystemAlerts> {
+  const response = await api.get<SystemAlerts>('/api/v1/admin/alerts')
+  return response.data
+}
+
+/** Story 10.5: marca o alerta como resolvido; idempotente (de novo mantém a data original). */
+export async function resolveAlert(id: number): Promise<SystemAlert> {
+  const response = await api.post<SystemAlert>(`/api/v1/admin/alerts/${id}/resolve`)
   return response.data
 }

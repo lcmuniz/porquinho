@@ -1,5 +1,6 @@
 package com.porquinho.service;
 
+import com.porquinho.entity.SystemAlert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -318,6 +319,30 @@ public class EmailService {
             log.info("Budget alert ({} categories) email sent to {}", lines.size(), maskEmail(email));
         } catch (Exception e) {
             log.warn("Failed to send budget alert email to {}: {}", maskEmail(email), e.getClass().getSimpleName());
+        }
+    }
+
+    /**
+     * Story 10.5: tell an admin that a critical metric crossed its limit. Plain text, aggregates only.
+     * Best-effort: never throws; true when the e-mail was handed to the SMTP server.
+     */
+    public boolean sendSystemAlert(String to, SystemAlert alert, String link) {
+        if (mailSender == null) {
+            log.warn("SMTP not configured - skipping system alert email to {}", maskEmail(to));
+            return false;
+        }
+
+        try {
+            SimpleMailMessage message = newMessage(to, "Porquinho - Alerta: " + SystemAlertService.title(alert));
+            message.setText("Olá!\n\nUma métrica crítica do Porquinho passou do limite.\n\n"
+                + SystemAlertService.describe(alert, link)
+                + "\n\nVocê recebe este e-mail por ser administrador do Porquinho.\n\nEquipe Porquinho");
+            mailSender.send(message);
+            log.info("System alert {} email sent to {}", alert.getAlertKey(), maskEmail(to));
+            return true;
+        } catch (Exception e) {
+            log.warn("Failed to send system alert email to {}: {}", maskEmail(to), e.getClass().getSimpleName());
+            return false;
         }
     }
 

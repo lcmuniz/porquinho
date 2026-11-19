@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { reactive } from 'vue'
 import { mount, flushPromises, RouterLinkStub, enableAutoUnmount } from '@vue/test-utils'
 import AdminView from '../AdminView.vue'
 import type { SystemHealth } from '@/types/admin'
@@ -7,6 +8,16 @@ const mockGetSystemHealth = vi.fn()
 const mockGetImportMetrics = vi.fn()
 const mockGetAiMetrics = vi.fn()
 const mockGetUserMetrics = vi.fn()
+const mockGetAlerts = vi.fn()
+const route = reactive<{ query: Record<string, string> }>({ query: {} })
+const mockReplace = vi.fn((to: { query: Record<string, string> }) => {
+  route.query = to.query
+})
+vi.mock('vue-router', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('vue-router')>()),
+  useRoute: () => route,
+  useRouter: () => ({ replace: mockReplace }),
+}))
 vi.mock('@/services/adminService', () => ({
   getSystemHealth: () => mockGetSystemHealth(),
   getImportMetrics: (...a: unknown[]) => mockGetImportMetrics(...a),
@@ -17,6 +28,8 @@ vi.mock('@/services/adminService', () => ({
   exportAiMetrics: vi.fn(),
   getUserMetrics: () => mockGetUserMetrics(),
   exportUserMetrics: vi.fn(),
+  getAlerts: () => mockGetAlerts(),
+  resolveAlert: vi.fn(),
 }))
 
 function health(overrides: Partial<SystemHealth> = {}): SystemHealth {
@@ -53,6 +66,9 @@ enableAutoUnmount(afterEach)
 describe('AdminView', () => {
   beforeEach(() => {
     vi.useFakeTimers()
+    route.query = {}
+    mockReplace.mockClear()
+    mockGetAlerts.mockReset().mockResolvedValue({ openCount: 0, emailConfigured: true, slackConfigured: false, alerts: [] })
     mockGetSystemHealth.mockReset().mockResolvedValue(health())
     mockGetImportMetrics.mockReset().mockResolvedValue({ from: '2026-10-19', to: '2026-11-17', target: 5, banks: [] })
     mockGetAiMetrics.mockReset().mockResolvedValue({
@@ -340,6 +356,78 @@ describe('AdminView', () => {
     await wrapper.get('[data-testid="tab-users"]').trigger('click')
     await flushPromises()
 
+    expect(wrapper.get('[data-testid="admin-forbidden"]').text()).toContain('Acesso restrito')
+  })
+
+  it('?tab=imports abre a aba Importações sem carregar a saúde', async () => {
+    route.query = { tab: 'imports' }
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="tab-imports"]').attributes('aria-current')).toBe('page')
+    expect(mockGetImportMetrics).toHaveBeenCalledTimes(1)
+    expect(mockGetSystemHealth).not.toHaveBeenCalled()
+  })
+
+  it('?tab= desconhecida cai na saúde', async () => {
+    route.query = { tab: 'xyz' }
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.get('[data-testid="tab-health"]').attributes('aria-current')).toBe('page')
+  })
+
+  it('trocar de aba atualiza a query e mudar a query troca a aba', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-testid="tab-ai"]').trigger('click')
+    expect(mockReplace).toHaveBeenCalledWith({ query: { tab: 'ai' } })
+
+    route.query = { tab: 'users' }
+    await flushPromises()
+    expect(wrapper.get('[data-testid="tab-users"]').attributes('aria-current')).toBe('page')
+  })
+
+  it('com alerta aberto mostra o aviso no topo e a contagem na aba; o aviso leva à aba Alertas', async () => {
+    mockGetAlerts.mockResolvedValue({ openCount: 2, emailConfigured: true, slackConfigured: false, alerts: [] })
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="admin-open-alerts"]').text()).toContain('Há 2 alertas abertos.')
+    expect(wrapper.get('[data-testid="tab-alerts"]').text()).toBe('Alertas (2)')
+
+    await wrapper.get('[data-testid="admin-open-alerts-go"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="tab-alerts"]').attributes('aria-current')).toBe('page')
+    expect(wrapper.find('[data-testid="admin-open-alerts"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="alerts-empty"]').exists()).toBe(true)
+  })
+
+  it('fora da aba de saúde a contagem do aviso atualiza a cada 30 segundos, sem a saúde', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-testid="tab-imports"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="admin-open-alerts"]').exists()).toBe(false)
+    const calls = mockGetAlerts.mock.calls.length
+
+    mockGetAlerts.mockResolvedValue({ openCount: 1, emailConfigured: true, slackConfigured: false, alerts: [] })
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(mockGetAlerts).toHaveBeenCalledTimes(calls + 1)
+    expect(mockGetSystemHealth).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('[data-testid="admin-open-alerts"]').text()).toContain('Há 1 alerta aberto.')
+  })
+
+  it('sem alerta aberto não mostra o aviso', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.find('[data-testid="admin-open-alerts"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="tab-alerts"]').text()).toBe('Alertas')
+  })
+
+  it('403 nos alertas mostra "Acesso restrito"', async () => {
+    mockGetAlerts.mockRejectedValue({ response: { status: 403 } })
+    const wrapper = mountView()
+    await flushPromises()
     expect(wrapper.get('[data-testid="admin-forbidden"]').text()).toContain('Acesso restrito')
   })
 })

@@ -71,6 +71,24 @@ class HealthSnapshotServiceTest {
     }
 
     @Test
+    void okRequestsAreThe2xxOutsideTheActuatorAndTheWebhooks() {
+        request("/api/v1/accounts", "200", 10);
+        request("/api/v1/accounts", "201", 10);
+        request("/api/v1/accounts", "401", 10);
+        request("/**", "404", 10);
+        request("/api/v1/webhooks/stripe", "200", 10);
+        request("/actuator/health", "200", 10);
+        service.recordSnapshot();
+        request("/api/v1/accounts", "200", 10);
+        service.recordSnapshot();
+
+        List<SystemHealthSnapshot> rows = saved(2);
+        assertThat(rows.get(0).getRequestCount()).isEqualTo(5);
+        assertThat(rows.get(0).getOkRequests()).isEqualTo(2);
+        assertThat(rows.get(1).getOkRequests()).isEqualTo(1);
+    }
+
+    @Test
     void countersResetNeverGiveANegativeDelta() {
         request("/api/v1/accounts", "500", 100);
         request("/api/v1/accounts", "500", 100);
@@ -113,7 +131,7 @@ class HealthSnapshotServiceTest {
         // First snapshot 99 minutes ago: 100 minute marks expected, 90 recorded
         OffsetDateTime first = NOW_UTC.minusMinutes(99);
         when(repository.firstRecordedAt()).thenReturn(first);
-        when(repository.totalsSince(first)).thenReturn(List.<Object[]>of(new Object[]{90L, 0L, 0L, 0.0}));
+        when(repository.totalsSince(first)).thenReturn(List.<Object[]>of(new Object[]{90L, 0L, 0L, 0.0, 0L}));
 
         assertThat(service.uptimePercent(Duration.ofDays(30))).isEqualTo(90.0);
     }
@@ -122,7 +140,7 @@ class HealthSnapshotServiceTest {
     void uptimeUsesTheWholeWindowWhenDataIsOlder() {
         when(repository.firstRecordedAt()).thenReturn(NOW_UTC.minusDays(40));
         // A full 24h window holds 1440 minute marks
-        when(repository.totalsSince(any())).thenReturn(List.<Object[]>of(new Object[]{1440L, 0L, 0L, 0.0}));
+        when(repository.totalsSince(any())).thenReturn(List.<Object[]>of(new Object[]{1440L, 0L, 0L, 0.0, 0L}));
 
         assertThat(service.uptimePercent(Duration.ofHours(24))).isEqualTo(100.0);
         verify(repository).totalsSince(NOW_UTC.minusHours(24));
@@ -131,7 +149,7 @@ class HealthSnapshotServiceTest {
     @Test
     void oneMissingMinuteInAFullWindowIsBelow100() {
         when(repository.firstRecordedAt()).thenReturn(NOW_UTC.minusDays(40));
-        when(repository.totalsSince(any())).thenReturn(List.<Object[]>of(new Object[]{1439L, 0L, 0L, 0.0}));
+        when(repository.totalsSince(any())).thenReturn(List.<Object[]>of(new Object[]{1439L, 0L, 0L, 0.0, 0L}));
 
         assertThat(service.uptimePercent(Duration.ofHours(24))).isEqualTo(1439 * 100.0 / 1440);
     }
@@ -184,7 +202,7 @@ class HealthSnapshotServiceTest {
 
     @Test
     void totalsWithoutRowsAreZero() {
-        when(repository.totalsSince(any())).thenReturn(List.<Object[]>of(new Object[]{0L, null, null, null}));
+        when(repository.totalsSince(any())).thenReturn(List.<Object[]>of(new Object[]{0L, null, null, null, null}));
 
         assertThat(service.totalsSince(NOW_UTC)).isEqualTo(new HealthSnapshotService.Totals(0, 0, 0, 0));
     }

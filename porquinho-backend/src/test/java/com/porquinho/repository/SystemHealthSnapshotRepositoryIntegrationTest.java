@@ -70,6 +70,14 @@ class SystemHealthSnapshotRepositoryIntegrationTest {
     }
 
     @Test
+    void totalsSinceSumsTheOkRequests() {
+        jdbc.update("INSERT INTO system_health_snapshots (recorded_at, request_count, error_count, total_time_ms, ok_requests) "
+            + "VALUES (now() - interval '1 minute', 10, 0, 1, 4), (now() - interval '2 minutes', 5, 0, 1, 3)");
+        assertThat(healthSnapshotService.totalsSince(OffsetDateTime.now(ZoneOffset.UTC).minusHours(1)).okRequests())
+            .isEqualTo(7);
+    }
+
+    @Test
     void recordSnapshotDeletesOnlyRowsOlderThan31Days() {
         snapshot("32 days", 1, 0, 1);
         snapshot("30 days", 2, 0, 2);
@@ -119,5 +127,20 @@ class SystemHealthSnapshotRepositoryIntegrationTest {
             userId, userId + "@example.com");
 
         assertThat(userRepository.existsByIdAndAdminTrue(userId)).isFalse();
+    }
+
+    @Test
+    void adminEmailsLeaveSoftDeletedAdminsOut() {
+        UUID deleted = UUID.randomUUID();
+        jdbc.update("INSERT INTO users (id, email, auth_provider, is_admin, deleted_at) VALUES (?, ?, 'EMAIL', true, now())",
+            deleted, deleted + "@example.com");
+        jdbc.update("INSERT INTO users (id, email, auth_provider, is_admin) VALUES (?, ?, 'EMAIL', true)",
+            userId, userId + "@example.com");
+        try {
+            assertThat(userRepository.findAdminEmails()).contains(userId + "@example.com")
+                .doesNotContain(deleted + "@example.com");
+        } finally {
+            jdbc.update("DELETE FROM users WHERE id = ?", deleted);
+        }
     }
 }

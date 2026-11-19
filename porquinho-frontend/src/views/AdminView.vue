@@ -22,7 +22,25 @@
       </div>
 
       <template v-else>
-        <!-- Abas da story 10.5 entram aqui -->
+        <div
+          v-if="openAlerts > 0 && tab !== 'alerts'"
+          role="alert"
+          data-testid="admin-open-alerts"
+          class="flex flex-col gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <span>
+            {{ openAlerts === 1 ? 'Há 1 alerta aberto.' : `Há ${openAlerts} alertas abertos.` }}
+          </span>
+          <button
+            type="button"
+            data-testid="admin-open-alerts-go"
+            class="inline-flex min-h-[44px] items-center rounded-lg border border-red-300 px-4 py-2 font-medium hover:bg-red-100"
+            @click="selectTab('alerts')"
+          >
+            Ver alertas
+          </button>
+        </div>
+
         <nav aria-label="Seções do admin" class="flex gap-2 border-b border-gray-200">
           <button
             v-for="t in TABS"
@@ -34,7 +52,7 @@
             :class="tab === t.key ? 'border-purple-600 text-purple-700' : 'border-transparent text-gray-700 hover:text-gray-900'"
             @click="selectTab(t.key)"
           >
-            {{ t.label }}
+            {{ t.label }}<template v-if="t.key === 'alerts' && openAlerts > 0"> ({{ openAlerts }})</template>
           </button>
         </nav>
 
@@ -48,6 +66,10 @@
 
         <div v-else-if="tab === 'users'">
           <UserMetricsPanel @forbidden="onForbidden" />
+        </div>
+
+        <div v-else-if="tab === 'alerts'">
+          <AlertsPanel @forbidden="onForbidden" @count="openAlerts = $event" />
         </div>
 
         <div v-else class="space-y-6">
@@ -176,26 +198,38 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import AlertsPanel from '@/components/admin/AlertsPanel.vue'
 import HealthBarChart from '@/components/admin/HealthBarChart.vue'
 import AiMetricsPanel from '@/components/admin/AiMetricsPanel.vue'
 import ImportMetricsPanel from '@/components/admin/ImportMetricsPanel.vue'
 import UserMetricsPanel from '@/components/admin/UserMetricsPanel.vue'
-import { getSystemHealth } from '@/services/adminService'
+import { getAlerts, getSystemHealth } from '@/services/adminService'
 import { apiErrorStatus } from '@/lib/apiError'
-import type { HealthStatus, SystemHealth } from '@/types/admin'
+import type { AdminTab, HealthStatus, SystemHealth } from '@/types/admin'
 
 const REFRESH_MS = 30_000
 
-type Tab = 'health' | 'imports' | 'ai' | 'users'
+type Tab = AdminTab
 const TABS: { key: Tab; label: string }[] = [
   { key: 'health', label: 'Saúde do sistema' },
   { key: 'imports', label: 'Importações' },
   { key: 'ai', label: 'IA' },
   { key: 'users', label: 'Usuários' },
+  { key: 'alerts', label: 'Alertas' },
 ]
-const tab = ref<Tab>('health')
+
+const route = useRoute()
+const router = useRouter()
+
+// Story 10.5: ?tab= abre a aba (link do e-mail de alerta); valor desconhecido cai na saúde
+function tabFromQuery(): Tab {
+  const q = route.query.tab
+  return TABS.some((t) => t.key === q) ? (q as Tab) : 'health'
+}
+const tab = ref<Tab>(tabFromQuery())
+const openAlerts = ref(0)
 
 const STATUS_STYLE: Record<HealthStatus, { label: string; badge: string; border: string }> = {
   GREEN: { label: 'Saudável', badge: 'bg-green-100 text-green-800', border: 'border-green-300' },
@@ -305,10 +339,20 @@ const hourlyErrors = computed(() =>
   (health.value?.hourly ?? []).map((p) => ({ label: hourLabel(p.hour), value: p.errors })),
 )
 
+// O aviso do topo: contagem dos abertos, junto com a saúde (e o painel de alertas ao carregar ou resolver)
+async function loadAlertCount() {
+  try {
+    openAlerts.value = (await getAlerts()).openCount
+  } catch (err) {
+    if (apiErrorStatus(err) === 403) onForbidden()
+  }
+}
+
 async function load() {
   // O intervalo não empilha requisições: uma resposta atrasada não sobrescreve dados mais novos
   if (loading.value) return
   loading.value = true
+  void loadAlertCount()
   try {
     health.value = await getSystemHealth()
     error.value = ''
@@ -332,8 +376,15 @@ function onForbidden() {
 function selectTab(next: Tab) {
   if (tab.value === next) return
   tab.value = next
+  if (route.query.tab !== next) void router.replace({ query: { ...route.query, tab: next } })
   if (next === 'health' && !forbidden.value) void load()
 }
+
+// Um link interno para /admin?tab=... (ex.: a coluna Aba dos alertas) troca a aba sem remontar a tela
+watch(
+  () => route.query.tab,
+  () => selectTab(tabFromQuery()),
+)
 
 function stop() {
   if (timer !== undefined) clearInterval(timer)
@@ -346,9 +397,13 @@ function onVisibilityChange() {
 }
 
 onMounted(() => {
-  void load()
+  if (tab.value === 'health') void load()
+  else void loadAlertCount()
   timer = setInterval(() => {
-    if (document.visibilityState !== 'hidden' && tab.value === 'health') void load()
+    if (document.visibilityState === 'hidden') return
+    // A saúde só na aba dela; a contagem do aviso do topo em qualquer aba
+    if (tab.value === 'health') void load()
+    else void loadAlertCount()
   }, REFRESH_MS)
   document.addEventListener('visibilitychange', onVisibilityChange)
 })

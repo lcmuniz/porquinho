@@ -73,6 +73,9 @@ app:
   frontend-url: ${FRONTEND_URL:http://localhost:5173}
   mail:
     from: ${MAIL_FROM:}
+  alerts:
+    # Story 10.5: Incoming Webhook do Slack para os alertas de métricas críticas. Vazio = só e-mail e painel.
+    slack-webhook-url: ${SLACK_WEBHOOK_URL:}
 stripe:
   # Segredos só no backend. Vazios = Checkout indisponível (503) e webhook rejeitado (400).
   secret-key: ${STRIPE_SECRET_KEY:}

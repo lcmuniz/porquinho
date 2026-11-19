@@ -137,7 +137,12 @@ public class AdminService {
         return result;
     }
 
-    Database database() {
+    /** Hikari pool right now. */
+    record Pool(int active, int idle, int max, int waiting, Status status) {
+    }
+
+    /** From the Hikari MXBean only, no SQL: still answers with the pool exhausted (the 10.5 alert). */
+    Pool pool() {
         HikariPoolMXBean pool;
         int max;
         try {
@@ -149,9 +154,14 @@ public class AdminService {
         }
         int active = pool.getActiveConnections();
         int waiting = pool.getThreadsAwaitingConnection();
+        return new Pool(active, pool.getIdleConnections(), max, waiting, poolStatus(active, max, waiting));
+    }
+
+    Database database() {
+        Pool pool = pool();
         Long slow = jdbcTemplate.queryForObject(SLOW_QUERIES_SQL, Long.class);
         long slowQueries = slow == null ? 0 : slow;
-        return new Database(active, pool.getIdleConnections(), max, waiting, poolStatus(active, max, waiting),
+        return new Database(pool.active(), pool.idle(), pool.max(), pool.waiting(), pool.status(),
             slowQueries, slowQueries == 0 ? Status.GREEN : Status.YELLOW);
     }
 

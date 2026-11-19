@@ -18,3 +18,6 @@ app:
   # Story 10.1: o cron do snapshot de saúde não grava linhas nos testes; eles chamam recordSnapshot() direto
   health-snapshot:
     enabled: false
+  # Story 10.5: o cron dos alertas não abre alertas nos testes; eles chamam runAlerts() direto
+  system-alerts:
+    enabled: false

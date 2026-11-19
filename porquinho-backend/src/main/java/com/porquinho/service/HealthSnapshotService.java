@@ -32,8 +32,14 @@ public class HealthSnapshotService {
     static final String HTTP_METRIC = "http.server.requests";
     static final Duration RETENTION = Duration.ofDays(31);
 
-    /** Sums of a window. {@code minutes} is the number of snapshots (one per minute the backend was up). */
-    public record Totals(long minutes, long requests, long errors, double totalTimeMs) {
+    /**
+     * Sums of a window. {@code minutes} is the number of snapshots (one per minute the backend was up);
+     * {@code okRequests} the 2xx outside /api/v1/webhooks/ (Story 10.5).
+     */
+    public record Totals(long minutes, long requests, long errors, double totalTimeMs, long okRequests) {
+        public Totals(long minutes, long requests, long errors, double totalTimeMs) {
+            this(minutes, requests, errors, totalTimeMs, 0);
+        }
     }
 
     /** One hour of the last 24h: start of the hour (UTC), requests, 5xx and the average time (null without requests). */
@@ -48,6 +54,7 @@ public class HealthSnapshotService {
     private long lastRequests;
     private long lastErrors;
     private double lastTotalMs;
+    private long lastOk;
 
     public HealthSnapshotService(SystemHealthSnapshotRepository repository, MeterRegistry meterRegistry, Clock clock) {
         this.repository = repository;
@@ -61,6 +68,15 @@ public class HealthSnapshotService {
         return uri == null || !uri.startsWith("/actuator");
     }
 
+    static final String WEBHOOKS = "/api/v1/webhooks/";
+
+    /** 2xx of a user: bots (401/404) and the Stripe webhook are not "someone using the app". */
+    static boolean isUserOk(Timer timer) {
+        String status = timer.getId().getTag("status");
+        String uri = timer.getId().getTag("uri");
+        return status != null && status.startsWith("2") && (uri == null || !uri.startsWith(WEBHOOKS));
+    }
+
     static boolean isServerError(Timer timer) {
         String status = timer.getId().getTag("status");
         return status != null && status.startsWith("5");
@@ -71,23 +87,27 @@ public class HealthSnapshotService {
         long requests = 0;
         long errors = 0;
         double totalMs = 0;
+        long ok = 0;
         for (Timer timer : meterRegistry.find(HTTP_METRIC).timers()) {
             if (!counted(timer)) continue;
             requests += timer.count();
             totalMs += timer.totalTime(TimeUnit.MILLISECONDS);
             if (isServerError(timer)) errors += timer.count();
+            if (isUserOk(timer)) ok += timer.count();
         }
         // A counter below the previous value was reset (meters cleared): what it holds now is all new
         long deltaRequests = requests >= lastRequests ? requests - lastRequests : requests;
         long deltaErrors = errors >= lastErrors ? errors - lastErrors : errors;
         double deltaMs = totalMs >= lastTotalMs ? totalMs - lastTotalMs : totalMs;
+        long deltaOk = ok >= lastOk ? ok - lastOk : ok;
 
         OffsetDateTime now = OffsetDateTime.now(clock);
-        repository.save(new SystemHealthSnapshot(now, deltaRequests, deltaErrors, deltaMs));
+        repository.save(new SystemHealthSnapshot(now, deltaRequests, deltaErrors, deltaMs, deltaOk));
         // Only after the save: a failed save keeps the minute's traffic for the next run
         lastRequests = requests;
         lastErrors = errors;
         lastTotalMs = totalMs;
+        lastOk = ok;
         try {
             repository.deleteRecordedBefore(now.minus(RETENTION));
         } catch (RuntimeException e) {
@@ -99,7 +119,7 @@ public class HealthSnapshotService {
     public Totals totalsSince(OffsetDateTime from) {
         Object[] row = repository.totalsSince(from).get(0);
         return new Totals(number(row[0]), number(row[1]), number(row[2]),
-            row[3] == null ? 0 : ((Number) row[3]).doubleValue());
+            row[3] == null ? 0 : ((Number) row[3]).doubleValue(), number(row[4]));
     }
 
     /**
