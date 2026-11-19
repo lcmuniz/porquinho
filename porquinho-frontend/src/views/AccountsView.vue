@@ -566,6 +566,7 @@ import { formatBRL } from '@/lib/money'
 import { deleteAccount, listDeletedAccounts, restoreAccount } from '@/services/accountService'
 import { listTransfers } from '@/services/transferService'
 import type { Account, ReconciliationResult } from '@/types/account'
+import type { Transfer } from '@/types/transfer'
 import { apiErrorStatus } from '@/lib/apiError'
 import type { ApiError } from '@/lib/apiError'
 
@@ -857,9 +858,17 @@ function openTransfer() {
 }
 
 /** Fecha o diálogo e recarrega os saldos das contas e a seção (o total não muda). */
-function onTransferCreated() {
+/** Checklist de deploy 4.1: a TED já importada do extrato foi vinculada à transferência, sem contar duas vezes. */
+function onTransferCreated(created: Transfer) {
   transferDialogOpen.value = false
-  setSuccess('Transferência registrada')
+  const linked = created.linkedImportedTransactions
+  setSuccess(
+    linked === 0
+      ? 'Transferência registrada'
+      : linked === 1
+        ? 'Transferência registrada. A transação já importada do extrato foi vinculada a ela e não conta de novo no saldo.'
+        : `Transferência registrada. As ${linked} transações já importadas do extrato foram vinculadas a ela e não contam de novo no saldo.`,
+  )
   void refreshAccounts()
   void loadTransfers(true)
 }

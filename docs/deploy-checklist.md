@@ -88,7 +88,8 @@ contado duas vezes no saldo. O mesmo acontece se a transferência for registrada
 importação. A detecção de duplicatas só roda no processamento do arquivo, e `TransferService` não consulta
 `transactions`.
 
-- [ ] Escolher uma opção:
+- [x] Escolher uma opção (19/11/2026: opção a, implementada; a transação importada vinculada fica fora do saldo e
+  guarda a transferência em `transactions.absorbed_by_transfer_id`, V53):
   - (a) ao registrar a transferência, procurar a transação importada que casa (mesma conta, valor e data próxima) e
     vinculá-la à transferência, sem lançar de novo;
   - (b) só avisar o usuário que existe uma transação parecida e deixar que ele decida;

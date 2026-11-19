@@ -119,6 +119,10 @@ public class Transaction {
     @Column(name = "installment_futures_removed_at")
     private OffsetDateTime installmentFuturesRemovedAt;
 
+    /** The transfer registered later that already put this imported row's amount in the balance (deploy checklist 4.1). */
+    @Column(name = "absorbed_by_transfer_id")
+    private UUID absorbedByTransferId;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -211,6 +215,9 @@ public class Transaction {
 
     public UUID getInstallmentGroupId() { return installmentGroupId; }
     public void setInstallmentGroupId(UUID installmentGroupId) { this.installmentGroupId = installmentGroupId; }
+
+    public UUID getAbsorbedByTransferId() { return absorbedByTransferId; }
+    public void setAbsorbedByTransferId(UUID absorbedByTransferId) { this.absorbedByTransferId = absorbedByTransferId; }
 
     public boolean isFutureInstallment() { return futureInstallment; }
     public void setFutureInstallment(boolean futureInstallment) { this.futureInstallment = futureInstallment; }

@@ -11,7 +11,9 @@ import java.util.UUID;
 
 /**
  * Transfer returned by /api/v1/transfers (Story 4.5), with the names of both accounts (removed accounts included,
- * so the history stays readable). Money is a JSON number; the date is "yyyy-MM-dd".
+ * so the history stays readable). Money is a JSON number; the date is "yyyy-MM-dd". {@code linkedImportedTransactions}:
+ * how many imported transactions this request linked to the new transfer instead of counting them again (deploy
+ * checklist 4.1); 0 in the list and when a repeated id returns an existing transfer.
  */
 public record TransferResponse(
     UUID id,
@@ -22,10 +24,15 @@ public record TransferResponse(
     BigDecimal amount,
     LocalDate transferDate,
     String description,
-    OffsetDateTime createdAt
+    OffsetDateTime createdAt,
+    int linkedImportedTransactions
 ) {
     /** {@code accounts} maps account id to account; a missing id gives a null name. */
     public static TransferResponse of(Transfer transfer, Map<UUID, Account> accounts) {
+        return of(transfer, accounts, 0);
+    }
+
+    public static TransferResponse of(Transfer transfer, Map<UUID, Account> accounts, int linkedImportedTransactions) {
         return new TransferResponse(
             transfer.getId(),
             transfer.getFromAccountId(),
@@ -35,7 +42,8 @@ public record TransferResponse(
             transfer.getAmount(),
             transfer.getTransferDate(),
             transfer.getDescription(),
-            transfer.getCreatedAt()
+            transfer.getCreatedAt(),
+            linkedImportedTransactions
         );
     }
 

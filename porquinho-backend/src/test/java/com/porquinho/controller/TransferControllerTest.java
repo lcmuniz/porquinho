@@ -89,7 +89,7 @@ class TransferControllerTest {
 
     private TransferResponse response(String amount, String description) {
         return new TransferResponse(UUID.randomUUID(), fromId, "Nubank", toId, "Inter", new BigDecimal(amount),
-            today(), description, OffsetDateTime.parse("2026-11-03T15:00:00Z"));
+            today(), description, OffsetDateTime.parse("2026-11-03T15:00:00Z"), 0);
     }
 
     private TransferService.Result created(String amount, String description) {

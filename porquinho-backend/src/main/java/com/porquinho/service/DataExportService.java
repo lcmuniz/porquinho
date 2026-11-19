@@ -602,6 +602,8 @@ public class DataExportService {
             transactionMap.put("is_future_installment", transaction.isFutureInstallment());
             transactionMap.put("confirmed_by_import_id",
                 transaction.getConfirmedByImportId() != null ? transaction.getConfirmedByImportId().toString() : null);
+            transactionMap.put("absorbed_by_transfer_id",
+                transaction.getAbsorbedByTransferId() != null ? transaction.getAbsorbedByTransferId().toString() : null);
             transactionMap.put("installment_futures_removed_at", transaction.getInstallmentFuturesRemovedAt() != null
                 ? transaction.getInstallmentFuturesRemovedAt().toString() : null);
             transactionMap.put("created_at", transaction.getCreatedAt() != null ? transaction.getCreatedAt().toString() : null);

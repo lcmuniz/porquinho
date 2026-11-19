@@ -145,12 +145,11 @@ public final class DuplicateDetector {
                 long bestDays = Long.MAX_VALUE;
                 for (int t = 0; t < available.size(); t++) {
                     Transfer transfer = available.get(t);
-                    if (!rightDirection(transfer, accountId, entry.type())
-                        || transfer.getAmount().compareTo(entry.amount()) != 0) {
+                    if (!matchesTransfer(transfer, accountId, entry.type(), entry.amount(), entry.date())) {
                         continue;
                     }
                     long days = daysApart(entry.date(), transfer.getTransferDate());
-                    if (days <= MAX_DAYS_APART && days < bestDays) {
+                    if (days < bestDays) {
                         bestIndex = t;
                         bestDays = days;
                     }
@@ -238,12 +237,20 @@ public final class DuplicateDetector {
         return !entryExternalId.equals(existingExternalId) && candidate.otherFormat;
     }
 
-    private static boolean rightDirection(Transfer transfer, UUID accountId, Transaction.Type type) {
-        return (type == Transaction.Type.DEBIT && accountId.equals(transfer.getFromAccountId()))
+    /**
+     * Decision D4: an entry of {@code accountId} is the transfer when it has the same amount, a date within
+     * {@link #MAX_DAYS_APART} days and the right direction (DEBIT on the origin, CREDIT on the destination). Also used
+     * by {@link TransferService} for the inverse case: the transfer registered after the import (deploy checklist 4.1).
+     */
+    static boolean matchesTransfer(Transfer transfer, UUID accountId, Transaction.Type type, BigDecimal amount,
+                                   LocalDate date) {
+        boolean rightDirection = (type == Transaction.Type.DEBIT && accountId.equals(transfer.getFromAccountId()))
             || (type == Transaction.Type.CREDIT && accountId.equals(transfer.getToAccountId()));
+        return rightDirection && transfer.getAmount().compareTo(amount) == 0
+            && daysApart(date, transfer.getTransferDate()) <= MAX_DAYS_APART;
     }
 
-    private static long daysApart(LocalDate a, LocalDate b) {
+    static long daysApart(LocalDate a, LocalDate b) {
         return Math.abs(ChronoUnit.DAYS.between(a, b));
     }
 

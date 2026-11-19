@@ -38,6 +38,7 @@ const created: Transfer = {
   transferDate: '2026-11-03',
   description: 'Reserva',
   createdAt: '2026-11-03T15:00:00Z',
+  linkedImportedTransactions: 0,
 }
 
 function mountForm(props: Record<string, unknown> = {}) {

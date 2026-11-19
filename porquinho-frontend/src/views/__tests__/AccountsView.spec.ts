@@ -1311,6 +1311,7 @@ describe('AccountsView — transferências (Story 4.5)', () => {
       transferDate: '2026-11-03',
       description: null,
       createdAt: '2026-11-03T15:00:00Z',
+      linkedImportedTransactions: 0,
       ...overrides,
     }
   }
@@ -1461,6 +1462,18 @@ describe('AccountsView — transferências (Story 4.5)', () => {
     expect(plain(item.get('[data-testid="transfer-amount"]').text())).toBe('R$ 200,00')
     await flushPromises()
     expect(document.activeElement?.getAttribute('data-testid')).toBe('open-transfer')
+  })
+
+  it.each([
+    [1, 'Transferência registrada. A transação já importada do extrato foi vinculada a ela e não conta de novo no saldo.'],
+    [2, 'Transferência registrada. As 2 transações já importadas do extrato foram vinculadas a ela e não contam de novo no saldo.'],
+  ])('avisa quando %i transação importada foi vinculada à transferência', async (linked, message) => {
+    mockCreateTransfer.mockResolvedValueOnce(transfer({ linkedImportedTransactions: linked }))
+    const wrapper = await mountView()
+    const form = await openTransfer(wrapper)
+    await fillAndSubmit(form, '200,00')
+
+    expect(wrapper.get('[data-testid="accounts-success"]').text()).toBe(message)
   })
 
   it('saldo da origem negativo fica em vermelho', async () => {

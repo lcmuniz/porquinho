@@ -10,6 +10,11 @@ export interface Transfer {
   transferDate: string
   description: string | null
   createdAt: string
+  /**
+   * Transações importadas do extrato que este registro vinculou à transferência em vez de contar de novo no saldo
+   * (checklist de deploy 4.1). 0 na lista e no reenvio do mesmo id.
+   */
+  linkedImportedTransactions: number
 }
 
 export interface CreateTransferInput {

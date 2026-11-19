@@ -267,8 +267,7 @@ public class TransactionImportReviewService {
         if (rows.isEmpty()) {
             return Set.of();
         }
-        // shortcut: a transfer committed while the file was being read may be missed (TransferService takes no
-        // advisory lock); take the target lock there if that ever shows up
+        // TransferService takes the same advisory lock, so no transfer commits while the file is being read
         OffsetDateTime readAt = rows.stream().map(Transaction::getCreatedAt).min(Comparator.naturalOrder()).orElseThrow();
         LocalDate first = rows.stream().map(Transaction::getTransactionDate).min(Comparator.naturalOrder()).orElseThrow();
         LocalDate last = rows.stream().map(Transaction::getTransactionDate).max(Comparator.naturalOrder()).orElseThrow();

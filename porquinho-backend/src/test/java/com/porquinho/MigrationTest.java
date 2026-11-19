@@ -302,6 +302,7 @@ class MigrationTest {
         expected.put("installment_group_id", "uuid");
         expected.put("is_future_installment", "boolean");
         expected.put("confirmed_by_import_id", "uuid"); // V29
+        expected.put("absorbed_by_transfer_id", "uuid"); // V53
         expected.put("created_at", "timestamp with time zone");
         expected.put("updated_at", "timestamp with time zone");
         expected.put("deleted_at", "timestamp with time zone");
@@ -326,7 +327,7 @@ class MigrationTest {
         Integer foreignKeys = jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM information_schema.table_constraints " +
             "WHERE table_name = 'transactions' AND constraint_type = 'FOREIGN KEY'", Integer.class);
-        assertThat(foreignKeys).isEqualTo(6);
+        assertThat(foreignKeys).isEqualTo(7);
 
         Integer cascades = jdbcTemplate.queryForObject(
             "SELECT COUNT(*) FROM pg_constraint WHERE conrelid = 'transactions'::regclass AND contype = 'f' " +

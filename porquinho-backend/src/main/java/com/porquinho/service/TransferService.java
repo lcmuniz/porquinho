@@ -3,10 +3,12 @@ package com.porquinho.service;
 import com.porquinho.dto.CreateTransferRequest;
 import com.porquinho.dto.TransferResponse;
 import com.porquinho.entity.Account;
+import com.porquinho.entity.Transaction;
 import com.porquinho.entity.Transfer;
 import com.porquinho.exception.BadRequestException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.AccountRepository;
+import com.porquinho.repository.TransactionRepository;
 import com.porquinho.repository.TransferRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
@@ -17,6 +19,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -34,6 +39,11 @@ import java.util.stream.Collectors;
  * <p>Idempotent: the client sends the transfer id. Re-sending an id already used by the same user returns the
  * existing transfer with nothing changed; an id used by another user is 404. Two concurrent requests with the same
  * id race on the primary key: the loser's transaction rolls back and the existing row is re-read.
+ *
+ * <p>Deploy checklist 4.1, option (a): an imported transaction already in the balance that matches one side of the
+ * transfer (decision D4 of Story 5.5, {@link DuplicateDetector#matchesTransfer}) is linked to it and leaves the
+ * balance ({@code affects_balance = false}, like a row absorbed by a reconciliation), so the amount is not counted
+ * twice. The import review does the inverse when the transfer comes first ({@code TransactionImportReviewService}).
  */
 @Service
 public class TransferService {
@@ -55,16 +65,21 @@ public class TransferService {
 
     private final TransferRepository transferRepository;
     private final AccountRepository accountRepository;
+    private final TransactionRepository transactionRepository;
+    private final TransactionCore core;
     private final BalanceHistoryRecorder balanceHistoryRecorder;
     private final AuditLogService auditLogService;
     private final TransactionTemplate transactionTemplate;
     private final TransactionTemplate readOnlyTemplate;
 
     public TransferService(TransferRepository transferRepository, AccountRepository accountRepository,
+                           TransactionRepository transactionRepository, TransactionCore core,
                            BalanceHistoryRecorder balanceHistoryRecorder, AuditLogService auditLogService,
                            PlatformTransactionManager transactionManager) {
         this.transferRepository = transferRepository;
         this.accountRepository = accountRepository;
+        this.transactionRepository = transactionRepository;
+        this.core = core;
         this.balanceHistoryRecorder = balanceHistoryRecorder;
         this.auditLogService = auditLogService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
@@ -76,8 +91,9 @@ public class TransferService {
      * Records the transfer, or returns the existing one for a repeated id. 400 when a field is missing or invalid
      * (checked here too, so a caller without bean validation gets 400 and not 500) or when both sides are the same
      * account; 404 "Conta não encontrada" when either account is not one of the user's active accounts, with no
-     * balance changed. Both account rows are locked in id order in a single query, so two crossed transfers cannot
-     * deadlock.
+     * balance changed. The advisory locks of both accounts come first, as in an import of either (Story 5.5), so the
+     * lookup of imported transactions and a concurrent import see each other; then both account rows are locked in id
+     * order in a single query, so two crossed transfers cannot deadlock.
      */
     public Result create(UUID userId, CreateTransferRequest request, String ipAddress) {
         BigDecimal amount = validAmount(request);
@@ -101,6 +117,7 @@ public class TransferService {
         }
         UUID fromId = request.fromAccountId();
         UUID toId = request.toAccountId();
+        core.lockTargets(fromId, toId);
         Map<UUID, Account> locked = byId(accountRepository.findActiveByIdsForUpdate(List.of(fromId, toId), userId));
         Account from = locked.get(fromId);
         Account to = locked.get(toId);
@@ -108,15 +125,25 @@ public class TransferService {
             throw new ResourceNotFoundException(AccountService.NOT_FOUND_MESSAGE);
         }
 
-        BigDecimal fromBalance = from.getCurrentBalance().subtract(amount);
-        BigDecimal toBalance = to.getCurrentBalance().add(amount);
+        Transfer transfer = new Transfer(request.id(), userId, fromId, toId, amount, request.transferDate(),
+            request.description());
+        List<Transaction> linked = new ArrayList<>(2);
+        importedMatch(userId, transfer, fromId).ifPresent(linked::add);
+        importedMatch(userId, transfer, toId).ifPresent(linked::add);
+        // a linked row already put its side of the transfer in the balance: its effect leaves it
+        BigDecimal fromBalance = from.getCurrentBalance().subtract(amount).subtract(effectOn(linked, fromId));
+        BigDecimal toBalance = to.getCurrentBalance().add(amount).subtract(effectOn(linked, toId));
         if (!BalanceHistoryRecorder.fits(fromBalance) || !BalanceHistoryRecorder.fits(toBalance)) {
             throw new BadRequestException(BALANCE_OUT_OF_RANGE_MESSAGE);
         }
 
-        // Inserted (and flushed) first: a repeated id fails here, and the snapshots reference the row
-        Transfer transfer = transferRepository.saveAndFlush(new Transfer(request.id(), userId, fromId, toId, amount,
-            request.transferDate(), request.description()));
+        // Inserted (and flushed) first: a repeated id fails here, and the snapshots and linked rows reference the row
+        transfer = transferRepository.saveAndFlush(transfer);
+        for (Transaction row : linked) {
+            row.setAffectsBalance(false);
+            row.setAbsorbedByTransferId(transfer.getId());
+            transactionRepository.save(row);
+        }
         from.setCurrentBalance(fromBalance);
         to.setCurrentBalance(toBalance);
         accountRepository.save(from);
@@ -124,7 +151,30 @@ public class TransferService {
         balanceHistoryRecorder.recordTransfer(from, transfer.getId());
         balanceHistoryRecorder.recordTransfer(to, transfer.getId());
         auditLogService.log(AUDIT_CREATED, userId, ipAddress, auditMetadata(transfer));
-        return new Result(TransferResponse.of(transfer, locked), true);
+        return new Result(TransferResponse.of(transfer, locked, linked.size()), true);
+    }
+
+    /**
+     * The imported transaction of {@code accountId} still in the balance and not linked yet that matches the transfer
+     * (decision D4). With more than one, the closest date wins, then the lowest id.
+     */
+    private Optional<Transaction> importedMatch(UUID userId, Transfer transfer, UUID accountId) {
+        LocalDate date = transfer.getTransferDate();
+        return transactionRepository.findDuplicateCandidatesByAccountBetween(userId, accountId,
+                date.minusDays(DuplicateDetector.MAX_DAYS_APART), date.plusDays(DuplicateDetector.MAX_DAYS_APART))
+            .stream()
+            .filter(t -> t.getImportId() != null && t.getDeletedAt() == null && t.isAffectsBalance()
+                && t.getAbsorbedByTransferId() == null
+                && DuplicateDetector.matchesTransfer(transfer, accountId, t.getTransactionType(), t.getAmount(),
+                    t.getTransactionDate()))
+            .min(Comparator.comparingLong((Transaction t) -> DuplicateDetector.daysApart(t.getTransactionDate(), date))
+                .thenComparing(Transaction::getId));
+    }
+
+    private static BigDecimal effectOn(List<Transaction> rows, UUID accountId) {
+        return rows.stream().filter(row -> accountId.equals(row.getAccountId()))
+            .map(row -> TransactionCore.signed(row.getTransactionType(), row.getAmount()))
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     /** The transfer with this id, if the user already created it; 404 if the id belongs to another user. */

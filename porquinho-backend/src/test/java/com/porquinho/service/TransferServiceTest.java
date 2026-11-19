@@ -49,6 +49,12 @@ class TransferServiceTest {
     private AuditLogService auditLogService;
 
     @Mock
+    private com.porquinho.repository.TransactionRepository transactionRepository;
+
+    @Mock
+    private TransactionCore core;
+
+    @Mock
     private PlatformTransactionManager transactionManager;
 
     private TransferService service;
@@ -58,7 +64,7 @@ class TransferServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new TransferService(transferRepository, accountRepository, new BalanceHistoryRecorder(balanceHistoryRepository, java.time.Clock.systemUTC()), auditLogService,
+        service = new TransferService(transferRepository, accountRepository, transactionRepository, core, new BalanceHistoryRecorder(balanceHistoryRepository, java.time.Clock.systemUTC()), auditLogService,
             transactionManager);
         userId = UUID.randomUUID();
         nubank = account("Nubank", "1234.56");
