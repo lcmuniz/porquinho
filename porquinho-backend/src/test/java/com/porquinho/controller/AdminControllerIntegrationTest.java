@@ -10,12 +10,19 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RestController;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,14 +34,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Story 10.1 with the test profile (security open): the 403 of non-admins comes from the service, not the chain. */
+/** Story 10.1 with the test profile (security open): the 403 of non-admins comes from the interceptor, not the chain. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-@Import(TestWebSecurityConfig.class)
+@Import({TestWebSecurityConfig.class, AdminControllerIntegrationTest.ProbeController.class})
+// The probe gives this class its own context (and Hikari pool); closing it keeps the suite under max_connections
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class AdminControllerIntegrationTest {
 
     @Autowired
@@ -70,7 +80,8 @@ class AdminControllerIntegrationTest {
 
     @Test
     void everyAdminRouteExceptAccessGives403ToNonAdmins() throws Exception {
-        // Routes of 10.2-10.5 must call requireAdmin too: a new one that forgets it fails here
+        // Every route under /api/v1/admin goes through AdminAccessInterceptor; the probe POST is sent without body and
+        // must still be a 403, not a 400. A route the interceptor misses fails here
         List<String> checked = new ArrayList<>();
         List<String> opened = new ArrayList<>();
         for (RequestMappingInfo info : handlerMapping.getHandlerMethods().keySet()) {
@@ -92,7 +103,7 @@ class AdminControllerIntegrationTest {
         assertThat(checked).contains("GET /api/v1/admin/health", "GET /api/v1/admin/imports",
             "GET /api/v1/admin/imports/detail", "GET /api/v1/admin/imports/export", "GET /api/v1/admin/ai",
             "GET /api/v1/admin/ai/detail", "GET /api/v1/admin/ai/export", "GET /api/v1/admin/users",
-            "GET /api/v1/admin/users/export");
+            "GET /api/v1/admin/users/export", "POST " + PROBE);
         assertThat(opened).as("admin routes open to non-admins").isEmpty();
     }
 
@@ -115,5 +126,30 @@ class AdminControllerIntegrationTest {
         mockMvc.perform(get("/api/v1/admin/access").with(jwt().jwt(j -> j.subject(user.toString()))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.admin").value(false));
+    }
+
+    @Test
+    void nonAdminGets403BeforeTheBodyIsValidated() throws Exception {
+        String invalid = "{\"note\":\"\"}";
+        mockMvc.perform(post(PROBE).with(jwt().jwt(j -> j.subject(user.toString())))
+                .contentType(MediaType.APPLICATION_JSON).content(invalid))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.title").value("Acesso restrito"));
+        // the same body is a 400 for an admin: the probe does validate
+        mockMvc.perform(post(PROBE).with(jwt().jwt(j -> j.subject(admin.toString())))
+                .contentType(MediaType.APPLICATION_JSON).content(invalid))
+            .andExpect(status().isBadRequest());
+    }
+
+    private static final String PROBE = "/api/v1/admin/test-probe";
+
+    /** A write route with a validated body, the shape the 10.5 will add; only this test context loads it. */
+    @RestController
+    static class ProbeController {
+        record Body(@NotBlank String note) {}
+
+        @PostMapping(PROBE)
+        void probe(@Valid @RequestBody Body body) {
+        }
     }
 }

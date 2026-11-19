@@ -48,6 +48,7 @@ public class AdminService {
 
     private static final Logger log = LoggerFactory.getLogger(AdminService.class);
 
+    public static final String FORBIDDEN_MESSAGE = "Esta área é só para administradores.";
     static final double UPTIME_TARGET = 99.5;
     static final Duration ACTIVE_SESSION_WINDOW = Duration.ofMinutes(30);
     static final String SLOW_QUERIES_SQL = "SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database() "
@@ -82,7 +83,7 @@ public class AdminService {
 
     public void requireAdmin(UUID userId) {
         if (!isAdmin(userId)) {
-            throw new ForbiddenException("Esta área é só para administradores.");
+            throw new ForbiddenException(FORBIDDEN_MESSAGE);
         }
     }
 

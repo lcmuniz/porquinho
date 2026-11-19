@@ -351,6 +351,8 @@ class TransactionImportReviewServiceTest {
         assertThat(row.get("import_id")).isEqualTo(confirmer);
         assertThat(row.get("confirmed_by_import_id")).isNull();
         assertThat(row.get("review_status")).isEqualTo("CONFIRMED");
+        // a card row: it never enters the balance (decision D3)
+        assertThat(row.get("affects_balance")).isEqualTo(false);
         assertThat(row.get("deleted_at")).isNull();
         assertThat(rowOf(sibling).get("deleted_at")).isNotNull();
     }
@@ -858,6 +860,27 @@ class TransactionImportReviewServiceTest {
         assertThat(balanceOf(account)).isEqualByComparingTo("90.00");
         assertThat(transactionSnapshots(account)).hasSize(1);
         assertThat(auditOf(TransactionImportReviewService.AUDIT_COMPLETED)).hasSize(1);
+    }
+
+    @Test
+    void finishingWaitsForTheAdvisoryLockOfTheTarget() throws Exception {
+        UUID review = newImport("REVIEW");
+        newRow(review, 92, null);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<ImportReviewActionResponse> call = transactionTemplate.execute(tx -> {
+                // a discard of the same card holds this lock while it reads the status of the confirmer (5.9, 3A)
+                jdbc.queryForObject("SELECT 1 FROM (SELECT pg_advisory_xact_lock(?)) AS l", Integer.class,
+                    TransactionCore.lockKey(cardId));
+                Future<ImportReviewActionResponse> finish = executor.submit(() -> reviewService.complete(userId, review, IP));
+                assertThatThrownBy(() -> finish.get(1, TimeUnit.SECONDS))
+                    .isInstanceOf(java.util.concurrent.TimeoutException.class);
+                return finish;
+            });
+            assertThat(call.get(30, TimeUnit.SECONDS).status()).isEqualTo("COMPLETED");
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     @Test
