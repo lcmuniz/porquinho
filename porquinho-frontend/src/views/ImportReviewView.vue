@@ -54,6 +54,15 @@
       </div>
 
       <template v-else-if="transactionImport">
+        <p
+          v-if="bankMismatch"
+          role="status"
+          class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+          data-testid="bank-mismatch"
+        >
+          {{ bankMismatch }}
+        </p>
+
         <section class="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
           <p class="text-sm font-medium text-gray-900" data-testid="review-count">{{ countLabel }}</p>
           <div class="flex flex-wrap gap-3">
@@ -206,6 +215,7 @@
         :to-card="!!transactionImport?.creditCardId"
         :unreviewed-count="unreviewedCount"
         :uncategorized-count="uncategorizedCount"
+        :month="latestMonth"
         @failed="handleActionError"
       />
       <ImportDiscardDialog
@@ -232,7 +242,9 @@ import { exitRoute } from '@/lib/importExit'
 import { formatSignedBRL } from '@/lib/money'
 import { plural } from '@/lib/plural'
 import { categoryLabel, installmentLabel, pixLabel, signedAmount } from '@/lib/transactionLabels'
+import { listAccounts } from '@/services/accountService'
 import { approveHighConfidence } from '@/services/transactionImportService'
+import { BANK_LABELS } from '@/types/transactionImport'
 import type { ApiError } from '@/lib/apiError'
 
 /** Revisão de uma importação (Story 5.9), com a edição das categorias e a conclusão (Story 5.10). */
@@ -263,6 +275,50 @@ const discardDialog = ref<InstanceType<typeof ImportDiscardDialog> | null>(null)
 const isApproving = ref(false)
 const actionError = ref<string | null>(null)
 const successMessage = ref<string | null>(null)
+
+/** AAAA-MM da transação mais recente: a /transacoes abre nele depois da conclusão. */
+const latestMonth = computed(
+  () =>
+    transactions.value
+      .map((row) => row.date)
+      .sort()
+      .pop()
+      ?.slice(0, 7) ?? null,
+)
+
+/** Banco cadastrado na conta de destino; null em cartão, sem banco ou sem conseguir ler as contas. */
+const accountBank = ref<string | null>(null)
+
+watch(
+  () => transactionImport.value?.accountId,
+  async (accountId) => {
+    accountBank.value = null
+    if (!accountId) return
+    try {
+      const account = (await listAccounts()).find((a) => a.id === accountId)
+      if (transactionImport.value?.accountId === accountId) accountBank.value = account?.bankName?.trim() || null
+    } catch {
+      // o aviso é só uma ajuda; sem as contas a revisão segue igual
+    }
+  },
+)
+
+const normalizeBank = (name: string) =>
+  name
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+
+/** Aviso sem bloqueio quando o banco detectado no arquivo não bate com o da conta ("Nu" ~ "Nubank" bate). */
+const bankMismatch = computed(() => {
+  const code = transactionImport.value?.bankName
+  if (!code || code === 'OTHER' || !accountBank.value) return null
+  const detected = normalizeBank(BANK_LABELS[code])
+  const registered = normalizeBank(accountBank.value)
+  if (!registered || detected.includes(registered) || registered.includes(detected)) return null
+  return `Este extrato parece ser do ${BANK_LABELS[code]}, mas a conta '${transactionImport.value?.targetName ?? ''}' está cadastrada como ${accountBank.value}. Confira se escolheu a conta certa antes de concluir.`
+})
 
 function showSuccess(message: string) {
   actionError.value = null

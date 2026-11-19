@@ -245,6 +245,7 @@ import type { Category } from '@/types/category'
 import type { CreditCard as Card } from '@/types/creditCard'
 import type { Transaction } from '@/types/transaction'
 import { apiErrorDetail } from '@/lib/apiError'
+import type { ImportCompletedState } from '@/lib/importExit'
 
 /**
  * Story 5.12: as transações confirmadas, um mês por vez (decisão Q1), com edição e remoção; 5.13: inclusão manual.
@@ -400,6 +401,13 @@ async function confirmAction() {
 }
 
 onMounted(() => {
+  // A conclusão da importação abre aqui no mês dela, com o resumo; limpo para não repetir ao recarregar
+  const state = window.history.state as Partial<ImportCompletedState> | null
+  if (state?.importMessage) {
+    if (state.importMonth) month.value = state.importMonth
+    setSuccess(state.importMessage)
+    window.history.replaceState({ ...state, importMonth: null, importMessage: null }, '')
+  }
   void load()
   void loadOptions()
 })

@@ -353,12 +353,13 @@ class TransactionImportControllerTest {
     void completeGoesToTheJwtUser() throws Exception {
         UUID id = UUID.randomUUID();
         when(transactionImportReviewService.complete(eq(userId), eq(id), anyString()))
-            .thenReturn(new ImportReviewActionResponse(id, "COMPLETED", 4));
+            .thenReturn(new ImportReviewActionResponse(id, "COMPLETED", 4, 3));
 
         mockMvc.perform(post("/api/v1/imports/" + id + "/complete").with(authentication(authToken)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.status").value("COMPLETED"))
-            .andExpect(jsonPath("$.affectedTransactions").value(4));
+            .andExpect(jsonPath("$.affectedTransactions").value(4))
+            .andExpect(jsonPath("$.beforeBalanceTransactions").value(3));
     }
 
     @Test

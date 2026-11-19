@@ -181,7 +181,7 @@ import PasswordStrengthIndicator from '@/components/PasswordStrengthIndicator.vu
 import { useAuth } from '@/composables/useAuth'
 import { authService } from '@/services/authService'
 import { endSession } from '@/services/session'
-import { apiErrorDetail, isRegistrationRefused } from '@/lib/apiError'
+import { apiErrorDetail, errorMessageOf, isRegistrationRefused } from '@/lib/apiError'
 
 const router = useRouter()
 
@@ -241,7 +241,7 @@ const handleEmailSubmit = async () => {
             name: name.value,
           })
         }
-      } catch (backendError: any) {
+      } catch (backendError) {
         // Backend recusou (conta em exclusão ou e-mail de outra conta): mostra o motivo, encerra a sessão e fica no cadastro
         if (isRegistrationRefused(backendError)) {
           errorMessage.value = apiErrorDetail(backendError, 'Não foi possível entrar com esta conta.')
@@ -255,15 +255,16 @@ const handleEmailSubmit = async () => {
       // Step 3: Redirect to onboarding page (AC requirement)
       router.push('/onboarding')
     }
-  } catch (error: any) {
+  } catch (error) {
     console.error('Erro ao cadastrar com email:', error)
 
     // Handle specific error messages
-    if (error.message?.includes('Email already registered') ||
-        error.message?.includes('already registered') ||
-        error.message?.includes('User already registered')) {
+    const message = errorMessageOf(error)
+    if (message.includes('Email already registered') ||
+        message.includes('already registered') ||
+        message.includes('User already registered')) {
       errorMessage.value = 'Este email já está cadastrado.'
-    } else if (error.message?.includes('weak password') || error.message?.includes('Password')) {
+    } else if (message.includes('weak password') || message.includes('Password')) {
       errorMessage.value = 'Senha não atende aos requisitos mínimos.'
     } else {
       errorMessage.value = 'Erro ao criar conta. Por favor, tente novamente.'

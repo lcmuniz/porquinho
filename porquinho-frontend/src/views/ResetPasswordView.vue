@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/composables/useAuth'
 import { authService } from '@/services/authService'
+import { errorMessageOf } from '@/lib/apiError'
 
 const router = useRouter()
 const { updatePassword } = useAuth()
@@ -57,7 +58,7 @@ async function handleSubmit() {
     // Log audit event (authenticated via JWT from reset token)
     try {
       await authService.logPasswordResetCompleted()
-    } catch (auditError: any) {
+    } catch (auditError) {
       // Non-critical error - continue with success flow
       console.warn('Failed to log password reset completion:', auditError)
     }
@@ -69,10 +70,11 @@ async function handleSubmit() {
     setTimeout(() => {
       router.push('/login')
     }, 3000)
-  } catch (error: any) {
-    if (error.message?.includes('expired') || error.message?.includes('invalid')) {
+  } catch (error) {
+    const message = errorMessageOf(error)
+    if (message.includes('expired') || message.includes('invalid')) {
       errorMessage.value = 'Link de redefinição expirado ou inválido. Solicite um novo.'
-    } else if (error.message?.includes('same as the old password')) {
+    } else if (message.includes('same as the old password')) {
       errorMessage.value = 'A nova senha deve ser diferente da senha anterior.'
     } else {
       errorMessage.value = 'Erro ao redefinir senha. Tente novamente.'

@@ -675,6 +675,7 @@ class TransactionImportReviewServiceTest {
 
         assertThat(response.status()).isEqualTo("COMPLETED");
         assertThat(response.affectedTransactions()).isEqualTo(4);
+        assertThat(response.beforeBalanceTransactions()).isEqualTo(2);
         assertThat(statusOf(review)).isEqualTo("COMPLETED");
         assertThat(balanceOf(account)).isEqualByComparingTo("975.50");
         assertThat(transactionSnapshots(account)).singleElement().satisfies(snapshot ->

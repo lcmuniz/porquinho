@@ -92,4 +92,6 @@ export interface ImportReviewActionResult {
   importId: string
   status: TransactionImportStatus
   affectedTransactions: number
+  /** Só na conclusão de conta: linhas com data até a referência do saldo, que não o alteram. */
+  beforeBalanceTransactions?: number
 }

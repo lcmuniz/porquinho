@@ -125,6 +125,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { supabase } from '@/services/supabase'
+import { errorMessageOf } from '@/lib/apiError'
 
 const router = useRouter()
 const _route = useRoute() // Reserved for future use
@@ -217,10 +218,10 @@ onMounted(async () => {
       } else {
         throw new Error('Sessão não encontrada após verificação')
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Email verification error:', error)
       verificationStatus.value = 'error'
-      errorMessage.value = error.message ||
+      errorMessage.value = errorMessageOf(error) ||
         'Link de verificação inválido ou expirado. Por favor, registre-se novamente.'
     }
   } else {

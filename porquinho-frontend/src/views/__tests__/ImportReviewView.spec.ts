@@ -29,6 +29,11 @@ vi.mock('@/services/categoryService', () => ({
   listCategories: (...a: unknown[]) => mockListCategories(...a),
 }))
 
+const mockListAccounts = vi.fn()
+vi.mock('@/services/accountService', () => ({
+  listAccounts: (...a: unknown[]) => mockListAccounts(...a),
+}))
+
 vi.mock('@/services/onboardingService', () => ({
   getMyOnboarding: (...a: unknown[]) => mockGetOnboarding(...a),
   completeImport: (...a: unknown[]) => mockCompleteOnboardingImport(...a),
@@ -158,7 +163,47 @@ const later = (overrides: Partial<TransactionImport> = {}) =>
 describe('ImportReviewView', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
+    mockListAccounts.mockReset().mockResolvedValue([])
     ;(await testRoute()).params.id = 'i1'
+  })
+
+  describe('aviso de banco diferente', () => {
+    const account = (bankName: string | null) => [{ id: 'a1', name: 'Conta principal', bankName }]
+    const notice = (w: VueWrapper) => w.find('[data-testid="bank-mismatch"]')
+
+    it('avisa sem bloquear quando o banco do arquivo difere do banco da conta', async () => {
+      mockListAccounts.mockResolvedValue(account('Itaú'))
+      const w = await mountView([transaction('t1')], importRow({ targetName: 'Conta principal' }))
+
+      expect(notice(w).text()).toBe(
+        "Este extrato parece ser do Nubank, mas a conta 'Conta principal' está cadastrada como Itaú. Confira se escolheu a conta certa antes de concluir.",
+      )
+      expect(w.get('[data-testid="complete-import"]').attributes('disabled')).toBeUndefined()
+    })
+
+    it.each([
+      ['mesmo banco com outra grafia', 'nu', 'NUBANK'],
+      ['acento e caixa diferentes', 'ITAU', 'ITAU'],
+      ['conta sem banco', null, 'NUBANK'],
+      ['banco não identificado no arquivo', 'Itaú', 'OTHER'],
+    ] as const)('não avisa com %s', async (_, bankName, code) => {
+      mockListAccounts.mockResolvedValue(account(bankName))
+      const w = await mountView([transaction('t1')], importRow({ bankName: code }))
+
+      expect(notice(w).exists()).toBe(false)
+    })
+
+    it('não avisa em importação de cartão nem quando as contas não carregam', async () => {
+      const card = await mountView([transaction('t1')], importRow({ accountId: null, creditCardId: 'k1' }))
+      expect(notice(card).exists()).toBe(false)
+      expect(mockListAccounts).not.toHaveBeenCalled()
+      card.unmount()
+
+      mockListAccounts.mockRejectedValue(new Error('Network Error'))
+      const w = await mountView([transaction('t1')])
+      expect(notice(w).exists()).toBe(false)
+      expect(w.find('[data-testid="complete-import"]').exists()).toBe(true)
+    })
   })
 
   afterEach(() => {
@@ -981,18 +1026,58 @@ describe('ImportReviewView', () => {
       expect(inDialog('complete-dialog')).toBeNull()
     })
 
-    it('terminada, volta para a /importar', async () => {
-      const w = await mountView([transaction('t1')])
+    const toTransactions = (importMessage: string, importMonth = '2026-11') => ({
+      name: 'transactions',
+      state: { importMonth, importMessage },
+    })
+
+    it('terminada, abre a /transacoes no mês da transação mais recente, com o resumo', async () => {
+      const w = await mountView([
+        transaction('t1', { date: '2026-09-28' }),
+        transaction('t2', { date: '2026-10-15' }),
+        transaction('t3', { date: '2026-10-02' }),
+      ])
       await openComplete(w)
 
       await confirmComplete()
 
       expect(mockComplete).toHaveBeenCalledExactlyOnceWith('i1')
       expect(mockCompleteOnboardingImport).not.toHaveBeenCalled()
-      expect(mockPush).toHaveBeenCalledExactlyOnceWith('/importar')
+      expect(mockPush).toHaveBeenCalledExactlyOnceWith(toTransactions('3 transações importadas.', '2026-10'))
     })
 
-    it('no passo 5 do onboarding não faz o POST e volta para a /importar', async () => {
+    it.each([
+      [10, 10, '10 transações importadas. 10 são anteriores ao saldo informado e não alteram o saldo da conta.'],
+      [3, 1, '3 transações importadas. 1 é anterior ao saldo informado e não altera o saldo da conta.'],
+      [1, 0, '1 transação importada.'],
+    ])('com %i importadas e %i anteriores ao saldo, diz "%s"', async (affected, before, message) => {
+      mockComplete.mockResolvedValue({
+        importId: 'i1',
+        status: 'COMPLETED',
+        affectedTransactions: affected,
+        beforeBalanceTransactions: before,
+      })
+      const w = await mountView([transaction('t1')])
+      await openComplete(w)
+
+      await confirmComplete()
+
+      expect(mockPush).toHaveBeenCalledExactlyOnceWith(toTransactions(message))
+    })
+
+    it('sem linhas na revisão, abre a /transacoes sem mês (o atual)', async () => {
+      const w = await mountView([])
+      await openComplete(w)
+
+      await confirmComplete()
+
+      expect(mockPush).toHaveBeenCalledExactlyOnceWith({
+        name: 'transactions',
+        state: { importMessage: '3 transações importadas.' },
+      })
+    })
+
+    it('no passo 5 do onboarding não faz o POST e abre a /transacoes', async () => {
       mockGetOnboarding.mockResolvedValue({ currentStep: 5, stepsCompleted: [], completed: false })
       const w = await mountView([transaction('t1')])
       await openComplete(w)
@@ -1000,7 +1085,7 @@ describe('ImportReviewView', () => {
       await confirmComplete()
 
       expect(mockCompleteOnboardingImport).not.toHaveBeenCalled()
-      expect(mockPush).toHaveBeenCalledExactlyOnceWith('/importar')
+      expect(mockPush).toHaveBeenCalledExactlyOnceWith(toTransactions('3 transações importadas.'))
     })
 
     it('no passo 6 do onboarding faz o POST e vai para /onboarding', async () => {
@@ -1026,14 +1111,14 @@ describe('ImportReviewView', () => {
       expect(w.find('[data-testid="review-action-error"]').exists()).toBe(false)
     })
 
-    it('sem conseguir ler o onboarding, volta para a /importar', async () => {
+    it('sem conseguir ler o onboarding, abre a /transacoes', async () => {
       mockGetOnboarding.mockRejectedValue(new Error('Network Error'))
       const w = await mountView([transaction('t1')])
       await openComplete(w)
 
       await confirmComplete()
 
-      expect(mockPush).toHaveBeenCalledExactlyOnceWith('/importar')
+      expect(mockPush).toHaveBeenCalledExactlyOnceWith(toTransactions('3 transações importadas.'))
     })
 
     it('400 mostra a mensagem e a revisão continua disponível', async () => {

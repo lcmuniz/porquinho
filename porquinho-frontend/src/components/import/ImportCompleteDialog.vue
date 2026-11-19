@@ -57,6 +57,8 @@ const props = defineProps<{
   toCard: boolean
   unreviewedCount: number
   uncategorizedCount: number
+  /** AAAA-MM da transação mais recente da importação: a /transacoes abre nele. */
+  month: string | null
 }>()
 const emit = defineEmits<{ failed: [err: unknown] }>()
 
@@ -73,13 +75,25 @@ function onOpenChange(value: boolean) {
   if (!isCompleting.value) dialogOpen.value = value
 }
 
+/** "10 transações importadas. 10 são anteriores ao saldo informado e não alteram o saldo da conta." */
+function completionMessage(imported: number, beforeBalance: number): string {
+  const head = `${plural(imported, 'transação importada', 'transações importadas')}.`
+  if (beforeBalance === 0) return head
+  const verb = beforeBalance === 1 ? 'é anterior' : 'são anteriores'
+  const change = beforeBalance === 1 ? 'altera' : 'alteram'
+  return `${head} ${beforeBalance} ${verb} ao saldo informado e não ${change} o saldo da conta.`
+}
+
 async function finish() {
   if (isCompleting.value) return
   isCompleting.value = true
   const id = props.importId
   try {
-    await completeTransactionImport(id)
-    const destination = await routeAfterCompletion(id)
+    const result = await completeTransactionImport(id)
+    const destination = await routeAfterCompletion(id, {
+      ...(props.month ? { importMonth: props.month } : {}),
+      importMessage: completionMessage(result.affectedTransactions, result.beforeBalanceTransactions ?? 0),
+    })
     dialogOpen.value = false
     await router.push(destination)
   } catch (err) {

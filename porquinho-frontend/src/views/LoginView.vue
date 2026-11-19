@@ -9,7 +9,13 @@ import { useAuthStore } from '@/stores/auth'
 import { authService } from '@/services/authService'
 import { safeRedirect } from '@/lib/redirect'
 import { endSession } from '@/services/session'
-import { apiErrorDetail, isRegistrationRefused } from '@/lib/apiError'
+import {
+  apiErrorDetail,
+  apiErrorStatus,
+  errorMessageOf,
+  isNetworkError,
+  isRegistrationRefused,
+} from '@/lib/apiError'
 
 const router = useRouter()
 const route = useRoute()
@@ -53,12 +59,16 @@ async function handleEmailLogin() {
     // Step 1: Check if login attempt is allowed (rate limiting and account lock)
     try {
       await authService.checkLoginAllowed(email.value)
-    } catch (checkError: any) {
+    } catch (checkError) {
       // Handle rate limiting and account locking BEFORE trying Supabase
-      if (checkError.response?.status === 429) {
+      if (isNetworkError(checkError)) {
+        errorMessage.value = 'Não foi possível conectar ao servidor. Tente novamente em instantes.'
+        return
+      }
+      if (apiErrorStatus(checkError) === 429) {
         errorMessage.value = 'Muitas tentativas de login. Aguarde 1 minuto.'
         return
-      } else if (checkError.response?.status === 423) {
+      } else if (apiErrorStatus(checkError) === 423) {
         errorMessage.value =
           'Conta temporariamente bloqueada devido a múltiplas tentativas falhas. Tente novamente em 15 minutos.'
         return
@@ -77,13 +87,13 @@ async function handleEmailLogin() {
     // Pass access token directly to avoid waiting for localStorage sync
     try {
       await authService.logLogin(email.value, session.access_token)
-    } catch (backendError: any) {
+    } catch (backendError) {
       if (isRegistrationRefused(backendError)) {
         blockRefusedAccount(backendError)
         return
       }
       // If user doesn't exist in backend (404), create them now (lazy sync)
-      if (backendError.response?.status === 404) {
+      if (apiErrorStatus(backendError) === 404) {
         try {
           await authService.registerWithEmail({
             email: email.value,
@@ -91,7 +101,7 @@ async function handleEmailLogin() {
           }, session.access_token)
           // Retry logging the login
           await authService.logLogin(email.value, session.access_token)
-        } catch (syncError: any) {
+        } catch (syncError) {
           if (isRegistrationRefused(syncError)) {
             blockRefusedAccount(syncError)
             return
@@ -114,20 +124,21 @@ async function handleEmailLogin() {
 
     // Step 5: Redirect to onboarding or original page
     router.push(safeRedirect(route.query.redirectTo) ?? '/onboarding')
-  } catch (error: any) {
+  } catch (error) {
     // Step 6: Record failed login attempt (increment counter)
     try {
       await authService.recordFailedLogin(email.value)
-    } catch (recordError: any) {
+    } catch (recordError) {
       console.warn('Failed to record failed login attempt:', recordError)
     }
 
     // Step 7: Show error message after 1 second delay (security best practice)
     await new Promise((resolve) => setTimeout(resolve, 1000))
 
-    if (error.message?.includes('Invalid login credentials')) {
+    const message = errorMessageOf(error)
+    if (message.includes('Invalid login credentials')) {
       errorMessage.value = 'Email ou senha inválidos.'
-    } else if (error.message?.includes('Email not confirmed')) {
+    } else if (message.includes('Email not confirmed')) {
       errorMessage.value =
         'Email não verificado. Verifique sua caixa de entrada e clique no link de confirmação.'
     } else {
@@ -145,7 +156,7 @@ async function handleGoogleLogin() {
   try {
     await signInWithGoogle()
     // Redirect handled by Supabase (to /auth/callback)
-  } catch (error: any) {
+  } catch {
     errorMessage.value = 'Erro ao fazer login com Google. Tente novamente.'
     isLoading.value = false
   }

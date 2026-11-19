@@ -9,6 +9,7 @@ const mockSignIn = vi.fn()
 const mockLogLogin = vi.fn()
 const mockRegisterWithEmail = vi.fn()
 const mockRecordFailed = vi.fn()
+const mockCheckLoginAllowed = vi.fn()
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: (...a: unknown[]) => mockPush(...a) }),
@@ -21,7 +22,7 @@ vi.mock('@/composables/useAuth', () => ({
 }))
 vi.mock('@/services/authService', () => ({
   authService: {
-    checkLoginAllowed: async () => undefined,
+    checkLoginAllowed: (...a: unknown[]) => mockCheckLoginAllowed(...a),
     logLogin: (...a: unknown[]) => mockLogLogin(...a),
     registerWithEmail: (...a: unknown[]) => mockRegisterWithEmail(...a),
     recordFailedLogin: (...a: unknown[]) => mockRecordFailed(...a),
@@ -42,6 +43,7 @@ async function submit() {
 describe('LoginView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockCheckLoginAllowed.mockReset().mockResolvedValue(undefined)
     mockSignIn.mockResolvedValue({ session: { access_token: 't' }, user: { id: 'u1', email: 'a@b.com', user_metadata: {} } })
   })
 
@@ -74,6 +76,22 @@ describe('LoginView', () => {
     expect(mockSetUser).not.toHaveBeenCalled()
     expect(mockPush).not.toHaveBeenCalled()
     expect(mockRecordFailed).not.toHaveBeenCalled()
+  })
+
+  it('backend fora do ar (sem resposta): diz que não conectou, sem parecer senha errada', async () => {
+    mockCheckLoginAllowed.mockRejectedValue({ message: 'Network Error', code: 'ERR_NETWORK', request: {} })
+    const wrapper = await submit()
+    expect(wrapper.text()).toContain('Não foi possível conectar ao servidor. Tente novamente em instantes.')
+    expect(wrapper.text()).not.toContain('Erro ao fazer login')
+    expect(mockSignIn).not.toHaveBeenCalled()
+    expect(mockRecordFailed).not.toHaveBeenCalled()
+  })
+
+  it('429 na checagem continua com a mensagem de muitas tentativas', async () => {
+    mockCheckLoginAllowed.mockRejectedValue({ request: {}, response: { status: 429 } })
+    const wrapper = await submit()
+    expect(wrapper.text()).toContain('Muitas tentativas de login. Aguarde 1 minuto.')
+    expect(mockSignIn).not.toHaveBeenCalled()
   })
 
   it('outro erro do backend segue o fluxo', async () => {

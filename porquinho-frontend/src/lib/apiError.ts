@@ -15,6 +15,16 @@ export function apiErrorDetail(err: unknown, fallback?: string): string | undefi
   return (err as ApiError)?.response?.data?.detail ?? fallback
 }
 
+/** `message` do erro (Error, AuthError do Supabase ou objeto com message); '' quando não tem. */
+export function errorMessageOf(err: unknown): string {
+  return (err as { message?: string } | null)?.message ?? ''
+}
+
+/** Erro do axios sem resposta: backend fora do ar ou sem rede. */
+export function isNetworkError(err: unknown): boolean {
+  return (err as { request?: unknown } | null)?.request !== undefined && apiErrorStatus(err) === undefined
+}
+
 /** title do ProblemDetail que o backend devolve (403, DeletedAccountFilter) para conta em exclusão. */
 export const DELETED_ACCOUNT_TITLE = 'Conta em exclusão'
 

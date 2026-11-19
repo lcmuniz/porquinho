@@ -208,6 +208,7 @@ import { requestExport, getExportStatus } from '@/services/dataExportService'
 import type { DataExportResponse } from '@/types/dataExport'
 import { api } from '@/services/api'
 import { formatDateTimeBR } from '@/lib/date'
+import { apiErrorStatus } from '@/lib/apiError'
 
 const router = useRouter()
 
@@ -283,8 +284,8 @@ async function handleRequestExport() {
     exportData.value = await requestExport(password.value)
     onDialogOpenChange(false)
     startPollingIfNeeded()
-  } catch (e: any) {
-    if (e?.response?.status === 429) {
+  } catch (e) {
+    if (apiErrorStatus(e) === 429) {
       error.value = 'Limite de exportação atingido. Tente novamente em 1 hora.'
     } else {
       error.value = 'Não foi possível solicitar a exportação. Tente novamente.'

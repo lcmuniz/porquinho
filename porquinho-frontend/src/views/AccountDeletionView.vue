@@ -133,6 +133,7 @@ import { Input } from '@/components/ui/input'
 import { requestDeletion } from '@/services/accountDeletionService'
 import { useAuthStore } from '@/stores/auth'
 import { supabase } from '@/services/supabase'
+import { apiErrorStatus } from '@/lib/apiError'
 
 const CONFIRM_PHRASE = 'EXCLUIR MINHA CONTA'
 
@@ -203,10 +204,10 @@ async function handleConfirmDeletion() {
         // localStorage unavailable (private mode, etc.) - acceptable, user is already routed away.
       }
     })
-  } catch (e: any) {
-    if (e?.response?.status === 429) {
+  } catch (e) {
+    if (apiErrorStatus(e) === 429) {
       error.value = 'Limite atingido. Tente novamente em 24 horas.'
-    } else if (e?.response?.status === 404) {
+    } else if (apiErrorStatus(e) === 404) {
       error.value = 'Sua conta não foi encontrada. Atualize a página.'
     } else {
       error.value = 'Não foi possível processar sua solicitação. Tente novamente.'

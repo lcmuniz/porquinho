@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/composables/useAuth'
 import { authService } from '@/services/authService'
+import { apiErrorStatus } from '@/lib/apiError'
 
 const { requestPasswordReset } = useAuth()
 
@@ -26,15 +27,15 @@ async function handleSubmit() {
     // Log audit event (no auth required)
     try {
       await authService.logPasswordResetRequested(email.value)
-    } catch (auditError: any) {
+    } catch (auditError) {
       // Non-critical error - continue with success flow
       console.warn('Failed to log password reset request:', auditError)
     }
 
     // Show generic success message (don't reveal if email exists)
     isSuccess.value = true
-  } catch (error: any) {
-    if (error.response?.status === 429) {
+  } catch (error) {
+    if (apiErrorStatus(error) === 429) {
       errorMessage.value = 'Muitas solicitações de redefinição de senha. Aguarde 1 hora.'
     } else {
       // Still show success message even on error (security: don't reveal if email exists)

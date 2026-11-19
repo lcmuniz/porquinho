@@ -180,33 +180,42 @@ public class TransactionImportReviewService {
             }
             throw new ConflictException(NOT_IN_REVIEW_MESSAGE);
         }
-        int affectingBalance = 0;
+        BalanceEffect balanceEffect = new BalanceEffect(0, 0);
         if (cardId != null) {
             creditCardRepository.findActiveByIdForUpdate(cardId, userId)
                 .orElseThrow(() -> new ConflictException(CARD_REMOVED_MESSAGE));
         } else {
-            affectingBalance = applyBalanceEffect(userId, importId, accountId, now);
+            balanceEffect = applyBalanceEffect(userId, importId, accountId, now);
         }
+        int affectingBalance = balanceEffect.entered();
         int confirmed = transactionRepository.confirmByImport(userId, importId, now);
         auditLogService.log(AUDIT_COMPLETED, userId, ipAddress, "{\"import_id\":\"" + importId
             + "\",\"confirmed_transactions\":" + confirmed + ",\"balance_transactions\":" + affectingBalance + "}");
         log.info("Import {} completed: {} transaction(s) confirmed, {} affecting the balance", importId, confirmed,
             affectingBalance);
         budgetBalanceCache.evict(userId);
-        return new ImportReviewActionResponse(importId, TransactionImport.Status.COMPLETED.name(), confirmed);
+        return new ImportReviewActionResponse(importId, TransactionImport.Status.COMPLETED.name(), confirmed,
+            balanceEffect.before());
+    }
+
+    /** How many rows entered the balance and how many stayed out for being dated up to the reference. */
+    private record BalanceEffect(int entered, int before) {
     }
 
     /**
      * Decision D3: the rows dated after the reference date go into the balance, with one snapshot when the sum is not
-     * zero. Throwing here rolls back the whole conclusion, so the import stays in REVIEW. Returns how many rows entered.
+     * zero. Throwing here rolls back the whole conclusion, so the import stays in REVIEW. Returns how many rows entered
+     * and how many did not.
      */
-    private int applyBalanceEffect(UUID userId, UUID importId, UUID accountId, OffsetDateTime now) {
+    private BalanceEffect applyBalanceEffect(UUID userId, UUID importId, UUID accountId, OffsetDateTime now) {
         Account account = accountRepository.findActiveByIdForUpdate(accountId, userId)
             .orElseThrow(() -> new ConflictException(ACCOUNT_REMOVED_MESSAGE));
         Predicate<LocalDate> inBalance = core.inBalance(account);
-        List<Transaction> rows = transactionRepository.findBalanceCandidates(userId, importId).stream()
+        List<Transaction> candidates = transactionRepository.findBalanceCandidates(userId, importId);
+        List<Transaction> rows = candidates.stream()
             .filter(row -> inBalance.test(row.getTransactionDate()))
             .toList();
+        int before = candidates.size() - rows.size();
         BigDecimal effect = rows.stream().map(row -> TransactionCore.signed(row.getTransactionType(), row.getAmount()))
             .reduce(BigDecimal.ZERO, BigDecimal::add);
         if (effect.signum() != 0) {
@@ -218,7 +227,7 @@ public class TransactionImportReviewService {
             balanceHistoryRecorder.record(accountRepository.save(account), AccountBalanceHistory.EVENT_TRANSACTION);
         }
         if (rows.isEmpty()) {
-            return 0;
+            return new BalanceEffect(0, before);
         }
         List<UUID> ids = rows.stream().map(Transaction::getId).toList();
         int marked = 0;
@@ -227,7 +236,7 @@ public class TransactionImportReviewService {
             marked += transactionRepository.markInBalance(userId,
                 ids.subList(from, Math.min(from + MARK_IN_BALANCE_BATCH, ids.size())), now);
         }
-        return marked;
+        return new BalanceEffect(marked, before);
     }
 
     /**

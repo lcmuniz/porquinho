@@ -331,6 +331,83 @@ describe('TransactionsView', () => {
     expect(w.get('[data-testid="transactions-success"]').text()).toBe('')
   })
 
+  describe('foco ao fechar os diálogos', () => {
+    const focused = async () => {
+      await new Promise((r) => setTimeout(r, 0))
+      await flushPromises()
+      return document.activeElement
+    }
+
+    it('cancelar a inclusão devolve o foco ao "Adicionar transação"', async () => {
+      const w = await mountView([transaction('t1')])
+      await w.get('[data-testid="add-transaction"]').trigger('click')
+      await flushPromises()
+      inDialog<HTMLButtonElement>('edit-cancel')!.click()
+      await flushPromises()
+
+      expect(inDialog('edit-dialog')).toBeNull()
+      expect((await focused())?.getAttribute('data-testid')).toBe('add-transaction')
+    })
+
+    it('cancelar a edição devolve o foco ao "Editar" da linha', async () => {
+      const w = await mountView([transaction('t1')])
+      await w.get('[data-testid="edit-t1"]').trigger('click')
+      await flushPromises()
+      inDialog<HTMLButtonElement>('edit-cancel')!.click()
+      await flushPromises()
+
+      expect(inDialog('edit-dialog')).toBeNull()
+      expect((await focused())?.getAttribute('data-testid')).toBe('edit-t1')
+    })
+
+    it('cancelar a remoção devolve o foco ao "Editar" da linha', async () => {
+      const w = await mountView([transaction('t1')])
+      await w.get('[data-testid="remove-t1"]').trigger('click')
+      await flushPromises()
+      inDialog<HTMLButtonElement>('confirm-cancel')!.click()
+      await flushPromises()
+
+      expect(inDialog('confirm-dialog')).toBeNull()
+      expect((await focused())?.getAttribute('data-testid')).toBe('edit-t1')
+    })
+
+    it('remover a linha devolve o foco ao título, porque o botão dela saiu da lista', async () => {
+      const w = await mountView([transaction('t1')])
+      await w.get('[data-testid="remove-t1"]').trigger('click')
+      await flushPromises()
+      mockList.mockResolvedValue([])
+      inDialog<HTMLButtonElement>('confirm-action')!.click()
+      await flushPromises()
+
+      expect(inDialog('confirm-dialog')).toBeNull()
+      expect((await focused())?.textContent?.trim()).toBe('Transações')
+    })
+  })
+
+  describe('vindo da conclusão de uma importação', () => {
+    afterEach(() => window.history.replaceState(null, ''))
+
+    it('abre no mês da importação, mostra o resumo e limpa o estado', async () => {
+      const message = '10 transações importadas. 10 são anteriores ao saldo informado e não alteram o saldo da conta.'
+      window.history.replaceState({ importMonth: '2026-10', importMessage: message }, '')
+
+      const w = await mountView([transaction('t1', { date: '2026-10-15' })])
+
+      expect(mockList).toHaveBeenCalledExactlyOnceWith('2026-10')
+      expect(w.get('[data-testid="month-label"]').text()).toBe('outubro de 2026')
+      expect(w.get('[data-testid="transactions-success"]').text()).toBe(message)
+      expect(window.history.state.importMessage).toBeNull()
+      expect(window.history.state.importMonth).toBeNull()
+    })
+
+    it('sem o estado, abre no mês atual sem mensagem', async () => {
+      const w = await mountView([])
+
+      expect(mockList).toHaveBeenCalledExactlyOnceWith('2026-11')
+      expect(w.get('[data-testid="transactions-success"]').text()).toBe('')
+    })
+  })
+
   describe('adicionar transação (Story 5.13)', () => {
     async function openCreate(w: VueWrapper) {
       await w.get('[data-testid="add-transaction"]').trigger('click')
