@@ -9,6 +9,7 @@ import com.porquinho.service.DashboardDetailsService;
 import com.porquinho.service.AuditLogService;
 import com.porquinho.service.DashboardService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -19,6 +20,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
@@ -86,7 +89,7 @@ public class DashboardController {
      * X-Export-Count.
      */
     @GetMapping(value = "/layer3/export", produces = "text/csv")
-    public ResponseEntity<String> layer3Export(@AuthenticationPrincipal Jwt jwt,
+    public void layer3Export(@AuthenticationPrincipal Jwt jwt,
             @RequestParam(required = false) String from, @RequestParam(required = false) String to,
             @RequestParam(required = false) List<UUID> categoryIds,
             @RequestParam(defaultValue = "false") boolean uncategorized,
@@ -95,19 +98,28 @@ public class DashboardController {
             @RequestParam(required = false) String q, @RequestParam(required = false) String sort,
             @RequestParam(defaultValue = "false") boolean includeFutureInstallments,
             @RequestParam(defaultValue = "false") boolean includeDeleted,
-            HttpServletRequest request) {
+            HttpServletRequest request, HttpServletResponse response) throws IOException {
         UUID userId = UUID.fromString(jwt.getSubject());
         DashboardDetailsService.DetailsFilter filter = new DashboardDetailsService.DetailsFilter(from, to, categoryIds, uncategorized,
             accountIds, creditCardIds, q, sort);
-        DashboardDetailsService.CsvExport export = detailsService.detailsCsv(userId, filter,
-            new DashboardDetailsService.ExportOptions(includeFutureInstallments, includeDeleted));
-        auditLogService.log("transaction_export", userId, request.getRemoteAddr(),
-            AuditLogService.metadata("count", export.count()));
         LocalDate today = LocalDate.now(ZoneId.of("America/Sao_Paulo"));
-        return ResponseEntity.ok()
-            .contentType(new MediaType("text", "csv", java.nio.charset.StandardCharsets.UTF_8))
-            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"transacoes_" + today + ".csv\"")
-            .header("X-Export-Count", String.valueOf(export.count()))
-            .body(export.csv());
+        // streamed (grupo C): headers go once the count is known; a bad filter throws before that and stays a 400
+        long[] started = {-1};
+        try {
+            detailsService.detailsCsv(userId, filter, new DashboardDetailsService.ExportOptions(includeFutureInstallments,
+                includeDeleted), count -> {
+                    started[0] = count;
+                    response.setContentType(new MediaType("text", "csv", StandardCharsets.UTF_8).toString());
+                    response.setHeader(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"transacoes_" + today + ".csv\"");
+                    response.setHeader("X-Export-Count", String.valueOf(count));
+                    return response.getOutputStream();
+                });
+        } finally {
+            // after the read-only transaction (an insert cannot run in it); a download cut halfway is still audited
+            if (started[0] >= 0) {
+                auditLogService.log("transaction_export", userId, request.getRemoteAddr(),
+                    AuditLogService.metadata("count", started[0]));
+            }
+        }
     }
 }

@@ -3,7 +3,6 @@ package com.porquinho.service;
 import com.porquinho.dto.DashboardLayer3Response;
 import com.porquinho.dto.TransactionResponse;
 import com.porquinho.exception.BadRequestException;
-import com.porquinho.service.DashboardDetailsService.CsvExport;
 import com.porquinho.service.DashboardDetailsService.DetailsFilter;
 import com.porquinho.service.DashboardDetailsService.ExportOptions;
 import org.junit.jupiter.api.AfterEach;
@@ -239,7 +238,7 @@ class DashboardDetailsIntegrationTest {
         UUID payment = confirmed(account, null, null, DAY, "Fatura", "300.00");
         jdbc.update("UPDATE transactions SET kind = 'CARD_PAYMENT' WHERE id = ?", payment);
 
-        CsvExport export = detailsService.detailsCsv(userId, filter(null, false, null, null, null, "amount,desc"),
+        CsvExport export = csv(filter(null, false, null, null, null, "amount,desc"),
             ExportOptions.NONE);
 
         String[] lines = export.csv().split("\r\n");
@@ -270,29 +269,29 @@ class DashboardDetailsIntegrationTest {
         // "Tudo": the widest dates LocalDate and PostgreSQL take
         DetailsFilter all = new DetailsFilter("0001-01-01", "9999-12-31", null, false, null, null, null, null);
 
-        CsvExport none = detailsService.detailsCsv(userId, all, ExportOptions.NONE);
+        CsvExport none = csv(all, ExportOptions.NONE);
         assertThat(none.count()).isEqualTo(1);
         assertThat(none.csv()).contains(";Normal;").doesNotContain("Parcelada", "Removida", "Pendente", "Do outro");
 
-        CsvExport futures = detailsService.detailsCsv(userId, all, new ExportOptions(true, false));
+        CsvExport futures = csv(all, new ExportOptions(true, false));
         assertThat(futures.count()).isEqualTo(2);
         String date = DAY.plusMonths(2).format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"));
         assertThat(futures.csv()).contains(date + ";Parcelada;-10,00;Saída;Essenciais › Mercado;Roxinho;Não;Sim;3/10;Manual;Não\r\n")
             .doesNotContain("Removida");
 
-        CsvExport deleted = detailsService.detailsCsv(userId, all, new ExportOptions(false, true));
+        CsvExport deleted = csv(all, new ExportOptions(false, true));
         assertThat(deleted.count()).isEqualTo(2);
         assertThat(deleted.csv()).contains(";Removida;-2,00;Saída;Essenciais › Mercado;Nubank;Não;Não;;Manual;Sim\r\n")
             .doesNotContain("Parcelada");
 
-        CsvExport both = detailsService.detailsCsv(userId, all, new ExportOptions(true, true));
+        CsvExport both = csv(all, new ExportOptions(true, true));
         assertThat(both.count()).isEqualTo(3);
         assertThat(both.csv()).doesNotContain("Pendente", "Do outro");
     }
 
     @Test
     void anEmptyPeriodIsJustTheHeader() {
-        CsvExport export = detailsService.detailsCsv(userId, filter(null, false, null, null, null, null),
+        CsvExport export = csv(filter(null, false, null, null, null, null),
             new ExportOptions(true, true));
 
         assertThat(export.count()).isZero();
@@ -311,14 +310,14 @@ class DashboardDetailsIntegrationTest {
             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'DEBIT', 'REGULAR', 'CONFIRMED', FALSE)", batch);
         DetailsFilter all = new DetailsFilter("0001-01-01", "9999-12-31", null, false, null, null, null, null);
         ExportOptions flags = new ExportOptions(true, true);
-        detailsService.detailsCsv(userId, all, flags); // warm-up
+        csv(all, flags); // warm-up
 
         // best of 3 runs: one slow run on a busy CI runner is noise, not the query
         long millis = Long.MAX_VALUE;
         CsvExport export = null;
         for (int run = 0; run < 3; run++) {
             long start = System.nanoTime();
-            export = detailsService.detailsCsv(userId, all, flags);
+            export = csv(all, flags);
             millis = Math.min(millis, (System.nanoTime() - start) / 1_000_000);
         }
 
@@ -352,5 +351,84 @@ class DashboardDetailsIntegrationTest {
         assertThat(response.totalItems()).isEqualTo(10_000);
         assertThat(response.items()).hasSize(50);
         assertThat(millis).isLessThan(1000);
+    }
+
+    /**
+     * Grupo C (pre-10-6): 100k linhas no "Tudo" com as duas flags. Mede tempo, bytes alocados pela thread e o pico de
+     * heap vivo (amostrado após GCs forçados durante o export). Fica fora da suíte normal (~15 s): rode com
+     * -DexcludedGroups= -Dgroups=slow. Medido em 2026-11-19, antes do streaming: ~1,0-1,8 s, 476 MB alocados, pico vivo
+     * +166 MB; depois: ~1,1 s, 349 MB alocados, pico vivo +1 MB (CSV de 10 MB).
+     */
+    @Test
+    @org.junit.jupiter.api.Tag("slow")
+    void hundredThousandRowsExportMeasured() throws Exception {
+        List<Object[]> batch = new ArrayList<>();
+        for (int i = 0; i < 100_000; i++) {
+            batch.add(new Object[] {UUID.randomUUID(), userId, account, i % 2 == 0 ? food : fun,
+                DAY.minusDays(i % 3000), "Compra no mercado número " + i, "Compra " + i, BigDecimal.valueOf(i + 1, 2)});
+        }
+        jdbc.batchUpdate("INSERT INTO transactions (id, user_id, account_id, category_id, transaction_date, description, "
+            + "original_description, amount, transaction_type, kind, review_status, is_future_installment) "
+            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'DEBIT', 'REGULAR', 'CONFIRMED', FALSE)", batch);
+        batch = null;
+        DetailsFilter all = new DetailsFilter("0001-01-01", "9999-12-31", null, false, null, null, null, "category,asc");
+        ExportOptions flags = new ExportOptions(true, true);
+        long[] bytes = new long[1];
+        java.io.OutputStream sink = new java.io.OutputStream() {
+            @Override public void write(int b) { bytes[0]++; }
+            @Override public void write(byte[] b, int off, int len) { bytes[0] += len; }
+        };
+        exportTo(all, flags, sink); // warm-up
+        long millis = Long.MAX_VALUE; // best of 3, without the GC sampler
+        for (int run = 0; run < 3; run++) {
+            long start = System.nanoTime();
+            exportTo(all, flags, sink);
+            millis = Math.min(millis, (System.nanoTime() - start) / 1_000_000);
+        }
+
+        var threads = (com.sun.management.ThreadMXBean) java.lang.management.ManagementFactory.getThreadMXBean();
+        var pools = java.lang.management.ManagementFactory.getMemoryPoolMXBeans().stream()
+            .filter(p -> p.getType() == java.lang.management.MemoryType.HEAP).toList();
+        java.util.function.LongSupplier liveAfterGc = () -> {
+            System.gc();
+            return pools.stream().mapToLong(p -> p.getCollectionUsage() == null ? 0 : p.getCollectionUsage().getUsed()).sum();
+        };
+        long baseline = liveAfterGc.getAsLong();
+        long[] peak = {0};
+        var running = new java.util.concurrent.atomic.AtomicBoolean(true);
+        Thread sampler = Thread.ofPlatform().start(() -> {
+            while (running.get()) {
+                peak[0] = Math.max(peak[0], liveAfterGc.getAsLong());
+                try { Thread.sleep(50); } catch (InterruptedException e) { return; }
+            }
+        });
+        bytes[0] = 0;
+        long allocatedBefore = threads.getCurrentThreadAllocatedBytes();
+        long count = exportTo(all, flags, sink);
+        long allocated = threads.getCurrentThreadAllocatedBytes() - allocatedBefore;
+        running.set(false);
+        sampler.join();
+
+        System.out.printf("CSV 100k: %d linhas, %d MB de CSV, %d ms, %d MB alocados, pico vivo +%d MB%n", count,
+            bytes[0] >> 20, millis, allocated >> 20, Math.max(0, peak[0] - baseline) >> 20);
+        assertThat(count).isEqualTo(100_000);
+        assertThat(peak[0] - baseline).as("pico de heap vivo").isLessThan(32L << 20);
+    }
+
+    private long exportTo(DetailsFilter filter, ExportOptions options, java.io.OutputStream out) throws Exception {
+        return detailsService.detailsCsv(userId, filter, options, count -> out);
+    }
+
+    private record CsvExport(String csv, long count) {}
+
+    /** The streamed CSV as text, as the browser gets it. */
+    private CsvExport csv(DetailsFilter filter, ExportOptions options) {
+        var out = new java.io.ByteArrayOutputStream();
+        try {
+            long count = detailsService.detailsCsv(userId, filter, options, n -> out);
+            return new CsvExport(out.toString(java.nio.charset.StandardCharsets.UTF_8), count);
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
     }
 }

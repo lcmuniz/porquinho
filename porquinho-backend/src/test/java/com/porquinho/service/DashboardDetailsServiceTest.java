@@ -16,7 +16,7 @@ class DashboardDetailsServiceTest {
 
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-12-01T01:00:00Z"), ZoneOffset.UTC);
 
-    private final DashboardDetailsService service = new DashboardDetailsService(null, null, null, null, null, CLOCK);
+    private final DashboardDetailsService service = new DashboardDetailsService(null, null, null, null, null, null, null, CLOCK);
 
     // Story 7.7: one cache entry per filter, page and month
     @Test
@@ -43,7 +43,7 @@ class DashboardDetailsServiceTest {
         assertNotEquals(service.filtersHash(new DashboardDetailsService.DetailsFilter(null, null, List.of(), false, List.of(),
             List.of(), null, null), 0), service.filtersHash(new DashboardDetailsService.DetailsFilter(null, null, List.of(),
             false, List.of(), List.of(), "null", null), 0));
-        DashboardDetailsService nextMonth = new DashboardDetailsService(null, null, null, null, null,
+        DashboardDetailsService nextMonth = new DashboardDetailsService(null, null, null, null, null, null, null,
             Clock.offset(CLOCK, java.time.Duration.ofDays(1)));
         assertNotEquals(hash, nextMonth.filtersHash(base, 0));
     }

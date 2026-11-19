@@ -1,23 +1,35 @@
 package com.porquinho.service;
 
 import com.porquinho.dto.DashboardLayer3Response;
-import com.porquinho.dto.TransactionResponse;
 import com.porquinho.entity.Category;
 import com.porquinho.entity.Transaction;
 import com.porquinho.exception.BadRequestException;
 import com.porquinho.repository.AccountRepository;
+import com.porquinho.repository.CategoryRepository;
 import com.porquinho.repository.CreditCardRepository;
 import com.porquinho.repository.TransactionRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Order;
 import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import org.hibernate.jpa.HibernateHints;
 import org.hibernate.query.criteria.JpaRoot;
 import org.hibernate.query.sqm.tree.SqmJoinType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -35,6 +47,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 /**
  * Dashboard layer 3 (Story 7.6): the confirmed transaction list with filters, sort and pages, its CSV and the cache
@@ -48,21 +61,27 @@ public class DashboardDetailsService {
     static final String INVALID_PERIOD_MESSAGE = "Período inválido: use datas AAAA-MM-DD com o início até o fim";
     static final String INVALID_SORT_MESSAGE = "Ordenação inválida";
     static final String INVALID_PAGE_MESSAGE = "Página inválida";
+    private static final int CSV_FETCH_SIZE = 1000;
     private static final DateTimeFormatter CSV_DATE = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private final TransactionRepository transactionRepository;
     private final AccountRepository accountRepository;
     private final CreditCardRepository creditCardRepository;
+    private final CategoryRepository categoryRepository;
+    private final EntityManager entityManager;
     private final TransactionService transactionService;
     private final DashboardCache dashboardCache;
     private final Clock clock;
 
     public DashboardDetailsService(TransactionRepository transactionRepository, AccountRepository accountRepository,
-                                   CreditCardRepository creditCardRepository, TransactionService transactionService,
+                                   CreditCardRepository creditCardRepository, CategoryRepository categoryRepository,
+                                   EntityManager entityManager, TransactionService transactionService,
                                    DashboardCache dashboardCache, Clock clock) {
         this.transactionRepository = transactionRepository;
         this.accountRepository = accountRepository;
         this.creditCardRepository = creditCardRepository;
+        this.categoryRepository = categoryRepository;
+        this.entityManager = entityManager;
         this.transactionService = transactionService;
         this.dashboardCache = dashboardCache;
         this.clock = clock;
@@ -91,8 +110,11 @@ public class DashboardDetailsService {
         public static final ExportOptions NONE = new ExportOptions(false, false);
     }
 
-    /** Story 9.1: the CSV text and how many transactions it has (header not counted). */
-    public record CsvExport(String csv, int count) {}
+    /** Story 9.1: where the CSV goes, opened once the row count is known (it goes in a header before the body). */
+    @FunctionalInterface
+    public interface CsvTarget {
+        OutputStream open(long count) throws IOException;
+    }
 
     /** Story 7.6: page {@code page} (0-based, 50 rows) of the filtered list, same base as /transacoes. */
     @Transactional(readOnly = true)
@@ -130,37 +152,50 @@ public class DashboardDetailsService {
     /**
      * Story 7.6: every row of the filtered list in the same order, as CSV for Excel pt-BR (BOM, ";", decimal comma).
      * The value is signed (debit negative); origin is the import or a manual entry. Story 9.1: {@code options} may add
-     * future installments and deleted rows, flagged in the columns Parcelado and Excluída.
+     * future installments and deleted rows, flagged in the columns Parcelado and Excluída. Grupo C (pre-10-6): the rows
+     * are streamed from a cursor straight to {@code target}, nothing is kept in memory; REPEATABLE READ makes the count
+     * and the rows the same snapshot. Returns the row count (header not counted).
      */
-    @Transactional(readOnly = true)
-    public CsvExport detailsCsv(UUID userId, DetailsFilter filter, ExportOptions options) {
-        List<Transaction> rows = transactionRepository.findAll(detailsSpec(userId, filter, options));
-        List<TransactionResponse> responses = transactionService.toResponses(userId, rows);
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public long detailsCsv(UUID userId, DetailsFilter filter, ExportOptions options, CsvTarget target) throws IOException {
+        Specification<Transaction> spec = detailsSpec(userId, filter, options);
+        long count = transactionRepository.count(spec);
+        Map<UUID, Category> categories = new HashMap<>();
+        categoryRepository.findByUserIdOrderByCreatedAtAsc(userId).forEach(c -> categories.put(c.getId(), c));
         Map<UUID, String> targets = new HashMap<>();
         accountRepository.findByUserIdOrderByCreatedAtAsc(userId).forEach(a -> targets.put(a.getId(), a.getAccountName()));
         creditCardRepository.findByUserIdOrderByCreatedAtAsc(userId).forEach(c -> targets.put(c.getId(), c.getCardName()));
 
-        StringBuilder csv = new StringBuilder(CsvPtBr.BOM + "Data;Descrição;Valor;Tipo;Categoria;Conta;Pix;Parcelado;Parcela;Origem;Excluída" + CsvPtBr.CRLF);
-        for (int i = 0; i < rows.size(); i++) {
-            Transaction row = rows.get(i);
-            TransactionResponse r = responses.get(i);
-            boolean debit = row.getTransactionType() == Transaction.Type.DEBIT;
-            UUID target = row.getAccountId() != null ? row.getAccountId() : row.getCreditCardId();
-            csv.append(String.join(";",
-                row.getTransactionDate().format(CSV_DATE),
-                CsvPtBr.text(row.getDescription()),
-                CsvPtBr.money(debit ? row.getAmount().negate() : row.getAmount()),
-                debit ? "Saída" : "Entrada",
-                CsvPtBr.text(categoryLabel(row, r.category())),
-                CsvPtBr.text(targets.getOrDefault(target, "")),
-                row.isPix() ? "Sim" : "Não",
-                row.isInstallment() ? "Sim" : "Não",
-                row.isInstallment() && row.getInstallmentNumber() != null && row.getInstallmentTotal() != null
-                    ? row.getInstallmentNumber() + "/" + row.getInstallmentTotal() : "",
-                row.getImportId() != null ? "Importação" : "Manual",
-                row.getDeletedAt() != null ? "Sim" : "Não")).append(CsvPtBr.CRLF);
+        CriteriaBuilder cb = entityManager.getCriteriaBuilder();
+        CriteriaQuery<Transaction> query = cb.createQuery(Transaction.class);
+        Root<Transaction> root = query.from(Transaction.class);
+        query.where(spec.toPredicate(root, query, cb));
+        Writer csv = new BufferedWriter(new OutputStreamWriter(target.open(count), StandardCharsets.UTF_8));
+        csv.write(CsvPtBr.BOM + "Data;Descrição;Valor;Tipo;Categoria;Conta;Pix;Parcelado;Parcela;Origem;Excluída" + CsvPtBr.CRLF);
+        try (Stream<Transaction> rows = entityManager.createQuery(query)
+                .setHint(HibernateHints.HINT_FETCH_SIZE, CSV_FETCH_SIZE).getResultStream()) {
+            for (Transaction row : (Iterable<Transaction>) rows::iterator) {
+                boolean debit = row.getTransactionType() == Transaction.Type.DEBIT;
+                UUID account = row.getAccountId() != null ? row.getAccountId() : row.getCreditCardId();
+                csv.write(String.join(";",
+                    row.getTransactionDate().format(CSV_DATE),
+                    CsvPtBr.text(row.getDescription()),
+                    CsvPtBr.money(debit ? row.getAmount().negate() : row.getAmount()),
+                    debit ? "Saída" : "Entrada",
+                    CsvPtBr.text(categoryLabel(row, TransactionCore.category(row.getCategoryId(), categories))),
+                    CsvPtBr.text(targets.getOrDefault(account, "")),
+                    row.isPix() ? "Sim" : "Não",
+                    row.isInstallment() ? "Sim" : "Não",
+                    row.isInstallment() && row.getInstallmentNumber() != null && row.getInstallmentTotal() != null
+                        ? row.getInstallmentNumber() + "/" + row.getInstallmentTotal() : "",
+                    row.getImportId() != null ? "Importação" : "Manual",
+                    row.getDeletedAt() != null ? "Sim" : "Não"));
+                csv.write(CsvPtBr.CRLF);
+                entityManager.detach(row); // the persistence context would keep every row otherwise
+            }
         }
-        return new CsvExport(csv.toString(), rows.size());
+        csv.flush();
+        return count;
     }
 
     /** Same label as /transacoes: "Grupo › Categoria", card payments and uncategorized by name. */

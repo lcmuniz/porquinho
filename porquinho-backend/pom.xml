@@ -30,6 +30,8 @@
 		<java.version>21</java.version>
 		<!-- 1.21.0 (do Spring Boot 3.5.0) usa API Docker 1.32, rejeitada pelo Docker Engine 29+ -->
 		<testcontainers.version>1.21.4</testcontainers.version>
+		<!-- testes @Tag("slow") (medições de carga) fora da suíte normal; rode com -DexcludedGroups= -Dgroups=slow -->
+		<excludedGroups>slow</excludedGroups>
 	</properties>
 	<dependencies>
 		<dependency>

@@ -9,7 +9,6 @@ import com.porquinho.dto.FinancialHealthResponse;
 import com.porquinho.dto.FinancialHealthResponse.HealthStatus;
 import com.porquinho.service.AuditLogService;
 import com.porquinho.service.DashboardDetailsService;
-import com.porquinho.service.DashboardDetailsService.CsvExport;
 import com.porquinho.service.DashboardDetailsService.ExportOptions;
 import com.porquinho.service.DashboardService;
 import org.junit.jupiter.api.Test;
@@ -222,7 +221,7 @@ class DashboardControllerTest {
     @Test
     void layer3ExportIsACsvAttachment() throws Exception {
         UUID userId = UUID.randomUUID();
-        when(detailsService.detailsCsv(eq(userId), any(), any())).thenReturn(new CsvExport("\uFEFFData;Descrição\r\n", 3));
+        csv(userId, "\uFEFFData;Descrição\r\n", 3);
         String today = LocalDate.now(java.time.ZoneId.of("America/Sao_Paulo")).toString();
 
         mockMvc.perform(get("/api/v1/dashboard/layer3/export").param("sort", "category,asc")
@@ -234,8 +233,8 @@ class DashboardControllerTest {
             .andExpect(content().contentTypeCompatibleWith("text/csv"))
             .andExpect(content().string("\uFEFFData;Descrição\r\n"));
         // no flag: same list as the layer 3
-        verify(detailsService).detailsCsv(userId, new DashboardDetailsService.DetailsFilter(null, null, null, false, null,
-            null, null, "category,asc"), ExportOptions.NONE);
+        verify(detailsService).detailsCsv(eq(userId), eq(new DashboardDetailsService.DetailsFilter(null, null, null, false,
+            null, null, null, "category,asc")), eq(ExportOptions.NONE), any());
         verify(auditLogService).log("transaction_export", userId, "10.0.0.7", "{\"count\":3}");
     }
 
@@ -245,7 +244,7 @@ class DashboardControllerTest {
         UUID category = UUID.randomUUID();
         UUID account = UUID.randomUUID();
         UUID card = UUID.randomUUID();
-        when(detailsService.detailsCsv(eq(userId), any(), any())).thenReturn(new CsvExport("x", 0));
+        csv(userId, "x", 0);
 
         mockMvc.perform(get("/api/v1/dashboard/layer3/export").param("from", "2026-10-01").param("to", "2026-10-31")
                 .param("categoryIds", category.toString()).param("uncategorized", "true")
@@ -255,14 +254,32 @@ class DashboardControllerTest {
                 .with(authentication(new TestingAuthenticationToken(jwt(userId), null, "ROLE_USER"))))
             .andExpect(status().isOk())
             .andExpect(header().string("X-Export-Count", "0"));
-        verify(detailsService).detailsCsv(userId, new DashboardDetailsService.DetailsFilter("2026-10-01", "2026-10-31",
-            List.of(category), true, List.of(account), List.of(card), "mercado", "date,asc"), new ExportOptions(true, true));
+        verify(detailsService).detailsCsv(eq(userId), eq(new DashboardDetailsService.DetailsFilter("2026-10-01",
+            "2026-10-31", List.of(category), true, List.of(account), List.of(card), "mercado", "date,asc")),
+            eq(new ExportOptions(true, true)), any());
+    }
+
+    @Test
+    void layer3ExportCutHalfwayIsStillAudited() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(detailsService.detailsCsv(eq(userId), any(), any(), any())).thenAnswer(call -> {
+            call.<DashboardDetailsService.CsvTarget>getArgument(3).open(5);
+            throw new java.io.IOException("client gone");
+        });
+
+        try {
+            mockMvc.perform(get("/api/v1/dashboard/layer3/export")
+                .with(authentication(new TestingAuthenticationToken(jwt(userId), null, "ROLE_USER"))));
+        } catch (Exception expected) {
+            // the IOException may reach MockMvc; what matters is the audit
+        }
+        verify(auditLogService).log(eq("transaction_export"), eq(userId), any(), eq("{\"count\":5}"));
     }
 
     @Test
     void layer3ExportInvalidPeriodIs400() throws Exception {
         UUID userId = UUID.randomUUID();
-        when(detailsService.detailsCsv(eq(userId), any(), any())).thenThrow(new BadRequestException("Período inválido"));
+        when(detailsService.detailsCsv(eq(userId), any(), any(), any())).thenThrow(new BadRequestException("Período inválido"));
 
         mockMvc.perform(get("/api/v1/dashboard/layer3/export")
                 .with(authentication(new TestingAuthenticationToken(jwt(userId), null, "ROLE_USER"))))
@@ -303,5 +320,14 @@ class DashboardControllerTest {
         mockMvc.perform(get("/api/v1/dashboard/layer2/drilldown"))
             .andExpect(status().isUnauthorized());
         verifyNoInteractions(dashboardService);
+    }
+
+    /** The streamed export: the service opens the target with the count and writes the CSV to it. */
+    private void csv(UUID userId, String body, long count) throws Exception {
+        when(detailsService.detailsCsv(eq(userId), any(), any(), any())).thenAnswer(call -> {
+            var out = call.<DashboardDetailsService.CsvTarget>getArgument(3).open(count);
+            out.write(body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return count;
+        });
     }
 }
