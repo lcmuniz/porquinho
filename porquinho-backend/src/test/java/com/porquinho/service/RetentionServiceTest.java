@@ -66,7 +66,7 @@ class RetentionServiceTest {
         ReflectionTestUtils.setField(service, "self", service);
         lenient().when(emailService.isConfigured()).thenReturn(true);
         lenient().when(emailService.sendRetentionWarning(anyString(), anyLong(), any(), anyString(), anyString()))
-            .thenReturn(true);
+            .thenReturn(EmailService.SendResult.SENT);
     }
 
     private Subscription stored(Subscription s) {
@@ -149,7 +149,7 @@ class RetentionServiceTest {
         Subscription s = trialEndedAt(NOW.minusDays(23));
         when(subscriptionRepository.findRetentionCandidates(any())).thenReturn(List.of(s));
         when(emailService.sendRetentionWarning(anyString(), anyLong(), any(), anyString(), anyString()))
-            .thenReturn(false);
+            .thenReturn(EmailService.SendResult.TEMPORARY_FAILURE);
 
         service.runRetention();  // counted as a failure, not thrown
 
@@ -165,13 +165,102 @@ class RetentionServiceTest {
         Subscription s = trialEndedAt(NOW.minusDays(29));
         s.setRetentionWarning7dSentAt(NOW.minusDays(6));
         when(emailService.sendRetentionWarning(anyString(), anyLong(), any(), anyString(), anyString()))
-            .thenReturn(false);
+            .thenReturn(EmailService.SendResult.TEMPORARY_FAILURE);
 
         assertThatThrownBy(() -> service.processRetention(s.getUserId())).isInstanceOf(IllegalStateException.class);
 
         assertThat(s.getRetentionWarning1dSentAt()).isNull();
         verifyNoInteractions(auditLogService, accountDeletionService);
         assertThat(service.dueAction(s, NOW.plusDays(5))).contains(Action.WARN_1D);
+    }
+
+    // --- Permanent SMTP refusal (decision 2026-11-19): purge without warning after 14 days
+
+    private void smtpAnswers(EmailService.SendResult result) {
+        when(emailService.sendRetentionWarning(anyString(), anyLong(), any(), anyString(), anyString()))
+            .thenReturn(result);
+    }
+
+    @Test
+    void refusalWindowCountsSaoPauloCalendarDays() {
+        assertThat(RetentionService.PERMANENT_REFUSAL_PURGE_DAYS).isEqualTo(14);
+        assertThat(RetentionService.refusedLongEnough(NOW.minusDays(13), NOW)).isFalse();
+        assertThat(RetentionService.refusedLongEnough(NOW.minusDays(14), NOW)).isTrue();
+        // first refusal late on 09/11 Sao Paulo (02:30 UTC on 10/11): 14 days on 23/11 even if fewer hours
+        assertThat(RetentionService.refusedLongEnough(OffsetDateTime.of(2026, 11, 10, 2, 30, 0, 0, ZoneOffset.UTC),
+            NOW)).isTrue();
+        // 10/11 23:00 Sao Paulo (02:00 UTC on 11/11): 13 calendar days, still waiting
+        assertThat(RetentionService.refusedLongEnough(OffsetDateTime.of(2026, 11, 11, 2, 0, 0, 0, ZoneOffset.UTC),
+            NOW)).isFalse();
+    }
+
+    @Test
+    void firstPermanentRefusalStoresItsDayAndCountsAsFailure() {
+        Subscription s = trialEndedAt(NOW.minusDays(23));
+        when(subscriptionRepository.findRetentionCandidates(any())).thenReturn(List.of(s));
+        smtpAnswers(EmailService.SendResult.PERMANENT_REFUSAL);
+
+        service.runRetention();
+
+        assertThat(s.getRetentionRefusedSince()).isEqualTo(NOW);
+        assertThat(s.getRetentionWarning7dSentAt()).isNull();
+        verify(subscriptionRepository).save(s);
+        verifyNoInteractions(auditLogService, accountDeletionService);
+    }
+
+    @Test
+    void permanentRefusalForThirteenDaysKeepsWaiting() {
+        Subscription s = trialEndedAt(NOW.minusDays(36));
+        s.setRetentionRefusedSince(NOW.minusDays(13));
+        smtpAnswers(EmailService.SendResult.PERMANENT_REFUSAL);
+
+        assertThat(service.processRetention(s.getUserId())).get()
+            .extracting(RetentionService.Outcome::refused).isEqualTo(true);
+
+        assertThat(s.getRetentionRefusedSince()).isEqualTo(NOW.minusDays(13));
+        verifyNoInteractions(auditLogService, accountDeletionService);
+    }
+
+    @Test
+    void permanentRefusalForFourteenDaysPurgesWithAudit() {
+        Subscription s = trialEndedAt(NOW.minusDays(37));
+        s.setRetentionRefusedSince(NOW.minusDays(14));
+        AccountDeletion deletion = new AccountDeletion(s.getUserId(), NOW, null);
+        ReflectionTestUtils.setField(deletion, "id", UUID.randomUUID());
+        when(accountDeletionService.createRetentionDeletion(s.getUserId())).thenReturn(deletion);
+        when(subscriptionRepository.findRetentionCandidates(any())).thenReturn(List.of(s));
+        smtpAnswers(EmailService.SendResult.PERMANENT_REFUSAL);
+
+        service.runRetention();
+
+        verify(accountDeletionService).purgeUser(deletion);
+        verify(auditLogService).logAnonymous(eq("retention_purged_without_warning"), isNull(), argThat(m ->
+            m.contains(deletion.getId().toString()) && m.contains("\"warning\":\"7d\"")
+                && m.contains("permanent_smtp_refusal") && m.contains(NOW.minusDays(14).toString())));
+    }
+
+    @Test
+    void temporaryFailureNeverCountsNorClearsTheRefusal() {
+        Subscription s = trialEndedAt(NOW.minusDays(40));
+        s.setRetentionRefusedSince(NOW.minusDays(20));
+        smtpAnswers(EmailService.SendResult.TEMPORARY_FAILURE);
+
+        assertThatThrownBy(() -> service.processRetention(s.getUserId())).isInstanceOf(IllegalStateException.class);
+
+        assertThat(s.getRetentionRefusedSince()).isEqualTo(NOW.minusDays(20));
+        verifyNoInteractions(auditLogService, accountDeletionService);
+    }
+
+    @Test
+    void acceptedSendClearsTheRefusal() {
+        Subscription s = trialEndedAt(NOW.minusDays(36));
+        s.setRetentionRefusedSince(NOW.minusDays(13));
+
+        assertThat(service.processRetention(s.getUserId())).get()
+            .extracting(RetentionService.Outcome::action).isEqualTo(Action.WARN_7D);
+
+        assertThat(s.getRetentionRefusedSince()).isNull();
+        assertThat(s.getRetentionWarning7dSentAt()).isEqualTo(NOW);
     }
 
     @Test

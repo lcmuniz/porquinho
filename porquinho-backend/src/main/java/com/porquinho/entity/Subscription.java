@@ -83,6 +83,10 @@ public class Subscription {
     @Column(name = "retention_warning_1d_sent_at")
     private OffsetDateTime retentionWarning1dSentAt;
 
+    /** First permanent SMTP refusal of the retention warning; null after an accepted send (RetentionService). */
+    @Column(name = "retention_refused_since")
+    private OffsetDateTime retentionRefusedSince;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -169,6 +173,9 @@ public class Subscription {
 
     public OffsetDateTime getRetentionWarning1dSentAt() { return retentionWarning1dSentAt; }
     public void setRetentionWarning1dSentAt(OffsetDateTime retentionWarning1dSentAt) { this.retentionWarning1dSentAt = retentionWarning1dSentAt; }
+
+    public OffsetDateTime getRetentionRefusedSince() { return retentionRefusedSince; }
+    public void setRetentionRefusedSince(OffsetDateTime retentionRefusedSince) { this.retentionRefusedSince = retentionRefusedSince; }
 
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }

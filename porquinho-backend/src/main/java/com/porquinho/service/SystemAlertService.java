@@ -89,7 +89,9 @@ public class SystemAlertService {
         RETENTION_STALLED("Retenção de dados travada", "alerts", 0, true,
             "Confira o e-mail do backend: SMTP_HOST e MAIL_FROM configurados e o servidor aceitando os envios "
                 + "(procure 'Retention job done' e 'Failed to send' nos logs). Sem envio confirmado o aviso não é "
-                + "marcado e a exclusão espera, então os dados ficam além dos 30 dias.");
+                + "marcado e a exclusão espera, então os dados ficam além dos 30 dias. Endereço recusado em definitivo "
+                + "('recipient permanently refused' no log) é excluído sem aviso depois de "
+                + RetentionService.PERMANENT_REFUSAL_PURGE_DAYS + " dias de recusa.");
 
         final String label;
         final String tab;

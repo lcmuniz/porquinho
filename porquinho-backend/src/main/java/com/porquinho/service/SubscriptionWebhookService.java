@@ -175,6 +175,7 @@ public class SubscriptionWebhookService {
         subscription.setAccessEndedAt(null);
         subscription.setRetentionWarning7dSentAt(null);
         subscription.setRetentionWarning1dSentAt(null);
+        subscription.setRetentionRefusedSince(null);
         Subscription saved = subscriptionRepository.save(subscription);
 
         Map<String, Object> metadata = new LinkedHashMap<>();

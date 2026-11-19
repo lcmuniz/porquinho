@@ -50,6 +50,10 @@ import static com.porquinho.service.ImportMetricsService.SAO_PAULO;
  * Soft-deleted users (deletion requested by the user) are left to the Story 1.7 job.
  * Without an SMTP host or a From no warning is sent nor marked, so nobody is purged unwarned for that reason
  * (pre-Epic 10, item 7); runRetention logs one WARN per run with the postponed count.
+ * A permanent refusal of the address (SMTP 5xx to RCPT TO: mailbox gone, suppressed) is the exception (decision
+ * 2026-11-19): its first day is stored in retention_refused_since and, once it lasts PERMANENT_REFUSAL_PURGE_DAYS
+ * (Sao Paulo calendar days), the account is purged unwarned with the audit retention_purged_without_warning.
+ * An accepted send clears it; a temporary failure neither counts nor clears it.
  */
 @Service
 public class RetentionService {
@@ -58,6 +62,9 @@ public class RetentionService {
 
     /** Minimum notice of the 7-day warning: the purge is never before its mark + 7 days. */
     static final int SEVEN_DAY_NOTICE_DAYS = 7;
+
+    /** Days of permanent SMTP refusal of the warning after which the account is purged without it (2026-11-19). */
+    static final int PERMANENT_REFUSAL_PURGE_DAYS = 14;
 
     /** The 7-day warning spans at most 8 days from the 09:00 run (same window as TrialReminderService). */
     private static final int WARNING_WINDOW_DAYS = 8;
@@ -81,8 +88,15 @@ public class RetentionService {
         }
     }
 
-    /** What processRetention did; deletion is set only for PURGE (to purge after commit). */
-    record Outcome(Action action, AccountDeletion deletion) {}
+    /**
+     * What processRetention did; deletion is set only for PURGE (to purge after commit). refused: the warning was
+     * permanently refused and the purge still waits (counted as a failure).
+     */
+    record Outcome(Action action, AccountDeletion deletion, boolean refused) {
+        Outcome(Action action, AccountDeletion deletion) {
+            this(action, deletion, false);
+        }
+    }
 
     private static final Logger log = LoggerFactory.getLogger(RetentionService.class);
 
@@ -165,7 +179,10 @@ public class RetentionService {
                 if (outcome.isEmpty()) {
                     continue;
                 }
-                if (outcome.get().action() == Action.PURGE) {
+                if (outcome.get().refused()) {
+                    failed++;
+                    log.warn("Retention warning permanently refused for user {}", userId);
+                } else if (outcome.get().action() == Action.PURGE) {
                     // Own REQUIRES_NEW transaction, after the deletion committed. On failure the row stays
                     // PENDING_PURGE (due now) and the 03:00 job of AccountDeletionService retries it.
                     accountDeletionService.purgeUser(outcome.get().deletion());
@@ -228,9 +245,16 @@ public class RetentionService {
         // Send first, mark only if the SMTP server accepted it: an unsent warning must never let the purge go ahead
         OffsetDateTime purgeAt = shownPurgeAt(subscription, action, now);
         long daysLeft = TrialReminderService.daysLeft(purgeAt, now);
-        if (!emailService.sendRetentionWarning(email.get(), daysLeft, purgeAt, subscribeUrl, exportUrl)) {
+        EmailService.SendResult sent = emailService.sendRetentionWarning(email.get(), daysLeft, purgeAt, subscribeUrl,
+            exportUrl);
+        if (sent == EmailService.SendResult.PERMANENT_REFUSAL) {
+            return Optional.of(onPermanentRefusal(subscription, action, now));
+        }
+        if (sent != EmailService.SendResult.SENT) {
             throw new IllegalStateException("retention warning " + action.code + " e-mail not sent");
         }
+
+        subscription.setRetentionRefusedSince(null);
 
         if (action == Action.WARN_1D) {
             subscription.setRetentionWarning1dSentAt(now);
@@ -245,9 +269,38 @@ public class RetentionService {
     }
 
     /**
+     * The address refuses the warning for good: store the first day and, after PERMANENT_REFUSAL_PURGE_DAYS of it,
+     * purge without the warning (no mark is written, so the account stays stalled for the alert until then).
+     */
+    private Outcome onPermanentRefusal(Subscription subscription, Action action, OffsetDateTime now) {
+        OffsetDateTime since = subscription.getRetentionRefusedSince();
+        if (since == null) {
+            since = now;
+            subscription.setRetentionRefusedSince(now);
+            subscriptionRepository.save(subscription);
+        }
+        if (!refusedLongEnough(since, now)) {
+            return new Outcome(action, null, true);
+        }
+        AccountDeletion deletion = accountDeletionService.createRetentionDeletion(subscription.getUserId());
+        // Anonymous, keyed by the deletion row: the purge deletes every audit carrying the user_id
+        auditLogService.logAnonymous("retention_purged_without_warning", null, AuditLogService.metadata(
+            "deletion_id", deletion.getId(), "warning", action.code, "refused_since", since,
+            "reason", "permanent_smtp_refusal"));
+        return new Outcome(Action.PURGE, deletion);
+    }
+
+    /** At least PERMANENT_REFUSAL_PURGE_DAYS Sao Paulo calendar days since the first permanent refusal. */
+    static boolean refusedLongEnough(OffsetDateTime since, OffsetDateTime now) {
+        return !now.atZoneSameInstant(SAO_PAULO).toLocalDate()
+            .isBefore(since.atZoneSameInstant(SAO_PAULO).toLocalDate().plusDays(PERMANENT_REFUSAL_PURGE_DAYS));
+    }
+
+    /**
      * Story 10.5 (RETENTION_STALLED, items 8 and 13 of the backlog): accounts whose warning or purge is due and was not
      * done by the daily run that should have done it, more than 24 h later. From the state of the database and the
      * rules of {@link #dueAction}, so it covers every reason: SMTP not configured, a refused send or a failing job.
+     * A permanently refused address keeps its warning due (no mark), so it counts here until its purge.
      * The users the job skips on purpose (gone or with a deletion of Story 1.7 pending) do not count.
      */
     @Transactional(readOnly = true)

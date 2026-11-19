@@ -138,7 +138,7 @@ class EmailServiceTest {
     private SimpleMailMessage retentionWarning(long daysLeft, OffsetDateTime purgeAt) {
         JavaMailSender sender = mock(JavaMailSender.class);
         assertThat(serviceWith(sender, "x@example.com").sendRetentionWarning("user@example.com", daysLeft, purgeAt,
-            "https://app.example.com/assinatura", "https://app.example.com/auth/data-export")).isTrue();
+            "https://app.example.com/assinatura", "https://app.example.com/auth/data-export")).isEqualTo(EmailService.SendResult.SENT);
         ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(sender).send(captor.capture());
         return captor.getValue();
@@ -464,15 +464,52 @@ class EmailServiceTest {
 
     @Test
     void retentionWarningReportsWhetherTheSmtpAcceptedIt() {
-        // The retention marks the warning only on true: no SMTP or a refused send must say false
+        // The retention marks the warning only on SENT: no SMTP or a refused send must say otherwise
         assertThat(serviceWith(null, "x@example.com")
-            .sendRetentionWarning("user@example.com", 7, OffsetDateTime.now(), "a", "b")).isFalse();
+            .sendRetentionWarning("user@example.com", 7, OffsetDateTime.now(), "a", "b"))
+            .isEqualTo(EmailService.SendResult.TEMPORARY_FAILURE);
 
         JavaMailSender sender = mock(JavaMailSender.class);
         doThrow(new org.springframework.mail.MailAuthenticationException("bad key"))
             .when(sender).send(any(SimpleMailMessage.class));
         assertThat(serviceWith(sender, "x@example.com")
-            .sendRetentionWarning("user@example.com", 7, OffsetDateTime.now(), "a", "b")).isFalse();
+            .sendRetentionWarning("user@example.com", 7, OffsetDateTime.now(), "a", "b"))
+            .isEqualTo(EmailService.SendResult.TEMPORARY_FAILURE);
+    }
+
+    /** What JavaMailSenderImpl throws when the server answers RCPT TO with {@code code} (Angus SMTPTransport shape). */
+    private static org.springframework.mail.MailSendException rcptRefused(int code) throws Exception {
+        jakarta.mail.internet.InternetAddress to = new jakarta.mail.internet.InternetAddress("user@example.com");
+        var refused = new org.eclipse.angus.mail.smtp.SMTPAddressFailedException(to, "RCPT TO:<user@example.com>",
+            code, code + " mailbox unavailable");
+        var invalid = new jakarta.mail.SendFailedException("Invalid Addresses", refused, null, null,
+            new jakarta.mail.Address[] {to});
+        return new org.springframework.mail.MailSendException(java.util.Map.of(new Object(), invalid));
+    }
+
+    @Test
+    void recipientRefusedWith5xxIsPermanent() throws Exception {
+        JavaMailSender sender = mock(JavaMailSender.class);
+        doThrow(rcptRefused(550)).when(sender).send(any(SimpleMailMessage.class));
+
+        assertThat(serviceWith(sender, "x@example.com")
+            .sendRetentionWarning("user@example.com", 7, OffsetDateTime.now(), "a", "b"))
+            .isEqualTo(EmailService.SendResult.PERMANENT_REFUSAL);
+        // also when wrapped as cause (no failedMessages map)
+        assertThat(EmailService.isPermanentRecipientRefusal(new RuntimeException(rcptRefused(553)
+            .getFailedMessages().values().iterator().next()))).isTrue();
+    }
+
+    @Test
+    void everythingElseIsTemporary() throws Exception {
+        assertThat(EmailService.isPermanentRecipientRefusal(rcptRefused(450))).isFalse();  // 4xx mailbox busy
+        assertThat(EmailService.isPermanentRecipientRefusal(
+            new org.springframework.mail.MailAuthenticationException("535 bad key"))).isFalse();
+        // 5xx to MAIL FROM is our configuration, not the user's address
+        assertThat(EmailService.isPermanentRecipientRefusal(new org.eclipse.angus.mail.smtp.SMTPSendFailedException(
+            "MAIL FROM", 553, "553 sender rejected", null, null, null, null))).isFalse();
+        assertThat(EmailService.isPermanentRecipientRefusal(
+            new org.springframework.mail.MailSendException("timeout", new java.net.SocketTimeoutException()))).isFalse();
     }
 
     // ---- Story 10.5: system alert ----

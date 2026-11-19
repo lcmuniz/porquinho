@@ -5,10 +5,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.mail.MailSendException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
+import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
+import org.eclipse.angus.mail.smtp.SMTPAddressFailedException;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -16,8 +19,13 @@ import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayDeque;
+import java.util.Collections;
+import java.util.Deque;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * Service for sending emails.
@@ -246,16 +254,17 @@ public class EmailService {
     /**
      * Warn a user without access that all their data will be deleted (retention of non-converters, pre-Epic 10):
      * 7 days and 1 day before the purge, with links to subscribe or export the data.
-     * If SMTP is not configured or sending fails, logs warning and returns false.
+     * If SMTP is not configured or sending fails, logs warning and returns a failure.
      *
      * @param daysLeft Calendar days until the purge (Sao Paulo dates)
      * @param purgeAt When the data is deleted (the effective purge date)
-     * @return true only when the SMTP server accepted the e-mail
+     * @return SENT only when the SMTP server accepted the e-mail; PERMANENT_REFUSAL when it refused the recipient
+     *     with a 5xx code ({@link #isPermanentRecipientRefusal}); TEMPORARY_FAILURE for anything else
      */
-    public boolean sendRetentionWarning(String email, long daysLeft, OffsetDateTime purgeAt, String subscribeUrl, String exportUrl) {
+    public SendResult sendRetentionWarning(String email, long daysLeft, OffsetDateTime purgeAt, String subscribeUrl, String exportUrl) {
         if (mailSender == null) {
             log.warn("SMTP not configured - skipping retention warning email to {}", maskEmail(email));
-            return false;
+            return SendResult.TEMPORARY_FAILURE;
         }
 
         try {
@@ -277,11 +286,38 @@ public class EmailService {
             );
             mailSender.send(message);
             log.info("Retention warning ({} days left) email sent to {}", daysLeft, maskEmail(email));
-            return true;
+            return SendResult.SENT;
         } catch (Exception e) {
-            log.warn("Failed to send retention warning email to {}: {}", maskEmail(email), e.getClass().getSimpleName());
-            return false;
+            boolean permanent = isPermanentRecipientRefusal(e);
+            log.warn("Failed to send retention warning email to {}: {}{}", maskEmail(email), e.getClass().getSimpleName(),
+                permanent ? " (recipient permanently refused)" : "");
+            return permanent ? SendResult.PERMANENT_REFUSAL : SendResult.TEMPORARY_FAILURE;
         }
+    }
+
+    /** Result of a send whose caller needs to know whether, and how, it failed. */
+    public enum SendResult { SENT, TEMPORARY_FAILURE, PERMANENT_REFUSAL }
+
+    /**
+     * True when the SMTP server refused the recipient address with a 5xx reply to RCPT TO (mailbox does not exist,
+     * suppressed address). Angus Mail reports it as SMTPAddressFailedException, chained under the SendFailedException
+     * that Spring wraps in a MailSendException. Everything else is temporary: no SMTP, auth failure, a refused From
+     * (our configuration, not the user's address), 4xx, timeout, connection.
+     */
+    static boolean isPermanentRecipientRefusal(Throwable e) {
+        Deque<Throwable> todo = new ArrayDeque<>(List.of(e));
+        Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        while (!todo.isEmpty()) {
+            Throwable t = todo.pop();
+            if (!seen.add(t)) continue;
+            if (t instanceof SMTPAddressFailedException f && f.getReturnCode() >= 500 && f.getReturnCode() < 600) {
+                return true;
+            }
+            if (t.getCause() != null) todo.push(t.getCause());
+            if (t instanceof MessagingException m && m.getNextException() != null) todo.push(m.getNextException());
+            if (t instanceof MailSendException m) todo.addAll(m.getFailedMessages().values());
+        }
+        return false;
     }
 
     /** One category of the budget alert e-mail: the level is the highest one newly reached (90 or 100). */

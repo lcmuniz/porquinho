@@ -64,7 +64,7 @@ class RetentionServiceIntegrationTest {
     @BeforeEach
     void smtpConfigured() {
         when(emailService.isConfigured()).thenReturn(true);
-        when(emailService.sendRetentionWarning(anyString(), anyLong(), any(), anyString(), anyString())).thenReturn(true);
+        when(emailService.sendRetentionWarning(anyString(), anyLong(), any(), anyString(), anyString())).thenReturn(EmailService.SendResult.SENT);
     }
 
     @AfterEach
@@ -146,11 +146,11 @@ class RetentionServiceIntegrationTest {
         assertThat(withIt).isPositive();
 
         when(emailService.isConfigured()).thenReturn(true);
-        when(emailService.sendRetentionWarning(anyString(), anyLong(), any(), anyString(), anyString())).thenReturn(false);
+        when(emailService.sendRetentionWarning(anyString(), anyLong(), any(), anyString(), anyString())).thenReturn(EmailService.SendResult.TEMPORARY_FAILURE);
         retentionService.runRetention();
         assertThat(retentionService.stalledCount(now)).isEqualTo(withIt);
 
-        when(emailService.sendRetentionWarning(anyString(), anyLong(), any(), anyString(), anyString())).thenReturn(true);
+        when(emailService.sendRetentionWarning(anyString(), anyLong(), any(), anyString(), anyString())).thenReturn(EmailService.SendResult.SENT);
         retentionService.runRetention();
         assertThat(subscriptionRepository.findByUserId(userId).orElseThrow().getRetentionWarning7dSentAt()).isNotNull();
         assertThat(retentionService.stalledCount(now)).isEqualTo(withIt - 1);
@@ -203,7 +203,7 @@ class RetentionServiceIntegrationTest {
 
     @Test
     void refusedSendLeavesNoMarkNorAuditInTheDatabase() {
-        when(emailService.sendRetentionWarning(anyString(), anyLong(), any(), anyString(), anyString())).thenReturn(false);
+        when(emailService.sendRetentionWarning(anyString(), anyLong(), any(), anyString(), anyString())).thenReturn(EmailService.SendResult.TEMPORARY_FAILURE);
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         UUID userId = subscribed(PlanType.TRIAL, Status.ACTIVE, now.minusDays(23), null, null);
 
@@ -213,6 +213,102 @@ class RetentionServiceIntegrationTest {
         assertThat(s.getRetentionWarning7dSentAt()).isNull();
         assertThat(count("SELECT count(*) FROM audit_logs WHERE user_id = ? "
             + "AND event_type = 'retention_warning_sent'", userId)).isZero();
+    }
+
+    // --- Permanent SMTP refusal (decision 2026-11-19): purge without warning after 14 days
+
+    private void smtpAnswers(EmailService.SendResult result) {
+        when(emailService.sendRetentionWarning(anyString(), anyLong(), any(), anyString(), anyString())).thenReturn(result);
+    }
+
+    private void refusedSince(UUID userId, OffsetDateTime since) {
+        jdbc.update("UPDATE subscriptions SET retention_refused_since = ? WHERE user_id = ?", since, userId);
+    }
+
+    private OffsetDateTime refusedSinceOf(UUID userId) {
+        return subscriptionRepository.findByUserId(userId).orElseThrow().getRetentionRefusedSince();
+    }
+
+    @Test
+    void permanentRefusalForThirteenDaysDoesNotPurgeAndStaysStalled() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        UUID userId = subscribed(PlanType.TRIAL, Status.ACTIVE, now.minusDays(23), null, null);
+        smtpAnswers(EmailService.SendResult.PERMANENT_REFUSAL);
+
+        retentionService.runRetention();  // first refusal: stored, no mark
+        OffsetDateTime first = refusedSinceOf(userId);
+        assertThat(first).isNotNull();
+        assertThat(subscriptionRepository.findByUserId(userId).orElseThrow().getRetentionWarning7dSentAt()).isNull();
+
+        refusedSince(userId, now.minusDays(13));
+        retentionService.runRetention();
+
+        assertThat(count("SELECT count(*) FROM users WHERE id = ?", userId)).isOne();
+        assertThat(count("SELECT count(*) FROM account_deletions WHERE user_id = ?", userId)).isZero();
+        assertThat(refusedSinceOf(userId)).isNotNull();
+    }
+
+    @Test
+    void permanentRefusalForFourteenDaysPurgesWithAuditAndLeavesTheStalledCount() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        // purge was due 7 days ago and the 7-day warning was refused since then: stalled for the admin
+        UUID userId = subscribed(PlanType.TRIAL, Status.ACTIVE, now.minusDays(37), null, null);
+        refusedSince(userId, now.minusDays(14));
+        long before = retentionService.stalledCount(now);
+        assertThat(before).isPositive();
+        smtpAnswers(EmailService.SendResult.PERMANENT_REFUSAL);
+
+        retentionService.runRetention();
+
+        assertThat(count("SELECT count(*) FROM users WHERE id = ?", userId)).isZero();
+        assertThat(count("SELECT count(*) FROM subscriptions WHERE user_id = ?", userId)).isZero();
+        Map<String, Object> deletion = jdbc.queryForMap(
+            "SELECT id, status, reason FROM account_deletions WHERE user_id = ?", userId);
+        assertThat(deletion.get("status")).isEqualTo("PURGED");
+        assertThat(deletion.get("reason")).isEqualTo("RETENTION");
+        String metadata = jdbc.queryForObject("SELECT metadata FROM audit_logs WHERE user_id IS NULL "
+            + "AND event_type = 'retention_purged_without_warning' AND strpos(metadata, ?) > 0", String.class,
+            deletion.get("id").toString());
+        assertThat(metadata).contains("permanent_smtp_refusal").contains("\"warning\":\"7d\"");
+        jdbc.update("DELETE FROM audit_logs WHERE user_id IS NULL AND strpos(metadata, ?) > 0",
+            deletion.get("id").toString());
+        assertThat(retentionService.stalledCount(now)).isEqualTo(before - 1);
+    }
+
+    @Test
+    void acceptedSendInTheMiddleRestartsTheCount() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        UUID userId = subscribed(PlanType.TRIAL, Status.ACTIVE, now.minusDays(37), null, null);
+        refusedSince(userId, now.minusDays(13));
+
+        smtpAnswers(EmailService.SendResult.SENT);
+        retentionService.runRetention();
+        assertThat(refusedSinceOf(userId)).isNull();
+        assertThat(subscriptionRepository.findByUserId(userId).orElseThrow().getRetentionWarning7dSentAt()).isNotNull();
+
+        // the next refusal starts over from today, so day 14 of the old streak does not purge
+        jdbc.update("UPDATE subscriptions SET retention_warning_7d_sent_at = NULL WHERE user_id = ?", userId);
+        smtpAnswers(EmailService.SendResult.PERMANENT_REFUSAL);
+        retentionService.runRetention();
+        assertThat(refusedSinceOf(userId)).isAfter(now.minusMinutes(1));
+        assertThat(count("SELECT count(*) FROM users WHERE id = ?", userId)).isOne();
+    }
+
+    @Test
+    void temporaryFailureNeverCountsForTheFourteenDays() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        UUID fresh = subscribed(PlanType.TRIAL, Status.ACTIVE, now.minusDays(23), null, null);
+        UUID longRefused = subscribed(PlanType.TRIAL, Status.ACTIVE, now.minusDays(40), null, null);
+        refusedSince(longRefused, now.minusDays(20));
+        smtpAnswers(EmailService.SendResult.TEMPORARY_FAILURE);
+
+        retentionService.runRetention();
+
+        assertThat(refusedSinceOf(fresh)).isNull();
+        // 20 days of refusal, but today the failure is temporary: nothing is decided
+        assertThat(count("SELECT count(*) FROM users WHERE id = ?", longRefused)).isOne();
+        assertThat(count("SELECT count(*) FROM account_deletions WHERE user_id = ?", longRefused)).isZero();
+        assertThat(refusedSinceOf(longRefused)).isNotNull();
     }
 
     private UUID subscribed(PlanType plan, Status status, OffsetDateTime trialEnd, OffsetDateTime nextBilling,
