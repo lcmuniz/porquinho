@@ -45,6 +45,10 @@ class TransactionImportReviewServiceTest {
     @Autowired
     private JdbcTemplate jdbc;
     @Autowired
+    private TransferService transferService;
+    @Autowired
+    private TransactionService transactionService;
+    @Autowired
     private com.porquinho.repository.UserClassificationPatternRepository patternRepository;
     @Autowired
     private org.springframework.transaction.support.TransactionTemplate transactionTemplate;
@@ -71,6 +75,7 @@ class TransactionImportReviewServiceTest {
             jdbc.update("DELETE FROM transactions WHERE user_id = ?", id);
             jdbc.update("DELETE FROM transaction_imports WHERE user_id = ?", id);
             jdbc.update("DELETE FROM account_balance_history WHERE user_id = ?", id);
+            jdbc.update("DELETE FROM transfers WHERE user_id = ?", id);
             jdbc.update("DELETE FROM accounts WHERE user_id = ?", id);
             jdbc.update("DELETE FROM credit_cards WHERE user_id = ?", id);
             jdbc.update("DELETE FROM categories WHERE user_id = ?", id);
@@ -798,6 +803,63 @@ class TransactionImportReviewServiceTest {
 
         assertThat(affectsBalance(payment)).isTrue();
         assertThat(balanceOf(account)).isEqualByComparingTo("60.00");
+    }
+
+    private void newTransfer(UUID from, UUID to, String date, String amount) {
+        transferService.create(userId, new com.porquinho.dto.CreateTransferRequest(UUID.randomUUID(), from, to,
+            new BigDecimal(amount), java.time.LocalDate.parse(date), "TED"), IP);
+    }
+
+    @Test
+    void aTransferRegisteredAfterTheUploadIsNotCountedAgainWhenFinishing() {
+        // retro Epic 5, X3/W1: the TED of the statement is registered as a transfer while the import is in review
+        UUID account = newAccount("1000.00", "2026-11-03T15:00:00Z");
+        UUID savings = newAccount("0.00", "2026-11-03T15:00:00Z");
+        UUID review = newAccountImport(account, "REVIEW");
+        UUID ted = newAccountRow(review, account, "2026-11-04", "DEBIT", "100.00");
+        UUID other = newAccountRow(review, account, "2026-11-04", "DEBIT", "30.00");
+        newTransfer(account, savings, "2026-11-05", "100.00");
+        assertThat(balanceOf(account)).isEqualByComparingTo("900.00");
+
+        ImportReviewActionResponse response = reviewService.complete(userId, review, IP);
+
+        assertThat(balanceOf(account)).isEqualByComparingTo("870.00");
+        assertThat(affectsBalance(ted)).isFalse();
+        assertThat(affectsBalance(other)).isTrue();
+        assertThat(rowOf(ted)).containsEntry("review_status", "CONFIRMED");
+        assertThat(response.affectedTransactions()).isEqualTo(2);
+    }
+
+    @Test
+    void aManualTransactionRegisteredAfterTheUploadIsNotCountedAgainWhenFinishing() {
+        UUID account = newAccount("1000.00", "2026-11-03T15:00:00Z");
+        UUID review = newAccountImport(account, "REVIEW");
+        UUID row = newAccountRow(review, account, "2026-11-04", "DEBIT", "100.00");
+        transactionService.create(userId, new com.porquinho.dto.TransactionCreateRequest(
+            java.time.LocalDate.parse("2026-11-04"), "Loja", new BigDecimal("100.00"), "DEBIT", newChildCategory(),
+            account, null), IP);
+        assertThat(balanceOf(account)).isEqualByComparingTo("900.00");
+
+        reviewService.complete(userId, review, IP);
+
+        assertThat(balanceOf(account)).isEqualByComparingTo("900.00");
+        assertThat(affectsBalance(row)).isFalse();
+    }
+
+    @Test
+    void aTransferThatExistedWhenTheFileWasReadDoesNotKeepARowOutOfTheBalance() {
+        // the processing already compared the file with it: a row saved anyway is another TED of the same amount
+        UUID account = newAccount("1000.00", "2026-11-03T15:00:00Z");
+        UUID savings = newAccount("0.00", "2026-11-03T15:00:00Z");
+        newTransfer(account, savings, "2026-11-04", "100.00");
+        jdbc.update("UPDATE transfers SET created_at = created_at - INTERVAL '1 minute' WHERE user_id = ?", userId);
+        UUID review = newAccountImport(account, "REVIEW");
+        UUID row = newAccountRow(review, account, "2026-11-04", "DEBIT", "100.00");
+
+        reviewService.complete(userId, review, IP);
+
+        assertThat(balanceOf(account)).isEqualByComparingTo("800.00");
+        assertThat(affectsBalance(row)).isTrue();
     }
 
     @Test

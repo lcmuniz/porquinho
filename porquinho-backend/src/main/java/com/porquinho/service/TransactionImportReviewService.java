@@ -8,6 +8,7 @@ import com.porquinho.entity.AccountBalanceHistory;
 import com.porquinho.entity.Category;
 import com.porquinho.entity.Transaction;
 import com.porquinho.entity.TransactionImport;
+import com.porquinho.entity.Transfer;
 import com.porquinho.exception.BadRequestException;
 import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
@@ -15,6 +16,7 @@ import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.CreditCardRepository;
 import com.porquinho.repository.TransactionImportRepository;
 import com.porquinho.repository.TransactionRepository;
+import com.porquinho.repository.TransferRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -23,7 +25,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -62,6 +67,7 @@ public class TransactionImportReviewService {
 
     private final TransactionImportRepository transactionImportRepository;
     private final TransactionRepository transactionRepository;
+    private final TransferRepository transferRepository;
     private final TransactionCore core;
     private final AccountRepository accountRepository;
     private final CreditCardRepository creditCardRepository;
@@ -72,6 +78,7 @@ public class TransactionImportReviewService {
 
     public TransactionImportReviewService(TransactionImportRepository transactionImportRepository,
                                           TransactionRepository transactionRepository,
+                                          TransferRepository transferRepository,
                                           TransactionCore core, AccountRepository accountRepository,
                                           CreditCardRepository creditCardRepository,
                                           BalanceHistoryRecorder balanceHistoryRecorder,
@@ -80,6 +87,7 @@ public class TransactionImportReviewService {
                                           BudgetBalanceCache budgetBalanceCache) {
         this.transactionImportRepository = transactionImportRepository;
         this.transactionRepository = transactionRepository;
+        this.transferRepository = transferRepository;
         this.core = core;
         this.accountRepository = accountRepository;
         this.creditCardRepository = creditCardRepository;
@@ -185,7 +193,7 @@ public class TransactionImportReviewService {
             creditCardRepository.findActiveByIdForUpdate(cardId, userId)
                 .orElseThrow(() -> new ConflictException(CARD_REMOVED_MESSAGE));
         } else {
-            balanceEffect = applyBalanceEffect(userId, importId, accountId, now);
+            balanceEffect = applyBalanceEffect(userId, importId, accountId, transactionImport.getFileType(), now);
         }
         int affectingBalance = balanceEffect.entered();
         int confirmed = transactionRepository.confirmByImport(userId, importId, now);
@@ -204,10 +212,12 @@ public class TransactionImportReviewService {
 
     /**
      * Decision D3: the rows dated after the reference date go into the balance, with one snapshot when the sum is not
-     * zero. Throwing here rolls back the whole conclusion, so the import stays in REVIEW. Returns how many rows entered
-     * and how many did not.
+     * zero. A row already in the balance through a transfer or manual transaction registered after the file was read
+     * stays out of it ({@link #alreadyInBalance}). Throwing here rolls back the whole conclusion, so the import stays in
+     * REVIEW. Returns how many rows entered and how many did not for being dated up to the reference.
      */
-    private BalanceEffect applyBalanceEffect(UUID userId, UUID importId, UUID accountId, OffsetDateTime now) {
+    private BalanceEffect applyBalanceEffect(UUID userId, UUID importId, UUID accountId,
+                                             TransactionImport.FileType fileType, OffsetDateTime now) {
         Account account = accountRepository.findActiveByIdForUpdate(accountId, userId)
             .orElseThrow(() -> new ConflictException(ACCOUNT_REMOVED_MESSAGE));
         Predicate<LocalDate> inBalance = core.inBalance(account);
@@ -216,6 +226,10 @@ public class TransactionImportReviewService {
             .filter(row -> inBalance.test(row.getTransactionDate()))
             .toList();
         int before = candidates.size() - rows.size();
+        Set<Transaction> absorbed = alreadyInBalance(userId, accountId, fileType, rows);
+        if (!absorbed.isEmpty()) {
+            rows = rows.stream().filter(row -> !absorbed.contains(row)).toList();
+        }
         BigDecimal effect = rows.stream().map(row -> TransactionCore.signed(row.getTransactionType(), row.getAmount()))
             .reduce(BigDecimal.ZERO, BigDecimal::add);
         if (effect.signum() != 0) {
@@ -237,6 +251,53 @@ public class TransactionImportReviewService {
                 ids.subList(from, Math.min(from + MARK_IN_BALANCE_BATCH, ids.size())), now);
         }
         return new BalanceEffect(marked, before);
+    }
+
+    /**
+     * Retro Epic 5, X3/W1: the processing compared the file only with what existed when it was read (Story 5.5 and
+     * decision D4), so a transfer or a manual transaction registered since then, during the review, already moved the
+     * balance. The same check runs here against only those, so nothing the processing already compared is matched
+     * twice. Manual only: a row of another import saved since then was already compared with this one by its own
+     * processing. The matched rows stay in the import, out of the balance, like a row absorbed by a reconciliation.
+     */
+    private Set<Transaction> alreadyInBalance(UUID userId, UUID accountId, TransactionImport.FileType fileType,
+                                              List<Transaction> rows) {
+        if (rows.isEmpty()) {
+            return Set.of();
+        }
+        // shortcut: a transfer committed while the file was being read may be missed (TransferService takes no
+        // advisory lock); take the target lock there if that ever shows up
+        OffsetDateTime readAt = rows.stream().map(Transaction::getCreatedAt).min(Comparator.naturalOrder()).orElseThrow();
+        LocalDate first = rows.stream().map(Transaction::getTransactionDate).min(Comparator.naturalOrder()).orElseThrow();
+        LocalDate last = rows.stream().map(Transaction::getTransactionDate).max(Comparator.naturalOrder()).orElseThrow();
+        LocalDate from = first.minusDays(DuplicateDetector.MAX_DAYS_APART);
+        LocalDate to = last.plusDays(DuplicateDetector.MAX_DAYS_APART);
+        List<Transaction> manual = transactionRepository.findDuplicateCandidatesByAccountBetween(userId, accountId, from, to)
+            .stream()
+            .filter(t -> t.getImportId() == null && t.getDeletedAt() == null && t.isAffectsBalance()
+                && t.getCreatedAt().isAfter(readAt))
+            .toList();
+        List<Transfer> transfers = transferRepository.findActiveByAccountBetween(userId, accountId, from, to).stream()
+            .filter(t -> t.getCreatedAt().isAfter(readAt))
+            .toList();
+        if (manual.isEmpty() && transfers.isEmpty()) {
+            return Set.of();
+        }
+        List<OfxTransactionParser.Entry> entries = rows.stream()
+            .map(row -> new OfxTransactionParser.Entry(row.getTransactionDate(), row.getDescription(),
+                row.getOriginalDescription(), row.getAmount(), row.getTransactionType(), row.getExternalId(),
+                row.getKind() == Transaction.Kind.CARD_PAYMENT))
+            .toList();
+        // by identity: two equal rows make equal entries
+        Set<OfxTransactionParser.Entry> kept = Collections.newSetFromMap(new IdentityHashMap<>());
+        kept.addAll(DuplicateDetector.detect(entries, fileType, manual, Map.of(), transfers, accountId).toSave());
+        Set<Transaction> absorbed = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (int i = 0; i < rows.size(); i++) {
+            if (!kept.contains(entries.get(i))) {
+                absorbed.add(rows.get(i));
+            }
+        }
+        return absorbed;
     }
 
     /**
