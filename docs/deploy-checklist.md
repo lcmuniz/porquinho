@@ -100,8 +100,9 @@ O passo 1 da detecção de duplicatas descarta toda linha cujo FITID já existe,
 reutilizar o FITID para lançamentos diferentes, um lançamento real some da importação.
 
 - [ ] Conferir em extratos OFX reais (vários meses do mesmo banco) se algum FITID se repete com valor ou tipo diferente.
-- [ ] Se repetir: exigir no passo 1 o mesmo valor e o mesmo tipo além do FITID. Se não repetir: registrar o resultado
-  e manter como está.
+- [ ] Se repetir: guardar o valor e o tipo originais vindos do banco e exigir no passo 1 que eles batam, além do FITID.
+  Não comparar com o valor atual da transação: a edição da Story 5.12 muda valor e tipo, e a linha editada voltaria em
+  dobro na reimportação. Se não repetir: registrar o resultado e manter como está (decisão do Luiz, 19/11/2026).
 
 ### 4.3 Conferência com extratos reais (W3)
 
