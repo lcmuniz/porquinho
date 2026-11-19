@@ -5,7 +5,6 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/composables/useAuth'
 import { authService } from '@/services/authService'
-import { apiErrorStatus } from '@/lib/apiError'
 
 const { requestPasswordReset } = useAuth()
 
@@ -35,8 +34,10 @@ async function handleSubmit() {
     // Show generic success message (don't reveal if email exists)
     isSuccess.value = true
   } catch (error) {
-    if (apiErrorStatus(error) === 429) {
-      errorMessage.value = 'Muitas solicitações de redefinição de senha. Aguarde 1 hora.'
+    // Limite de envio do Supabase (AuthError traz o status em error.status, não em response.status).
+    // Vale para qualquer e-mail e o Supabase já responde assim a quem chama a API direto: não revela cadastro.
+    if ((error as { status?: number } | null)?.status === 429) {
+      errorMessage.value = 'Muitas solicitações. Aguarde alguns minutos e tente de novo.'
     } else {
       // Still show success message even on error (security: don't reveal if email exists)
       isSuccess.value = true
