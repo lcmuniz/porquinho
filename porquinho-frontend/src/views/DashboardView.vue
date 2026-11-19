@@ -93,9 +93,9 @@
           id="account-settings-heading"
           class="text-lg font-semibold text-gray-900"
         >
-          Configuracoes da conta
+          Configurações da conta
         </h2>
-        <nav aria-label="Configuracoes da conta" class="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+        <nav aria-label="Configurações da conta" class="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
           <RouterLink
             to="/contas"
             data-testid="accounts-link"
@@ -149,7 +149,7 @@
             to="/auth/sessions"
             class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
           >
-            Sessoes ativas
+            Sessões ativas
           </RouterLink>
           <RouterLink
             to="/auth/data-export"

@@ -133,10 +133,13 @@ class DataExportControllerTest {
     void downloadExportShouldReturn404WhenNotFound() throws Exception {
         String token = UUID.randomUUID().toString();
         when(dataExportService.downloadExport(eq(token), anyString()))
-                .thenThrow(new ResourceNotFoundException("Export not found"));
+                .thenThrow(new ResourceNotFoundException("Este link já foi usado. Peça uma nova exportação."));
 
         mockMvc.perform(get("/api/v1/data-export/download/" + token))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith("text/html"))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Este link já foi usado. Peça uma nova exportação.")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("Resource Not Found"))));
     }
 
     @Test
