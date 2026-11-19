@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.HexFormat;
 import java.util.List;
@@ -21,6 +22,9 @@ public class SessionService {
 
     /** NFR16: a session expires after this many days without activity; updateLastActivity slides expires_at. */
     static final int INACTIVITY_DAYS = 7;
+
+    /** updateLastActivity writes at most once per this interval per session. */
+    static final Duration ACTIVITY_THROTTLE = Duration.ofMinutes(5);
 
     private final UserSessionRepository userSessionRepository;
     private final JwtBlacklistService jwtBlacklistService;
@@ -105,7 +109,7 @@ public class SessionService {
     /** Called on every authenticated request (JwtAuthenticationConverter); writes at most once per 5 minutes per session. */
     public void updateLastActivity(UUID sessionId) {
         OffsetDateTime now = OffsetDateTime.now();
-        userSessionRepository.updateLastActivity(sessionId, now, now.plusDays(INACTIVITY_DAYS), now.minusMinutes(5));
+        userSessionRepository.updateLastActivity(sessionId, now, now.plusDays(INACTIVITY_DAYS), now.minus(ACTIVITY_THROTTLE));
     }
 
     /** The Supabase session_id claim (stable across token refreshes), or null when absent or not a UUID. */

@@ -269,14 +269,30 @@ class SystemAlertServiceTest {
     }
 
     @Test
-    void zeroSessionsFireOnlyWithUser2xxTrafficInTheLastHour() {
+    void userTrafficWindowEndsBeforeTheSessionOfItsLastRequestStopsCountingAsActive() {
+        // Worst case for a request at T: last_activity = T - throttle (5 min), recorded in the snapshot of T + 1 min.
+        OffsetDateTime t = NOW;
+        OffsetDateTime lastActivity = t.minus(SessionService.ACTIVITY_THROTTLE);
+        OffsetDateTime snapshot = t.plusMinutes(1);
+        for (int m = 0; m <= 120; m++) {
+            OffsetDateTime now = t.plusMinutes(m);
+            boolean sessionActive = !lastActivity.isBefore(now.minus(AdminService.ACTIVE_SESSION_WINDOW));
+            boolean trafficSeen = !snapshot.isBefore(now.minus(SystemAlertService.USER_TRAFFIC_WINDOW))
+                && !snapshot.isAfter(now);
+            assertThat(trafficSeen && !sessionActive).as("minute %d after the last request", m).isFalse();
+        }
+        assertThat(SystemAlertService.USER_TRAFFIC_WINDOW).isEqualTo(Duration.ofMinutes(24));
+    }
+
+    @Test
+    void zeroSessionsFireOnlyWithUser2xxTrafficThatShouldStillKeepASession() {
         when(sessions.countActive(any(), any())).thenReturn(0L);
-        when(snapshots.totalsSince(NOW.minusHours(1))).thenReturn(new HealthSnapshotService.Totals(60, 0, 0, 0, 0));
+        when(snapshots.totalsSince(NOW.minus(SystemAlertService.USER_TRAFFIC_WINDOW))).thenReturn(new HealthSnapshotService.Totals(60, 0, 0, 0, 0));
         assertThat(collect()).isEmpty();
         // bots (401/404) and the Stripe webhook: requests but no ok_requests
-        when(snapshots.totalsSince(NOW.minusHours(1))).thenReturn(new HealthSnapshotService.Totals(60, 500, 0, 0, 0));
+        when(snapshots.totalsSince(NOW.minus(SystemAlertService.USER_TRAFFIC_WINDOW))).thenReturn(new HealthSnapshotService.Totals(60, 500, 0, 0, 0));
         assertThat(collect()).isEmpty();
-        when(snapshots.totalsSince(NOW.minusHours(1))).thenReturn(new HealthSnapshotService.Totals(60, 500, 0, 0, 1));
+        when(snapshots.totalsSince(NOW.minus(SystemAlertService.USER_TRAFFIC_WINDOW))).thenReturn(new HealthSnapshotService.Totals(60, 500, 0, 0, 1));
         assertThat(collect()).containsOnlyKeys("ACTIVE_SESSIONS");
         when(sessions.countActive(any(), any())).thenReturn(1L);
         assertThat(collect()).isEmpty();

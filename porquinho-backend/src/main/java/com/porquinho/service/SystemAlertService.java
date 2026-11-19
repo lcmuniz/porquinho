@@ -55,6 +55,13 @@ public class SystemAlertService {
     static final long MIN_CLASSIFICATIONS = 20;
     static final Duration WINDOW = Duration.ofHours(24);
     static final Duration DEDUP = Duration.ofHours(1);
+    /**
+     * ACTIVE_SESSIONS looks for user traffic only while that traffic still keeps a session active: a request at T has
+     * last_activity >= T - throttle and lands in the snapshot of T + 1 min, so its session stays active until at least
+     * T + 30 - 5 min. A longer window (it was 1 h) fired every night once the last user left.
+     */
+    static final Duration USER_TRAFFIC_WINDOW = AdminService.ACTIVE_SESSION_WINDOW
+        .minus(SessionService.ACTIVITY_THROTTLE).minusMinutes(1);
     private static final Locale PT_BR = Locale.forLanguageTag("pt-BR");
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
 
@@ -207,10 +214,10 @@ public class SystemAlertService {
             }
         });
         check(unchecked, Metric.ACTIVE_SESSIONS, () -> {
-            // No session at night without traffic is normal: only with 2xx user requests in the last hour (bots and
-            // the Stripe webhook do not count)
+            // No session at night without traffic is normal: only with 2xx user requests that should still keep a
+            // session active (bots and the Stripe webhook do not count)
             long active = userSessionRepository.countActive(now, now.minus(AdminService.ACTIVE_SESSION_WINDOW));
-            if (active == 0 && snapshots.totalsSince(now.minusHours(1)).okRequests() > 0) {
+            if (active == 0 && snapshots.totalsSince(now.minus(USER_TRAFFIC_WINDOW)).okRequests() > 0) {
                 add(out, Metric.ACTIVE_SESSIONS, null, BigDecimal.ZERO);
             }
         });
