@@ -66,19 +66,18 @@ public interface UserClassificationPatternRepository extends JpaRepository<UserC
     @Query(value = "DELETE FROM user_classification_patterns WHERE user_id = :userId", nativeQuery = true)
     int deleteByUserId(@Param("userId") UUID userId);
 
-    interface SharedPattern {
+    interface PatternUse {
         String getPattern();
-        long getUsers();
+        UUID getOwner();
         long getUsage();
     }
 
     /**
-     * Story 10.3: patterns that at least {@code minUsers} distinct users have, for the admin panel. No user id and no
-     * category: one person's history never shows up.
+     * Story 10.3: every pattern with its user and use, for the admin panel to mask names and count distinct users in
+     * Java ({@code AiMetricsService#shared}). The user id never leaves the service; the category is not even read.
+     * shortcut: reads the whole table on each detail click, move the masking to SQL if the table grows past ~100k rows.
      */
-    @Query(value = "SELECT description_pattern AS pattern, count(DISTINCT user_id) AS users, sum(usage_count) AS usage "
-        + "FROM user_classification_patterns GROUP BY description_pattern "
-        + "HAVING count(DISTINCT user_id) >= :minUsers ORDER BY users DESC, usage DESC, pattern LIMIT :limit",
-        nativeQuery = true)
-    List<SharedPattern> findShared(@Param("minUsers") int minUsers, @Param("limit") int limit);
+    @Query(value = "SELECT description_pattern AS pattern, user_id AS owner, usage_count AS usage "
+        + "FROM user_classification_patterns", nativeQuery = true)
+    List<PatternUse> findAllUses();
 }

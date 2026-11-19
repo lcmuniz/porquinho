@@ -240,6 +240,26 @@ class AiMetricsIntegrationTest {
             .andExpect(content().string(not(containsString(second.toString()))));
     }
 
+    @Test
+    void sharedPatternsMaskPersonNamesAndMergeTheMaskedOnes() throws Exception {
+        String prefix = "loja " + UUID.randomUUID().toString().replaceAll("[^a-f]", "") + " pix enviado ";
+        UUID second = user(false);
+        UUID third = user(false);
+        pattern(admin, prefix + "joao silva", 1);
+        pattern(admin, prefix + "maria", 2); // same user, other name: counted once
+        pattern(second, prefix + "jose souza", 3);
+        pattern(third, prefix + "ana", 4);
+
+        mockMvc.perform(get("/api/v1/admin/ai/detail?bank=NUBANK&" + PERIOD).with(jwt().jwt(j -> j.subject(admin.toString()))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.patterns[?(@.pattern == '" + prefix + "<nome>')].users").value(3))
+            .andExpect(jsonPath("$.patterns[?(@.pattern == '" + prefix + "<nome>')].usage").value(10))
+            .andExpect(content().string(containsString("Incluir '" + prefix + "<nome>' como exemplo no prompt")))
+            .andExpect(content().string(not(containsString("joao silva"))))
+            .andExpect(content().string(not(containsString("jose souza"))))
+            .andExpect(content().string(not(containsString(prefix + "ana"))));
+    }
+
     private void pattern(UUID user, String pattern, int usage) {
         jdbc.update("INSERT INTO user_classification_patterns (user_id, description_pattern, preferred_category_id, "
             + "usage_count) VALUES (?, ?, ?, ?)", user, pattern, category(user), usage);

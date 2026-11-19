@@ -14,6 +14,7 @@ import com.porquinho.repository.AiClassificationHistoryRepository.BankCounts;
 import com.porquinho.repository.AiClassificationHistoryRepository.KindCounts;
 import com.porquinho.repository.AiClassificationHistoryRepository.MonthCounts;
 import com.porquinho.repository.UserClassificationPatternRepository;
+import com.porquinho.repository.UserClassificationPatternRepository.PatternUse;
 import com.porquinho.service.ImportMetricsService.Filters;
 import org.springframework.stereotype.Service;
 
@@ -21,11 +22,15 @@ import java.time.Clock;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.UUID;
 import java.util.function.Predicate;
 import java.util.stream.IntStream;
 
@@ -52,6 +57,16 @@ public class AiMetricsService {
     static final Map<String, String> TYPE_LABELS = Map.of(
         "PIX", "Pix", "INSTALLMENT", "Parcelas", "DEBIT", "Débitos", "CREDIT", "Créditos");
     static final List<String> BANDS = List.of("0-49", "50-79", "80-100");
+    static final String NAME = "<nome>";
+    /**
+     * Decision of 2026-11-19: in a normalized pattern (lowercase, no accents, letters and single spaces, see
+     * {@link ClassificationPatternService#normalize}), what follows a Pix/TED/DOC/transfer marker and its
+     * "enviado/recebido" words is a person's name. The earliest marker wins; the possessive {@code *+} keeps
+     * "pix enviado" alone from turning into "pix <nome>".
+     */
+    private static final java.util.regex.Pattern PERSON = java.util.regex.Pattern.compile(
+        "^(.*?\\b(?:pix|ted|doc|transf|transferencia)"
+            + "(?: (?:pix|ted|doc|transf|transferencia|enviad[oa]|recebid[oa]))*+) .+$");
     private static final Locale PT_BR = Locale.forLanguageTag("pt-BR");
 
     private final AiClassificationHistoryRepository history;
@@ -113,9 +128,7 @@ public class AiMetricsService {
                 .thenComparing(Group::key))
             .toList();
         List<Group> confidence = byBand.entrySet().stream().map(e -> group(e.getKey(), e.getValue())).toList();
-        List<Pattern> shared = patterns.findShared(MIN_SHARED_USERS, PATTERN_LIMIT).stream()
-            .map(p -> new Pattern(p.getPattern(), p.getUsers(), p.getUsage()))
-            .toList();
+        List<Pattern> shared = shared(patterns.findAllUses());
         return new AdminAiBankDetailResponse(f.bank(), f.from(), f.to(), types, confidence, shared,
             suggestions(types, confidence, shared));
     }
@@ -131,6 +144,34 @@ public class AiMetricsService {
         line(csv, "Total", bank("TOTAL", banks.stream().mapToLong(Bank::classifications).sum(),
             banks.stream().mapToLong(Bank::corrections).sum()));
         return csv.toString();
+    }
+
+    /** "pix enviado joao da silva" becomes "pix enviado <nome>"; a pattern without a marker ("uber trip") stays. */
+    static String mask(String pattern) {
+        return PERSON.matcher(pattern).replaceFirst("$1 " + NAME);
+    }
+
+    /**
+     * Patterns that at least {@link #MIN_SHARED_USERS} distinct users have, compared after {@link #mask}: masked
+     * patterns that become equal are one line, with the distinct users of all of them and the sum of the use. The
+     * minimum applies to the text the admin sees, so "pix enviado <nome>" shows up when 3 people send a Pix to anyone;
+     * it names no one. Top {@link #PATTERN_LIMIT} by users, then use, then text. No user id and no category.
+     */
+    static List<Pattern> shared(List<PatternUse> uses) {
+        Map<String, Set<UUID>> users = new HashMap<>();
+        Map<String, Long> usage = new HashMap<>();
+        for (PatternUse u : uses) {
+            String text = mask(u.getPattern());
+            users.computeIfAbsent(text, k -> new HashSet<>()).add(u.getOwner());
+            usage.merge(text, u.getUsage(), Long::sum);
+        }
+        return users.entrySet().stream().filter(e -> e.getValue().size() >= MIN_SHARED_USERS)
+            .map(e -> new Pattern(e.getKey(), e.getValue().size(), usage.get(e.getKey())))
+            .sorted(Comparator.comparingLong(Pattern::users).reversed()
+                .thenComparing(Comparator.comparingLong(Pattern::usage).reversed())
+                .thenComparing(Pattern::pattern))
+            .limit(PATTERN_LIMIT)
+            .toList();
     }
 
     /** A type or band below the target with at least 20 classifications, then each shared pattern. */

@@ -10,7 +10,7 @@ import com.porquinho.repository.AiClassificationHistoryRepository.BankCounts;
 import com.porquinho.repository.AiClassificationHistoryRepository.KindCounts;
 import com.porquinho.repository.AiClassificationHistoryRepository.MonthCounts;
 import com.porquinho.repository.UserClassificationPatternRepository;
-import com.porquinho.repository.UserClassificationPatternRepository.SharedPattern;
+import com.porquinho.repository.UserClassificationPatternRepository.PatternUse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -20,6 +20,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -49,8 +50,12 @@ class AiMetricsServiceTest {
     record Kind(String getType, String getBand, long getClassifications, long getCorrections) implements KindCounts {
     }
 
-    record Shared(String getPattern, long getUsers, long getUsage) implements SharedPattern {
+    record Use(String getPattern, UUID getOwner, long getUsage) implements PatternUse {
     }
+
+    private static final UUID A = UUID.randomUUID();
+    private static final UUID B = UUID.randomUUID();
+    private static final UUID C = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
@@ -126,7 +131,8 @@ class AiMetricsServiceTest {
         when(history.countByTypeAndBand(eq("NUBANK"), any(), any())).thenReturn(List.of(
             new Kind("PIX", "80-100", 15, 5), new Kind("PIX", "0-49", 5, 1), // PIX 20 at 70 %
             new Kind("CREDIT", "50-79", 19, 10))); // under 20: no suggestion
-        when(patterns.findShared(3, 10)).thenReturn(List.of(new Shared("uber trip", 3, 7)));
+        when(patterns.findAllUses()).thenReturn(List.of(
+            new Use("uber trip", A, 3), new Use("uber trip", B, 2), new Use("uber trip", C, 2)));
 
         AdminAiBankDetailResponse d = service.detail(importMetrics.filters(null, null, "NUBANK", null));
 
@@ -137,6 +143,43 @@ class AiMetricsServiceTest {
         assertThat(d.suggestions()).containsExactly(
             "Revisar o prompt para Pix: precisão de 70,0 % em 20 classificações",
             "Incluir 'uber trip' como exemplo no prompt (3 usuários usam)");
+    }
+
+    @Test
+    void maskReplacesWhatFollowsATransferMarker() {
+        // normalized form (ClassificationPatternService.normalize): "Pix enviado João" arrives as "pix enviado joao"
+        assertThat(AiMetricsService.mask(ClassificationPatternService.normalize("PIX ENVIADO João da Silva")))
+            .isEqualTo("pix enviado <nome>");
+        assertThat(AiMetricsService.mask("pix enviado joao da silva")).isEqualTo("pix enviado <nome>");
+        assertThat(AiMetricsService.mask("pix recebido maria")).isEqualTo("pix recebido <nome>");
+        assertThat(AiMetricsService.mask(ClassificationPatternService.normalize("Transferência enviada José")))
+            .isEqualTo("transferencia enviada <nome>");
+        assertThat(AiMetricsService.mask("ted joao")).isEqualTo("ted <nome>");
+        assertThat(AiMetricsService.mask("doc maria souza")).isEqualTo("doc <nome>");
+        assertThat(AiMetricsService.mask("transf pix enviada ana")).isEqualTo("transf pix enviada <nome>");
+        // marker in the middle: what comes before it stays
+        assertThat(AiMetricsService.mask("nu pagamentos pix joao")).isEqualTo("nu pagamentos pix <nome>");
+        // no marker, or a marker only inside a word: unchanged
+        assertThat(AiMetricsService.mask("uber trip")).isEqualTo("uber trip");
+        assertThat(AiMetricsService.mask("ifood")).isEqualTo("ifood");
+        assertThat(AiMetricsService.mask("pixel store")).isEqualTo("pixel store");
+        assertThat(AiMetricsService.mask("docusign")).isEqualTo("docusign");
+        // only markers: nothing to mask
+        assertThat(AiMetricsService.mask("pix")).isEqualTo("pix");
+        assertThat(AiMetricsService.mask("pix enviado")).isEqualTo("pix enviado");
+        assertThat(AiMetricsService.mask("transferencia recebida")).isEqualTo("transferencia recebida");
+    }
+
+    @Test
+    void sharedMergesMaskedPatternsCountingDistinctUsers() {
+        List<AdminAiBankDetailResponse.Pattern> shared = AiMetricsService.shared(List.of(
+            new Use("pix enviado joao silva", A, 4),
+            new Use("pix enviado maria", A, 1), // same user twice: counted once
+            new Use("pix enviado jose", B, 2),
+            new Use("pix enviado ana", C, 3),
+            new Use("uber trip", A, 9), new Use("uber trip", B, 9))); // 2 users: out
+
+        assertThat(shared).containsExactly(new AdminAiBankDetailResponse.Pattern("pix enviado <nome>", 3, 10));
     }
 
     @Test
