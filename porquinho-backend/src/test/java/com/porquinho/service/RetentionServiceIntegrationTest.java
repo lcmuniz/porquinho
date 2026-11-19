@@ -24,6 +24,9 @@ import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -61,6 +64,7 @@ class RetentionServiceIntegrationTest {
     @BeforeEach
     void smtpConfigured() {
         when(emailService.isConfigured()).thenReturn(true);
+        when(emailService.sendRetentionWarning(anyString(), anyLong(), any(), anyString(), anyString())).thenReturn(true);
     }
 
     @AfterEach
@@ -168,6 +172,20 @@ class RetentionServiceIntegrationTest {
             assertThat(s.getRetentionWarning7dSentAt()).as("no warning for %s", untouched).isNull();
             assertThat(s.getRetentionWarning1dSentAt()).isNull();
         }
+    }
+
+    @Test
+    void refusedSendLeavesNoMarkNorAuditInTheDatabase() {
+        when(emailService.sendRetentionWarning(anyString(), anyLong(), any(), anyString(), anyString())).thenReturn(false);
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        UUID userId = subscribed(PlanType.TRIAL, Status.ACTIVE, now.minusDays(23), null, null);
+
+        retentionService.runRetention();
+
+        Subscription s = subscriptionRepository.findByUserId(userId).orElseThrow();
+        assertThat(s.getRetentionWarning7dSentAt()).isNull();
+        assertThat(count("SELECT count(*) FROM audit_logs WHERE user_id = ? "
+            + "AND event_type = 'retention_warning_sent'", userId)).isZero();
     }
 
     private UUID subscribed(PlanType plan, Status status, OffsetDateTime trialEnd, OffsetDateTime nextBilling,

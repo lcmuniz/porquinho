@@ -15,9 +15,9 @@ de pagamento indisponível (503), a chave está vazia ou errada.
 
 ### E-mail (Resend)
 
-- [ ] `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD` e `MAIL_FROM` preenchidos. Sem `SMTP_HOST` ou sem `MAIL_FROM`, a retenção de quem não converte para de mandar avisos e, por isso, não apaga ninguém que ainda não foi avisado: esses dados ficam guardados além dos 30 dias até o e-mail voltar. Quem já recebeu o aviso de 1 dia continua sendo apagado no prazo.
+- [ ] `SMTP_HOST`, `SMTP_USERNAME`, `SMTP_PASSWORD` e `MAIL_FROM` preenchidos. Sem `SMTP_HOST` ou sem `MAIL_FROM`, a retenção de quem não converte para de mandar avisos e, por isso, não apaga ninguém que ainda não foi avisado: esses dados ficam guardados além dos 30 dias até o e-mail voltar. Quem já recebeu o aviso de 1 dia continua sendo apagado no prazo. Sem `SMTP_HOST` ou `MAIL_FROM`, lembretes de trial e alertas de orçamento também não são marcados e saem quando o e-mail volta, se ainda estiverem no prazo (alertas de um mês já encerrado se perdem).
 
-Como verificar: no log da subida não aparece `SMTP not configured (SMTP_HOST empty)` nem `MAIL_FROM empty`, e o e-mail de exportação pronta (Dashboard → "Exportar meus dados", em `/auth/data-export`) chega na caixa de entrada. A recuperação de senha não serve de teste: quem manda esse e-mail é o Supabase. Com o e-mail desligado, o job diário de retenção também loga `E-mail not configured: N retention warning(s) postponed`. Credencial errada não aparece na subida, só no envio (`Failed to send`), e ainda deixa a retenção apagar sem aviso (ver `deferred-work.md`).
+Como verificar: no log da subida não aparece `SMTP not configured (SMTP_HOST empty)` nem `MAIL_FROM empty`, e o e-mail de exportação pronta (Dashboard → "Exportar meus dados", em `/auth/data-export`) chega na caixa de entrada. A recuperação de senha não serve de teste: quem manda esse e-mail é o Supabase. Com o e-mail desligado, o job diário de retenção também loga `E-mail not configured: N retention warning(s) postponed`. Credencial errada (ou From recusado) não aparece na subida, só no envio: o sinal é `Failed to send` no log e falhas no resumo do job de retenção. Ela não apaga ninguém sem aviso: o aviso só é marcado quando o SMTP aceita o envio, é tentado de novo a cada execução e o purge espera.
 
 ## 2. Webhook endpoint
 

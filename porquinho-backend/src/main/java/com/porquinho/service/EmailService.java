@@ -38,9 +38,9 @@ public class EmailService {
         this.mailSender = host == null || host.isBlank() ? null : mailSender.getIfAvailable();
         this.from = from;
         if (this.mailSender == null) {
-            log.warn("SMTP not configured (SMTP_HOST empty) - no e-mail will be sent; retention warnings are postponed");
+            log.warn("SMTP not configured (SMTP_HOST empty) - no e-mail will be sent; retention warnings, trial reminders and budget alerts are postponed");
         } else if (from == null || from.isBlank()) {
-            log.warn("MAIL_FROM empty - the SMTP provider may reject every e-mail; retention warnings are postponed");
+            log.warn("MAIL_FROM empty - the SMTP provider may reject every e-mail; retention warnings, trial reminders and budget alerts are postponed");
         }
     }
 
@@ -243,15 +243,16 @@ public class EmailService {
     /**
      * Warn a user without access that all their data will be deleted (retention of non-converters, pre-Epic 10):
      * 7 days and 1 day before the purge, with links to subscribe or export the data.
-     * Best-effort: if SMTP is not configured or sending fails, logs warning and continues.
+     * If SMTP is not configured or sending fails, logs warning and returns false.
      *
      * @param daysLeft Calendar days until the purge (Sao Paulo dates)
-     * @param purgeAt When the data is deleted (end of access + 30 days)
+     * @param purgeAt When the data is deleted (the effective purge date)
+     * @return true only when the SMTP server accepted the e-mail
      */
-    public void sendRetentionWarning(String email, long daysLeft, OffsetDateTime purgeAt, String subscribeUrl, String exportUrl) {
+    public boolean sendRetentionWarning(String email, long daysLeft, OffsetDateTime purgeAt, String subscribeUrl, String exportUrl) {
         if (mailSender == null) {
             log.warn("SMTP not configured - skipping retention warning email to {}", maskEmail(email));
-            return;
+            return false;
         }
 
         try {
@@ -273,8 +274,10 @@ public class EmailService {
             );
             mailSender.send(message);
             log.info("Retention warning ({} days left) email sent to {}", daysLeft, maskEmail(email));
+            return true;
         } catch (Exception e) {
             log.warn("Failed to send retention warning email to {}: {}", maskEmail(email), e.getClass().getSimpleName());
+            return false;
         }
     }
 

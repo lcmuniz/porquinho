@@ -76,6 +76,7 @@ class TrialReminderServiceIntegrationTest {
 
     @BeforeEach
     void checkEmailRunsAfterCommit() {
+        when(emailService.isConfigured()).thenReturn(true);
         doAnswer(inv -> {
             String email = inv.getArgument(0);
             long daysLeft = inv.getArgument(1);

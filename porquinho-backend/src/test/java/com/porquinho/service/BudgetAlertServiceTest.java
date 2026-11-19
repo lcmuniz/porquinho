@@ -88,6 +88,7 @@ class BudgetAlertServiceTest {
         lenient().when(transactionRepository.sumSpentByCategory(userId, MONTH, LocalDate.of(2026, 11, 30)))
             .thenReturn(spent);
         lenient().when(categoryRepository.findActiveByUserId(userId)).thenReturn(categories);
+        lenient().when(emailService.isConfigured()).thenReturn(true);
         lenient().when(budgetAlertNotificationRepository.insertIfAbsent(eq(userId), any(), eq(MONTH), anyShort(), eq(NOW)))
             .thenAnswer(inv -> sent.add(inv.getArgument(1) + "/" + inv.getArgument(3)) ? 1 : 0);
     }
@@ -171,7 +172,8 @@ class BudgetAlertServiceTest {
 
         assertThat(service.processUser(userId)).isFalse();
 
-        verifyNoInteractions(emailService, budgetAlertNotificationRepository);
+        verify(emailService, never()).sendBudgetAlert(any(), any(), any(), any());
+        verifyNoInteractions(budgetAlertNotificationRepository);
     }
 
     @Test
@@ -184,7 +186,22 @@ class BudgetAlertServiceTest {
 
         assertThat(service.processUser(userId)).isFalse();
 
-        verifyNoInteractions(emailService);
+        verify(emailService, never()).sendBudgetAlert(any(), any(), any(), any());
+    }
+
+    @Test
+    void withoutSmtpRecordsNothingSoTheAlertGoesOutLater() {
+        UUID food = child("Mercado", "100", "92");
+        when(emailService.isConfigured()).thenReturn(false);
+
+        assertThat(service.processUser(userId)).isFalse();
+
+        verifyNoInteractions(budgetAlertNotificationRepository);
+        verify(emailService, never()).sendBudgetAlert(any(), any(), any(), any());
+        // E-mail back: still due
+        when(emailService.isConfigured()).thenReturn(true);
+        assertThat(service.processUser(userId)).isTrue();
+        assertThat(sent).containsExactly(food + "/90");
     }
 
     @Test

@@ -129,6 +129,10 @@ public class BudgetAlertService {
             || !subscriptionService.hasAccess(userId)) {
             return false;
         }
+        // Without e-mail the levels would be recorded but never sent: leave them for when the e-mail is back
+        if (!emailService.isConfigured()) {
+            return false;
+        }
 
         OffsetDateTime now = OffsetDateTime.now(clock);
         YearMonth yearMonth = YearMonth.now(clock.withZone(SAO_PAULO));

@@ -135,8 +135,8 @@ class EmailServiceTest {
 
     private SimpleMailMessage retentionWarning(long daysLeft, OffsetDateTime purgeAt) {
         JavaMailSender sender = mock(JavaMailSender.class);
-        serviceWith(sender, "x@example.com").sendRetentionWarning("user@example.com", daysLeft, purgeAt,
-            "https://app.example.com/assinatura", "https://app.example.com/auth/data-export");
+        assertThat(serviceWith(sender, "x@example.com").sendRetentionWarning("user@example.com", daysLeft, purgeAt,
+            "https://app.example.com/assinatura", "https://app.example.com/auth/data-export")).isTrue();
         ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(sender).send(captor.capture());
         return captor.getValue();
@@ -450,5 +450,18 @@ class EmailServiceTest {
         assertThat(service.isConfigured()).isFalse();
         service.sendRetentionWarning("user@example.com", 7, java.time.OffsetDateTime.now(), "a", "b");
         verifyNoInteractions(sender);
+    }
+
+    @Test
+    void retentionWarningReportsWhetherTheSmtpAcceptedIt() {
+        // The retention marks the warning only on true: no SMTP or a refused send must say false
+        assertThat(serviceWith(null, "x@example.com")
+            .sendRetentionWarning("user@example.com", 7, OffsetDateTime.now(), "a", "b")).isFalse();
+
+        JavaMailSender sender = mock(JavaMailSender.class);
+        doThrow(new org.springframework.mail.MailAuthenticationException("bad key"))
+            .when(sender).send(any(SimpleMailMessage.class));
+        assertThat(serviceWith(sender, "x@example.com")
+            .sendRetentionWarning("user@example.com", 7, OffsetDateTime.now(), "a", "b")).isFalse();
     }
 }

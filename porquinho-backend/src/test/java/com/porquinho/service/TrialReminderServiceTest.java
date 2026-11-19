@@ -55,6 +55,7 @@ class TrialReminderServiceTest {
         service = new TrialReminderService(subscriptionRepository, userRepository, auditLogService,
             emailService, clock, "https://app.example.com/", null);
         ReflectionTestUtils.setField(service, "self", service);
+        lenient().when(emailService.isConfigured()).thenReturn(true);
     }
 
     private Subscription trial(OffsetDateTime end) {
@@ -182,6 +183,23 @@ class TrialReminderServiceTest {
         assertThat(s.getTrialReminder7dSentAt()).isNull();
         verify(subscriptionRepository, never()).save(any());
         verifyNoInteractions(emailService, auditLogService);
+    }
+
+    @Test
+    void withoutSmtpNothingIsMarkedSoTheReminderGoesOutLater() {
+        when(emailService.isConfigured()).thenReturn(false);
+        Subscription s = trial(END_IN_7);
+
+        assertThat(service.processReminder(s.getUserId())).isEmpty();
+
+        assertThat(s.getTrialReminder7dSentAt()).isNull();
+        verify(subscriptionRepository, never()).save(any());
+        verifyNoInteractions(auditLogService);
+        verify(emailService, never()).sendTrialReminder(anyString(), anyLong(), any(), anyString());
+        // E-mail back: still due
+        when(emailService.isConfigured()).thenReturn(true);
+        assertThat(service.processReminder(s.getUserId())).isPresent();
+        verify(emailService).sendTrialReminder(EMAIL, 7, END_IN_7, SUBSCRIBE_URL);
     }
 
     @Test
