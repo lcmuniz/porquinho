@@ -64,6 +64,8 @@ class BudgetAlertServiceTest {
     private SubscriptionService subscriptionService;
     @Mock
     private EmailService emailService;
+    @Mock
+    private EmailUnsubscribeService emailUnsubscribeService;
 
     private BudgetAlertService service;
     private final UUID userId = UUID.randomUUID();
@@ -78,7 +80,7 @@ class BudgetAlertServiceTest {
     void setUp() {
         service = new BudgetAlertService(budgetAllocationRepository, budgetAlertNotificationRepository,
             transactionRepository, categoryRepository, userRepository, accountDeletionRepository, subscriptionService,
-            emailService, Clock.fixed(NOW.toInstant(), ZoneOffset.UTC), "https://app.example.com/", null);
+            emailService, emailUnsubscribeService, Clock.fixed(NOW.toInstant(), ZoneOffset.UTC), "https://app.example.com/", null);
         ReflectionTestUtils.setField(service, "self", service);
         lenient().when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         lenient().when(subscriptionService.hasAccess(userId)).thenReturn(true);
@@ -89,6 +91,7 @@ class BudgetAlertServiceTest {
             .thenReturn(spent);
         lenient().when(categoryRepository.findActiveByUserId(userId)).thenReturn(categories);
         lenient().when(emailService.isConfigured()).thenReturn(true);
+        lenient().when(emailUnsubscribeService.budgetAlertUnsubscribeUrl(userId)).thenReturn("https://api.example.com/unsubscribe");
         lenient().when(budgetAlertNotificationRepository.insertIfAbsent(eq(userId), any(), eq(MONTH), anyShort(), eq(NOW)))
             .thenAnswer(inv -> sent.add(inv.getArgument(1) + "/" + inv.getArgument(3)) ? 1 : 0);
     }
@@ -109,7 +112,7 @@ class BudgetAlertServiceTest {
     private List<BudgetAlertLine> emailed() {
         ArgumentCaptor<List<BudgetAlertLine>> captor = ArgumentCaptor.forClass(List.class);
         verify(emailService).sendBudgetAlert(eq(EMAIL), captor.capture(), eq("https://app.example.com/orcamento"),
-            eq("https://app.example.com/dashboard"));
+            eq("https://app.example.com/dashboard"), eq("https://api.example.com/unsubscribe"));
         return captor.getValue();
     }
 
@@ -155,7 +158,7 @@ class BudgetAlertServiceTest {
         service.processUser(userId);
 
         assertThat(emailed()).extracting(BudgetAlertLine::categoryName).containsExactly("Lazer", "Mercado");
-        verify(emailService, times(1)).sendBudgetAlert(any(), any(), any(), any());
+        verify(emailService, times(1)).sendBudgetAlert(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -172,7 +175,7 @@ class BudgetAlertServiceTest {
 
         assertThat(service.processUser(userId)).isFalse();
 
-        verify(emailService, never()).sendBudgetAlert(any(), any(), any(), any());
+        verify(emailService, never()).sendBudgetAlert(any(), any(), any(), any(), any());
         verifyNoInteractions(budgetAlertNotificationRepository);
     }
 
@@ -186,7 +189,7 @@ class BudgetAlertServiceTest {
 
         assertThat(service.processUser(userId)).isFalse();
 
-        verify(emailService, never()).sendBudgetAlert(any(), any(), any(), any());
+        verify(emailService, never()).sendBudgetAlert(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -197,7 +200,7 @@ class BudgetAlertServiceTest {
         assertThat(service.processUser(userId)).isFalse();
 
         verifyNoInteractions(budgetAlertNotificationRepository);
-        verify(emailService, never()).sendBudgetAlert(any(), any(), any(), any());
+        verify(emailService, never()).sendBudgetAlert(any(), any(), any(), any(), any());
         // E-mail back: still due
         when(emailService.isConfigured()).thenReturn(true);
         assertThat(service.processUser(userId)).isTrue();
@@ -248,7 +251,7 @@ class BudgetAlertServiceTest {
     @Test
     void failedEmailKeepsTheMark() {
         UUID food = child("Mercado", "100", "92");
-        doThrow(new RuntimeException("smtp down")).when(emailService).sendBudgetAlert(any(), any(), any(), any());
+        doThrow(new RuntimeException("smtp down")).when(emailService).sendBudgetAlert(any(), any(), any(), any(), any());
 
         assertThat(service.processUser(userId)).isTrue();
 
@@ -264,7 +267,7 @@ class BudgetAlertServiceTest {
 
         service.runAlerts();
 
-        verify(emailService).sendBudgetAlert(eq(EMAIL), any(), any(), any());
+        verify(emailService).sendBudgetAlert(eq(EMAIL), any(), any(), any(), any());
     }
 
     @Test

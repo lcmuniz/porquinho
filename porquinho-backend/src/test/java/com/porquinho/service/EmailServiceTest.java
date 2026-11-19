@@ -3,6 +3,8 @@ package com.porquinho.service;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
+import jakarta.mail.Session;
+import jakarta.mail.internet.MimeMessage;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 
@@ -403,32 +405,40 @@ class EmailServiceTest {
     }
 
     @Test
-    void budgetAlertListsEachCategoryInPtBrWithLinks() {
+    void budgetAlertListsEachCategoryInPtBrWithLinks() throws Exception {
         // Pre-Epic 10: name, spent, allocated and percent in pt-BR, link to the budget and how to turn it off
         JavaMailSender sender = mock(JavaMailSender.class);
+        when(sender.createMimeMessage()).thenReturn(new MimeMessage((Session) null));
         serviceWith(sender, "x@example.com").sendBudgetAlert("user@example.com", List.of(
                 new EmailService.BudgetAlertLine("Mercado", new BigDecimal("1234.5"), new BigDecimal("1300"), 90),
                 new EmailService.BudgetAlertLine("Lazer", new BigDecimal("130"), new BigDecimal("100"), 100)),
-            "https://app.example.com/orcamento", "https://app.example.com/dashboard");
+            "https://app.example.com/orcamento", "https://app.example.com/dashboard",
+            "https://api.example.com/api/v1/email/unsubscribe?token=abc");
 
-        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        ArgumentCaptor<MimeMessage> captor = ArgumentCaptor.forClass(MimeMessage.class);
         verify(sender).send(captor.capture());
-        SimpleMailMessage message = captor.getValue();
+        MimeMessage message = captor.getValue();
         assertThat(message.getSubject()).isEqualTo("Porquinho - Alerta de orçamento");
-        assertThat(message.getTo()).containsExactly("user@example.com");
-        assertThat(message.getText())
+        assertThat(message.getFrom()[0].toString()).isEqualTo("x@example.com");
+        assertThat(message.getAllRecipients()[0].toString()).isEqualTo("user@example.com");
+        assertThat((String) message.getContent())
             .contains("- Mercado: R$ 1.234,50 de R$ 1.300,00 (94%) - atingiu 90% do orçamento")
             .contains("- Lazer: R$ 130,00 de R$ 100,00 (130%) - atingiu 100% do orçamento")
             .contains("https://app.example.com/orcamento")
+            .contains("descadastre-se: https://api.example.com/api/v1/email/unsubscribe?token=abc")
             .contains("Receber alerta de orçamento por e-mail")
             .contains("https://app.example.com/dashboard");
+        // RFC 8058 one-click: Gmail and Yahoo require both headers from bulk senders
+        assertThat(message.getHeader("List-Unsubscribe"))
+            .containsExactly("<https://api.example.com/api/v1/email/unsubscribe?token=abc>");
+        assertThat(message.getHeader("List-Unsubscribe-Post")).containsExactly("List-Unsubscribe=One-Click");
     }
 
     @Test
     void budgetAlertWithoutSmtpDoesNotThrow() {
         @SuppressWarnings("unchecked")
         ObjectProvider<JavaMailSender> provider = mock(ObjectProvider.class);
-        new EmailService(provider, "", "").sendBudgetAlert("user@example.com", List.of(), "a", "b");
+        new EmailService(provider, "", "").sendBudgetAlert("user@example.com", List.of(), "a", "b", "c");
     }
 
     @Test

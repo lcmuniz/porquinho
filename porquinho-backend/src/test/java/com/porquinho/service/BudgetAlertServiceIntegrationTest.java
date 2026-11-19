@@ -86,7 +86,7 @@ class BudgetAlertServiceIntegrationTest {
 
         ArgumentCaptor<List<BudgetAlertLine>> captor = ArgumentCaptor.forClass(List.class);
         verify(emailService, times(1)).sendBudgetAlert(eq(email), captor.capture(), endsWith("/orcamento"),
-            endsWith("/dashboard"));
+            endsWith("/dashboard"), contains("/api/v1/email/unsubscribe?token=" + userId + "."));
         assertThat(captor.getValue()).singleElement().extracting(BudgetAlertLine::level).isEqualTo(100);
         assertThat(jdbc.queryForList("SELECT level FROM budget_alert_notifications WHERE user_id = ? ORDER BY level",
             Integer.class, userId)).containsExactly(90, 100);
@@ -109,7 +109,7 @@ class BudgetAlertServiceIntegrationTest {
         start.countDown();
 
         assertThat(runs.stream().map(CompletableFuture::join).filter(Boolean::booleanValue).count()).isEqualTo(1);
-        verify(emailService, times(1)).sendBudgetAlert(eq(email), anyList(), anyString(), anyString());
+        verify(emailService, times(1)).sendBudgetAlert(eq(email), anyList(), anyString(), anyString(), anyString());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM budget_alert_notifications WHERE user_id = ?",
             Long.class, userId)).isEqualTo(1);
     }
@@ -127,7 +127,7 @@ class BudgetAlertServiceIntegrationTest {
 
         assertThat(budgetAlertService.processUser(userId)).isTrue();
 
-        verify(emailService, times(1)).sendBudgetAlert(eq(email), anyList(), anyString(), anyString());
+        verify(emailService, times(1)).sendBudgetAlert(eq(email), anyList(), anyString(), anyString(), anyString());
         assertThat(jdbc.queryForList("SELECT level FROM budget_alert_notifications WHERE user_id = ? AND month = ?",
             Integer.class, userId, month)).containsExactly(90);
     }
@@ -153,7 +153,7 @@ class BudgetAlertServiceIntegrationTest {
 
         budgetAlertService.runAlerts();
 
-        verify(emailService, never()).sendBudgetAlert(eq(email), anyList(), anyString(), anyString());
+        verify(emailService, never()).sendBudgetAlert(eq(email), anyList(), anyString(), anyString(), anyString());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM budget_alert_notifications WHERE user_id = ?",
             Long.class, userId)).isZero();
     }

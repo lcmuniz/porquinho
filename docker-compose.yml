@@ -39,6 +39,7 @@ services:
       SMTP_USERNAME: ${SMTP_USERNAME:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       MAIL_FROM: ${MAIL_FROM:-}
+      EMAIL_UNSUBSCRIBE_SECRET: ${EMAIL_UNSUBSCRIBE_SECRET:-}
     volumes:
       # Exportações LGPD (app.export.directory = ./exports no WORKDIR /app): sobrevivem a um novo deploy
       - backend-exports:/app/exports

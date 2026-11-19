@@ -7,6 +7,8 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
+import jakarta.mail.internet.MimeMessage;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -288,8 +290,11 @@ public class EmailService {
     /**
      * Tell the user that categories reached 90% or 100% of the month's budget (pre-Epic 10), with a link to the budget
      * and how to turn the alert off. Best-effort: if SMTP is not configured or sending fails, logs warning and continues.
+     * Optional e-mail, so it carries List-Unsubscribe with one-click POST (RFC 8058, required by Gmail and Yahoo) and
+     * the same link in the body; transactional e-mails do not.
      */
-    public void sendBudgetAlert(String email, List<BudgetAlertLine> lines, String budgetUrl, String settingsUrl) {
+    public void sendBudgetAlert(String email, List<BudgetAlertLine> lines, String budgetUrl, String settingsUrl,
+                                String unsubscribeUrl) {
         if (mailSender == null) {
             log.warn("SMTP not configured - skipping budget alert email to {}", maskEmail(email));
             return;
@@ -309,12 +314,22 @@ public class EmailService {
                     .append("\n");
             }
             body.append("\nVeja seu orçamento: ").append(budgetUrl).append("\n\n")
-                .append("Para não receber mais estes alertas, desmarque \"Receber alerta de orçamento por e-mail\" ")
+                .append("Para não receber mais estes alertas, descadastre-se: ").append(unsubscribeUrl).append("\n")
+                .append("Você também pode desmarcar \"Receber alerta de orçamento por e-mail\" ")
                 .append("em Configurações da conta: ").append(settingsUrl).append("\n\n")
                 .append("Atenciosamente,\nEquipe Porquinho");
 
-            SimpleMailMessage message = newMessage(email, "Porquinho - Alerta de orçamento");
-            message.setText(body.toString());
+            // SimpleMailMessage has no custom headers
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, false, "UTF-8");
+            if (from != null && !from.isBlank()) {
+                helper.setFrom(from);
+            }
+            helper.setTo(email);
+            helper.setSubject("Porquinho - Alerta de orçamento");
+            helper.setText(body.toString());
+            message.setHeader("List-Unsubscribe", "<" + unsubscribeUrl + ">");
+            message.setHeader("List-Unsubscribe-Post", "List-Unsubscribe=One-Click");
             mailSender.send(message);
             log.info("Budget alert ({} categories) email sent to {}", lines.size(), maskEmail(email));
         } catch (Exception e) {

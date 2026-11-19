@@ -58,6 +58,13 @@ const router = createRouter({
       component: () => import('../views/PrivacyView.vue'),
       meta: { requiresAuth: false },
     },
+    {
+      // Link de descadastro do alerta de orçamento por e-mail (o GET da API redireciona para cá)
+      path: '/descadastro',
+      name: 'unsubscribe',
+      component: () => import('../views/UnsubscribeView.vue'),
+      meta: { requiresAuth: false },
+    },
 
     // Rotas protegidas (requerem autenticacao)
     {

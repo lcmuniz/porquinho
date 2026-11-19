@@ -69,7 +69,9 @@ class ProductionSecurityChainTest {
         "POST /api/v1/auth/password-reset/requested",
         "GET /api/v1/auth/health",
         "GET /api/v1/data-export/download/{token}",
-        "POST /api/v1/webhooks/stripe"
+        "POST /api/v1/webhooks/stripe",
+        "GET /api/v1/email/unsubscribe",
+        "POST /api/v1/email/unsubscribe"
     );
 
     @TestConfiguration
@@ -286,5 +288,8 @@ class ProductionSecurityChainTest {
             .andReturn().getResponse().getStatus();
         assertThat(download).isNotIn(401, 403);
         assertThat(webhook).isNotIn(401, 403);
+        // Descadastro: o token HMAC é a autenticação; sem token válido, 400 (POST) e redireciona para o front (GET)
+        mockMvc.perform(post("/api/v1/email/unsubscribe").param("token", "x")).andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/v1/email/unsubscribe")).andExpect(status().isFound());
     }
 }

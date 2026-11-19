@@ -58,6 +58,7 @@ public class BudgetAlertService {
     private final AccountDeletionRepository accountDeletionRepository;
     private final SubscriptionService subscriptionService;
     private final EmailService emailService;
+    private final EmailUnsubscribeService emailUnsubscribeService;
     private final Clock clock;
     private final String budgetUrl;
     private final String settingsUrl;
@@ -73,6 +74,7 @@ public class BudgetAlertService {
                               AccountDeletionRepository accountDeletionRepository,
                               SubscriptionService subscriptionService,
                               EmailService emailService,
+                              EmailUnsubscribeService emailUnsubscribeService,
                               Clock clock,
                               @Value("${app.frontend-url:http://localhost:5173}") String frontendUrl,
                               @Lazy BudgetAlertService self) {
@@ -84,6 +86,7 @@ public class BudgetAlertService {
         this.accountDeletionRepository = accountDeletionRepository;
         this.subscriptionService = subscriptionService;
         this.emailService = emailService;
+        this.emailUnsubscribeService = emailUnsubscribeService;
         this.clock = clock;
         String base = frontendUrl != null && frontendUrl.endsWith("/")
             ? frontendUrl.substring(0, frontendUrl.length() - 1) : frontendUrl;
@@ -179,9 +182,10 @@ public class BudgetAlertService {
         }
 
         String email = user.getEmail();
+        String unsubscribeUrl = emailUnsubscribeService.budgetAlertUnsubscribeUrl(userId);
         AfterCommit.run(() -> {
             try {
-                emailService.sendBudgetAlert(email, lines, budgetUrl, settingsUrl);
+                emailService.sendBudgetAlert(email, lines, budgetUrl, settingsUrl, unsubscribeUrl);
             } catch (RuntimeException e) {
                 // Already marked as sent: a lost alert is acceptable, a duplicate is not.
                 log.warn("Budget alert e-mail failed for user {}: {} - {}",
