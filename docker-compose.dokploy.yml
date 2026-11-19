@@ -1,10 +1,12 @@
 # Deploy no Dokploy (Docker Compose). Diferenças para o docker-compose.yml:
+# - serviços com prefixo porquinho-: na dokploy-network (compartilhada) nomes como "frontend" e "backend"
+#   colidem com os de outros apps e o DNS resolve para o container errado;
 # - nenhuma porta publicada: o Traefik do Dokploy termina o TLS e entrega ao serviço `nginx`, porta 80
 #   (domínio configurado na UI do Dokploy, HTTPS ligado);
 # - nginx.dokploy.conf: sem bloco 443 nem certificado, repassa o X-Forwarded-Proto do Traefik.
 # Variáveis: as do docs/deploy-checklist.md, seção 1, na aba Environment do Dokploy.
 services:
-  frontend:
+  porquinho-frontend:
     build:
       context: ./porquinho-frontend
       args:
@@ -13,16 +15,11 @@ services:
         VITE_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
     restart: unless-stopped
     depends_on:
-      backend:
+      porquinho-backend:
         condition: service_healthy
-    # nome único: na dokploy-network (compartilhada) "frontend" resolve para o serviço homônimo de outro app
-    networks:
-      default:
-        aliases:
-          - porquinho-frontend
 
 
-  backend:
+  porquinho-backend:
     build:
       context: ./porquinho-backend
     environment:
@@ -58,16 +55,11 @@ services:
       retries: 3
     restart: unless-stopped
     depends_on:
-      redis:
+      porquinho-redis:
         condition: service_healthy
-    # nome único: na dokploy-network (compartilhada) "backend" resolve para o serviço homônimo de outro app
-    networks:
-      default:
-        aliases:
-          - porquinho-backend
 
 
-  redis:
+  porquinho-redis:
     image: redis:7-alpine
     volumes:
       - redis-data:/data
@@ -77,14 +69,9 @@ services:
       timeout: 3s
       retries: 5
     restart: unless-stopped
-    # nome único: na dokploy-network (compartilhada) "redis" resolve para o serviço homônimo de outro app
-    networks:
-      default:
-        aliases:
-          - porquinho-redis
 
 
-  nginx:
+  porquinho-nginx:
     image: nginx:alpine
     # expose, nunca ports: o Traefik do Dokploy é dono de 80/443 e chega aqui pelo domínio configurado na UI
     expose:
@@ -93,9 +80,9 @@ services:
       - ./nginx.dokploy.conf:/etc/nginx/nginx.conf:ro
     restart: unless-stopped
     depends_on:
-      frontend:
+      porquinho-frontend:
         condition: service_started
-      backend:
+      porquinho-backend:
         condition: service_healthy
 
 volumes:
