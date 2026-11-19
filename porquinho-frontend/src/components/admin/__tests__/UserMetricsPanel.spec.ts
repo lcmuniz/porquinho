@@ -12,7 +12,10 @@ vi.mock('@/services/adminService', () => ({
 
 const mockDownloadBlob = vi.fn()
 vi.mock('@/lib/download', () => ({ downloadBlob: (...a: unknown[]) => mockDownloadBlob(...a) }))
-vi.mock('@/lib/date', () => ({ todaySaoPaulo: () => '2026-11-18' }))
+vi.mock('@/lib/date', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/date')>()),
+  todaySaoPaulo: () => '2026-11-18',
+}))
 
 const months = Array.from({ length: 12 }, (_, i) => `2026-${String(i + 1).padStart(2, '0')}`)
 

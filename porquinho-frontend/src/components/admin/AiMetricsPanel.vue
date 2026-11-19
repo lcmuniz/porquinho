@@ -74,12 +74,10 @@
       </p>
 
       <section aria-label="Resumo da IA" class="grid gap-4 sm:grid-cols-2">
-        <div class="rounded-lg border bg-white p-4" :class="STATUS_STYLE[metrics.overall.status].border" data-testid="ai-overall">
+        <div class="rounded-lg border bg-white p-4" :class="ADMIN_STATUS[metrics.overall.status].border" data-testid="ai-overall">
           <div class="flex items-center justify-between gap-2">
             <h2 class="text-sm font-medium text-gray-700">Precisão geral</h2>
-            <span class="rounded-full px-2 py-0.5 text-xs font-medium" :class="STATUS_STYLE[metrics.overall.status].badge">
-              {{ STATUS_STYLE[metrics.overall.status].label }}
-            </span>
+            <StatusBadge :status="metrics.overall.status" />
           </div>
           <p class="mt-2 text-2xl font-semibold text-gray-900">{{ formatAccuracy(metrics.overall.accuracy) }}</p>
           <p class="text-xs text-gray-600">
@@ -133,9 +131,7 @@
                 <td class="py-2 pr-4 text-right">{{ b.corrections }}</td>
                 <td class="py-2 pr-4 text-right" data-testid="ai-accuracy">{{ formatAccuracy(b.accuracy) }}</td>
                 <td class="py-2">
-                  <span class="rounded-full px-2 py-0.5 text-xs font-medium" :class="STATUS_STYLE[b.status].badge" data-testid="ai-status">
-                    {{ STATUS_STYLE[b.status].label }}
-                  </span>
+                  <StatusBadge :status="b.status" data-testid="ai-status" />
                 </td>
               </tr>
             </tbody>
@@ -235,7 +231,11 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import AccuracyLineChart from '@/components/admin/AccuracyLineChart.vue'
 import HealthBarChart from '@/components/admin/HealthBarChart.vue'
+import StatusBadge from '@/components/admin/StatusBadge.vue'
+import { useExportDialog } from '@/composables/useExportDialog'
+import { useSequencedList } from '@/composables/useSequencedList'
 import { exportAiMetrics, getAiBankDetail, getAiMetrics } from '@/services/adminService'
+import { ADMIN_STATUS } from '@/lib/adminStatus'
 import { apiErrorStatus } from '@/lib/apiError'
 import { downloadBlob } from '@/lib/download'
 import { formatLocalDateBR } from '@/lib/date'
@@ -294,13 +294,6 @@ const BAND_LABELS: Record<AiConfidenceBand, string> = {
   '80-100': '80 a 100',
 }
 
-const STATUS_STYLE: Record<HealthStatus, { label: string; badge: string; border: string }> = {
-  GREEN: { label: 'Dentro da meta', badge: 'bg-green-100 text-green-800', border: 'border-green-300' },
-  YELLOW: { label: 'Atenção', badge: 'bg-yellow-100 text-yellow-800', border: 'border-yellow-300' },
-  RED: { label: 'Crítico', badge: 'bg-red-100 text-red-800', border: 'border-red-300' },
-  UNKNOWN: { label: 'Sem dados', badge: 'bg-gray-100 text-gray-700', border: 'border-gray-200' },
-}
-
 // Abaixo da meta fica destacado: amarelo de 75 a 85 %, vermelho abaixo de 75 %
 const ROW_CLASS: Record<HealthStatus, string> = {
   GREEN: 'text-gray-900',
@@ -321,12 +314,16 @@ const applied = ref<ImportMetricsFilters>({ ...initial })
 const metrics = ref<AiMetrics | null>(null)
 const loading = ref(false)
 const error = ref('')
-const exporting = ref(false)
 const exportError = ref('')
+const { exporting, run: runExport } = useExportDialog()
 const selected = ref<AdminBankCode | null>(null)
-const detail = ref<AiBankDetail | null>(null)
 const detailError = ref('')
-let detailSeq = 0
+// Só a resposta mais nova vale: outro banco ou outro "Filtrar" no meio da carga descarta esta
+const detailList = useSequencedList<AiBankDetail>(
+  async () => [await getAiBankDetail({ ...applied.value, bank: selected.value! })],
+  (err) => handle(err, 'Não foi possível carregar o detalhe do banco.', detailError),
+)
+const detail = computed(() => detailList.items.value[0] ?? null)
 
 function formatAccuracy(value: number | null) {
   return value === null ? 'sem dados' : `${percent.format(value)} %`
@@ -395,18 +392,10 @@ async function load() {
 }
 
 async function loadDetail() {
-  const bank = selected.value
-  if (!bank) return
-  // Só a resposta mais nova vale: outro banco ou outro "Filtrar" no meio da carga descarta esta
-  const seq = ++detailSeq
-  detail.value = null
+  if (!selected.value) return
+  detailList.items.value = []
   detailError.value = ''
-  try {
-    const result = await getAiBankDetail({ ...applied.value, bank })
-    if (seq === detailSeq) detail.value = result
-  } catch (err) {
-    if (seq === detailSeq) handle(err, 'Não foi possível carregar o detalhe do banco.', detailError)
-  }
+  await detailList.load()
 }
 
 function openDetail(bank: AdminBankCode) {
@@ -423,24 +412,20 @@ async function apply() {
   // O banco filtrado exclui o detalhe aberto de outro banco
   if (form.bank && form.bank !== selected.value) {
     selected.value = null
-    detail.value = null
+    detailList.items.value = []
   }
   await load()
   if (selected.value) void loadDetail()
 }
 
 async function exportCsv() {
-  if (!metrics.value) return
-  exporting.value = true
+  const m = metrics.value
+  if (!m) return
   exportError.value = ''
-  try {
-    const blob = await exportAiMetrics(applied.value)
-    downloadBlob(blob, `precisao_ia_${metrics.value.from}_${metrics.value.to}.csv`)
-  } catch (err) {
-    handle(err, 'Não foi possível exportar o CSV.', exportError)
-  } finally {
-    exporting.value = false
-  }
+  await runExport(
+    async () => downloadBlob(await exportAiMetrics(applied.value), `precisao_ia_${m.from}_${m.to}.csv`),
+    (err) => handle(err, 'Não foi possível exportar o CSV.', exportError),
+  )
 }
 
 onMounted(load)

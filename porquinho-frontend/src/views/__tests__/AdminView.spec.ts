@@ -114,10 +114,10 @@ describe('AdminView', () => {
 
     expect(wrapper.get('[data-testid="card-uptime"]').text()).toContain('99,8 %')
     expect(wrapper.get('[data-testid="card-uptime"]').text()).toContain('Meta: 99,5 %')
-    expect(wrapper.get('[data-testid="status-uptime"]').text()).toBe('Saudável')
+    expect(wrapper.get('[data-testid="status-uptime"]').text()).toBe('Dentro da meta')
     expect(wrapper.get('[data-testid="card-errors"]').text()).toContain('0,5 %')
     expect(wrapper.get('[data-testid="card-errors"]').text()).toContain('24 h: 3 · 7 dias: 10 · 30 dias: 20')
-    expect(wrapper.get('[data-testid="endpoint-status"]').text()).toBe('Saudável')
+    expect(wrapper.get('[data-testid="endpoint-status"]').text()).toBe('Dentro da meta')
     expect(wrapper.get('[data-testid="card-redis"]').text()).toContain('Hit rate: 80 %')
     expect(wrapper.get('[data-testid="card-sessions"]').text()).toContain('4')
     expect(wrapper.get('[data-testid="endpoints-table"]').text()).toContain('GET /api/v1/accounts')

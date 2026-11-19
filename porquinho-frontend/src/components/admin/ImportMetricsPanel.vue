@@ -123,13 +123,7 @@
                 <td class="py-2 pr-4 text-right">{{ b.failures }}</td>
                 <td class="py-2 pr-4 text-right" data-testid="bank-rate">{{ formatRate(b.errorRate) }}</td>
                 <td class="py-2">
-                  <span
-                    class="rounded-full px-2 py-0.5 text-xs font-medium"
-                    :class="STATUS_STYLE[b.status].badge"
-                    data-testid="bank-status"
-                  >
-                    {{ STATUS_STYLE[b.status].label }}
-                  </span>
+                  <StatusBadge :status="b.status" data-testid="bank-status" />
                 </td>
               </tr>
             </tbody>
@@ -223,6 +217,9 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import HealthBarChart from '@/components/admin/HealthBarChart.vue'
+import StatusBadge from '@/components/admin/StatusBadge.vue'
+import { useExportDialog } from '@/composables/useExportDialog'
+import { useSequencedList } from '@/composables/useSequencedList'
 import { exportImportErrors, getImportBankDetail, getImportMetrics } from '@/services/adminService'
 import { apiErrorStatus } from '@/lib/apiError'
 import { downloadBlob } from '@/lib/download'
@@ -232,7 +229,6 @@ import { BANK_LABELS } from '@/types/transactionImport'
 import type { TransactionImportStatus } from '@/types/transactionImport'
 import type {
   AdminBankCode,
-  HealthStatus,
   ImportBankDetail,
   ImportErrorType,
   ImportMetrics,
@@ -264,13 +260,6 @@ const STATUS_LABELS: Record<TransactionImportStatus, string> = {
   DISCARDED: 'Descartada',
 }
 
-const STATUS_STYLE: Record<HealthStatus, { label: string; badge: string }> = {
-  GREEN: { label: 'Dentro da meta', badge: 'bg-green-100 text-green-800' },
-  YELLOW: { label: 'Atenção', badge: 'bg-yellow-100 text-yellow-800' },
-  RED: { label: 'Acima da meta', badge: 'bg-red-100 text-red-800' },
-  UNKNOWN: { label: 'Sem dados', badge: 'bg-gray-100 text-gray-700' },
-}
-
 const GREEN = '#16a34a'
 const RED = '#dc2626'
 
@@ -290,12 +279,18 @@ const applied = ref<{ period: ImportMetricsFilters; status: ImportOutcome }>({ p
 const metrics = ref<ImportMetrics | null>(null)
 const loading = ref(false)
 const error = ref('')
-const exporting = ref(false)
 const exportError = ref('')
+const { exporting, run: runExport } = useExportDialog()
 const selected = ref<AdminBankCode | null>(null)
-const detail = ref<ImportBankDetail | null>(null)
 const detailError = ref('')
-let detailSeq = 0
+// Só a resposta mais nova vale: um clique em outro banco ou outro "Filtrar" no meio da carga descarta esta
+const detailList = useSequencedList<ImportBankDetail>(
+  async () => [
+    await getImportBankDetail({ ...applied.value.period, bank: selected.value!, status: applied.value.status }),
+  ],
+  (err) => handle(err, 'Não foi possível carregar o detalhe do banco.', detailError),
+)
+const detail = computed(() => detailList.items.value[0] ?? null)
 
 function formatRate(value: number | null) {
   return value === null ? 'sem dados' : `${percent.format(value)} %`
@@ -339,19 +334,10 @@ async function load() {
 }
 
 async function loadDetail() {
-  const bank = selected.value
-  if (!bank) return
-  // Só a resposta mais nova vale: outro banco ou outro "Filtrar" no meio da carga descarta esta
-  const seq = ++detailSeq
-  detail.value = null
+  if (!selected.value) return
+  detailList.items.value = []
   detailError.value = ''
-  try {
-    const result = await getImportBankDetail({ ...applied.value.period, bank, status: applied.value.status })
-    // Um clique em outro banco durante a carga não pode receber o detalhe deste
-    if (seq === detailSeq) detail.value = result
-  } catch (err) {
-    if (seq === detailSeq) handle(err, 'Não foi possível carregar o detalhe do banco.', detailError)
-  }
+  await detailList.load()
 }
 
 function openDetail(bank: AdminBankCode) {
@@ -371,24 +357,24 @@ async function apply() {
   // O banco filtrado exclui o detalhe aberto de outro banco
   if (form.bank && form.bank !== selected.value) {
     selected.value = null
-    detail.value = null
+    detailList.items.value = []
   }
   await load()
   if (selected.value) void loadDetail()
 }
 
 async function exportCsv() {
-  if (!metrics.value) return
-  exporting.value = true
+  const m = metrics.value
+  if (!m) return
   exportError.value = ''
-  try {
-    const blob = await exportImportErrors({ ...applied.value.period, status: applied.value.status })
-    downloadBlob(blob, `erros_importacao_${metrics.value.from}_${metrics.value.to}.csv`)
-  } catch (err) {
-    handle(err, 'Não foi possível exportar o CSV.', exportError)
-  } finally {
-    exporting.value = false
-  }
+  await runExport(
+    async () =>
+      downloadBlob(
+        await exportImportErrors({ ...applied.value.period, status: applied.value.status }),
+        `erros_importacao_${m.from}_${m.to}.csv`,
+      ),
+    (err) => handle(err, 'Não foi possível exportar o CSV.', exportError),
+  )
 }
 
 onMounted(load)

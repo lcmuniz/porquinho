@@ -2,7 +2,7 @@
   <div class="space-y-6">
     <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
       <p v-if="metrics" class="text-xs text-gray-600" data-testid="users-updated">
-        Atualizado às {{ formatTime(metrics.generatedAt) }}. Atualiza a cada 5 minutos.
+        Atualizado em {{ formatDateTimeBR(metrics.generatedAt) }}. Atualiza a cada 5 minutos.
       </p>
       <button
         type="button"
@@ -44,19 +44,12 @@
           v-for="card in cards"
           :key="card.key"
           class="rounded-lg border bg-white p-4"
-          :class="card.status ? STATUS_STYLE[card.status].border : 'border-gray-200'"
+          :class="card.status ? ADMIN_STATUS[card.status].border : 'border-gray-200'"
           :data-testid="`users-card-${card.key}`"
         >
           <div class="flex items-center justify-between gap-2">
             <h2 class="text-sm font-medium text-gray-700">{{ card.title }}</h2>
-            <span
-              v-if="card.status"
-              class="rounded-full px-2 py-0.5 text-xs font-medium"
-              :class="STATUS_STYLE[card.status].badge"
-              :data-testid="`users-status-${card.key}`"
-            >
-              {{ STATUS_STYLE[card.status].label }}
-            </span>
+            <StatusBadge v-if="card.status" :status="card.status" :data-testid="`users-status-${card.key}`" />
           </div>
           <p class="mt-2 text-2xl font-semibold text-gray-900">{{ card.value }}</p>
           <p v-if="card.line" class="text-xs text-gray-600">{{ card.line }}</p>
@@ -70,19 +63,12 @@
             v-for="card in engagement"
             :key="card.key"
             class="rounded-lg border bg-white p-4"
-            :class="card.status ? STATUS_STYLE[card.status].border : 'border-gray-200'"
+            :class="card.status ? ADMIN_STATUS[card.status].border : 'border-gray-200'"
             :data-testid="`users-card-${card.key}`"
           >
             <div class="flex items-center justify-between gap-2">
               <h3 class="text-sm font-medium text-gray-700">{{ card.title }}</h3>
-              <span
-                v-if="card.status"
-                class="rounded-full px-2 py-0.5 text-xs font-medium"
-                :class="STATUS_STYLE[card.status].badge"
-                :data-testid="`users-status-${card.key}`"
-              >
-                {{ STATUS_STYLE[card.status].label }}
-              </span>
+              <StatusBadge v-if="card.status" :status="card.status" :data-testid="`users-status-${card.key}`" />
             </div>
             <p class="mt-2 text-2xl font-semibold text-gray-900">{{ card.value }}</p>
             <p v-if="card.line" class="text-xs text-gray-600">{{ card.line }}</p>
@@ -169,12 +155,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import AccuracyLineChart from '@/components/admin/AccuracyLineChart.vue'
+import StatusBadge from '@/components/admin/StatusBadge.vue'
+import { useExportDialog } from '@/composables/useExportDialog'
+import { usePolling } from '@/composables/usePolling'
 import { exportUserMetrics, getUserMetrics } from '@/services/adminService'
+import { ADMIN_STATUS } from '@/lib/adminStatus'
 import { apiErrorStatus } from '@/lib/apiError'
 import { downloadBlob } from '@/lib/download'
-import { todaySaoPaulo } from '@/lib/date'
+import { formatDateTimeBR, todaySaoPaulo } from '@/lib/date'
 import type { HealthStatus, UserFeature, UserMetrics } from '@/types/admin'
 
 // Story 10.4: usuários ativos, assinaturas, engajamento e adoção; o 403 sobe para a view mostrar "Acesso restrito"
@@ -192,19 +182,12 @@ const FEATURE_LABELS: Record<UserFeature, string> = {
   RECONCILIATIONS: 'Conciliação',
 }
 
-const STATUS_STYLE: Record<HealthStatus, { label: string; badge: string; border: string }> = {
-  GREEN: { label: 'Dentro da meta', badge: 'bg-green-100 text-green-800', border: 'border-green-300' },
-  YELLOW: { label: 'Atenção', badge: 'bg-yellow-100 text-yellow-800', border: 'border-yellow-300' },
-  RED: { label: 'Crítico', badge: 'bg-red-100 text-red-800', border: 'border-red-300' },
-  UNKNOWN: { label: 'Sem dados', badge: 'bg-gray-100 text-gray-700', border: 'border-gray-200' },
-}
-
 const metrics = ref<UserMetrics | null>(null)
 const loading = ref(false)
 const error = ref('')
-const exporting = ref(false)
 const exportError = ref('')
-let timer: ReturnType<typeof setInterval> | undefined
+const { exporting, run: runExport } = useExportDialog()
+const { stop } = usePolling(() => void load(), REFRESH_MS)
 
 const count = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 })
 const percent = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
@@ -216,10 +199,6 @@ function formatCount(value: number) {
 
 function formatPercent(value: number | null) {
   return value === null ? 'sem dados' : `${percent.format(value)} %`
-}
-
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 }
 
 function monthLabel(month: string) {
@@ -310,16 +289,14 @@ async function load() {
 }
 
 async function exportCsv() {
-  exporting.value = true
   exportError.value = ''
-  try {
-    downloadBlob(await exportUserMetrics(), `usuarios_${todaySaoPaulo()}.csv`)
-  } catch (err) {
-    if (apiErrorStatus(err) === 403) onForbidden()
-    else exportError.value = 'Não foi possível exportar o CSV.'
-  } finally {
-    exporting.value = false
-  }
+  await runExport(
+    async () => downloadBlob(await exportUserMetrics(), `usuarios_${todaySaoPaulo()}.csv`),
+    (err) => {
+      if (apiErrorStatus(err) === 403) onForbidden()
+      else exportError.value = 'Não foi possível exportar o CSV.'
+    },
+  )
 }
 
 function onForbidden() {
@@ -327,26 +304,5 @@ function onForbidden() {
   emit('forbidden')
 }
 
-function stop() {
-  if (timer !== undefined) clearInterval(timer)
-  timer = undefined
-}
-
-// Aba do navegador escondida não consulta: cada chamada renova last_activity e manteria a sessão viva para sempre
-function onVisibilityChange() {
-  if (document.visibilityState === 'visible' && timer !== undefined) void load()
-}
-
-onMounted(() => {
-  void load()
-  timer = setInterval(() => {
-    if (document.visibilityState !== 'hidden') void load()
-  }, REFRESH_MS)
-  document.addEventListener('visibilitychange', onVisibilityChange)
-})
-
-onBeforeUnmount(() => {
-  stop()
-  document.removeEventListener('visibilitychange', onVisibilityChange)
-})
+onMounted(load)
 </script>
