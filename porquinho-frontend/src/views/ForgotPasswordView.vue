@@ -114,7 +114,7 @@ async function handleSubmit() {
           <div class="mt-6 text-center">
             <router-link
               to="/login"
-              class="inline-flex items-center gap-1 text-sm text-purple-600 hover:text-purple-700 focus:outline-none focus:underline"
+              class="inline-flex min-h-[44px] items-center gap-1 text-sm text-purple-600 hover:text-purple-700 rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600"
             >
               <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path

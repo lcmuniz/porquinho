@@ -279,7 +279,7 @@ function togglePasswordVisibility() {
             <div class="flex justify-end">
               <router-link
                 to="/auth/forgot-password"
-                class="text-sm text-purple-600 hover:text-purple-700 focus:outline-none focus:underline"
+                class="inline-flex min-h-[44px] items-center text-sm text-purple-600 hover:text-purple-700 rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600"
               >
                 Esqueceu a senha?
               </router-link>
@@ -340,7 +340,7 @@ function togglePasswordVisibility() {
             Não tem uma conta?
             <router-link
               to="/register"
-              class="font-medium text-purple-600 hover:text-purple-700 focus:outline-none focus:underline"
+              class="inline-flex min-h-[44px] items-center font-medium text-purple-600 hover:text-purple-700 rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600"
             >
               Cadastre-se
             </router-link>
