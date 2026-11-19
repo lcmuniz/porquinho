@@ -7,7 +7,7 @@
 
       <div class="prose prose-gray max-w-none">
         <p class="text-gray-600">
-          <strong>Última atualização:</strong> {{ currentDate }}
+          <strong>Última atualização:</strong> 16 de novembro de 2026
         </p>
 
         <section class="mt-8">
@@ -156,15 +156,3 @@
     </div>
   </main>
 </template>
-
-<script setup lang="ts">
-import { computed } from 'vue'
-
-const currentDate = computed(() => {
-  return new Date().toLocaleDateString('pt-BR', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  })
-})
-</script>
