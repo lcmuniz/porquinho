@@ -66,8 +66,15 @@
             <p class="mt-4 text-red-600 font-medium">Erro na verificação</p>
             <p class="mt-2 text-sm text-gray-600">{{ errorMessage }}</p>
             <Button
+              @click="router.push('/login')"
+              class="mt-4 w-full min-h-[44px] bg-purple-600 hover:bg-purple-700 text-white"
+            >
+              Ir para Login
+            </Button>
+            <Button
               @click="router.push('/register')"
-              class="mt-4 w-full bg-purple-600 hover:bg-purple-700 text-white"
+              variant="outline"
+              class="mt-2 w-full min-h-[44px]"
             >
               Voltar para Registro
             </Button>
@@ -121,14 +128,13 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { supabase } from '@/services/supabase'
 import { errorMessageOf } from '@/lib/apiError'
 
 const router = useRouter()
-const _route = useRoute() // Reserved for future use
 
 const verificationStatus = ref<'pending' | 'verifying' | 'success' | 'error'>('pending')
 const errorMessage = ref('')
@@ -160,7 +166,18 @@ const pageDescription = computed(() => {
   }
 })
 
+// O link de verificação cria uma sessão no Supabase, mas o usuário e o trial do backend só nascem no login pelo
+// formulário. Sem encerrar a sessão, quem fosse direto ao app cairia em "trial terminou".
+async function showSuccess(email: string) {
+  userEmail.value = email
+  verificationStatus.value = 'success'
+  await supabase.auth.signOut({ scope: 'local' })
+}
+
 onMounted(async () => {
+  // E-mail vindo do cadastro (history state, para não ir na URL)
+  userEmail.value = (window.history.state?.email as string | undefined) ?? ''
+
   // Tentar obter email do usuário atual
   const { data: sessionData } = await supabase.auth.getSession()
   if (sessionData.session?.user?.email) {
@@ -170,6 +187,14 @@ onMounted(async () => {
   // Verificar se temos tokens de verificação na URL
   // Supabase envia tokens no hash (#) quando usuário clica no link de verificação
   const hashParams = new URLSearchParams(window.location.hash.substring(1))
+
+  // Link já usado ou expirado: o Supabase redireciona com #error=...&error_code=otp_expired
+  if (hashParams.get('error') || hashParams.get('error_code')) {
+    verificationStatus.value = 'error'
+    errorMessage.value =
+      'Este link de verificação já foi usado ou expirou. Se você já confirmou seu e-mail, é só entrar.'
+    return
+  }
   const accessToken = hashParams.get('access_token')
   const refreshToken = hashParams.get('refresh_token')
 
@@ -191,7 +216,7 @@ onMounted(async () => {
 
         // Verificar se email foi confirmado
         if (data.session.user.email_confirmed_at) {
-          verificationStatus.value = 'success'
+          await showSuccess(data.session.user.email || '')
         } else {
           // Retry com backoff exponencial (máximo 3 tentativas)
           let attempts = 0
@@ -203,17 +228,15 @@ onMounted(async () => {
 
             const { data: retryData } = await supabase.auth.getSession()
             if (retryData.session?.user?.email_confirmed_at) {
-              verificationStatus.value = 'success'
-              break
+              await showSuccess(retryData.session.user.email || '')
+              return
             }
 
             attempts++
             delay *= 2 // Exponential backoff: 300ms, 600ms, 1200ms
           }
 
-          if (verificationStatus.value !== 'success') {
-            throw new Error('Email ainda não foi confirmado após múltiplas tentativas')
-          }
+          throw new Error('Email ainda não foi confirmado após múltiplas tentativas')
         }
       } else {
         throw new Error('Sessão não encontrada após verificação')
@@ -230,8 +253,7 @@ onMounted(async () => {
     const { data: sessionData } = await supabase.auth.getSession()
 
     if (sessionData.session?.user?.email_confirmed_at) {
-      verificationStatus.value = 'success'
-      userEmail.value = sessionData.session.user.email || ''
+      await showSuccess(sessionData.session.user.email || '')
     } else {
       // Usuário veio do redirect após registro (ainda não verificou)
       verificationStatus.value = 'pending'

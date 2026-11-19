@@ -5,11 +5,12 @@ import RegisterView from '../RegisterView.vue'
 const mockPush = vi.fn()
 const mockEndSession = vi.fn()
 const mockRegisterWithEmail = vi.fn()
+const mockSignUp = vi.fn()
 
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: (...a: unknown[]) => mockPush(...a) }) }))
 vi.mock('@/services/session', () => ({ endSession: (...a: unknown[]) => mockEndSession(...a) }))
 vi.mock('@/composables/useAuth', () => ({
-  useAuth: () => ({ signUpWithEmail: async () => ({ user: { id: 'u1' } }), signInWithGoogle: vi.fn() }),
+  useAuth: () => ({ signUpWithEmail: (...a: unknown[]) => mockSignUp(...a), signInWithGoogle: vi.fn() }),
 }))
 vi.mock('@/services/authService', () => ({
   authService: { registerWithEmail: (...a: unknown[]) => mockRegisterWithEmail(...a) },
@@ -27,7 +28,17 @@ async function submit() {
 }
 
 describe('RegisterView', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockSignUp.mockResolvedValue({ user: { id: 'u1' }, session: { access_token: 't' } })
+  })
+
+  it('confirmação de e-mail pendente (sem sessão): vai para "Verifique seu email" sem chamar o backend', async () => {
+    mockSignUp.mockResolvedValue({ user: { id: 'u1' }, session: null })
+    await submit()
+    expect(mockRegisterWithEmail).not.toHaveBeenCalled()
+    expect(mockPush).toHaveBeenCalledWith({ path: '/auth/verify-email', state: { email: 'a@b.com' } })
+  })
 
   it('conta em exclusão: mostra o detail, encerra a sessão e fica no cadastro', async () => {
     mockRegisterWithEmail.mockRejectedValue({

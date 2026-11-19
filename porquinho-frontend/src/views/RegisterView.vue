@@ -232,6 +232,12 @@ const handleEmailSubmit = async () => {
 
     // Registration successful!
     if (result.user) {
+      // Confirmação de e-mail ligada: sem sessão até clicar no link. O usuário do backend nasce no primeiro login.
+      if (!result.session) {
+        router.push({ path: '/auth/verify-email', state: { email: email.value } })
+        return
+      }
+
       // Step 2: Sync user to backend database (for audit logs, account locking, etc.)
       // JWT token is automatically included by api interceptor
       try {

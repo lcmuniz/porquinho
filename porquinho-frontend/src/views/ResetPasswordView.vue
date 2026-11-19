@@ -16,6 +16,8 @@ const confirmPassword = ref('')
 const isLoading = ref(false)
 const errorMessage = ref('')
 const isSuccess = ref(false)
+const linkInvalid = ref(false)
+const EXPIRED_MESSAGE = 'Link de redefinição expirado ou inválido. Solicite um novo.'
 const showNewPassword = ref(false)
 const showConfirmPassword = ref(false)
 
@@ -72,10 +74,11 @@ async function handleSubmit() {
     }, 3000)
   } catch (error) {
     const message = errorMessageOf(error)
-    if (message.includes('expired') || message.includes('invalid')) {
-      errorMessage.value = 'Link de redefinição expirado ou inválido. Solicite um novo.'
-    } else if (message.includes('same as the old password')) {
+    // Supabase: code same_password, "New password should be different from the old password."
+    if ((error as { code?: string } | null)?.code === 'same_password' || /different from|same as/.test(message)) {
       errorMessage.value = 'A nova senha deve ser diferente da senha anterior.'
+    } else if (message.includes('expired') || message.includes('invalid')) {
+      errorMessage.value = EXPIRED_MESSAGE
     } else {
       errorMessage.value = 'Erro ao redefinir senha. Tente novamente.'
     }
@@ -94,7 +97,13 @@ function toggleConfirmPasswordVisibility() {
 
 onMounted(() => {
   // Supabase handles the token validation automatically
-  // The token is in the URL fragment and Supabase session will be set
+  // The token is in the URL fragment and Supabase session will be set.
+  // Link já usado ou expirado: o Supabase redireciona com #error=...&error_code=otp_expired, mesmo havendo sessão.
+  const hashParams = new URLSearchParams(window.location.hash.substring(1))
+  if (hashParams.get('error') || hashParams.get('error_code')) {
+    linkInvalid.value = true
+    errorMessage.value = EXPIRED_MESSAGE
+  }
 })
 </script>
 
@@ -138,7 +147,7 @@ onMounted(() => {
           </div>
 
           <!-- Form -->
-          <form v-if="!isSuccess" @submit.prevent="handleSubmit" class="space-y-4">
+          <form v-if="!isSuccess && !linkInvalid" @submit.prevent="handleSubmit" class="space-y-4">
             <div class="space-y-2">
               <label for="new-password" class="text-sm font-medium text-gray-900">
                 Nova senha

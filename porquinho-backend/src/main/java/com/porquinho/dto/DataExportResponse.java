@@ -3,14 +3,17 @@ package com.porquinho.dto;
 import com.porquinho.entity.DataExport;
 
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.UUID;
 
 public class DataExportResponse {
 
     private UUID id;
     private String status;
-    private LocalDateTime createdAt;
-    private LocalDateTime expiresAt;
+    // Com offset: LocalDateTime sem fuso era lido pelo navegador como hora local (UTC do servidor aparecia como Brasília).
+    private OffsetDateTime createdAt;
+    private OffsetDateTime expiresAt;
     private String downloadUrl;
 
     public DataExportResponse() {
@@ -19,9 +22,14 @@ public class DataExportResponse {
     public DataExportResponse(UUID id, String status, LocalDateTime createdAt, LocalDateTime expiresAt, String downloadUrl) {
         this.id = id;
         this.status = status;
-        this.createdAt = createdAt;
-        this.expiresAt = expiresAt;
+        this.createdAt = withOffset(createdAt);
+        this.expiresAt = withOffset(expiresAt);
         this.downloadUrl = downloadUrl;
+    }
+
+    /** As datas da entidade são LocalDateTime.now() no fuso da JVM. */
+    private static OffsetDateTime withOffset(LocalDateTime dateTime) {
+        return dateTime == null ? null : dateTime.atZone(ZoneId.systemDefault()).toOffsetDateTime();
     }
 
     public static DataExportResponse fromEntity(DataExport export) {
@@ -55,20 +63,20 @@ public class DataExportResponse {
         this.status = status;
     }
 
-    public LocalDateTime getCreatedAt() {
+    public OffsetDateTime getCreatedAt() {
         return createdAt;
     }
 
     public void setCreatedAt(LocalDateTime createdAt) {
-        this.createdAt = createdAt;
+        this.createdAt = withOffset(createdAt);
     }
 
-    public LocalDateTime getExpiresAt() {
+    public OffsetDateTime getExpiresAt() {
         return expiresAt;
     }
 
     public void setExpiresAt(LocalDateTime expiresAt) {
-        this.expiresAt = expiresAt;
+        this.expiresAt = withOffset(expiresAt);
     }
 
     public String getDownloadUrl() {

@@ -73,7 +73,9 @@ class DataExportControllerTest {
                 .contentType("application/json")
                 .content("{\"password\": \"senha-forte-123\"}"))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.status").value("PROCESSING"));
+                .andExpect(jsonPath("$.status").value("PROCESSING"))
+                // com offset, para o navegador converter para o horário de Brasília
+                .andExpect(jsonPath("$.createdAt").value(org.hamcrest.Matchers.matchesPattern(".*(Z|[+-]\\d{2}:\\d{2})$")));
 
         verify(auditLogService, never()).log(any(), any(), any());  // the service audits after its rate-limit check
     }
