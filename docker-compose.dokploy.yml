@@ -1,0 +1,85 @@
+# Deploy no Dokploy (Docker Compose). Diferenças para o docker-compose.yml:
+# - nenhuma porta publicada: o Traefik do Dokploy termina o TLS e entrega ao serviço `nginx`, porta 80
+#   (domínio configurado na UI do Dokploy, HTTPS ligado);
+# - nginx.dokploy.conf: sem bloco 443 nem certificado, repassa o X-Forwarded-Proto do Traefik.
+# Variáveis: as do docs/deploy-checklist.md, seção 1, na aba Environment do Dokploy.
+services:
+  frontend:
+    build:
+      context: ./porquinho-frontend
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL}
+        VITE_SUPABASE_URL: ${SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: ./porquinho-backend
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SUPABASE_DB_URL: ${SUPABASE_DB_URL}
+      SUPABASE_DB_USERNAME: ${SUPABASE_DB_USERNAME}
+      SUPABASE_DB_PASSWORD: ${SUPABASE_DB_PASSWORD}
+      SUPABASE_JWT_ISSUER_URI: ${SUPABASE_URL}/auth/v1
+      SUPABASE_PROJECT_URL: ${SUPABASE_URL}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      REDIS_HOST: redis
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # vazios trocariam o default de dev (localhost) por "": o compose avisa quando faltam
+      FRONTEND_URL: ${FRONTEND_URL}
+      APP_BASE_URL: ${APP_BASE_URL}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      EMAIL_UNSUBSCRIBE_SECRET: ${EMAIL_UNSUBSCRIBE_SECRET:-}
+    volumes:
+      # Exportações LGPD (app.export.directory = ./exports no WORKDIR /app): sobrevivem a um novo deploy
+      - backend-exports:/app/exports
+    # wget do busybox (a imagem alpine não tem curl); o health agrega banco, Redis e SMTP
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    # expose, nunca ports: o Traefik do Dokploy é dono de 80/443 e chega aqui pelo domínio configurado na UI
+    expose:
+      - "80"
+    volumes:
+      - ./nginx.dokploy.conf:/etc/nginx/nginx.conf:ro
+    restart: unless-stopped
+    depends_on:
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_healthy
+
+volumes:
+  redis-data:
+  backend-exports:
