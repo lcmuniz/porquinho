@@ -7,7 +7,7 @@
 
       <div class="prose prose-gray max-w-none">
         <p class="text-gray-600">
-          <strong>Última atualização:</strong> 16 de novembro de 2026
+          <strong>Última atualização:</strong> 19 de novembro de 2026
         </p>
 
         <section class="mt-8">
@@ -56,13 +56,25 @@
             Não vendemos seus dados pessoais. Compartilhamos dados apenas quando necessário com:
           </p>
           <ul class="mt-2 ml-6 list-disc text-gray-700">
-            <li>Provedores de serviços essenciais (Google OAuth, hospedagem)</li>
+            <li>
+              Provedores de serviços essenciais: Google (login), Supabase (autenticação e banco de dados),
+              Stripe (pagamento da assinatura; os dados do cartão ficam só com a Stripe), Resend (envio de
+              e-mails) e o provedor de hospedagem
+            </li>
             <li>
               Anthropic, operadora de inteligência artificial que classifica as transações importadas: recebe as
               descrições das transações, com CPF e CNPJ mascarados, além do valor, do tipo e das suas categorias
             </li>
             <li>Autoridades governamentais quando exigido por lei</li>
           </ul>
+          <p class="mt-2 text-gray-700">
+            <strong>Transferência internacional.</strong> Alguns desses provedores, como a Anthropic e a
+            Stripe, processam dados em servidores fora do Brasil, principalmente nos Estados Unidos. Essa
+            transferência é necessária para executar o contrato com você (art. 33, IX, da LGPD) e segue
+            cláusulas contratuais de proteção de dados equivalentes às da LGPD. A Anthropic não usa as
+            descrições recebidas para treinar seus modelos e as guarda apenas pelo prazo limitado previsto
+            em seus termos comerciais.
+          </p>
         </section>
 
         <section class="mt-6">
@@ -106,7 +118,9 @@
             Se o seu período de teste ou a sua assinatura terminar e você não assinar, guardamos seus
             dados por 30 dias depois do fim do acesso. Avisamos por e-mail 7 dias e 1 dia antes, com
             links para assinar ou exportar seus dados. Passado esse prazo, a conta e todos os dados são
-            permanentemente excluídos.
+            permanentemente excluídos. Se o seu provedor de e-mail recusar de forma permanente as nossas
+            mensagens (por exemplo, caixa inexistente) durante 14 dias seguidos, a exclusão acontece mesmo
+            sem o aviso ter sido entregue.
           </p>
           <p class="mt-2 text-gray-700">
             Depois de qualquer exclusão (pedida por você ou por fim do prazo), guardamos apenas um

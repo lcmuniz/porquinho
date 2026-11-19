@@ -17,6 +17,6 @@ describe('PrivacyView', () => {
   it('mostra a data fixa da última mudança do texto, não a de hoje', () => {
     const wrapper = mount(PrivacyView, { global: { stubs: { RouterLink: RouterLinkStub } } })
 
-    expect(wrapper.text()).toContain('Última atualização: 16 de novembro de 2026')
+    expect(wrapper.text()).toContain('Última atualização: 19 de novembro de 2026')
   })
 })
