@@ -13,6 +13,7 @@ Thumbs.db
 
 # Environment variables (secrets)
 .env
+.env.dokploy
 
 # SSL certificates
 ssl/
