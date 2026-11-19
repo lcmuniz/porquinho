@@ -624,6 +624,7 @@ public class DataExportService {
             historyMap.put("corrected_category_id",
                 history.getCorrectedCategoryId() != null ? history.getCorrectedCategoryId().toString() : null);
             historyMap.put("created_at", history.getCreatedAt() != null ? history.getCreatedAt().toString() : null);
+            historyMap.put("reviewed_at", history.getReviewedAt() != null ? history.getReviewedAt().toString() : null);
             classificationHistoryList.add(historyMap);
         }
         data.put("ai_classification_history", classificationHistoryList);

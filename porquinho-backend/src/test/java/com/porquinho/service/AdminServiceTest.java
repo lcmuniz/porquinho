@@ -177,6 +177,27 @@ class AdminServiceTest {
     }
 
     @Test
+    void valuesAreRoundedToOneDecimalBeforeTheColorAsTheAlertDoes() {
+        OffsetDateTime now = OffsetDateTime.ofInstant(NOW, ZoneOffset.UTC);
+        // 10.04 % and 98.96 % show "10 %" and "99 %": yellow on the panel, no alert
+        when(snapshots.totalsSince(now.minusHours(24))).thenReturn(new HealthSnapshotService.Totals(1440, 10_000, 1004, 50_000_400));
+        when(snapshots.totalsSince(now.minusDays(7))).thenReturn(new HealthSnapshotService.Totals(0, 0, 0, 0));
+        when(snapshots.totalsSince(now.minusDays(30))).thenReturn(new HealthSnapshotService.Totals(0, 0, 0, 0));
+        when(snapshots.uptimePercent(Duration.ofHours(24))).thenReturn(99.94);
+        when(snapshots.uptimePercent(Duration.ofDays(30))).thenReturn(98.96);
+        redisInfo(new Properties());
+
+        AdminHealthResponse health = service.health();
+
+        assertThat(health.errors().errorRate24h()).isEqualTo(10.0);
+        assertThat(health.errors().status()).isEqualTo(Status.YELLOW);
+        assertThat(health.responseTime()).isEqualTo(new AdminHealthResponse.ResponseTime(5000.0, Status.YELLOW));
+        assertThat(health.uptime().last24h()).isEqualTo(99.9);
+        assertThat(health.uptime().last30d()).isEqualTo(99.0);
+        assertThat(health.uptime().status()).isEqualTo(Status.YELLOW);
+    }
+
+    @Test
     void hourlyComesFromTheSnapshots() {
         OffsetDateTime hour = OffsetDateTime.ofInstant(NOW, ZoneOffset.UTC);
         when(snapshots.lastDayByHour()).thenReturn(List.of(new HealthSnapshotService.HourTotals(hour, 10, 2, 50.0)));

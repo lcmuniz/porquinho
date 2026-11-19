@@ -129,6 +129,33 @@ class RetentionServiceIntegrationTest {
         assertReturningWithoutTrial(returning);
     }
 
+    /** Story 10.5, RETENTION_STALLED from the state of the database: SMTP off and a refused send both stall. */
+    @Test
+    void sevenDayWarningLateStallsUntilTheEmailIsAccepted() {
+        UUID userId = UUID.randomUUID();
+        users.add(userId);
+        jdbc.update("INSERT INTO users (id, email, auth_provider) VALUES (?, ?, 'EMAIL')", userId,
+            "travada-" + userId + "@example.com");
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        // purge in 5 days: the 7-day warning is due for 2 days and nobody got it
+        subscriptionRepository.save(new Subscription(userId, PlanType.TRIAL, Status.ACTIVE, now.minusDays(55),
+            now.minusDays(25)));
+        when(emailService.isConfigured()).thenReturn(false);
+        retentionService.runRetention();
+        long withIt = retentionService.stalledCount(now);
+        assertThat(withIt).isPositive();
+
+        when(emailService.isConfigured()).thenReturn(true);
+        when(emailService.sendRetentionWarning(anyString(), anyLong(), any(), anyString(), anyString())).thenReturn(false);
+        retentionService.runRetention();
+        assertThat(retentionService.stalledCount(now)).isEqualTo(withIt);
+
+        when(emailService.sendRetentionWarning(anyString(), anyLong(), any(), anyString(), anyString())).thenReturn(true);
+        retentionService.runRetention();
+        assertThat(subscriptionRepository.findByUserId(userId).orElseThrow().getRetentionWarning7dSentAt()).isNotNull();
+        assertThat(retentionService.stalledCount(now)).isEqualTo(withIt - 1);
+    }
+
     @Test
     void emailOfAUserRequestedDeletionAlsoComesBackWithoutTrial() {
         String email = "pedido-" + UUID.randomUUID() + "@example.com";

@@ -41,7 +41,8 @@ import java.util.concurrent.TimeUnit;
 /**
  * Story 10.1: the admin role check and the system health of the panel. The numbers come from in-process Micrometer
  * (the nginx blocks /actuator from outside), Hikari, Redis INFO, user_sessions and the per-minute snapshots.
- * The red limits are the ones of the 10.5 alerts.
+ * The red limits are the ones of the 10.5 alerts (the same constants); every value is rounded to 1 decimal before its
+ * color ({@link AdminMetrics}), as the alerts do.
  */
 @Service
 public class AdminService {
@@ -50,6 +51,10 @@ public class AdminService {
 
     public static final String FORBIDDEN_MESSAGE = "Esta área é só para administradores.";
     static final double UPTIME_TARGET = 99.5;
+    /** Red limits of the panel and of the 10.5 alerts. */
+    static final double UPTIME_RED = 99.0;
+    static final double ERROR_RATE_RED = 10.0;
+    static final double RESPONSE_TIME_RED_MS = 5000;
     static final Duration ACTIVE_SESSION_WINDOW = Duration.ofMinutes(30);
     static final String SLOW_QUERIES_SQL = "SELECT COUNT(*) FROM pg_stat_activity WHERE datname = current_database() "
         + "AND pid <> pg_backend_pid() AND backend_type = 'client backend' AND usename = current_user "
@@ -90,17 +95,17 @@ public class AdminService {
     public AdminHealthResponse health() {
         OffsetDateTime now = OffsetDateTime.now(clock);
 
-        Double uptime24h = snapshots.uptimePercent(Duration.ofHours(24));
-        Double uptime30d = snapshots.uptimePercent(Duration.ofDays(30));
+        Double uptime24h = AdminMetrics.round1(snapshots.uptimePercent(Duration.ofHours(24)));
+        Double uptime30d = AdminMetrics.round1(snapshots.uptimePercent(Duration.ofDays(30)));
         Uptime uptime = new Uptime(uptime24h, uptime30d, UPTIME_TARGET, uptimeStatus(uptime30d));
 
         HealthSnapshotService.Totals day = snapshots.totalsSince(now.minusHours(24));
         HealthSnapshotService.Totals week = snapshots.totalsSince(now.minusDays(7));
         HealthSnapshotService.Totals month = snapshots.totalsSince(now.minusDays(30));
-        Double errorRate = day.requests() == 0 ? null : day.errors() * 100.0 / day.requests();
+        Double errorRate = AdminMetrics.percent(day.errors(), day.requests());
         Errors errors = new Errors(day.errors(), week.errors(), month.errors(), errorRate, errorRateStatus(errorRate));
 
-        Double avgMs = day.requests() == 0 ? null : day.totalTimeMs() / day.requests();
+        Double avgMs = day.requests() == 0 ? null : AdminMetrics.round1(day.totalTimeMs() / day.requests());
         ResponseTime responseTime = new ResponseTime(avgMs, responseTimeStatus(avgMs));
 
         List<HourPoint> hourly = snapshots.lastDayByHour().stream()
@@ -129,7 +134,7 @@ public class AdminService {
         counts.forEach((key, c) -> {
             if (c[0] == 0) return;
             int space = key.indexOf(' ');
-            double avgMs = times.get(key) / c[0];
+            double avgMs = AdminMetrics.round1(times.get(key) / c[0]);
             result.add(new Endpoint(key.substring(0, space), key.substring(space + 1), c[0], avgMs, c[1],
                 responseTimeStatus(avgMs)));
         });
@@ -184,19 +189,19 @@ public class AdminService {
     static Status uptimeStatus(Double percent) {
         if (percent == null) return Status.UNKNOWN;
         if (percent >= UPTIME_TARGET) return Status.GREEN;
-        return percent >= 99.0 ? Status.YELLOW : Status.RED;
+        return percent >= UPTIME_RED ? Status.YELLOW : Status.RED;
     }
 
     static Status errorRateStatus(Double percent) {
         if (percent == null) return Status.UNKNOWN;
         if (percent < 1.0) return Status.GREEN;
-        return percent <= 10.0 ? Status.YELLOW : Status.RED;
+        return percent <= ERROR_RATE_RED ? Status.YELLOW : Status.RED;
     }
 
     static Status responseTimeStatus(Double avgMs) {
         if (avgMs == null) return Status.UNKNOWN;
         if (avgMs < 1000) return Status.GREEN;
-        return avgMs <= 5000 ? Status.YELLOW : Status.RED;
+        return avgMs <= RESPONSE_TIME_RED_MS ? Status.YELLOW : Status.RED;
     }
 
     static Status poolStatus(int active, int max, int waiting) {

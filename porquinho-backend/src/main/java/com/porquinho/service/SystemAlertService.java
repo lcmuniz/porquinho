@@ -18,7 +18,8 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.OffsetDateTime;
@@ -36,8 +37,8 @@ import static com.porquinho.service.ImportMetricsService.BANK_LABELS;
 import static com.porquinho.service.ImportMetricsService.SAO_PAULO;
 
 /**
- * Story 10.5 (FR86): every 5 minutes ({@link SystemAlertJob}) checks the critical metrics with the numbers of the
- * 10.1-10.3 panels and records each new violation in system_alerts, then e-mails every admin and posts to Slack.
+ * Story 10.5 (FR86): every 5 minutes ({@link SystemAlertJob}) checks the critical metrics with the numbers (rounding
+ * and limits) of the 10.1-10.3 panels, plus the retention of non-converters stalled, and records each new violation in system_alerts, then e-mails every admin and posts to Slack.
  * <p>
  * Episode: the row of the key with normalized_at null. Violating without an episode opens one, unless the last alert
  * of the key is less than 1 h old (it waits for the first run past the hour). Violating with an episode does nothing,
@@ -67,23 +68,28 @@ public class SystemAlertService {
 
     /** The critical metrics, their limit, the /admin tab and the suggested action. */
     public enum Metric {
-        ERROR_RATE("Taxa de erro do sistema (24 h)", "health", "10", true,
+        ERROR_RATE("Taxa de erro do sistema (24 h)", "health", AdminService.ERROR_RATE_RED, true,
             "Veja na aba Saúde os endpoints com mais erros e os logs do backend."),
-        UPTIME("Uptime (30 dias)", "health", "99", false,
+        UPTIME("Uptime (30 dias)", "health", AdminService.UPTIME_RED, false,
             "Verifique os reinícios e as quedas do backend nos logs do servidor e do container."),
-        RESPONSE_TIME("Tempo médio de resposta (24 h)", "health", "5000", true,
+        RESPONSE_TIME("Tempo médio de resposta (24 h)", "health", AdminService.RESPONSE_TIME_RED_MS, true,
             "Veja na aba Saúde os endpoints mais lentos e as queries lentas do banco."),
-        IMPORT_ERROR_RATE("Taxa de erro de importação (24 h)", "imports", "10", true,
+        IMPORT_ERROR_RATE("Taxa de erro de importação (24 h)", "imports", ImportMetricsService.ALERT_RATE, true,
             "Abra o banco na aba Importações e veja os tipos de erro: o formato do extrato pode ter mudado."),
-        AI_ACCURACY("Precisão da IA (24 h)", "ai", "75", false,
+        AI_ACCURACY("Precisão da IA (24 h)", "ai", AiMetricsService.ATTENTION, false,
             "Abra o banco na aba IA e revise o prompt de classificação com as sugestões do detalhe."),
-        ACTIVE_SESSIONS("Sessões ativas", "health", "1", false,
+        ACTIVE_SESSIONS("Sessões ativas", "health", 1, false,
             "Há tráfego e nenhuma sessão ativa: verifique o login (Supabase) e a renovação das sessões."),
-        REDIS_DOWN("Redis", "health", "1", false,
+        REDIS_DOWN("Redis", "health", 1, false,
             "Verifique o container do Redis e a conexão do backend com ele."),
         // the limit of the pool is its size, read at each run
-        DB_POOL_EXHAUSTED("Pool de conexões do banco", "health", "0", true,
-            "Veja na aba Saúde as queries lentas e as conexões presas; se o uso for legítimo, aumente o pool.");
+        DB_POOL_EXHAUSTED("Pool de conexões do banco", "health", 0, true,
+            "Veja na aba Saúde as queries lentas e as conexões presas; se o uso for legítimo, aumente o pool."),
+        // value: accounts whose retention warning or purge is late (RetentionService#stalledCount)
+        RETENTION_STALLED("Retenção de dados travada", "alerts", 0, true,
+            "Confira o e-mail do backend: SMTP_HOST e MAIL_FROM configurados e o servidor aceitando os envios "
+                + "(procure 'Retention job done' e 'Failed to send' nos logs). Sem envio confirmado o aviso não é "
+                + "marcado e a exclusão espera, então os dados ficam além dos 30 dias.");
 
         final String label;
         final String tab;
@@ -92,10 +98,12 @@ public class SystemAlertService {
         final boolean above;
         final String action;
 
-        Metric(String label, String tab, String limit, boolean above, String action) {
+        Metric(String label, String tab, double limit, boolean above, String action) {
             this.label = label;
             this.tab = tab;
-            this.limit = new BigDecimal(limit);
+            // 99.0 is stored and compared as 99, as before the constants were shared
+            BigDecimal plain = BigDecimal.valueOf(limit).stripTrailingZeros();
+            this.limit = plain.scale() < 0 ? plain.setScale(0) : plain;
             this.above = above;
             this.action = action;
         }
@@ -120,6 +128,7 @@ public class SystemAlertService {
     private final TransactionImportRepository importRepository;
     private final AiClassificationHistoryRepository aiRepository;
     private final UserRepository userRepository;
+    private final RetentionService retentionService;
     private final EmailService emailService;
     private final SlackNotifier slack;
     private final Clock clock;
@@ -132,7 +141,7 @@ public class SystemAlertService {
                               AdminService adminService, UserSessionRepository userSessionRepository,
                               TransactionImportRepository importRepository,
                               AiClassificationHistoryRepository aiRepository, UserRepository userRepository,
-                              EmailService emailService, SlackNotifier slack, Clock clock,
+                              RetentionService retentionService, EmailService emailService, SlackNotifier slack, Clock clock,
                               @Value("${app.frontend-url:http://localhost:5173}") String frontendUrl,
                               @Lazy SystemAlertService self) {
         this.repository = repository;
@@ -142,6 +151,7 @@ public class SystemAlertService {
         this.importRepository = importRepository;
         this.aiRepository = aiRepository;
         this.userRepository = userRepository;
+        this.retentionService = retentionService;
         this.emailService = emailService;
         this.slack = slack;
         this.clock = clock;
@@ -188,20 +198,21 @@ public class SystemAlertService {
         check(unchecked, Metric.ERROR_RATE, () -> {
             HealthSnapshotService.Totals day = snapshots.totalsSince(now.minus(WINDOW));
             if (day.requests() >= MIN_REQUESTS) {
-                add(out, Metric.ERROR_RATE, null, round1(day.errors() * 100.0 / day.requests()));
-                add(out, Metric.RESPONSE_TIME, null, round1(day.totalTimeMs() / day.requests()));
+                add(out, Metric.ERROR_RATE, null, decimal(AdminMetrics.percent(day.errors(), day.requests())));
+                add(out, Metric.RESPONSE_TIME, null, decimal(AdminMetrics.round1(day.totalTimeMs() / day.requests())));
             }
         });
         if (unchecked.contains(Metric.ERROR_RATE)) unchecked.add(Metric.RESPONSE_TIME);
         check(unchecked, Metric.UPTIME, () -> {
             Double uptime = snapshots.uptimePercent(Duration.ofDays(30));
-            if (uptime != null) add(out, Metric.UPTIME, null, round1(uptime));
+            if (uptime != null) add(out, Metric.UPTIME, null, decimal(AdminMetrics.round1(uptime)));
         });
         check(unchecked, Metric.IMPORT_ERROR_RATE, () -> {
             for (TransactionImportRepository.BankCounts c : importRepository.countByBank(now.minus(WINDOW), now, null)) {
                 long total = c.getSuccesses() + c.getFailures();
                 if (total >= MIN_IMPORTS) {
-                    add(out, Metric.IMPORT_ERROR_RATE, c.getBank(), round1(c.getFailures() * 100.0 / total));
+                    add(out, Metric.IMPORT_ERROR_RATE, c.getBank(),
+                        decimal(ImportMetricsService.rate(c.getFailures(), c.getSuccesses())));
                 }
             }
         });
@@ -209,7 +220,7 @@ public class SystemAlertService {
             for (AiClassificationHistoryRepository.BankCounts c : aiRepository.countByBank(now.minus(WINDOW), now, null)) {
                 if (c.getClassifications() >= MIN_CLASSIFICATIONS) {
                     add(out, Metric.AI_ACCURACY, c.getBank(),
-                        BigDecimal.valueOf(AiMetricsService.accuracy(c.getClassifications(), c.getCorrections())));
+                        decimal(AiMetricsService.accuracy(c.getClassifications(), c.getCorrections())));
                 }
             }
         });
@@ -232,6 +243,10 @@ public class SystemAlertService {
                 out.put(Metric.DB_POOL_EXHAUSTED.name(), new Violation(Metric.DB_POOL_EXHAUSTED, null,
                     BigDecimal.valueOf(db.active() + db.waiting()), BigDecimal.valueOf(db.max())));
             }
+        });
+        check(unchecked, Metric.RETENTION_STALLED, () -> {
+            long stalled = retentionService.stalledCount(now);
+            add(out, Metric.RETENTION_STALLED, null, BigDecimal.valueOf(stalled));
         });
         return out;
     }
@@ -310,6 +325,8 @@ public class SystemAlertService {
             case REDIS_DOWN -> "fora do ar";
             case DB_POOL_EXHAUSTED -> String.format(PT_BR, "%d conexões em uso ou na fila, de %d", value.longValue(),
                 threshold.longValue());
+            case RETENTION_STALLED -> value.longValue() == 1 ? "1 conta com aviso ou exclusão atrasado há mais de 24 h"
+                : String.format(PT_BR, "%d contas com aviso ou exclusão atrasados há mais de 24 h", value.longValue());
         };
     }
 
@@ -321,6 +338,7 @@ public class SystemAlertService {
             case ACTIVE_SESSIONS -> "pelo menos 1 sessão ativa quando há tráfego";
             case REDIS_DOWN -> "no ar";
             case DB_POOL_EXHAUSTED -> String.format(PT_BR, "menos de %d em uso e ninguém na fila", threshold.longValue());
+            case RETENTION_STALLED -> "nenhuma conta com aviso ou exclusão atrasado";
         };
     }
 
@@ -332,8 +350,13 @@ public class SystemAlertService {
             m.action, m.tab, link(a), a.getTriggeredAt(), a.getNormalizedAt(), a.getResolvedAt());
     }
 
-    private String link(SystemAlert alert) {
-        return adminUrl + metric(alert).tab;
+    /** The tab; a per-bank alert opens it filtered on the bank and on the day of the violation (Sao Paulo). */
+    String link(SystemAlert alert) {
+        String link = adminUrl + metric(alert).tab;
+        if (alert.getBank() == null) return link;
+        String day = alert.getTriggeredAt().atZoneSameInstant(SAO_PAULO).toLocalDate().toString();
+        return link + "&bank=" + URLEncoder.encode(alert.getBank(), StandardCharsets.UTF_8) + "&from=" + day
+            + "&to=" + day;
     }
 
     private static Metric metric(SystemAlert alert) {
@@ -356,8 +379,8 @@ public class SystemAlertService {
         }
     }
 
-    /** One decimal, as the panel shows it, so 10.04 % does not fire while "10,0 %" is on screen. */
-    private static BigDecimal round1(double value) {
-        return BigDecimal.valueOf(value).setScale(1, RoundingMode.HALF_UP);
+    /** The value already rounded as the panel shows it ({@link AdminMetrics}), so 10.04 % does not fire on "10,0 %". */
+    private static BigDecimal decimal(Double value) {
+        return BigDecimal.valueOf(value);
     }
 }

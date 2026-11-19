@@ -242,6 +242,8 @@ import type {
 
 // Story 10.2: taxa de erro de importação por banco; o 403 sobe para a view mostrar "Acesso restrito"
 const emit = defineEmits<{ forbidden: [] }>()
+// Filtros iniciais vindos da URL (link do alerta por banco)
+const props = defineProps<{ initial?: ImportMetricsFilters }>()
 
 // No admin os dois aparecem lado a lado: OTHER é um banco fora dos cinco, UNKNOWN falhou antes da detecção
 const LABELS: Record<AdminBankCode, string> = { ...BANK_LABELS, OTHER: 'Outro banco', UNKNOWN: 'Não identificado' }
@@ -272,11 +274,18 @@ const STATUS_STYLE: Record<HealthStatus, { label: string; badge: string }> = {
 const GREEN = '#16a34a'
 const RED = '#dc2626'
 
-const percent = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 })
+// 1 casa, como o backend arredonda antes da cor (retro do Epic 10, A2)
+const percent = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 })
 
-const form = reactive({ from: '', to: '', bank: '' as AdminBankCode | '', status: 'ALL' as ImportOutcome })
+const initial = props.initial ?? {}
+const form = reactive({
+  from: initial.from ?? '',
+  to: initial.to ?? '',
+  bank: (initial.bank ?? '') as AdminBankCode | '',
+  status: 'ALL' as ImportOutcome,
+})
 // Filtros aplicados (o form pode mudar sem "Filtrar"); sem datas, o backend usa os últimos 30 dias
-const applied = ref<{ period: ImportMetricsFilters; status: ImportOutcome }>({ period: {}, status: 'ALL' })
+const applied = ref<{ period: ImportMetricsFilters; status: ImportOutcome }>({ period: { ...initial }, status: 'ALL' })
 
 const metrics = ref<ImportMetrics | null>(null)
 const loading = ref(false)

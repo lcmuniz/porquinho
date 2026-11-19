@@ -17,11 +17,7 @@ import com.porquinho.repository.UserClassificationPatternRepository;
 import com.porquinho.service.ImportMetricsService.Filters;
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Clock;
-import java.time.LocalDate;
-import java.time.OffsetDateTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -33,6 +29,7 @@ import java.util.TreeMap;
 import java.util.function.Predicate;
 import java.util.stream.IntStream;
 
+import static com.porquinho.service.AdminMetrics.start;
 import static com.porquinho.service.ImportMetricsService.BANK_LABELS;
 import static com.porquinho.service.ImportMetricsService.SAO_PAULO;
 
@@ -97,7 +94,7 @@ public class AiMetricsService {
 
         Double now = accuracy(overallByMonth.get(current.toString()));
         Double before = accuracy(overallByMonth.get(current.minusMonths(1).toString()));
-        MonthChange change = new MonthChange(now, before, now == null || before == null ? null : round1(now - before));
+        MonthChange change = new MonthChange(now, before, now == null || before == null ? null : AdminMetrics.round1(now - before));
 
         return new AdminAiMetricsResponse(f.from(), f.to(), TARGET, overall, change, banks, months, trend);
     }
@@ -152,14 +149,7 @@ public class AiMetricsService {
 
     /** Rounded once to 1 decimal, so the color, the JSON, the CSV and the texts use the same value. */
     static Double accuracy(long classifications, long corrections) {
-        if (classifications == 0) return null;
-        // exact decimal, so 38.75 rounds to 38.8 (a double would give 38.7)
-        return BigDecimal.valueOf(classifications - corrections).multiply(BigDecimal.valueOf(100))
-            .divide(BigDecimal.valueOf(classifications), 1, RoundingMode.HALF_UP).doubleValue();
-    }
-
-    private static double round1(double value) {
-        return BigDecimal.valueOf(value).setScale(1, RoundingMode.HALF_UP).doubleValue();
+        return AdminMetrics.percent(classifications - corrections, classifications);
     }
 
     static Status status(Double accuracy) {
@@ -206,9 +196,5 @@ public class AiMetricsService {
                 String.valueOf(b.corrections()),
                 b.accuracy() == null ? "" : String.format(PT_BR, "%.1f", b.accuracy())))
             .append(CsvPtBr.CRLF);
-    }
-
-    private static OffsetDateTime start(LocalDate day) {
-        return day.atStartOfDay(SAO_PAULO).toOffsetDateTime();
     }
 }

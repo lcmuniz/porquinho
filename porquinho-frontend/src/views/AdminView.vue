@@ -57,11 +57,11 @@
         </nav>
 
         <div v-if="tab === 'imports'">
-          <ImportMetricsPanel @forbidden="onForbidden" />
+          <ImportMetricsPanel :initial="initialFilters" @forbidden="onForbidden" />
         </div>
 
         <div v-else-if="tab === 'ai'">
-          <AiMetricsPanel @forbidden="onForbidden" />
+          <AiMetricsPanel :initial="initialFilters" @forbidden="onForbidden" />
         </div>
 
         <div v-else-if="tab === 'users'">
@@ -207,6 +207,7 @@ import ImportMetricsPanel from '@/components/admin/ImportMetricsPanel.vue'
 import UserMetricsPanel from '@/components/admin/UserMetricsPanel.vue'
 import { getAlerts, getSystemHealth } from '@/services/adminService'
 import { apiErrorStatus } from '@/lib/apiError'
+import { filtersFromQuery } from '@/lib/adminFilters'
 import type { AdminTab, HealthStatus, SystemHealth } from '@/types/admin'
 
 const REFRESH_MS = 30_000
@@ -229,6 +230,8 @@ function tabFromQuery(): Tab {
   return TABS.some((t) => t.key === q) ? (q as Tab) : 'health'
 }
 const tab = ref<Tab>(tabFromQuery())
+// Banco e período da URL (link do alerta por banco); a aba os lê ao montar
+const initialFilters = ref(filtersFromQuery(route.query))
 const openAlerts = ref(0)
 
 const STATUS_STYLE: Record<HealthStatus, { label: string; badge: string; border: string }> = {
@@ -244,7 +247,8 @@ const error = ref('')
 const forbidden = ref(false)
 let timer: ReturnType<typeof setInterval> | undefined
 
-const percent = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 })
+// 1 casa, como o backend arredonda antes da cor (retro do Epic 10, A2)
+const percent = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 })
 
 function formatPercent(value: number | null) {
   return value === null ? 'sem dados' : `${percent.format(value)} %`
@@ -375,8 +379,11 @@ function onForbidden() {
 // O poll de 30 s só roda com a aba de saúde aberta; ao voltar para ela, carrega na hora
 function selectTab(next: Tab) {
   if (tab.value === next) return
+  // Banco e período só valem para a aba que o link abriu, não para a troca à mão
+  initialFilters.value = route.query.tab === next ? filtersFromQuery(route.query) : {}
   tab.value = next
-  if (route.query.tab !== next) void router.replace({ query: { ...route.query, tab: next } })
+  // Trocar de aba à mão descarta o banco e o período do link do alerta
+  if (route.query.tab !== next) void router.replace({ query: { tab: next } })
   if (next === 'health' && !forbidden.value) void load()
 }
 

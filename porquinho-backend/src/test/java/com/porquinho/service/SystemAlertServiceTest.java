@@ -49,6 +49,7 @@ class SystemAlertServiceTest {
     @Mock private TransactionImportRepository imports;
     @Mock private AiClassificationHistoryRepository ai;
     @Mock private UserRepository users;
+    @Mock private RetentionService retention;
     @Mock private EmailService email;
     @Mock private SlackNotifier slack;
 
@@ -56,7 +57,7 @@ class SystemAlertServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new SystemAlertService(repository, snapshots, adminService, sessions, imports, ai, users, email, slack,
+        service = new SystemAlertService(repository, snapshots, adminService, sessions, imports, ai, users, retention, email, slack,
             Clock.fixed(NOW.toInstant(), ZoneOffset.UTC), "https://app.example.com/", null);
         ReflectionTestUtils.setField(service, "self", service);
         lenient().when(snapshots.totalsSince(any())).thenReturn(new HealthSnapshotService.Totals(60, 1000, 0, 100_000));
@@ -359,6 +360,52 @@ class SystemAlertServiceTest {
             .isEqualTo("7 conexões em uso ou na fila, de 10");
         assertThat(SystemAlertService.thresholdLabel(Metric.DB_POOL_EXHAUSTED, ten))
             .isEqualTo("menos de 10 em uso e ninguém na fila");
+    }
+
+    @Test
+    void retentionStalledFiresWithOneLateAccountAndItsLabelsArePtBr() {
+        when(retention.stalledCount(NOW)).thenReturn(0L);
+        assertThat(collect()).isEmpty();
+        when(retention.stalledCount(NOW)).thenReturn(2L);
+        Violation v = collect().get("RETENTION_STALLED");
+        assertThat(v.value()).isEqualByComparingTo("2");
+        assertThat(v.threshold()).isEqualByComparingTo("0");
+
+        assertThat(SystemAlertService.valueLabel(Metric.RETENTION_STALLED, BigDecimal.ONE, BigDecimal.ZERO))
+            .isEqualTo("1 conta com aviso ou exclusão atrasado há mais de 24 h");
+        assertThat(SystemAlertService.valueLabel(Metric.RETENTION_STALLED, BigDecimal.TWO, BigDecimal.ZERO))
+            .isEqualTo("2 contas com aviso ou exclusão atrasados há mais de 24 h");
+        assertThat(SystemAlertService.thresholdLabel(Metric.RETENTION_STALLED, BigDecimal.ZERO))
+            .isEqualTo("nenhuma conta com aviso ou exclusão atrasado");
+        assertThat(Metric.RETENTION_STALLED.action).contains("SMTP_HOST", "MAIL_FROM");
+    }
+
+    @Test
+    void retentionCheckFailingLeavesItsEpisodeOpen() {
+        when(retention.stalledCount(NOW)).thenThrow(new IllegalStateException("db"));
+        Set<Metric> unchecked = EnumSet.noneOf(Metric.class);
+        service.collect(NOW, unchecked);
+        assertThat(unchecked).containsExactly(Metric.RETENTION_STALLED);
+    }
+
+    @Test
+    void limitsAreThePanelConstants() {
+        assertThat(Metric.UPTIME.limit).isEqualByComparingTo(String.valueOf(AdminService.UPTIME_RED));
+        assertThat(Metric.ERROR_RATE.limit).isEqualByComparingTo(String.valueOf(AdminService.ERROR_RATE_RED));
+        assertThat(Metric.RESPONSE_TIME.limit).isEqualByComparingTo(String.valueOf(AdminService.RESPONSE_TIME_RED_MS));
+        assertThat(Metric.AI_ACCURACY.limit).isEqualByComparingTo(String.valueOf(AiMetricsService.ATTENTION));
+        assertThat(Metric.IMPORT_ERROR_RATE.limit).isEqualByComparingTo(String.valueOf(ImportMetricsService.ALERT_RATE));
+    }
+
+    @Test
+    void bankAlertLinkFiltersTheTabOnTheBankAndTheSaoPauloDayOfTheViolation() {
+        // 01:30 UTC on the 20th is still the 19th in Sao Paulo
+        SystemAlert bank = new SystemAlert("AI_ACCURACY:ITAU", "AI_ACCURACY", "ITAU", new BigDecimal("70"),
+            new BigDecimal("75"), OffsetDateTime.parse("2026-11-20T01:30:00Z"));
+        assertThat(service.link(bank))
+            .isEqualTo("https://app.example.com/admin?tab=ai&bank=ITAU&from=2026-11-19&to=2026-11-19");
+        SystemAlert global = new SystemAlert("REDIS_DOWN", "REDIS_DOWN", null, BigDecimal.ZERO, BigDecimal.ONE, NOW);
+        assertThat(service.link(global)).isEqualTo("https://app.example.com/admin?tab=health");
     }
 
     @Test

@@ -22,10 +22,15 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.time.Duration;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+
+import static com.porquinho.service.ImportMetricsService.SAO_PAULO;
 
 /**
  * Retention of non-converters (pre-Epic 10, LGPD): data of a user without access is kept 30 days after the
@@ -56,6 +61,15 @@ public class RetentionService {
 
     /** The 7-day warning spans at most 8 days from the 09:00 run (same window as TrialReminderService). */
     private static final int WARNING_WINDOW_DAYS = 8;
+
+    /** The hour of the daily job (its cron), in Sao Paulo. */
+    static final LocalTime RUN_TIME = LocalTime.of(9, 0);
+
+    /** Story 10.5, RETENTION_STALLED: late once the run that should have done it is more than 24 h old ... */
+    static final Duration STALLED_AFTER = Duration.ofHours(24);
+
+    /** ... plus the time the next 09:00 run takes, so the alert job at 09:00 does not race it. */
+    static final Duration RUN_GRACE = Duration.ofHours(1);
 
     enum Action {
         WARN_7D("7d"), WARN_1D("1d"), PURGE("purge");
@@ -228,6 +242,52 @@ public class RetentionService {
             String.format("{\"warning\":\"%s\"}", action.code));
 
         return Optional.of(new Outcome(action, null));
+    }
+
+    /**
+     * Story 10.5 (RETENTION_STALLED, items 8 and 13 of the backlog): accounts whose warning or purge is due and was not
+     * done by the daily run that should have done it, more than 24 h later. From the state of the database and the
+     * rules of {@link #dueAction}, so it covers every reason: SMTP not configured, a refused send or a failing job.
+     * The users the job skips on purpose (gone or with a deletion of Story 1.7 pending) do not count.
+     */
+    @Transactional(readOnly = true)
+    public long stalledCount(OffsetDateTime now) {
+        long stalled = 0;
+        for (Subscription s : subscriptionRepository.findRetentionCandidates(
+                now.plusDays(WARNING_WINDOW_DAYS).minusDays(RETENTION_DAYS))) {
+            OffsetDateTime since = dueSince(s);
+            if (since == null || subscriptionService.hasAccess(s)
+                || !now.isAfter(firstRunAtOrAfter(since).plus(STALLED_AFTER).plus(RUN_GRACE))) {
+                continue;
+            }
+            // only now the two queries, for the few late ones
+            if (userRepository.findById(s.getUserId()).isPresent() && accountDeletionRepository
+                    .findByUserIdAndStatus(s.getUserId(), DeletionStatus.PENDING_PURGE).isEmpty()) {
+                stalled++;
+            }
+        }
+        return stalled;
+    }
+
+    /**
+     * Since when the next action of {@link #dueAction} is due (it may be in the future), or null without one. The
+     * warnings follow the Sao Paulo calendar day of the purge (daysLeft), the purge its exact time.
+     */
+    static OffsetDateTime dueSince(Subscription subscription) {
+        OffsetDateTime purgeAt = effectivePurgeAt(subscription);
+        if (purgeAt == null) return null;
+        OffsetDateTime oneDaySentAt = subscription.getRetentionWarning1dSentAt();
+        if (oneDaySentAt != null) return later(purgeAt, oneDaySentAt.plusHours(24));
+        int noticeDays = subscription.getRetentionWarning7dSentAt() == null ? SEVEN_DAY_NOTICE_DAYS : 1;
+        return purgeAt.atZoneSameInstant(SAO_PAULO).toLocalDate().minusDays(noticeDays)
+            .atStartOfDay(SAO_PAULO).toOffsetDateTime();
+    }
+
+    /** The first daily run (09:00 Sao Paulo) at or after {@code at}. */
+    static OffsetDateTime firstRunAtOrAfter(OffsetDateTime at) {
+        ZonedDateTime local = at.atZoneSameInstant(SAO_PAULO);
+        ZonedDateTime run = local.toLocalDate().atTime(RUN_TIME).atZone(SAO_PAULO);
+        return (run.isBefore(local) ? run.plusDays(1) : run).toOffsetDateTime();
     }
 
     /**

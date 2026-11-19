@@ -2,6 +2,7 @@ package com.porquinho.service;
 
 import com.porquinho.config.TestWebSecurityConfig;
 import com.porquinho.repository.AiClassificationHistoryRepository;
+import com.porquinho.repository.AiClassificationHistoryRepository.BankCounts;
 import com.porquinho.repository.AiClassificationHistoryRepository.MonthCounts;
 import org.assertj.core.groups.Tuple;
 import org.junit.jupiter.api.AfterEach;
@@ -100,9 +101,14 @@ class AiMetricsIntegrationTest {
         return id;
     }
 
-    /** One AI classification of a new transaction of {@code importId}. */
+    /** One AI classification of a new transaction of {@code importId}, classified and reviewed at {@code reviewedAt}. */
     private void classified(UUID importId, String type, boolean pix, boolean installment, String review,
-                            boolean deleted, int confidence, boolean corrected, String createdAt) {
+                            boolean deleted, int confidence, boolean corrected, String reviewedAt) {
+        classified(importId, type, pix, installment, review, deleted, confidence, corrected, reviewedAt, reviewedAt);
+    }
+
+    private void classified(UUID importId, String type, boolean pix, boolean installment, String review,
+                            boolean deleted, int confidence, boolean corrected, String createdAt, String reviewedAt) {
         UUID tx = UUID.randomUUID();
         jdbc.update("INSERT INTO transactions (id, user_id, account_id, import_id, transaction_date, description, "
                 + "original_description, amount, transaction_type, review_status, is_pix, is_installment, deleted_at) "
@@ -110,8 +116,9 @@ class AiMetricsIntegrationTest {
                 + (deleted ? "NOW()" : "NULL") + ")",
             tx, admin, account, importId, type, review, pix, installment);
         jdbc.update("INSERT INTO ai_classification_history (user_id, transaction_id, predicted_category_id, confidence, "
-                + "was_corrected, created_at) VALUES (?, ?, ?, ?, ?, CAST(? AS timestamptz))",
-            admin, tx, category, confidence, corrected, createdAt);
+                + "was_corrected, created_at, reviewed_at) VALUES (?, ?, ?, ?, ?, CAST(? AS timestamptz), "
+                + "CAST(? AS timestamptz))",
+            admin, tx, category, confidence, corrected, createdAt, "PENDING".equals(review) ? null : reviewedAt);
     }
 
     private void reviewed(UUID importId, boolean corrected) {
@@ -236,6 +243,27 @@ class AiMetricsIntegrationTest {
     private void pattern(UUID user, String pattern, int usage) {
         jdbc.update("INSERT INTO user_classification_patterns (user_id, description_pattern, preferred_category_id, "
             + "usage_count) VALUES (?, ?, ?, ?)", user, pattern, category(user), usage);
+    }
+
+    @Test
+    void periodAndMonthFollowTheReviewDateNotTheClassificationDate() {
+        String bank = "T" + UUID.randomUUID(); // no other row has this bank
+        UUID imp = importOf(bank);
+        // classified on Feb 29th, corrected by the user on March 2nd: a March error (retro do Epic 10, A3)
+        classified(imp, "DEBIT", false, false, "CONFIRMED", false, 90, true, "2020-02-29T12:00:00Z",
+            "2020-03-02T12:00:00Z");
+        // classified in March, still in review: not counted
+        classified(imp, "DEBIT", false, false, "PENDING", false, 90, true, "2020-03-02T12:00:00Z", null);
+
+        assertThat(repository.countByBank(OffsetDateTime.parse("2020-03-02T00:00-03:00"),
+                OffsetDateTime.parse("2020-03-03T00:00-03:00"), bank))
+            .extracting(BankCounts::getClassifications, BankCounts::getCorrections)
+            .containsExactly(Tuple.tuple(1L, 1L));
+        assertThat(repository.countByBank(OffsetDateTime.parse("2020-02-29T00:00-03:00"),
+            OffsetDateTime.parse("2020-03-01T00:00-03:00"), bank)).isEmpty();
+        assertThat(repository.countByBankAndMonth(OffsetDateTime.parse("2020-02-01T00:00-03:00"),
+                OffsetDateTime.parse("2020-04-01T00:00-03:00")).stream().filter(m -> m.getBank().equals(bank)))
+            .extracting(MonthCounts::getMonth).containsExactly("2020-03");
     }
 
     @Test

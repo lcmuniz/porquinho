@@ -49,6 +49,7 @@ function alerts(overrides: Partial<SystemAlerts> = {}): SystemAlerts {
         valueLabel: '12,0 %',
         thresholdLabel: 'acima de 10 %',
         tab: 'imports',
+        link: 'https://app.example.com/admin?tab=imports&bank=ITAU&from=2026-11-19&to=2026-11-19',
         normalizedAt: '2026-11-19T14:00:00Z',
         resolvedAt: '2026-11-19T13:40:00Z',
       }),
@@ -87,7 +88,12 @@ describe('AlertsPanel', () => {
     expect(resolved).toContain('Normalizou em 19/11/2026, 11:00')
     expect(wrapper.get('[data-testid="alert-state-2"]').text()).toBe('Resolvido em 19/11/2026, 10:40')
     expect(wrapper.find('[data-testid="alert-resolve-2"]').exists()).toBe(false)
-    expect(wrapper.findAllComponents(RouterLinkStub)[1]!.props('to')).toEqual({ name: 'admin', query: { tab: 'imports' } })
+    // O link interno leva o banco e o dia do alerta, como o do e-mail
+    expect(wrapper.findAllComponents(RouterLinkStub)[0]!.props('to')).toEqual({ name: 'admin', query: { tab: 'health' } })
+    expect(wrapper.findAllComponents(RouterLinkStub)[1]!.props('to')).toEqual({
+      name: 'admin',
+      query: { tab: 'imports', bank: 'ITAU', from: '2026-11-19', to: '2026-11-19' },
+    })
     expect(wrapper.emitted('count')).toEqual([[1]])
   })
 

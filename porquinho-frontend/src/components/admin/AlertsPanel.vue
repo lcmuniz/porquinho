@@ -72,7 +72,7 @@
               <td class="py-2 pr-4 text-xs text-gray-700">{{ a.action }}</td>
               <td class="py-2 pr-4">
                 <RouterLink
-                  :to="{ name: 'admin', query: { tab: a.tab } }"
+                  :to="{ name: 'admin', query: linkQuery(a) }"
                   class="text-purple-700 underline hover:text-purple-900"
                   :data-testid="`alert-link-${a.id}`"
                 >
@@ -133,6 +133,11 @@ const TAB_LABELS: Record<AdminTab, string> = {
   ai: 'IA',
   users: 'Usuários',
   alerts: 'Alertas',
+}
+
+// Os mesmos parâmetros do link do e-mail: aba e, no alerta por banco, banco e dia (retro do Epic 10, A4)
+function linkQuery(a: SystemAlert) {
+  return Object.fromEntries(new URL(a.link, window.location.origin).searchParams)
 }
 
 const data = ref<SystemAlerts | null>(null)

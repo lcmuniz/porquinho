@@ -147,9 +147,7 @@ public class UserMetricsService {
 
     /** Rounded once to 1 decimal (exact decimal, HALF_UP), so the color, the JSON and the CSV use the same value. */
     static Double percent(long part, long whole) {
-        if (whole == 0) return null;
-        return BigDecimal.valueOf(part).multiply(BigDecimal.valueOf(100))
-            .divide(BigDecimal.valueOf(whole), 1, RoundingMode.HALF_UP).doubleValue();
+        return AdminMetrics.percent(part, whole);
     }
 
     static Status churnStatus(Double churn) {

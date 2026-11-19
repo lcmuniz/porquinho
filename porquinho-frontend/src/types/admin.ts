@@ -186,6 +186,7 @@ export type SystemAlertType =
   | 'ACTIVE_SESSIONS'
   | 'REDIS_DOWN'
   | 'DB_POOL_EXHAUSTED'
+  | 'RETENTION_STALLED'
 
 /** Story 10.5: um alerta de métrica crítica; os rótulos são os textos do e-mail e do Slack. */
 export interface SystemAlert {

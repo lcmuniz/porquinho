@@ -80,6 +80,56 @@ class RetentionServiceTest {
         return stored(new Subscription(UUID.randomUUID(), PlanType.TRIAL, Status.ACTIVE, end.minusDays(30), end));
     }
 
+    // --- Story 10.5, RETENTION_STALLED
+
+    @Test
+    void sevenDayWarningIsDueFromMidnightAndLateAfterTheNextRunPlusGrace() {
+        Subscription s = trialEndedAt(NOW.minusDays(23)); // purge 30/11 09:00 Sao Paulo
+        when(subscriptionRepository.findRetentionCandidates(any())).thenReturn(List.of(s));
+
+        assertThat(RetentionService.dueSince(s)).isEqualTo(OffsetDateTime.parse("2026-11-23T00:00:00-03:00"));
+        assertThat(service.stalledCount(NOW)).isZero();
+        // the 09:00 run of the 24th also had its chance; 1 h of grace for it to finish
+        assertThat(service.stalledCount(NOW.plusHours(25))).isZero();
+        assertThat(service.stalledCount(NOW.plusHours(25).plusMinutes(1))).isOne();
+    }
+
+    @Test
+    void oneDayWarningIsDueTheDayBeforeTheEffectivePurge() {
+        Subscription s = trialEndedAt(NOW.minusDays(29));
+        s.setRetentionWarning7dSentAt(NOW.minusDays(6)); // effective purge 24/11 09:00 Sao Paulo
+        assertThat(RetentionService.dueSince(s)).isEqualTo(OffsetDateTime.parse("2026-11-23T00:00:00-03:00"));
+    }
+
+    @Test
+    void purgeAWhileAfterTheRunIsDoneOnlyByTheNextDayRunSoItIsNotLateYet() {
+        Subscription s = trialEndedAt(NOW.minusDays(31));
+        s.setRetentionWarning7dSentAt(NOW.minusDays(8));
+        s.setRetentionWarning1dSentAt(NOW.minusDays(1).plusSeconds(5)); // purge due 09:00:05 today
+        when(subscriptionRepository.findRetentionCandidates(any())).thenReturn(List.of(s));
+
+        assertThat(RetentionService.dueSince(s)).isEqualTo(NOW.plusSeconds(5));
+        assertThat(RetentionService.firstRunAtOrAfter(NOW.plusSeconds(5))).isEqualTo(NOW.plusDays(1));
+        assertThat(service.stalledCount(NOW.plusDays(2))).isZero();
+        assertThat(service.stalledCount(NOW.plusDays(2).plusHours(2))).isOne();
+    }
+
+    @Test
+    void stalledSkipsAccessGoneUsersAndPendingDeletionsAndRowsWithoutEnd() {
+        // PAYMENT_FAILED keeps access, whatever the dates
+        Subscription withAccess = trialEndedAt(NOW.minusDays(25));
+        withAccess.setStatus(Status.PAYMENT_FAILED);
+        Subscription gone = trialEndedAt(NOW.minusDays(25));
+        when(userRepository.findById(gone.getUserId())).thenReturn(Optional.empty());
+        Subscription pending = trialEndedAt(NOW.minusDays(25));
+        when(accountDeletionRepository.findByUserIdAndStatus(pending.getUserId(), DeletionStatus.PENDING_PURGE))
+            .thenReturn(Optional.of(mock(AccountDeletion.class)));
+        Subscription late = trialEndedAt(NOW.minusDays(25));
+        when(subscriptionRepository.findRetentionCandidates(any())).thenReturn(List.of(withAccess, gone, pending, late));
+
+        assertThat(service.stalledCount(NOW)).isOne();
+    }
+
     @Test
     void expiredTrialSevenDaysBeforePurgeGetsSevenDayWarning() {
         Subscription s = trialEndedAt(NOW.minusDays(23));

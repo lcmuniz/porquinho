@@ -369,6 +369,30 @@ describe('AdminView', () => {
     expect(mockGetSystemHealth).not.toHaveBeenCalled()
   })
 
+  it('link do alerta por banco abre a aba filtrada no banco e no dia; trocar de aba à mão descarta o filtro', async () => {
+    route.query = { tab: 'imports', bank: 'ITAU', from: '2026-11-19', to: '2026-11-19' }
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(mockGetImportMetrics).toHaveBeenCalledWith({ from: '2026-11-19', to: '2026-11-19', bank: 'ITAU' })
+    expect(wrapper.get('[data-testid="filter-bank"]').element).toHaveProperty('value', 'ITAU')
+
+    await wrapper.get('[data-testid="tab-ai"]').trigger('click')
+    await flushPromises()
+    expect(mockReplace).toHaveBeenCalledWith({ query: { tab: 'ai' } })
+    expect(mockGetAiMetrics).toHaveBeenCalledWith({})
+  })
+
+  it('o link interno de um alerta da IA (query muda com a tela aberta) abre a aba IA filtrada', async () => {
+    route.query = { tab: 'alerts' }
+    mountView()
+    await flushPromises()
+
+    route.query = { tab: 'ai', bank: 'NUBANK', from: '2026-11-18', to: '2026-11-18' }
+    await flushPromises()
+    expect(mockGetAiMetrics).toHaveBeenCalledWith({ from: '2026-11-18', to: '2026-11-18', bank: 'NUBANK' })
+  })
+
   it('?tab= desconhecida cai na saúde', async () => {
     route.query = { tab: 'xyz' }
     const wrapper = mountView()

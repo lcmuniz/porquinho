@@ -926,7 +926,7 @@ class DataExportServiceTest {
         Map<String, Object> first = rows.get(0);
         assertExportsEveryColumn(AiClassificationHistory.class, first);
         assertEquals(Set.of("id", "user_id", "transaction_id", "predicted_category_id", "confidence", "was_corrected",
-            "corrected_category_id", "created_at"), first.keySet());
+            "corrected_category_id", "created_at", "reviewed_at"), first.keySet());
         assertEquals(transactionId.toString(), first.get("transaction_id"));
         assertEquals(predicted.toString(), first.get("predicted_category_id"));
         assertEquals(60, first.get("confidence"));

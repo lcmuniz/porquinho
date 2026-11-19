@@ -22,16 +22,26 @@ public interface AiClassificationHistoryRepository extends JpaRepository<AiClass
 
     /**
      * Story 5.11: the user saved {@code categoryId} on transactions {@code ids}. Corrected when it differs from the
-     * prediction, with the category kept only then; saving again recomputes both fields.
+     * prediction, with the category kept only then; saving again recomputes both fields and moves reviewed_at.
      */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(value = "UPDATE ai_classification_history SET "
         + "was_corrected = (predicted_category_id IS DISTINCT FROM CAST(:categoryId AS UUID)), "
         + "corrected_category_id = CASE WHEN predicted_category_id IS DISTINCT FROM CAST(:categoryId AS UUID) "
-        + "THEN CAST(:categoryId AS UUID) END "
+        + "THEN CAST(:categoryId AS UUID) END, reviewed_at = now() "
         + "WHERE user_id = :userId AND transaction_id IN (:ids)", nativeQuery = true)
     int markUserChoice(@Param("userId") UUID userId, @Param("ids") Collection<UUID> ids,
                        @Param("categoryId") UUID categoryId);
+
+    /**
+     * Retro do Epic 10, A3: the rows of import {@code importId} whose transaction left the review (approved or the
+     * import completed) get their review date, unless the user already chose a category for them.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = "UPDATE ai_classification_history h SET reviewed_at = now() FROM transactions t "
+        + "WHERE t.id = h.transaction_id AND h.user_id = :userId AND t.import_id = :importId "
+        + "AND t.review_status <> 'PENDING' AND h.reviewed_at IS NULL", nativeQuery = true)
+    int markReviewed(@Param("userId") UUID userId, @Param("importId") UUID importId);
 
     /**
      * Hard-delete the user's rows (LGPD account purge, Story 5.8). Must run BEFORE deleting the transactions, the
@@ -44,11 +54,13 @@ public interface AiClassificationHistoryRepository extends JpaRepository<AiClass
     // Story 10.3: aggregates of the admin panel over every user. A row counts once its transaction left the review
     // (not PENDING) and was not deleted (a discarded import deletes them); was_corrected is an AI error. The bank is
     // the one of the import, a null bank_name is UNKNOWN. No index for these: they scan, fine at the current volume.
+    // Retro do Epic 10, A3: the period (and the month) is the review date, so a correction made the day after the
+    // import enters the 24 h window of the 10.5 alert; the panel uses the same date, so the alert link matches it.
 
     String COUNTED = "FROM ai_classification_history h JOIN transactions t ON t.id = h.transaction_id "
         + "LEFT JOIN transaction_imports i ON i.id = t.import_id "
         + "WHERE t.deleted_at IS NULL AND t.review_status <> 'PENDING' "
-        + "AND h.created_at >= :from AND h.created_at < :to ";
+        + "AND h.reviewed_at >= :from AND h.reviewed_at < :to ";
 
     interface BankCounts {
         String getBank();
@@ -69,7 +81,7 @@ public interface AiClassificationHistoryRepository extends JpaRepository<AiClass
     }
 
     @Query(value = "SELECT COALESCE(i.bank_name, 'UNKNOWN') AS bank, "
-        + "to_char(h.created_at AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM') AS month, count(*) AS classifications, "
+        + "to_char(h.reviewed_at AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM') AS month, count(*) AS classifications, "
         + "count(*) FILTER (WHERE h.was_corrected) AS corrections " + COUNTED
         + "GROUP BY 1, 2", nativeQuery = true)
     List<MonthCounts> countByBankAndMonth(@Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to);

@@ -41,6 +41,10 @@ public class AiClassificationHistory {
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
+    /** Written by native SQL only (markUserChoice, markReviewed). */
+    @Column(name = "reviewed_at", insertable = false, updatable = false)
+    private OffsetDateTime reviewedAt;
+
     public AiClassificationHistory() {
     }
 
@@ -79,4 +83,6 @@ public class AiClassificationHistory {
 
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }
+
+    public OffsetDateTime getReviewedAt() { return reviewedAt; }
 }

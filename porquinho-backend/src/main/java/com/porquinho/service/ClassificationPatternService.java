@@ -96,6 +96,12 @@ public class ClassificationPatternService {
             ids.size(), history, patterns.size());
     }
 
+    /** Retro do Epic 10, A3: the rows of the import that left the review get their review date. */
+    @Transactional
+    public void markReviewed(UUID userId, UUID importId) {
+        historyRepository.markReviewed(userId, importId);
+    }
+
     /** The user's usable patterns (active child category), pattern → category. */
     public Map<String, UUID> match(UUID userId) {
         Map<String, UUID> patterns = new HashMap<>();

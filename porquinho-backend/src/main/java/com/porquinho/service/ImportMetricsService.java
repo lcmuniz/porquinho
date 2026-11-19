@@ -19,6 +19,8 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
+
+import static com.porquinho.service.AdminMetrics.start;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
@@ -35,6 +37,8 @@ import java.util.stream.Collectors;
 public class ImportMetricsService {
 
     static final double TARGET = 5.0;
+    /** Limit of the 10.5 alert (the panel is red above TARGET). */
+    static final double ALERT_RATE = 10.0;
     static final int DEFAULT_DAYS = 30;
     static final int MAX_DAYS = 366;
     static final int TREND_DAYS = 30;
@@ -162,9 +166,9 @@ public class ImportMetricsService {
             .toList();
     }
 
+    /** Rounded once to 1 decimal ({@link AdminMetrics}), so the color, the JSON, the chart and the alert agree. */
     static Double rate(long failures, long successes) {
-        long total = failures + successes;
-        return total == 0 ? null : failures * 100.0 / total;
+        return AdminMetrics.percent(failures, failures + successes);
     }
 
     static Status status(Double rate) {
@@ -180,10 +184,6 @@ public class ImportMetricsService {
 
     private LocalDate today() {
         return LocalDate.now(clock.withZone(SAO_PAULO));
-    }
-
-    private static OffsetDateTime start(LocalDate day) {
-        return day.atStartOfDay(SAO_PAULO).toOffsetDateTime();
     }
 
     private static LocalDate date(String value, String field) {

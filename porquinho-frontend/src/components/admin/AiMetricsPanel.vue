@@ -254,6 +254,8 @@ import type {
 
 // Story 10.3: precisão da IA por banco; o 403 sobe para a view mostrar "Acesso restrito"
 const emit = defineEmits<{ forbidden: [] }>()
+// Filtros iniciais vindos da URL (link do alerta por banco)
+const props = defineProps<{ initial?: ImportMetricsFilters }>()
 
 const LABELS: Record<AdminBankCode, string> = { ...BANK_LABELS, OTHER: 'Outro banco', UNKNOWN: 'Não identificado' }
 
@@ -311,9 +313,10 @@ const COLORS = { GREEN: '#16a34a', YELLOW: '#ca8a04', RED: '#dc2626', UNKNOWN: '
 
 const percent = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 })
 
-const form = reactive({ from: '', to: '', bank: '' as AdminBankCode | '' })
+const initial = props.initial ?? {}
+const form = reactive({ from: initial.from ?? '', to: initial.to ?? '', bank: (initial.bank ?? '') as AdminBankCode | '' })
 // Filtros aplicados (o form pode mudar sem "Filtrar"); sem datas, o backend usa os últimos 30 dias
-const applied = ref<ImportMetricsFilters>({})
+const applied = ref<ImportMetricsFilters>({ ...initial })
 
 const metrics = ref<AiMetrics | null>(null)
 const loading = ref(false)

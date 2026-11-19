@@ -119,6 +119,7 @@ public class TransactionImportReviewService {
         }
         int approved = transactionRepository.approveHighConfidence(userId, importId, HIGH_CONFIDENCE, OffsetDateTime.now());
         if (approved > 0) {
+            patternService.markReviewed(userId, importId);
             auditLogService.log(AUDIT_HIGH_CONFIDENCE_APPROVED, userId, ipAddress,
                 "{\"import_id\":\"" + importId + "\",\"approved_transactions\":" + approved + "}");
         }
@@ -197,6 +198,7 @@ public class TransactionImportReviewService {
         }
         int affectingBalance = balanceEffect.entered();
         int confirmed = transactionRepository.confirmByImport(userId, importId, now);
+        patternService.markReviewed(userId, importId);
         auditLogService.log(AUDIT_COMPLETED, userId, ipAddress, "{\"import_id\":\"" + importId
             + "\",\"confirmed_transactions\":" + confirmed + ",\"balance_transactions\":" + affectingBalance + "}");
         log.info("Import {} completed: {} transaction(s) confirmed, {} affecting the balance", importId, confirmed,

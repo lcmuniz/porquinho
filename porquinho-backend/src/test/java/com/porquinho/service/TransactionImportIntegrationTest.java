@@ -1393,7 +1393,7 @@ class TransactionImportIntegrationTest {
         var exported = (List<Map<String, Object>>) dataExportService.collectUserData(userId).get("ai_classification_history");
         assertThat(exported).hasSize(9);  // the card payment does not go to the AI
         assertThat(exported.get(0)).containsOnlyKeys("id", "user_id", "transaction_id", "predicted_category_id",
-            "confidence", "was_corrected", "corrected_category_id", "created_at");
+            "confidence", "was_corrected", "corrected_category_id", "created_at", "reviewed_at");
 
         // the FK from the history blocks deleting the transactions first
         assertThatThrownBy(() -> jdbc.update("DELETE FROM transactions WHERE user_id = ?", userId))
@@ -1684,6 +1684,13 @@ class TransactionImportIntegrationTest {
 
         assertThat(jdbc.queryForMap("SELECT * FROM ai_classification_history WHERE transaction_id = ?", uber))
             .containsEntry("was_corrected", true).containsEntry("corrected_category_id", restaurante);
+        // retro do Epic 10, A3: the correction is the review date; the row still in review has none
+        String reviewedAt = "SELECT reviewed_at FROM ai_classification_history WHERE transaction_id = ?";
+        UUID padaria = (UUID) byDescription(first, "Padaria do Bairro").get("id");
+        assertThat(jdbc.queryForObject(reviewedAt, java.time.OffsetDateTime.class, uber)).isNotNull();
+        assertThat(jdbc.queryForObject(reviewedAt, java.time.OffsetDateTime.class, padaria)).isNull();
+        reviewService.complete(userId, first, "127.0.0.1");
+        assertThat(jdbc.queryForObject(reviewedAt, java.time.OffsetDateTime.class, padaria)).isNotNull();
         String lastUsed = "SELECT last_used_at FROM user_classification_patterns WHERE user_id = ? "
             + "AND description_pattern = 'uber trip'";
         java.time.OffsetDateTime learnedAt = jdbc.queryForObject(lastUsed, java.time.OffsetDateTime.class, userId);

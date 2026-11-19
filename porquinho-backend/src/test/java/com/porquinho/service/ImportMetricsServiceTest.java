@@ -72,6 +72,10 @@ class ImportMetricsServiceTest {
         assertThat(ImportMetricsService.status(5.0)).isEqualTo(Status.GREEN);
         assertThat(ImportMetricsService.status(5.01)).isEqualTo(Status.RED);
         assertThat(ImportMetricsService.rate(1, 19)).isEqualTo(5.0);
+        // 5.004 % shows "5 %" next to the 5 % target: green, not red
+        assertThat(ImportMetricsService.rate(5004, 94_996)).isEqualTo(5.0);
+        assertThat(ImportMetricsService.status(ImportMetricsService.rate(5004, 94_996))).isEqualTo(Status.GREEN);
+        assertThat(ImportMetricsService.rate(1, 2)).isEqualTo(33.3);
     }
 
     @Test
