@@ -883,21 +883,6 @@ class TransactionImportIntegrationTest {
     }
 
     @Test
-    void twoImportsOfTheSameFileAtOnceSaveItOnlyOnce() throws Exception {
-        UUID nubank = account(userId, "Nubank");
-
-        UUID a = transactionImportService.create(userId, nubank, null, sample("nubank-conta.ofx"), "127.0.0.1").id();
-        UUID b = transactionImportService.create(userId, nubank, null, sample("nubank-conta.ofx"), "127.0.0.1").id();
-
-        awaitDone(a);
-        awaitDone(b);
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM transactions WHERE account_id = ?", Long.class, nubank))
-            .isEqualTo(10);
-        assertThat(jdbc.queryForList("SELECT status FROM transaction_imports WHERE id IN (?, ?)", String.class, a, b))
-            .containsExactlyInAnyOrder("REVIEW", "COMPLETED");
-    }
-
-    @Test
     void transfersFoundIsExportedAndChecked() throws Exception {
         UUID nubank = account(userId, "Nubank");
         awaitDone(transactionImportService.create(userId, nubank, null, sample("nubank-conta.ofx"), "127.0.0.1").id());

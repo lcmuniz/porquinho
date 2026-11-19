@@ -483,4 +483,23 @@ class InstallmentPlannerTest {
         assertThat(plan.confirmed()).singleElement()
             .satisfies(t -> assertThat(t.getInstallmentGroupId()).isEqualTo(third.getInstallmentGroupId()));
     }
+
+    @Test
+    void futureDescriptionLongerThanTheColumnIsCutAtTheLimit() {
+        String marker = " - Parcela 9/12";
+        String description = "X".repeat(InstallmentPlanner.MAX_DESCRIPTION - marker.length()) + marker;
+        Transaction row = row(description, "10.00", LocalDate.of(2026, 10, 2), "z");
+        InstallmentPlanner.Plan plan = InstallmentPlanner.plan(List.of(row), List.of());
+
+        // 9 → 10 adds a digit: 501 characters, cut back to the 500 of the column
+        assertThat(description).hasSize(500);
+        assertThat(plan.futuresCreated()).isEqualTo(3);
+        List<Transaction> futures = plan.toInsert().subList(1, 4);
+        assertThat(futures).allSatisfy(t -> {
+            assertThat(t.getDescription()).hasSize(InstallmentPlanner.MAX_DESCRIPTION);
+            assertThat(t.getOriginalDescription()).isEqualTo(t.getDescription());
+        });
+        assertThat(futures).extracting(t -> t.getDescription().substring(480))
+            .containsExactly("XXXXX - Parcela 10/1", "XXXXX - Parcela 11/1", "XXXXX - Parcela 12/1");
+    }
 }

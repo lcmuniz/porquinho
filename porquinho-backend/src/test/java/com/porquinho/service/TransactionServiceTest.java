@@ -6,6 +6,7 @@ import com.porquinho.dto.TransactionResponse;
 import com.porquinho.dto.TransactionUpdateRequest;
 import com.porquinho.dto.UpdateAccountRequest;
 import com.porquinho.exception.BadRequestException;
+import com.porquinho.exception.ConflictException;
 import com.porquinho.exception.ResourceNotFoundException;
 import com.porquinho.repository.TransactionImportRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -778,6 +779,32 @@ class TransactionServiceTest {
         }));
         assertThat(held.await(10, TimeUnit.SECONDS)).isTrue();
         return holder;
+    }
+
+    @Test
+    void rowMovedByAnotherEditWhileWaitingForTheLockIs409() throws Exception {
+        UUID account = newAccount("1000.00");
+        UUID other = newAccount("500.00");
+        UUID row = newRow(account, "2026-11-05", "DEBIT", "100.00", true);
+        CountDownLatch release = new CountDownLatch(1);
+        try {
+            CompletableFuture<Void> holder = holdingLockOf(account, release);
+
+            // Reads the target (account), then waits for its advisory lock
+            CompletableFuture<Void> delete = CompletableFuture.runAsync(() -> service.delete(userId, row, IP));
+            assertThatThrownBy(() -> delete.get(500, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class);
+            // The other edit moves the row to another account and commits before the lock is released
+            jdbc.update("UPDATE transactions SET account_id = ? WHERE id = ?", other, row);
+            release.countDown();
+            holder.get(10, TimeUnit.SECONDS);
+
+            assertThatThrownBy(() -> delete.get(10, TimeUnit.SECONDS))
+                .cause().isInstanceOf(ConflictException.class).hasMessage(TransactionService.CHANGED_MESSAGE);
+            assertThat(rowOf(row).get("deleted_at")).isNull();
+            assertThat(auditOf(TransactionService.AUDIT_DELETED)).isEmpty();
+        } finally {
+            release.countDown();
+        }
     }
 
     @Test
