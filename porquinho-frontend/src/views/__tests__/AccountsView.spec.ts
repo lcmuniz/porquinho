@@ -1772,10 +1772,10 @@ describe('AccountsView — reconciliar com o banco (Story 4.6)', () => {
     const button = wrapper.get('[data-testid="reconcile-account-a1"]')
 
     expect(button.text()).toBe('Conferir com o banco')
-    expect(button.attributes('aria-label')).toBe('Conferir Nubank com o banco')
+    expect(button.attributes('aria-label')).toBe('Conferir com o banco: Nubank')
     expect(button.classes()).toContain('min-h-[44px]')
     expect(wrapper.get('[data-testid="reconcile-account-a2"]').attributes('aria-label')).toBe(
-      'Conferir Inter com o banco',
+      'Conferir com o banco: Inter',
     )
   })
 

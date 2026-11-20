@@ -15,11 +15,13 @@
   >
     <div data-testid="card-donut" class="min-w-0 rounded-lg border border-gray-200 bg-white p-6">
       <h3 class="mb-4 text-sm font-normal text-gray-600">Gasto do mês por categoria</h3>
-      <SpendingDonut v-if="spending.length" :slices="slices" :total="total" @select="open" />
-      <!-- Critique de 20/11/2026 (3ª): o "Gasto do mês" (como o Orçamento) só soma categorias; aqui entra o sem categoria -->
-      <p v-if="uncategorizedSpent > 0" class="mt-3 text-sm text-gray-600" data-testid="donut-uncategorized-note">
-        Inclui {{ formatBRL(uncategorizedSpent) }} sem categoria, que ficam fora do "Gasto do mês" até você classificar.
-      </p>
+      <template v-if="spending.length">
+        <SpendingDonut :slices="slices" :total="total" @select="open" />
+        <!-- Critique de 20/11/2026 (3ª): o "Gasto do mês" (como o Orçamento) só soma categorias; aqui entra o sem categoria -->
+        <p v-if="uncategorizedSpent > 0" class="mt-3 text-sm text-gray-600" data-testid="donut-uncategorized-note">
+          Inclui {{ formatBRL(uncategorizedSpent) }} sem categoria, que ficam fora do “Gasto do mês” até você classificar.
+        </p>
+      </template>
       <p v-else data-testid="donut-empty" class="text-sm text-gray-700">Nenhum gasto neste mês</p>
     </div>
 

@@ -52,7 +52,7 @@
               Cancelar
             </Button>
             <Button type="submit" class="min-h-[44px]" :disabled="saving || !categoryId" data-testid="classify-save">
-              Salvar
+              {{ saving ? 'Salvando…' : 'Salvar' }}
             </Button>
           </div>
         </DialogFooter>

@@ -160,7 +160,7 @@
                   variant="ghost"
                   class="min-h-[44px] min-w-[44px] shrink-0 text-purple-700 hover:bg-purple-50"
                   :data-testid="`reconcile-account-${account.id}`"
-                  :aria-label="`Conferir ${account.accountName} com o banco`"
+                  :aria-label="`Conferir com o banco: ${account.accountName}`"
                   @click="openReconcile(account)"
                 >
                   <Scale class="h-4 w-4" aria-hidden="true" />

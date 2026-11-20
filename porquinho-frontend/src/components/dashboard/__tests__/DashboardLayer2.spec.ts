@@ -138,11 +138,13 @@ describe('DashboardLayer2', () => {
   it('o donut avisa quanto do total está sem categoria (fora do "Gasto do mês"); sem nenhuma, não avisa', async () => {
     const w = await mountWith(tactical())
     expect(brl(w.get('[data-testid="donut-uncategorized-note"]').text())).toBe(
-      'Inclui R$ 200,00 sem categoria, que ficam fora do "Gasto do mês" até você classificar.',
+      'Inclui R$ 200,00 sem categoria, que ficam fora do “Gasto do mês” até você classificar.',
     )
     wrapper?.unmount()
     const clean = await mountWith(tactical({ categories: [cat('c1', 'Lazer', 100)] }))
     expect(clean.find('[data-testid="donut-uncategorized-note"]').exists()).toBe(false)
+    // a nota não pode roubar o v-else do donut: com gasto, nada de "Nenhum gasto neste mês"
+    expect(clean.find('[data-testid="donut-empty"]').exists()).toBe(false)
   })
 
   it('sem gasto e sem orçamento: mensagens no lugar do donut, do top 5 e do planejado × real', async () => {
