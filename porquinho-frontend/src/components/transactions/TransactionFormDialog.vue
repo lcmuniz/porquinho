@@ -260,6 +260,10 @@ async function save() {
   const description = form.description.trim()
   if (!form.date) return void (formError.value = 'Informe a data')
   if (!description) return void (formError.value = 'Informe a descrição')
+  // parseBRL devolve null também para formato inválido e para valor acima do limite: não é "zero"
+  if (amount === null && form.amount.trim())
+    return void (formError.value =
+      'Informe o valor com até 2 casas decimais e no máximo 13 dígitos antes da vírgula')
   if (amount === null || amount <= 0) return void (formError.value = 'Informe um valor maior que zero')
   if (isCreate && !form.categoryId) return void (formError.value = 'Escolha uma categoria')
   if (!form.target) return void (formError.value = 'Escolha uma conta ou um cartão')

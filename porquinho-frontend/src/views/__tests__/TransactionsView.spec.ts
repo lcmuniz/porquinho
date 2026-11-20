@@ -228,6 +228,21 @@ describe('TransactionsView', () => {
     expect(inDialog('edit-error')?.textContent).toContain('maior que zero')
   })
 
+  it.each(['12345678901234,00', '10,555'])(
+    'valor fora do formato (%s) pede o formato, não "maior que zero"',
+    async (amount) => {
+      const w = await mountView([transaction('t1')])
+      await w.get('[data-testid="edit-t1"]').trigger('click')
+      await flushPromises()
+      await setValue('edit-amount', amount)
+      inDialog<HTMLFormElement>('edit-form')!.dispatchEvent(new Event('submit'))
+      await flushPromises()
+
+      expect(mockUpdate).not.toHaveBeenCalled()
+      expect(inDialog('edit-error')?.textContent).toContain('no máximo 13 dígitos antes da vírgula')
+    },
+  )
+
   it('remove depois de confirmar e a linha sai da lista', async () => {
     const w = await mountView([transaction('t1')])
     await w.get('[data-testid="remove-t1"]').trigger('click')
