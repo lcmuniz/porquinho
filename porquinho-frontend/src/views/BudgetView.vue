@@ -76,25 +76,30 @@
       <form v-else-if="budget" class="space-y-6" novalidate data-testid="budget-form" @submit.prevent="save">
         <div class="space-y-3 rounded-lg border border-gray-200 bg-white p-4 text-sm md:p-6" data-testid="budget-totals">
           <div class="grid grid-cols-2 gap-4" :class="{ 'sm:grid-cols-3': totalCommitted !== null }">
+            <!-- Rótulos com a mesma altura (44px, a do botão de ajuda), para os valores ficarem alinhados -->
             <p class="text-gray-600">
-              Total alocado
-              <HelpTip term="alocado" testid="allocated">
-                Alocado é o dinheiro que você separou para cada categoria neste mês, como envelopes. O ideal é que o total
-                não passe do que está disponível nas contas.
-              </HelpTip>
+              <span class="flex min-h-11 items-center gap-1">
+                Total alocado
+                <HelpTip term="alocado" testid="allocated">
+                  Alocado é o dinheiro que você separou para cada categoria neste mês, como envelopes. O ideal é que o
+                  total não passe do que está disponível nas contas.
+                </HelpTip>
+              </span>
               <span class="block text-xl font-bold text-gray-900 md:text-2xl" data-testid="total-allocated">{{ formatBRL(totalAllocated) }}</span>
             </p>
             <p class="text-gray-600">
-              Disponível nas contas
+              <span class="flex min-h-11 items-center">Disponível nas contas</span>
               <span class="block text-xl font-bold text-gray-900 md:text-2xl" data-testid="total-available">{{ formatBRL(budget.totalAvailable) }}</span>
             </p>
             <!-- Critique de 20/11/2026: a ajuda do termo fica aqui, uma vez, e não na primeira linha da lista -->
             <p v-if="totalCommitted !== null" class="col-span-2 text-gray-600 sm:col-span-1">
-              Comprometido
-              <HelpTip term="comprometido" testid="committed">
-                Comprometido é a soma das parcelas de compras parceladas que ainda vão cair neste mês. Elas já estão
-                confirmadas, então esse dinheiro já tem destino.
-              </HelpTip>
+              <span class="flex min-h-11 items-center gap-1">
+                Comprometido
+                <HelpTip term="comprometido" testid="committed">
+                  Comprometido é a soma das parcelas de compras parceladas que ainda vão cair neste mês. Elas já estão
+                  confirmadas, então esse dinheiro já tem destino.
+                </HelpTip>
+              </span>
               <span class="block text-xl font-bold text-gray-900 md:text-2xl" data-testid="total-committed">{{ formatBRL(totalCommitted) }}</span>
             </p>
           </div>
