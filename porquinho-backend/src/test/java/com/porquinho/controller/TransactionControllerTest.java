@@ -144,6 +144,38 @@ class TransactionControllerTest {
     }
 
     @Test
+    void batchCategoryReturnsHowManyChanged() throws Exception {
+        UUID a = UUID.randomUUID();
+        UUID category = UUID.randomUUID();
+        when(transactionService.updateCategory(eq(userId), eq(List.of(a)), eq(category), anyString())).thenReturn(1);
+        mockMvc.perform(post("/api/v1/transactions/batch/category").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"ids\":[\"" + a + "\"],\"categoryId\":\"" + category + "\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.updated").value(1));
+    }
+
+    @Test
+    void batchDeleteReturnsHowManyRemoved() throws Exception {
+        UUID a = UUID.randomUUID();
+        UUID b = UUID.randomUUID();
+        when(transactionService.deleteAll(eq(userId), eq(List.of(a, b)), anyString())).thenReturn(2);
+        mockMvc.perform(post("/api/v1/transactions/batch/delete").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"ids\":[\"" + a + "\",\"" + b + "\"]}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.removed").value(2));
+    }
+
+    @Test
+    void batchWithoutIdsIs400() throws Exception {
+        mockMvc.perform(post("/api/v1/transactions/batch/delete").with(authentication(authToken))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"ids\":[]}"))
+            .andExpect(status().isBadRequest());
+        verifyNoInteractions(transactionService);
+    }
+
+    @Test
     void removeFutureInstallmentsReturnsTheCount() throws Exception {
         UUID id = UUID.randomUUID();
         when(transactionService.removeFutureInstallments(eq(userId), eq(id), anyString())).thenReturn(7);

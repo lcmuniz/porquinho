@@ -1,5 +1,5 @@
 <template>
-  <main class="px-4 py-6 md:px-8 md:py-8">
+  <main class="px-4 py-6 md:px-8 md:py-8" :class="{ 'pb-40 lg:pb-28': selected.length }">
     <div class="mx-auto max-w-4xl space-y-6">
       <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
@@ -80,74 +80,101 @@
         </RouterLink>
       </div>
 
-      <ul v-else ref="list" class="divide-y divide-gray-200 rounded-lg border border-gray-200 bg-white">
-        <li
-          v-for="row in transactions"
-          :key="row.id"
-          class="px-4 py-3 [contain-intrinsic-size:auto_72px] [content-visibility:auto] sm:flex sm:items-center sm:gap-4"
-          :data-testid="`transaction-${row.id}`"
-        >
-          <div class="flex min-w-0 flex-1 items-start justify-between gap-3">
-            <div class="min-w-0 space-y-1">
-              <p class="break-words text-[15px] font-semibold text-gray-900">{{ row.description }}</p>
-              <p class="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-gray-600">
-                <span>{{ formatLocalDateBR(row.date) }}</span>
-                <span data-testid="row-target">{{ targetName(row, accounts, cards) }}</span>
-                <span class="text-gray-800" data-testid="row-category">{{ categoryLabel(row) }}</span>
-                <span v-if="row.isPix" class="inline-flex items-center gap-1" data-testid="row-pix">
-                  <ArrowLeftRight class="size-4" aria-hidden="true" />
-                  {{ pixLabel(row) }}
-                </span>
+      <template v-else>
+        <!-- Edição em lote: marcar as linhas abre a barra de ações -->
+        <label class="inline-flex min-h-[44px] cursor-pointer items-center gap-3 px-4 text-sm font-medium text-gray-700">
+          <input
+            type="checkbox"
+            class="size-5 accent-purple-700"
+            :checked="allSelected"
+            :indeterminate="selected.length > 0 && !allSelected"
+            data-testid="select-all"
+            @change="toggleAll"
+          />
+          Selecionar todas do mês
+        </label>
+        <ul ref="list" class="divide-y divide-gray-200 rounded-lg border border-gray-200 bg-white">
+          <li
+            v-for="row in transactions"
+            :key="row.id"
+            class="flex gap-1 py-3 pr-4 pl-1 [contain-intrinsic-size:auto_72px] [content-visibility:auto]"
+            :class="{ 'bg-purple-50': selected.includes(row.id) }"
+            :data-testid="`transaction-${row.id}`"
+          >
+            <label class="-my-1 flex size-11 shrink-0 cursor-pointer items-center justify-center">
+              <input
+                v-model="selected"
+                type="checkbox"
+                class="size-5 accent-purple-700"
+                :value="row.id"
+                :aria-label="`Selecionar ${row.description}`"
+                :data-testid="`select-${row.id}`"
+              />
+            </label>
+            <div class="min-w-0 flex-1 sm:flex sm:items-center sm:gap-4">
+              <div class="flex min-w-0 flex-1 items-start justify-between gap-3">
+                <div class="min-w-0 space-y-1">
+                  <p class="break-words text-[15px] font-semibold text-gray-900">{{ row.description }}</p>
+                  <p class="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-gray-600">
+                    <span>{{ formatLocalDateBR(row.date) }}</span>
+                    <span data-testid="row-target">{{ targetName(row, accounts, cards) }}</span>
+                    <span class="text-gray-800" data-testid="row-category">{{ categoryLabel(row) }}</span>
+                    <span v-if="row.isPix" class="inline-flex items-center gap-1" data-testid="row-pix">
+                      <ArrowLeftRight class="size-4" aria-hidden="true" />
+                      {{ pixLabel(row) }}
+                    </span>
+                    <span
+                      v-if="installmentLabel(row)"
+                      class="inline-flex items-center gap-1"
+                      data-testid="row-installment"
+                    >
+                      <CreditCard class="size-4" aria-hidden="true" />
+                      {{ installmentLabel(row) }}
+                    </span>
+                  </p>
+                </div>
                 <span
-                  v-if="installmentLabel(row)"
-                  class="inline-flex items-center gap-1"
-                  data-testid="row-installment"
+                  class="shrink-0 text-right text-base font-semibold whitespace-nowrap"
+                  :class="row.type === 'CREDIT' ? 'text-green-700' : 'text-gray-900'"
+                  data-testid="row-amount"
                 >
-                  <CreditCard class="size-4" aria-hidden="true" />
-                  {{ installmentLabel(row) }}
+                  {{ formatSignedBRL(signedAmount(row)) }}
                 </span>
-              </p>
+              </div>
+              <div class="-ml-3 mt-1 flex flex-wrap gap-1 sm:mt-0 sm:ml-0 sm:shrink-0">
+                <Button
+                  variant="ghost"
+                  class="min-h-[44px] text-purple-700"
+                  :aria-label="`Editar ${row.description}`"
+                  :data-testid="`edit-${row.id}`"
+                  @click="openEdit(row)"
+                >
+                  Editar
+                </Button>
+                <Button
+                  variant="ghost"
+                  class="min-h-[44px] text-gray-700 hover:bg-red-50 hover:text-red-700"
+                  :aria-label="`Remover ${row.description}`"
+                  :data-testid="`remove-${row.id}`"
+                  @click="openConfirm(row, 'delete')"
+                >
+                  Remover
+                </Button>
+                <Button
+                  v-if="row.remainingInstallments > 0"
+                  variant="ghost"
+                  class="min-h-[44px] text-gray-700 hover:bg-red-50 hover:text-red-700"
+                  :aria-label="`Remover parcelas futuras desta compra: ${row.description}`"
+                  :data-testid="`remove-futures-${row.id}`"
+                  @click="openConfirm(row, 'futures')"
+                >
+                  Remover parcelas futuras desta compra
+                </Button>
+              </div>
             </div>
-            <span
-              class="shrink-0 text-right text-base font-semibold whitespace-nowrap"
-              :class="row.type === 'CREDIT' ? 'text-green-700' : 'text-gray-900'"
-              data-testid="row-amount"
-            >
-              {{ formatSignedBRL(signedAmount(row)) }}
-            </span>
-          </div>
-          <div class="-ml-3 mt-1 flex flex-wrap gap-1 sm:mt-0 sm:ml-0 sm:shrink-0">
-            <Button
-              variant="ghost"
-              class="min-h-[44px] text-purple-700"
-              :aria-label="`Editar ${row.description}`"
-              :data-testid="`edit-${row.id}`"
-              @click="openEdit(row)"
-            >
-              Editar
-            </Button>
-            <Button
-              variant="ghost"
-              class="min-h-[44px] text-gray-700 hover:bg-red-50 hover:text-red-700"
-              :aria-label="`Remover ${row.description}`"
-              :data-testid="`remove-${row.id}`"
-              @click="openConfirm(row, 'delete')"
-            >
-              Remover
-            </Button>
-            <Button
-              v-if="row.remainingInstallments > 0"
-              variant="ghost"
-              class="min-h-[44px] text-gray-700 hover:bg-red-50 hover:text-red-700"
-              :aria-label="`Remover parcelas futuras desta compra: ${row.description}`"
-              :data-testid="`remove-futures-${row.id}`"
-              @click="openConfirm(row, 'futures')"
-            >
-              Remover parcelas futuras desta compra
-            </Button>
-          </div>
-        </li>
-      </ul>
+          </li>
+        </ul>
+      </template>
     </div>
 
     <TransactionFormDialog
@@ -217,6 +244,98 @@
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <!-- Barra da edição em lote: fixa acima da navegação do celular -->
+    <section
+      v-if="selected.length"
+      aria-label="Ações em lote"
+      class="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-30 flex justify-center px-4 lg:bottom-6 lg:pl-62"
+      data-testid="batch-bar"
+    >
+      <div class="flex w-full max-w-4xl flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white p-2 pl-4 shadow-lg">
+        <p class="mr-auto text-sm font-semibold text-gray-900" data-testid="batch-count">
+          {{ plural(selected.length, 'selecionada', 'selecionadas') }}
+        </p>
+        <Button ref="batchCategoryButton" variant="outline" class="min-h-[44px]" data-testid="batch-category" @click="openBatch('category')">
+          Mudar categoria
+        </Button>
+        <Button
+          variant="outline"
+          class="min-h-[44px] text-red-700 hover:bg-red-50 hover:text-red-700"
+          data-testid="batch-delete"
+          @click="openBatch('delete')"
+        >
+          Remover
+        </Button>
+        <Button variant="ghost" class="min-h-[44px]" data-testid="batch-clear" @click="selected = []">Limpar seleção</Button>
+      </div>
+    </section>
+    <!-- Sempre no DOM: anuncia quantas estão marcadas -->
+    <p role="status" class="sr-only" data-testid="batch-status">
+      {{ selected.length ? plural(selected.length, 'transação selecionada', 'transações selecionadas') : '' }}
+    </p>
+
+    <Dialog :open="batchOpen" @update:open="onBatchOpenChange">
+      <DialogContent data-testid="batch-dialog" @close-auto-focus="returnBatchFocus">
+        <DialogHeader>
+          <DialogTitle>
+            {{ batchMode === 'category' ? 'Mudar categoria' : `Remover ${plural(selected.length, 'transação', 'transações')}` }}
+          </DialogTitle>
+          <DialogDescription>
+            <template v-if="batchMode === 'category'">
+              A categoria escolhida vai para {{ plural(selected.length, 'transação selecionada', 'transações selecionadas') }}.
+            </template>
+            <template v-else>
+              Elas saem da lista e, se tiverem alterado o saldo de uma conta, o saldo volta ao que era.
+              <span v-if="batchFuturesGoingAlong" data-testid="batch-futures">
+                Parcelas futuras de compras sem outra parcela confirmada também serão removidas.
+              </span>
+            </template>
+          </DialogDescription>
+        </DialogHeader>
+        <form class="space-y-4" novalidate data-testid="batch-form" @submit.prevent="confirmBatch">
+          <div v-if="batchMode === 'category'" class="space-y-1">
+            <label for="batch-category-select" class="text-sm font-medium text-gray-900">Categoria</label>
+            <select
+              id="batch-category-select"
+              v-model="batchCategoryId"
+              :class="SELECT_CLASS"
+              :disabled="optionsLoading"
+              data-testid="batch-category-select"
+            >
+              <option value="">Sem categoria</option>
+              <optgroup v-for="group in categoryGroups" :key="group.id" :label="group.name">
+                <option v-for="category in group.children" :key="category.id" :value="category.id">
+                  {{ category.categoryName }}
+                </option>
+              </optgroup>
+            </select>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              class="min-h-[44px]"
+              :disabled="batchSaving"
+              data-testid="batch-cancel"
+              @click="batchOpen = false"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              :variant="batchMode === 'delete' ? 'destructive' : 'default'"
+              class="min-h-[44px]"
+              :disabled="batchSaving"
+              data-testid="batch-confirm"
+            >
+              <template v-if="batchMode === 'category'">{{ batchSaving ? 'Salvando…' : 'Aplicar' }}</template>
+              <template v-else>{{ batchSaving ? 'Removendo…' : 'Remover' }}</template>
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   </main>
 </template>
 
@@ -240,11 +359,25 @@ import TransactionFormDialog from '@/components/transactions/TransactionFormDial
 import { formatLocalDateBR, formatMonthBR, monthFromQuery, shiftMonth } from '@/lib/date'
 import { formatSignedBRL } from '@/lib/money'
 import { plural } from '@/lib/plural'
-import { categoryLabel, installmentLabel, pixLabel, signedAmount, targetName } from '@/lib/transactionLabels'
+import { SELECT_CLASS } from '@/lib/formField'
+import {
+  categoryLabel,
+  categoryOptionGroups,
+  installmentLabel,
+  pixLabel,
+  signedAmount,
+  targetName,
+} from '@/lib/transactionLabels'
 import { listAccounts } from '@/services/accountService'
 import { listCards } from '@/services/cardService'
 import { listCategories } from '@/services/categoryService'
-import { deleteTransaction, listTransactions, removeFutureInstallments } from '@/services/transactionService'
+import {
+  batchDeleteTransactions,
+  batchUpdateCategory,
+  deleteTransaction,
+  listTransactions,
+  removeFutureInstallments,
+} from '@/services/transactionService'
 import type { Account } from '@/types/account'
 import type { Category } from '@/types/category'
 import type { CreditCard as Card } from '@/types/creditCard'
@@ -312,6 +445,9 @@ async function load() {
     const rows = await listTransactions(month.value)
     if (currentRequest !== request) return
     transactions.value = rows
+    // a seleção fica só com as linhas que ainda estão na lista
+    const ids = new Set(rows.map((r) => r.id))
+    selected.value = selected.value.filter((id) => ids.has(id))
   } catch {
     if (currentRequest === request) loadFailed.value = true
   } finally {
@@ -338,6 +474,7 @@ async function loadOptions() {
 function changeMonth(delta: number) {
   month.value = shiftMonth(month.value, delta)
   transactions.value = []
+  selected.value = []
   void load()
 }
 
@@ -405,6 +542,68 @@ async function confirmAction() {
   } finally {
     confirmOpen.value = false
     confirming.value = false
+  }
+  await load()
+}
+
+// --- Edição em lote ---
+
+const selected = ref<string[]>([])
+const allSelected = computed(() => transactions.value.length > 0 && selected.value.length === transactions.value.length)
+const batchOpen = ref(false)
+const batchMode = ref<'category' | 'delete'>('category')
+const batchCategoryId = ref('')
+const batchSaving = ref(false)
+const batchCategoryButton = ref<{ $el: HTMLElement } | null>(null)
+const categoryGroups = computed(() => categoryOptionGroups(categories.value))
+/** Decisão Q3, em lote: alguma selecionada é a única parcela confirmada de uma compra com futuras. */
+const batchFuturesGoingAlong = computed(() =>
+  transactions.value.some(
+    (r) => selected.value.includes(r.id) && r.isInstallment && r.confirmedInstallments <= 1 && r.remainingInstallments > 0,
+  ),
+)
+
+function toggleAll() {
+  selected.value = allSelected.value ? [] : transactions.value.map((r) => r.id)
+}
+
+function openBatch(mode: 'category' | 'delete') {
+  batchMode.value = mode
+  batchCategoryId.value = ''
+  actionError.value = null
+  batchOpen.value = true
+}
+
+function onBatchOpenChange(open: boolean) {
+  if (!batchSaving.value) batchOpen.value = open
+}
+
+/** O foco volta à barra (se ainda há seleção) ou ao título. */
+function returnBatchFocus(event: Event) {
+  event.preventDefault()
+  void nextTick(() => (batchCategoryButton.value?.$el ?? heading.value)?.focus())
+}
+
+async function confirmBatch() {
+  if (batchSaving.value || selected.value.length === 0) return
+  batchSaving.value = true
+  actionError.value = null
+  const ids = [...selected.value]
+  try {
+    if (batchMode.value === 'category') {
+      const updated = await batchUpdateCategory(ids, batchCategoryId.value || null)
+      setSuccess(plural(updated, 'transação atualizada', 'transações atualizadas'))
+    } else {
+      const removed = await batchDeleteTransactions(ids)
+      setSuccess(plural(removed, 'transação removida', 'transações removidas'))
+    }
+    selected.value = []
+  } catch (err) {
+    // tudo ou nada: a seleção fica para tentar de novo
+    actionError.value = apiErrorDetail(err, ACTION_FAILED)
+  } finally {
+    batchOpen.value = false
+    batchSaving.value = false
   }
   await load()
 }

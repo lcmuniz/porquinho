@@ -1,5 +1,6 @@
 package com.porquinho.controller;
 
+import com.porquinho.dto.TransactionBatchRequest;
 import com.porquinho.dto.TransactionCreateRequest;
 import com.porquinho.dto.TransactionResponse;
 import com.porquinho.dto.TransactionUpdateRequest;
@@ -66,6 +67,26 @@ public class TransactionController {
                                        HttpServletRequest httpRequest) {
         transactionService.delete(UUID.fromString(jwt.getSubject()), id, httpRequest.getRemoteAddr());
         return ResponseEntity.noContent().build();
+    }
+
+    /** Batch edit: puts one category (null = none) on the selected transactions. 200 with how many; all or nothing. */
+    @PostMapping("/batch/category")
+    public ResponseEntity<Map<String, Integer>> batchCategory(@AuthenticationPrincipal Jwt jwt,
+                                                              @Valid @RequestBody TransactionBatchRequest request,
+                                                              HttpServletRequest httpRequest) {
+        int updated = transactionService.updateCategory(UUID.fromString(jwt.getSubject()), request.ids(),
+            request.categoryId(), httpRequest.getRemoteAddr());
+        return ResponseEntity.ok(Map.of("updated", updated));
+    }
+
+    /** Batch edit: removes the selected transactions. 200 with how many; all or nothing. */
+    @PostMapping("/batch/delete")
+    public ResponseEntity<Map<String, Integer>> batchDelete(@AuthenticationPrincipal Jwt jwt,
+                                                            @Valid @RequestBody TransactionBatchRequest request,
+                                                            HttpServletRequest httpRequest) {
+        int removed = transactionService.deleteAll(UUID.fromString(jwt.getSubject()), request.ids(),
+            httpRequest.getRemoteAddr());
+        return ResponseEntity.ok(Map.of("removed", removed));
     }
 
     /** Removes the future installments of the purchase. 200 with how many were removed (0 when none); 404 if not available. */

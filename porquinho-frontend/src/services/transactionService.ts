@@ -37,3 +37,15 @@ export async function removeFutureInstallments(id: string): Promise<number> {
   )
   return response.data.removedInstallments
 }
+
+/** Edição em lote: põe a categoria (null = sem categoria) em todas as transações. Tudo ou nada; devolve quantas mudaram. */
+export async function batchUpdateCategory(ids: string[], categoryId: string | null): Promise<number> {
+  const response = await api.post<{ updated: number }>('/api/v1/transactions/batch/category', { ids, categoryId })
+  return response.data.updated
+}
+
+/** Edição em lote: remove as transações (mesma regra do "Remover"). Tudo ou nada; devolve quantas saíram. */
+export async function batchDeleteTransactions(ids: string[]): Promise<number> {
+  const response = await api.post<{ removed: number }>('/api/v1/transactions/batch/delete', { ids })
+  return response.data.removed
+}

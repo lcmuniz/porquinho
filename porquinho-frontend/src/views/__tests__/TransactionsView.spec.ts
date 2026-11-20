@@ -23,7 +23,11 @@ vi.mock('@/services/transactionService', () => ({
   createTransaction: (...a: unknown[]) => mockCreate(...a),
   deleteTransaction: (...a: unknown[]) => mockDelete(...a),
   removeFutureInstallments: (...a: unknown[]) => mockRemoveFutures(...a),
+  batchUpdateCategory: (...a: unknown[]) => mockBatchCategory(...a),
+  batchDeleteTransactions: (...a: unknown[]) => mockBatchDelete(...a),
 }))
+const mockBatchCategory = vi.fn()
+const mockBatchDelete = vi.fn()
 const mockExport = vi.fn()
 vi.mock('@/services/dashboardService', () => ({
   exportDetails: (...a: unknown[]) => mockExport(...a),
@@ -530,6 +534,114 @@ describe('TransactionsView', () => {
       const w = await mountView([])
       await openCreate(w)
       expect(inDialog('wallet-hint')?.textContent).toContain('cadastre uma conta Carteira')
+    })
+  })
+
+  describe('edição em lote', () => {
+    const rows = () => [
+      transaction('t1', { description: 'Mercado' }),
+      transaction('t2', { description: 'Padaria' }),
+      transaction('t3', { description: 'Farmácia' }),
+    ]
+    const check = (w: VueWrapper, id: string) => w.get(`[data-testid="select-${id}"]`).setValue(true)
+
+    it('sem seleção não há barra; marcar mostra a contagem e as ações', async () => {
+      const w = await mountView(rows())
+      expect(w.find('[data-testid="batch-bar"]').exists()).toBe(false)
+      expect(w.get('[data-testid="select-t1"]').attributes('aria-label')).toBe('Selecionar Mercado')
+
+      await check(w, 't1')
+      await check(w, 't2')
+      const bar = w.get('[data-testid="batch-bar"]')
+      expect(bar.attributes('aria-label')).toBe('Ações em lote')
+      expect(bar.get('[data-testid="batch-count"]').text()).toBe('2 selecionadas')
+      expect(w.get('[data-testid="batch-status"]').text()).toBe('2 transações selecionadas')
+      expect((w.get('[data-testid="select-all"]').element as HTMLInputElement).indeterminate).toBe(true)
+
+      await w.get('[data-testid="batch-clear"]').trigger('click')
+      expect(w.find('[data-testid="batch-bar"]').exists()).toBe(false)
+    })
+
+    it('"Selecionar todas do mês" marca e desmarca todas', async () => {
+      const w = await mountView(rows())
+      await w.get('[data-testid="select-all"]').trigger('change')
+      expect(w.get('[data-testid="batch-count"]').text()).toBe('3 selecionadas')
+      expect((w.get('[data-testid="select-all"]').element as HTMLInputElement).checked).toBe(true)
+      await w.get('[data-testid="select-all"]').trigger('change')
+      expect(w.find('[data-testid="batch-bar"]').exists()).toBe(false)
+    })
+
+    it('Mudar categoria aplica a categoria escolhida às selecionadas e recarrega', async () => {
+      const w = await mountView(rows())
+      await check(w, 't1')
+      await check(w, 't3')
+      await w.get('[data-testid="batch-category"]').trigger('click')
+      await flushPromises()
+      expect(inDialog('batch-dialog')?.textContent).toContain('2 transações selecionadas')
+      await setValue('batch-category-select', 'c2')
+      mockBatchCategory.mockResolvedValue(2)
+      inDialog<HTMLFormElement>('batch-form')!.dispatchEvent(new Event('submit'))
+      await flushPromises()
+
+      expect(mockBatchCategory).toHaveBeenCalledExactlyOnceWith(['t1', 't3'], 'c2')
+      expect(mockList).toHaveBeenCalledTimes(2)
+      expect(inDialog('batch-dialog')).toBeNull()
+      expect(w.get('[data-testid="transactions-success"]').text()).toBe('2 transações atualizadas')
+      expect(w.find('[data-testid="batch-bar"]').exists()).toBe(false)
+    })
+
+    it('"Sem categoria" manda null', async () => {
+      const w = await mountView(rows())
+      await check(w, 't2')
+      await w.get('[data-testid="batch-category"]').trigger('click')
+      await flushPromises()
+      mockBatchCategory.mockResolvedValue(1)
+      inDialog<HTMLFormElement>('batch-form')!.dispatchEvent(new Event('submit'))
+      await flushPromises()
+      expect(mockBatchCategory).toHaveBeenCalledExactlyOnceWith(['t2'], null)
+      expect(w.get('[data-testid="transactions-success"]').text()).toBe('1 transação atualizada')
+    })
+
+    it('Remover confirma, remove as selecionadas e avisa das parcelas futuras', async () => {
+      const list = rows()
+      list[0] = transaction('t1', { description: 'Loja', isInstallment: true, confirmedInstallments: 1, remainingInstallments: 3 })
+      const w = await mountView(list)
+      await check(w, 't1')
+      await check(w, 't2')
+      await w.get('[data-testid="batch-delete"]').trigger('click')
+      await flushPromises()
+      expect(inDialog('batch-dialog')?.textContent).toContain('Remover 2 transações')
+      expect(inDialog('batch-futures')).not.toBeNull()
+      mockBatchDelete.mockResolvedValue(2)
+      mockList.mockResolvedValue([list[2]])
+      inDialog<HTMLFormElement>('batch-form')!.dispatchEvent(new Event('submit'))
+      await flushPromises()
+
+      expect(mockBatchDelete).toHaveBeenCalledExactlyOnceWith(['t1', 't2'])
+      expect(w.findAll('[data-testid^="transaction-"]')).toHaveLength(1)
+      expect(w.get('[data-testid="transactions-success"]').text()).toBe('2 transações removidas')
+    })
+
+    it('erro do lote não grava nada: mostra a mensagem e mantém a seleção', async () => {
+      const w = await mountView(rows())
+      await check(w, 't1')
+      await w.get('[data-testid="batch-delete"]').trigger('click')
+      await flushPromises()
+      expect(inDialog('batch-futures')).toBeNull()
+      mockBatchDelete.mockRejectedValue({ response: { status: 404, data: { detail: 'Transação não encontrada' } } })
+      inDialog<HTMLFormElement>('batch-form')!.dispatchEvent(new Event('submit'))
+      await flushPromises()
+
+      expect(w.get('[data-testid="transactions-error"]').text()).toBe('Transação não encontrada')
+      expect(w.get('[data-testid="batch-count"]').text()).toBe('1 selecionada')
+    })
+
+    it('trocar de mês limpa a seleção', async () => {
+      const w = await mountView(rows())
+      await check(w, 't1')
+      await w.get('[data-testid="next-month"]').trigger('click')
+      await flushPromises()
+      expect(w.find('[data-testid="batch-bar"]').exists()).toBe(false)
     })
   })
 })

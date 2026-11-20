@@ -23,7 +23,9 @@ import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -59,6 +61,7 @@ public class TransactionService {
     public static final String AMOUNT_OUT_OF_RANGE_MESSAGE = "Informe um valor de no máximo 13 dígitos antes da vírgula";
     public static final String INSTALLMENT_TARGET_MESSAGE =
         "Numa parcela, a conta ou o cartão e o tipo não podem ser alterados";
+    public static final String CARD_PAYMENT_CATEGORY_MESSAGE = "Pagamento de fatura não tem categoria";
     public static final String BALANCE_OUT_OF_RANGE_MESSAGE =
         "Esta alteração deixaria o saldo da conta fora do limite permitido";
 
@@ -274,6 +277,34 @@ public class TransactionService {
         auditLogService.log(AUDIT_DELETED, userId, ipAddress, "{\"transaction_id\":\"" + id
             + "\",\"accounts_changed\":" + accountsChanged + ",\"removed_installments\":" + futuresRemoved + "}");
         budgetBalanceCache.evict(userId);
+    }
+
+    /**
+     * Batch edit of /transacoes: puts {@code categoryId} (null = no category) on every transaction of {@code ids}, each
+     * by the rules of {@link #update} (learned pattern, future installments of the purchase, audit). All or nothing: a
+     * row not available (404) or a card payment (400) leaves every row as it was.
+     */
+    @Transactional
+    public int updateCategory(UUID userId, Collection<UUID> ids, UUID categoryId, String ipAddress) {
+        for (UUID id : new LinkedHashSet<>(ids)) {
+            // locked before reading, so the rewrite below keeps what is there now (the locks are re-entered by update)
+            Transaction row = lockRow(userId, id, null);
+            if (row.getKind() == Transaction.Kind.CARD_PAYMENT) {
+                throw new BadRequestException(CARD_PAYMENT_CATEGORY_MESSAGE);
+            }
+            update(userId, id, new TransactionUpdateRequest(row.getTransactionDate(), row.getDescription(),
+                row.getAmount(), row.getTransactionType().name(), categoryId, row.getAccountId(),
+                row.getCreditCardId()), ipAddress);
+        }
+        return new LinkedHashSet<>(ids).size();
+    }
+
+    /** Batch edit of /transacoes: removes every transaction of {@code ids} by the rules of {@link #delete}. All or nothing. */
+    @Transactional
+    public int deleteAll(UUID userId, Collection<UUID> ids, String ipAddress) {
+        Set<UUID> distinct = new LinkedHashSet<>(ids);
+        distinct.forEach(id -> delete(userId, id, ipAddress));
+        return distinct.size();
     }
 
     /**

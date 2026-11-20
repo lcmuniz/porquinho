@@ -852,4 +852,64 @@ class TransactionServiceTest {
             release.countDown();
         }
     }
+
+    @Test
+    void batchCategoryPutsTheCategoryOnEveryRowWithoutTouchingTheBalance() {
+        UUID account = newAccount("1000.00");
+        UUID a = newRow(account, "2026-11-05", "DEBIT", "100.00", true);
+        UUID b = newRow(account, "2026-11-06", "DEBIT", "50.00", true);
+        UUID food = newCategory("Mercado", newCategory("Alimentação", null));
+
+        assertThat(service.updateCategory(userId, List.of(a, b, a), food, IP)).isEqualTo(2);
+
+        assertThat(rowOf(a).get("category_id")).isEqualTo(food);
+        assertThat(rowOf(b).get("category_id")).isEqualTo(food);
+        assertThat(rowOf(a).get("classification_source")).isEqualTo("USER");
+        assertThat(rowOf(b).get("amount")).isEqualTo(new BigDecimal("50.00"));
+        assertThat(balanceOf(account)).isEqualByComparingTo("1000.00");
+        assertThat(transactionSnapshots(account)).isZero();
+        assertThat(auditOf(TransactionService.AUDIT_EDITED)).hasSize(2);
+    }
+
+    @Test
+    void batchCategoryIsAllOrNothing() {
+        UUID account = newAccount("1000.00");
+        UUID a = newRow(account, "2026-11-05", "DEBIT", "100.00", true);
+        UUID others = newRow(newUser(), newAccount(users.get(users.size() - 1), "10.00"), "2026-11-05", "DEBIT",
+            "1.00", true);
+        UUID food = newCategory("Mercado", newCategory("Alimentação", null));
+
+        assertThatThrownBy(() -> service.updateCategory(userId, List.of(a, others), food, IP))
+            .isInstanceOf(ResourceNotFoundException.class);
+        assertThat(rowOf(a).get("category_id")).isNull();
+        assertThat(auditOf(TransactionService.AUDIT_EDITED)).isEmpty();
+    }
+
+    @Test
+    void batchCategoryRefusesACardPayment() {
+        UUID account = newAccount("1000.00");
+        UUID payment = newRow(account, "2026-11-05", "DEBIT", "100.00", true);
+        jdbc.update("UPDATE transactions SET kind = 'CARD_PAYMENT' WHERE id = ?", payment);
+
+        assertThatThrownBy(() -> service.updateCategory(userId, List.of(payment), null, IP))
+            .isInstanceOf(BadRequestException.class)
+            .hasMessage(TransactionService.CARD_PAYMENT_CATEGORY_MESSAGE);
+    }
+
+    @Test
+    void batchDeleteRemovesEveryRowAndItsEffectAllOrNothing() {
+        UUID account = newAccount("1000.00");
+        UUID a = newRow(account, "2026-11-05", "DEBIT", "100.00", true);
+        UUID b = newRow(account, "2026-11-06", "CREDIT", "30.00", true);
+
+        assertThatThrownBy(() -> service.deleteAll(userId, List.of(a, UUID.randomUUID()), IP))
+            .isInstanceOf(ResourceNotFoundException.class);
+        assertThat(rowOf(a).get("deleted_at")).isNull();
+
+        assertThat(service.deleteAll(userId, List.of(a, b), IP)).isEqualTo(2);
+        assertThat(rowOf(a).get("deleted_at")).isNotNull();
+        assertThat(rowOf(b).get("deleted_at")).isNotNull();
+        assertThat(balanceOf(account)).isEqualByComparingTo("1070.00");
+        assertThat(auditOf(TransactionService.AUDIT_DELETED)).hasSize(2);
+    }
 }
