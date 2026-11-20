@@ -54,12 +54,12 @@ describe('DashboardGps', () => {
       const h2 = section.get('h2')
       expect(section.attributes('aria-labelledby')).toBe(h2.attributes('id'))
       expect(section.classes()).toContain('py-8')
-      // ajuda da camada fora do h2, para não entrar no nome da seção
-      expect(section.get(`[data-testid="help-${section.attributes('id')}"]`).attributes('aria-label')).toBe(
-        `O que é ${h2.text()}?`,
-      )
       expect(h2.find('button').exists()).toBe(false)
     }
+    // Critique de 20/11/2026: só "Visão tática" tem ajuda (fora do h2, para não entrar no nome da seção), sem "camada"
+    expect(sections.map((s) => s.find('[data-testid^="help-layer-"]').exists())).toEqual([false, true, false])
+    const help = sections[1]!.get('[data-testid="help-layer-tactical"]')
+    expect(help.attributes('aria-label')).toBe('O que é Visão tática?')
     expect(sections[0]!.find('[data-testid="overview-loading"]').exists()).toBe(true)
     expect(sections[1]!.find('[data-testid="tactical-loading"]').exists()).toBe(true)
     expect(sections[2]!.find('[data-testid="details-view"]').exists()).toBe(true)

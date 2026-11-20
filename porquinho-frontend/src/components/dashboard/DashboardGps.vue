@@ -26,7 +26,7 @@
           <h2 :id="`${layer.id}-heading`" class="text-xl font-bold text-gray-900">
             {{ layer.title }}
           </h2>
-          <HelpTip :term="layer.title" :testid="layer.id">{{ layer.help }}</HelpTip>
+          <HelpTip v-if="layer.help" :term="layer.title" :testid="layer.id">{{ layer.help }}</HelpTip>
         </div>
         <DashboardLayer1 v-if="layer.id === 'layer-overview'" :refresh="refresh" @loaded="onLoaded" />
         <DashboardLayer2 v-else-if="layer.id === 'layer-tactical'" :refresh="refresh" @loaded="onLoaded" />
@@ -60,23 +60,22 @@ function onLoaded() {
 }
 
 // Story 7.1: as 3 camadas do Dashboard GPS; o conteúdo real chega nas stories 7.2–7.6
-const layers = [
+const layers: { id: string; title: string; help?: string }[] = [
   {
     id: 'layer-overview',
     title: 'Visão geral',
-    help: 'A 1ª camada do Início: o mês em poucos números, como saldo total, quanto já gastou e quanto vai sobrar.',
   },
   {
     id: 'layer-tactical',
     title: 'Visão tática',
-    help: 'A 2ª camada: para onde o dinheiro está indo, com o gasto por categoria no mês e a tendência dos últimos 12 meses.',
+    // Critique de 20/11/2026: só o título que não se explica sozinho tem ajuda, e sem a palavra "camada"
+    help: 'Para onde o seu dinheiro está indo: o gasto de cada categoria no mês e como ele mudou nos últimos 12 meses.',
   },
   {
     id: 'layer-details',
     title: 'Detalhes',
-    help: 'A 3ª camada: as transações que pedem atenção, os maiores gastos do mês e as que ainda estão sem categoria.',
   },
-] as const
+]
 
 // Sem `behavior`: herda o scroll-behavior do CSS, que respeita o movimento reduzido.
 // O foco vai para a seção para o Tab seguir dentro da camada escolhida.
