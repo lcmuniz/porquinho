@@ -113,6 +113,46 @@ class CsvStatementReaderTest {
         assertThat(result.entries()).extracting(Entry::externalId).doesNotContainNull().doesNotContain("0");
     }
 
+    /** The real export of the BB site (quoted, comma decimal, ISO-8859-1), with made-up names and numbers. */
+    @Test
+    void bbDetailedExportJoinsEntryAndDetailsAndHasNoExternalId() {
+        String csv = """
+            "Data","Lançamento","Detalhes","N° documento","Valor","Tipo Lançamento"
+            "05/10/2026","Saldo Anterior","","","0,00",""
+            "03/11/2026","Pix - Recebido","01/11 15:22 12345678909 Maria Souza","12345678909111","20,00","Entrada"
+            "03/11/2026","BB Rende Fácil","Rende Facil","9903","-20,00","Saída"
+            "03/11/2026","Saldo do dia","","","0,00",""
+            "05/11/2026","Tarifa Pacote de Serviços","Cobrança referente 05/11/2026","00000000006933","-1.015,90","Saída"
+            "05/11/2026","BB Rende Fácil","Rende Facil","9903","15,90","Entrada"
+            "23/11/2026","S A L D O","","","0,00",""
+            """;
+        byte[] content = csv.getBytes(StandardCharsets.ISO_8859_1);
+
+        assertThat(CsvStatementReader.detect(content)).contains(Layout.BANCO_DO_BRASIL_DETAILED);
+        Result result = CsvStatementReader.parse(content, false);
+
+        assertThat(result.skippedRows()).isEmpty();
+        assertThat(result.entries())
+            .extracting(Entry::date, Entry::description, Entry::amount, Entry::type, Entry::externalId)
+            .containsExactly(
+                tuple(LocalDate.of(2026, 11, 3), "Pix - Recebido - 01/11 15:22 12345678909 Maria Souza",
+                    new BigDecimal("20.00"), Transaction.Type.CREDIT, null),
+                tuple(LocalDate.of(2026, 11, 3), "BB Rende Fácil - Rende Facil", new BigDecimal("20.00"),
+                    Transaction.Type.DEBIT, null),
+                tuple(LocalDate.of(2026, 11, 5), "Tarifa Pacote de Serviços - Cobrança referente 05/11/2026",
+                    new BigDecimal("1015.90"), Transaction.Type.DEBIT, null),
+                tuple(LocalDate.of(2026, 11, 5), "BB Rende Fácil - Rende Facil", new BigDecimal("15.90"),
+                    Transaction.Type.CREDIT, null));
+    }
+
+    @Test
+    void bbDetailedHeaderAcceptsTheOrdinalSign() {
+        byte[] content = "\"Data\",\"Lançamento\",\"Detalhes\",\"Nº documento\",\"Valor\",\"Tipo Lançamento\"\n"
+            .getBytes(StandardCharsets.UTF_8);
+
+        assertThat(CsvStatementReader.detect(content)).contains(Layout.BANCO_DO_BRASIL_DETAILED);
+    }
+
     @Test
     void bradescoIgnoresTitleBalanceTotalAndFooterAndUsesTheFilledColumn() throws IOException {
         Result result = CsvStatementReader.parse(sample("bradesco-conta.csv"), false);

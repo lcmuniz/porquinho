@@ -20,7 +20,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
- * Reads a CSV statement of one of the six known layouts (Story 5.2). Pure rule, no Spring: bytes in, layout (bank and
+ * Reads a CSV statement of one of the known layouts (Story 5.2). Pure rule, no Spring: bytes in, layout (bank and
  * account or card) or entries and skipped rows out, with the value rules and the card payment rule of the OFX reader
  * ({@link OfxTransactionParser}).
  *
@@ -63,7 +63,7 @@ public final class CsvStatementReader {
         DC_COLUMN
     }
 
-    /** The six layouts of the samples ({@code import-samples/README.md}). */
+    /** The layouts of the samples ({@code import-samples/README.md}) and of the real BB export. */
     public enum Layout {
         NUBANK_ACCOUNT(OfxBankDetector.NUBANK, false, List.of("data", "valor", "identificador", "descricao"),
             0, 3, 1, -1, 2, AmountRule.SIGNED),
@@ -72,6 +72,14 @@ public final class CsvStatementReader {
         BANCO_DO_BRASIL(OfxBankDetector.BANCO_DO_BRASIL, false, List.of("data", "dependencia origem", "historico",
             "data do balancete", "numero do documento", "valor"),
             0, 2, 5, -1, 4, AmountRule.SIGNED),
+        /**
+         * The export of the BB site today: quoted, comma decimal, signed amount. "N° documento" repeats across
+         * different entries (9903 on every "BB Rende Fácil"), so it is no external id; the description is the entry
+         * ("Pix - Recebido") followed by its details (who and when).
+         */
+        BANCO_DO_BRASIL_DETAILED(OfxBankDetector.BANCO_DO_BRASIL, false, List.of("data", "lancamento", "detalhes",
+            "no documento", "valor", "tipo lancamento"),
+            0, 1, 4, -1, -1, AmountRule.SIGNED, 2),
         ITAU(OfxBankDetector.ITAU, false, null,
             0, 1, 2, -1, -1, AmountRule.SIGNED),
         BRADESCO(OfxBankDetector.BRADESCO, false, List.of("data", "historico", "docto.", "credito (r$)",
@@ -91,11 +99,19 @@ public final class CsvStatementReader {
         /** The debit column ({@link AmountRule#CREDIT_DEBIT_COLUMNS}) or the D/C one ({@link AmountRule#DC_COLUMN}). */
         private final int secondColumn;
         private final int externalIdColumn;
+        /** Appended to the description when filled; -1 when the layout has no such column. */
+        private final int detailsColumn;
         private final AmountRule amountRule;
         private final int minColumns;
 
         Layout(String bankName, boolean card, List<String> header, int dateColumn, int descriptionColumn,
                int amountColumn, int secondColumn, int externalIdColumn, AmountRule amountRule) {
+            this(bankName, card, header, dateColumn, descriptionColumn, amountColumn, secondColumn, externalIdColumn,
+                amountRule, -1);
+        }
+
+        Layout(String bankName, boolean card, List<String> header, int dateColumn, int descriptionColumn,
+               int amountColumn, int secondColumn, int externalIdColumn, AmountRule amountRule, int detailsColumn) {
             this.bankName = bankName;
             this.card = card;
             this.header = header;
@@ -105,7 +121,8 @@ public final class CsvStatementReader {
             this.secondColumn = secondColumn;
             this.externalIdColumn = externalIdColumn;
             this.amountRule = amountRule;
-            this.minColumns = 1 + Math.max(Math.max(dateColumn, descriptionColumn),
+            this.detailsColumn = detailsColumn;
+            this.minColumns = 1 + Math.max(Math.max(Math.max(dateColumn, descriptionColumn), detailsColumn),
                 Math.max(Math.max(amountColumn, secondColumn), externalIdColumn));
         }
 
@@ -119,9 +136,9 @@ public final class CsvStatementReader {
             return card;
         }
 
-        /** Itaú and Bradesco write "1.234,56"; the others use the dot as decimal ("1234.56"). */
+        /** Itaú, Bradesco and the detailed BB write "1.234,56"; the others use the dot as decimal ("1234.56"). */
         boolean commaDecimal() {
-            return this == ITAU || this == BRADESCO;
+            return this == ITAU || this == BRADESCO || this == BANCO_DO_BRASIL_DETAILED;
         }
     }
 
@@ -136,7 +153,7 @@ public final class CsvStatementReader {
     private CsvStatementReader() {
     }
 
-    /** The layout of {@code content}, or empty when it is none of the six. */
+    /** The layout of {@code content}, or empty when it is none of the known ones. */
     public static Optional<Layout> detect(byte[] content) {
         return detect(OfxBankDetector.decode(content)).map(Detection::layout);
     }
@@ -267,6 +284,9 @@ public final class CsvStatementReader {
         if (externalId != null && ONLY_ZEROS.matcher(externalId).matches()) {
             externalId = null;
         }
+        if (layout.detailsColumn >= 0 && !fields.get(layout.detailsColumn).isEmpty()) {
+            description = description + " - " + fields.get(layout.detailsColumn);
+        }
         entries.add(OfxTransactionParser.entry(date, description, signed.abs(), type, externalId, creditCard));
     }
 
@@ -382,7 +402,8 @@ public final class CsvStatementReader {
 
     private static List<String> normalizedHeader(List<String> fields) {
         return trimmedWithoutTrailingEmpties(fields).stream()
-            .map(f -> normalize(f).toLowerCase(Locale.ROOT).replaceAll("\\s+", " "))
+            // "N°" and "Nº" (degree sign or ordinal) both read as "no"
+            .map(f -> normalize(f).toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").replaceAll("[°º]", "o"))
             .toList();
     }
 

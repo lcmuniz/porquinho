@@ -138,15 +138,21 @@ class OfxTransactionParserTest {
     }
 
     @Test
-    void memoWinsOverNameAndBlankMemoFallsBackToName() {
+    void nameAndMemoAreJoinedUnlessOneHoldsTheOtherAndBlankMemoFallsBackToName() {
         String sgml = "<OFX><BANKTRANLIST>\n"
-            + "<STMTTRN>\n<DTPOSTED>20261001\n<TRNAMT>-1.00\n<NAME>NOME\n<MEMO>MEMO\n</STMTTRN>\n"
+            + "<STMTTRN>\n<DTPOSTED>20261001\n<TRNAMT>20.00\n<NAME>Pix - Recebido\n<MEMO>01/11 15:22 Maria\n</STMTTRN>\n"
             + "<STMTTRN>\n<DTPOSTED>20261001\n<TRNAMT>-1.00\n<NAME>  NOME  \n<MEMO>   \n</STMTTRN>\n"
+            + "<STMTTRN>\n<DTPOSTED>20261001\n<TRNAMT>-1.00\n<MEMO>SO MEMO\n</STMTTRN>\n"
+            + "<STMTTRN>\n<DTPOSTED>20261001\n<TRNAMT>-1.00\n<NAME>Ifood\n<MEMO>Compra IFOOD SP\n</STMTTRN>\n"
             + "</BANKTRANLIST></OFX>\n";
 
         List<Entry> entries = OfxTransactionParser.parse(sgml.getBytes(StandardCharsets.US_ASCII), false).entries();
 
-        assertThat(entries).extracting(Entry::originalDescription).containsExactly("MEMO", "NOME");
+        assertThat(entries).extracting(Entry::originalDescription)
+            .containsExactly("Pix - Recebido - 01/11 15:22 Maria", "NOME", "SO MEMO", "Compra IFOOD SP");
+        // the BB Pix received of the OFX is marked like the one of the CSV
+        assertThat(PixDetector.detect(entries.get(0).description(), entries.get(0).type()))
+            .hasValueSatisfying(json -> assertThat(json).contains("\"RECEIVED\"").contains("Maria"));
     }
 
     @ParameterizedTest

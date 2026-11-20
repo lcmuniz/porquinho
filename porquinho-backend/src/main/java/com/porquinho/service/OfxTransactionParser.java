@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
  *   <li>Date: first 8 digits of DTPOSTED (AAAAMMDD), time zone ignored.</li>
  *   <li>Amount: TRNAMT with dot or comma decimal; negative is DEBIT, positive CREDIT, stored as absolute value
  *       (account and card alike). TRNTYPE is ignored.</li>
- *   <li>Description: MEMO, else NAME, else "Sem descrição"; the original trimmed, the description with repeated
+ *   <li>Description: "NAME - MEMO" when both are there and differ, else MEMO, else NAME, else "Sem descrição"; the original trimmed, the description with repeated
  *       whitespace collapsed. FITID is the optional external id.</li>
  *   <li>A block without a valid date or amount, or with a zero amount, is skipped and reported with its position
  *       (1-based) and reason only.</li>
@@ -134,11 +134,27 @@ public final class OfxTransactionParser {
         }
         Transaction.Type type = signed.signum() < 0 ? Transaction.Type.DEBIT : Transaction.Type.CREDIT;
 
-        String original = value(block, MEMO);
-        if (original == null) {
-            original = value(block, NAME);
+        entries.add(entry(date, description(value(block, NAME), value(block, MEMO)), signed.abs(), type,
+            value(block, FITID), creditCard));
+    }
+
+    /**
+     * MEMO, else NAME; with both, "NAME - MEMO" (BB: NAME "Pix - Recebido", MEMO "01/11 15:22 MARIA"), the same text as
+     * the BB CSV, unless one already holds the other.
+     */
+    static String description(String name, String memo) {
+        if (name == null || name.isBlank()) {
+            return memo;
         }
-        entries.add(entry(date, original, signed.abs(), type, value(block, FITID), creditCard));
+        if (memo == null || memo.isBlank()) {
+            return name;
+        }
+        String n = name.trim().toUpperCase(Locale.ROOT);
+        String m = memo.trim().toUpperCase(Locale.ROOT);
+        if (m.contains(n) || n.contains(m)) {
+            return memo;
+        }
+        return name.trim() + " - " + memo.trim();
     }
 
     /**
