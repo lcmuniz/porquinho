@@ -11,17 +11,13 @@
       </div>
 
       <!-- Sempre no DOM: leitores de tela só anunciam mudanças numa região live que já existe -->
-      <p
-        role="status"
-        data-testid="cards-success"
-        :class="
-          successMessage
-            ? 'rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800'
-            : 'sr-only'
-        "
-      >
-        {{ successMessage }}
-      </p>
+      <FeedbackBanner
+        :message="successMessage"
+        :action="successAction"
+        testid="cards-success"
+        @pause="pauseSuccess"
+        @resume="resumeSuccess"
+      />
 
       <!-- Story 4.3: aviso (não é sucesso) quando o item editado não existe mais -->
       <p
@@ -351,6 +347,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useFeedback } from '@/composables/useFeedback'
+import FeedbackBanner from '@/components/common/FeedbackBanner.vue'
 import { useFormDialog } from '@/composables/useFormDialog'
 import { useSequencedList } from '@/composables/useSequencedList'
 import { formatBRL } from '@/lib/money'
@@ -381,7 +378,7 @@ const restoringId = ref<string | null>(null)
 /** Story 4.4: seção de removidos (carregada ao marcar o seletor). */
 const showRemoved = ref(false)
 
-const { successMessage, notice, setSuccess, clearFeedback } = useFeedback()
+const { successMessage, successAction, notice, setSuccess, pauseSuccess, resumeSuccess, clearFeedback } = useFeedback()
 const {
   items: removed,
   loading: removedLoading,
@@ -407,13 +404,17 @@ const {
   // Na edição, o foco volta para o "⋯" do cartão
   returnFocus: () => cardButton('card-actions', editing.value) ?? fallbackFocus(),
 })
+const undoButton = () => document.querySelector<HTMLElement>('[data-testid="cards-success-action"]')
 const {
   open: removeDialogOpen,
   submitting: removeSubmitting,
   error: removeError,
   onOpenChange: onRemoveDialogOpenChange,
   onCloseAutoFocus: onRemoveCloseAutoFocus,
-} = useFormDialog({ returnFocus: () => cardButton('card-actions', removing.value) ?? fallbackFocus() })
+} = useFormDialog({
+  // removido, a linha some: o foco vai para o "Desfazer" da faixa verde
+  returnFocus: () => cardButton('card-actions', removing.value) ?? undoButton() ?? fallbackFocus(),
+})
 
 /** Soma em centavos inteiros: 0,10 + 0,20 dá exatamente 0,30. */
 const totalCents = computed(() =>
@@ -548,7 +549,8 @@ async function confirmRemove() {
     // A seção de removidos é recarregada para seguir a ordem do servidor
     if (showRemoved.value) void loadRemoved(true)
     removeDialogOpen.value = false
-    setSuccess('Cartão removido')
+    // Critique de 20/11/2026 (3ª): o restaurar já existe; o Desfazer o deixa a um clique
+    setSuccess('Cartão removido', { label: 'Desfazer', run: () => void restore(target) })
   } catch (err) {
     const response = (err as ApiError)?.response
     if (response?.status === 404) {

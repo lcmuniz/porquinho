@@ -11,17 +11,13 @@
       </div>
 
       <!-- Sempre no DOM: leitores de tela só anunciam mudanças numa região live que já existe -->
-      <p
-        role="status"
-        data-testid="accounts-success"
-        :class="
-          successMessage
-            ? 'rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800'
-            : 'sr-only'
-        "
-      >
-        {{ successMessage }}
-      </p>
+      <FeedbackBanner
+        :message="successMessage"
+        :action="successAction"
+        testid="accounts-success"
+        @pause="pauseSuccess"
+        @resume="resumeSuccess"
+      />
 
       <!-- Story 4.3: aviso (não é sucesso) quando o item editado não existe mais ou mudou em outra tela -->
       <p
@@ -564,6 +560,7 @@ import {
 } from '@/components/ui/dialog'
 import { useAccountList } from '@/composables/useAccountList'
 import { useFeedback } from '@/composables/useFeedback'
+import FeedbackBanner from '@/components/common/FeedbackBanner.vue'
 import { useFormDialog } from '@/composables/useFormDialog'
 import { useSequencedList } from '@/composables/useSequencedList'
 import { ACCOUNT_TYPE_LABEL } from '@/lib/accountTypes'
@@ -606,7 +603,7 @@ const restoringId = ref<string | null>(null)
 const showRemoved = ref(false)
 
 const { accounts, totalCents, fetchAccounts, discardPendingAccountLoads, insertByCreation } = useAccountList()
-const { successMessage, notice, setSuccess, clearFeedback } = useFeedback()
+const { successMessage, successAction, notice, setSuccess, pauseSuccess, resumeSuccess, clearFeedback } = useFeedback()
 const {
   items: removed,
   loading: removedLoading,
@@ -639,13 +636,17 @@ const {
   // Na edição, o foco volta para o menu "⋯" da conta
   returnFocus: () => accountButton('account-actions', editing.value) ?? fallbackFocus(),
 })
+const undoButton = () => document.querySelector<HTMLElement>('[data-testid="accounts-success-action"]')
 const {
   open: removeDialogOpen,
   submitting: removeSubmitting,
   error: removeError,
   onOpenChange: onRemoveDialogOpenChange,
   onCloseAutoFocus: onRemoveCloseAutoFocus,
-} = useFormDialog({ returnFocus: () => accountButton('account-actions', removing.value) ?? fallbackFocus() })
+} = useFormDialog({
+  // removida, a linha some: o foco vai para o "Desfazer" da faixa verde
+  returnFocus: () => accountButton('account-actions', removing.value) ?? undoButton() ?? fallbackFocus(),
+})
 const {
   open: transferDialogOpen,
   submitting: transferSubmitting,
@@ -809,7 +810,8 @@ async function confirmRemove() {
     // A seção de removidas é recarregada para seguir a ordem do servidor
     if (showRemoved.value) void loadRemoved(true)
     removeDialogOpen.value = false
-    setSuccess('Conta removida')
+    // Critique de 20/11/2026 (3ª): o restaurar já existe; o Desfazer o deixa a um clique
+    setSuccess('Conta removida', { label: 'Desfazer', run: () => void restore(target) })
     void loadTransfers(true)
   } catch (err) {
     const response = (err as ApiError)?.response

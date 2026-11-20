@@ -32,14 +32,7 @@
       </RouterLink>
     </div>
 
-    <!-- Sempre no DOM: leitores de tela só anunciam mudanças numa região live que já existe -->
-    <p
-      role="status"
-      data-testid="details-success"
-      :class="successMessage ? 'rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800' : 'sr-only'"
-    >
-      {{ successMessage }}
-    </p>
+    <FeedbackBanner :message="successMessage" testid="details-success" @pause="pauseSuccess" @resume="resumeSuccess" />
 
     <div
       v-if="error"
@@ -111,6 +104,7 @@
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useFeedback } from '@/composables/useFeedback'
+import FeedbackBanner from '@/components/common/FeedbackBanner.vue'
 import { Button } from '@/components/ui/button'
 import ClassifyDialog from '@/components/dashboard/ClassifyDialog.vue'
 import TransactionFormDialog from '@/components/transactions/TransactionFormDialog.vue'
@@ -151,7 +145,7 @@ const categories = ref<Category[]>([])
 const optionsLoading = ref(true)
 const optionsFailed = ref(false)
 
-const { successMessage, setSuccess } = useFeedback()
+const { successMessage, setSuccess, pauseSuccess, resumeSuccess } = useFeedback()
 const current = ref<Transaction | null>(null)
 const editOpen = ref(false)
 const classifyOpen = ref(false)

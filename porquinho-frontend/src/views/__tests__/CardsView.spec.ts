@@ -717,6 +717,24 @@ describe('CardsView — remover e restaurar cartão (Story 4.4)', () => {
     expect(bodyButton('remove-card-c2').textContent?.trim()).toBe('Remover')
   })
 
+  it('"Desfazer" na faixa de "Cartão removido" restaura o cartão', async () => {
+    const wrapper = await mountView()
+    await openRemove(wrapper)
+    await confirm()
+    await flushPromises()
+    const undo = wrapper.get('[data-testid="cards-success-action"]')
+    expect(undo.text()).toBe('Desfazer')
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('cards-success-action')
+
+    mockRestore.mockResolvedValue(inter())
+    await undo.trigger('click')
+    await flushPromises()
+    expect(mockRestore).toHaveBeenCalledWith('c2')
+    expect(wrapper.find('[data-testid="card-item-c2"]').exists()).toBe(true)
+    expect(plain(wrapper.get('[data-testid="cards-total"]').text())).toBe('R$ 6.000,00')
+    expect(wrapper.get('[data-testid="cards-success"]').text()).toBe('Cartão restaurado')
+  })
+
   it('remover: confirmação, some da lista, total recalculado e "Cartão removido"; restaurar o traz de volta', async () => {
     const wrapper = await mountView()
     expect(plain(wrapper.get('[data-testid="cards-total"]').text())).toBe('R$ 6.000,00')

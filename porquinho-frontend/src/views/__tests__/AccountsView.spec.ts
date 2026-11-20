@@ -1009,6 +1009,20 @@ describe('AccountsView — remover e restaurar conta (Story 4.4)', () => {
     expect(mockDelete).not.toHaveBeenCalled()
   })
 
+  it('"Desfazer" na faixa de "Conta removida" restaura a conta', async () => {
+    const wrapper = await mountView()
+    await openRemove(wrapper)
+    await confirm()
+    await flushPromises()
+    mockRestore.mockResolvedValue(bb())
+    await wrapper.get('[data-testid="accounts-success-action"]').trigger('click')
+    await flushPromises()
+    expect(mockRestore).toHaveBeenCalledWith('a2')
+    expect(wrapper.find('[data-testid="account-item-a2"]').exists()).toBe(true)
+    expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 150,00')
+    expect(wrapper.get('[data-testid="accounts-success"]').text()).toBe('Conta restaurada')
+  })
+
   it('remover "BB": some da lista, total recalculado e "Conta removida"; restaurar a traz de volta', async () => {
     const wrapper = await mountView()
     expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 150,00')
@@ -1023,7 +1037,8 @@ describe('AccountsView — remover e restaurar conta (Story 4.4)', () => {
     expect(success.attributes('role')).toBe('status')
     expect(success.text()).toBe('Conta removida')
     await flushPromises()
-    expect(document.activeElement?.getAttribute('data-testid')).toBe('open-add-account')
+    // a linha some: o foco vai para o "Desfazer" da faixa verde
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('accounts-success-action')
 
     // "Mostrar removidas" carrega a seção com "BB" e "Restaurar"
     mockListDeleted.mockResolvedValue([bb()])
