@@ -11,6 +11,7 @@ on:
     paths:
       - 'porquinho-frontend/**'
       - '.github/workflows/frontend-ci.yml'
+  workflow_dispatch:
 
 defaults:
   run:
