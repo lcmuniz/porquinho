@@ -148,7 +148,7 @@
               >
                 {{ formatBRL(account.currentBalance) }}
               </span>
-              <div class="grid w-full grid-cols-2 gap-1 sm:ml-auto sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
+              <div class="grid w-full grid-cols-[1fr_1fr_auto] gap-1 sm:ml-auto sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
                 <!-- Story 4.7: gráfico do saldo ao longo do tempo -->
                 <RouterLink
                   :to="`/contas/${account.id}/historico`"
@@ -170,26 +170,33 @@
                   <Scale class="h-4 w-4" aria-hidden="true" />
                   Reconciliar
                 </Button>
-                <Button
-                  variant="ghost"
-                  class="min-h-[44px] min-w-[44px] shrink-0 text-purple-700 hover:bg-purple-50"
-                  :data-testid="`edit-account-${account.id}`"
-                  :aria-label="`Editar ${account.accountName}`"
-                  @click="openEdit(account)"
-                >
-                  <Pencil class="h-4 w-4" aria-hidden="true" />
-                  Editar
-                </Button>
-                <Button
-                  variant="ghost"
-                  class="min-h-[44px] min-w-[44px] shrink-0 text-gray-700 hover:bg-red-50 hover:text-red-700"
-                  :data-testid="`remove-account-${account.id}`"
-                  :aria-label="`Remover ${account.accountName}`"
-                  @click="openRemove(account)"
-                >
-                  <Trash2 class="h-4 w-4" aria-hidden="true" />
-                  Remover
-                </Button>
+                <!-- Ações menos frequentes ficam no menu "⋯" -->
+                <DropdownMenu :modal="false">
+                  <DropdownMenuTrigger as-child>
+                    <Button
+                      variant="ghost"
+                      class="min-h-[44px] min-w-[44px] shrink-0 text-gray-700 hover:bg-gray-100"
+                      :data-testid="`account-actions-${account.id}`"
+                      :aria-label="`Mais ações de ${account.accountName}`"
+                    >
+                      <MoreHorizontal class="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem :data-testid="`edit-account-${account.id}`" @select="openEdit(account)">
+                      <Pencil aria-hidden="true" />
+                      Editar
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      class="text-red-700 focus:bg-red-50 focus:text-red-700"
+                      :data-testid="`remove-account-${account.id}`"
+                      @select="openRemove(account)"
+                    >
+                      <Trash2 aria-hidden="true" />
+                      Remover
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </li>
           </ul>
@@ -535,6 +542,7 @@ import {
   ArrowLeftRight,
   History,
   Landmark,
+  MoreHorizontal,
   Pencil,
   Plus,
   RotateCcw,
@@ -545,6 +553,7 @@ import AccountForm from '@/components/accounts/AccountForm.vue'
 import ReconcileForm from '@/components/accounts/ReconcileForm.vue'
 import TransferForm from '@/components/accounts/TransferForm.vue'
 import { Button } from '@/components/ui/button'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import {
   Dialog,
   DialogContent,
@@ -626,8 +635,8 @@ const {
   onCloseAutoFocus,
 } = useFormDialog({
   form: () => accountForm.value,
-  // Na edição, o foco volta para o "Editar" da conta
-  returnFocus: () => accountButton('edit-account', editing.value) ?? fallbackFocus(),
+  // Na edição, o foco volta para o menu "⋯" da conta
+  returnFocus: () => accountButton('account-actions', editing.value) ?? fallbackFocus(),
 })
 const {
   open: removeDialogOpen,
@@ -635,7 +644,7 @@ const {
   error: removeError,
   onOpenChange: onRemoveDialogOpenChange,
   onCloseAutoFocus: onRemoveCloseAutoFocus,
-} = useFormDialog({ returnFocus: () => accountButton('remove-account', removing.value) ?? fallbackFocus() })
+} = useFormDialog({ returnFocus: () => accountButton('account-actions', removing.value) ?? fallbackFocus() })
 const {
   open: transferDialogOpen,
   submitting: transferSubmitting,
@@ -752,7 +761,7 @@ function onNotFound() {
 /**
  * Retro do Epic 4: 409 ao salvar — a conta mudou em outra tela (transferência, reconciliação ou outra edição) depois
  * de o formulário abrir. Nada foi gravado; o diálogo fecha, o aviso mostra a mensagem do servidor e as contas são
- * recarregadas (uma falha na recarga é somada ao aviso). O foco volta ao "Editar" da conta (`onCloseAutoFocus`); se ela
+ * recarregadas (uma falha na recarga é somada ao aviso). O foco volta ao menu "⋯" da conta (`onCloseAutoFocus`); se ela
  * sumiu na recarga, vai para o botão do topo ou o título.
  */
 async function onConflict(detail: string | undefined) {
@@ -832,8 +841,8 @@ async function restore(account: Account) {
     insertByCreation(restored)
     setSuccess('Conta restaurada')
     void loadTransfers(true)
-    // O botão "Restaurar" some: o foco vai para o "Editar" da conta restaurada
-    void nextTick(() => accountButton('edit-account', restored)?.focus())
+    // O botão "Restaurar" some: o foco vai para o menu "⋯" da conta restaurada
+    void nextTick(() => accountButton('account-actions', restored)?.focus())
   } catch (err) {
     if (apiErrorStatus(err) === 404) {
       onAccountNotFound(account.id, 'Esta conta já foi restaurada ou não existe mais')

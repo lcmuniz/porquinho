@@ -61,6 +61,14 @@ async function mountView() {
 
 type Wrapper = Awaited<ReturnType<typeof mountView>>
 
+/** Abre o menu "⋯" da conta e escolhe a ação (o menu vai para um portal no body). */
+async function chooseAccountAction(wrapper: Wrapper, action: 'edit' | 'remove', id: string) {
+  await wrapper.get(`[data-testid="account-actions-${id}"]`).trigger('keydown', { key: 'Enter' })
+  await flushPromises()
+  document.body.querySelector<HTMLElement>(`[data-testid="${action}-account-${id}"]`)!.click()
+  await flushPromises()
+}
+
 const plain = (s: string) => s.replace(/\s/g, ' ')
 
 const dialog = () => document.body.querySelector('[data-testid="add-account-dialog"]')
@@ -433,8 +441,7 @@ describe('AccountsView — editar conta (Story 4.3)', () => {
     form.get(`[data-testid="${testid}"]`).element as HTMLInputElement
 
   async function openEdit(wrapper: Wrapper, id = 'a1') {
-    await wrapper.get(`[data-testid="edit-account-${id}"]`).trigger('click')
-    await flushPromises()
+    await chooseAccountAction(wrapper, 'edit', id)
     return wrapper.findComponent(AccountForm)
   }
 
@@ -464,13 +471,25 @@ describe('AccountsView — editar conta (Story 4.3)', () => {
     document.body.innerHTML = ''
   })
 
-  it('cada conta tem o botão "Editar" com o nome no rótulo acessível e alvo de 44px', async () => {
+  it('o card mostra só Histórico e Reconciliar; Editar e Remover ficam no menu "⋯" com rótulo acessível', async () => {
     const wrapper = await mountView()
-    const button = wrapper.get('[data-testid="edit-account-a2"]')
-    expect(button.text()).toBe('Editar')
-    expect(button.attributes('aria-label')).toBe('Editar Itaú')
-    expect(button.classes()).toContain('min-h-[44px]')
-    expect(button.classes()).toContain('min-w-[44px]')
+    const item = wrapper.get('[data-testid="account-item-a2"]')
+    expect(item.find('[data-testid="history-account-a2"]').exists()).toBe(true)
+    expect(item.find('[data-testid="reconcile-account-a2"]').exists()).toBe(true)
+    expect(document.body.querySelector('[data-testid="edit-account-a2"]')).toBeNull()
+    expect(document.body.querySelector('[data-testid="remove-account-a2"]')).toBeNull()
+
+    const trigger = item.get('[data-testid="account-actions-a2"]')
+    expect(trigger.attributes('aria-label')).toBe('Mais ações de Itaú')
+    expect(trigger.attributes('aria-haspopup')).toBe('menu')
+    expect(trigger.classes()).toContain('min-h-[44px]')
+    expect(trigger.classes()).toContain('min-w-[44px]')
+
+    await trigger.trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+    expect(trigger.attributes('aria-expanded')).toBe('true')
+    const items = [...document.body.querySelectorAll('[role="menuitem"]')].map((x) => x.textContent?.trim())
+    expect(items).toEqual(['Editar', 'Remover'])
   })
 
   it('abre o diálogo "Editar conta" com os valores atuais (saldo no formato brasileiro) e foco no nome', async () => {
@@ -525,7 +544,7 @@ describe('AccountsView — editar conta (Story 4.3)', () => {
     expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 300,00')
     expect(wrapper.get('[data-testid="accounts-success"]').text()).toBe('Informações atualizadas')
     await flushPromises()
-    expect(document.activeElement?.getAttribute('data-testid')).toBe('edit-account-a1')
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('account-actions-a1')
   })
 
   it('400 do servidor no saldo aparece no campo e o diálogo continua aberto', async () => {
@@ -653,7 +672,7 @@ describe('AccountsView — editar conta (Story 4.3)', () => {
 
     expect(mockUpdate).not.toHaveBeenCalled()
     expect(wrapper.get('[data-testid="account-item-a2"]').text()).toContain('Itaú')
-    expect(document.activeElement?.getAttribute('data-testid')).toBe('edit-account-a2')
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('account-actions-a2')
   })
 
   it('depois de editar, "Adicionar conta" abre o diálogo de criação vazio', async () => {
@@ -713,7 +732,7 @@ describe('AccountsView — editar conta (Story 4.3)', () => {
     expect(wrapper.get('[data-testid="accounts-success"]').text()).toBe('')
     expect(document.body.querySelector('[data-testid="add-account-error"]')).toBeNull()
     await flushPromises()
-    expect(document.activeElement?.getAttribute('data-testid')).toBe('edit-account-a1')
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('account-actions-a1')
 
     // Reabrir a edição usa a versão nova
     mockUpdate.mockReset().mockImplementation(async (id: string, data) => ({
@@ -811,8 +830,7 @@ describe('AccountsView — editar conta (Story 4.3)', () => {
     mockDelete.mockReset().mockResolvedValue(undefined)
     const wrapper = await mountView()
     const resolveSlow = await pendingReload(wrapper)
-    await wrapper.get('[data-testid="remove-account-a2"]').trigger('click')
-    await flushPromises()
+    await chooseAccountAction(wrapper, 'remove', 'a2')
     document.body
       .querySelector<HTMLButtonElement>('[data-testid="confirm-remove-account"]')!
       .click()
@@ -938,8 +956,7 @@ describe('AccountsView — remover e restaurar conta (Story 4.4)', () => {
     document.body.querySelector<HTMLButtonElement>(`[data-testid="${testid}"]`)!
 
   async function openRemove(wrapper: Wrapper, id = 'a2') {
-    await wrapper.get(`[data-testid="remove-account-${id}"]`).trigger('click')
-    await flushPromises()
+    await chooseAccountAction(wrapper, 'remove', id)
   }
 
   async function confirm() {
@@ -979,15 +996,6 @@ describe('AccountsView — remover e restaurar conta (Story 4.4)', () => {
     document.body.innerHTML = ''
   })
 
-  it('cada conta tem "Remover" com o nome no rótulo acessível e alvo de 44px', async () => {
-    const wrapper = await mountView()
-    const button = wrapper.get('[data-testid="remove-account-a2"]')
-    expect(button.text()).toBe('Remover')
-    expect(button.attributes('aria-label')).toBe('Remover BB')
-    expect(button.classes()).toContain('min-h-[44px]')
-    expect(button.classes()).toContain('min-w-[44px]')
-  })
-
   it('abre a confirmação com o nome e o texto do histórico preservado', async () => {
     const wrapper = await mountView()
     await openRemove(wrapper)
@@ -1025,7 +1033,7 @@ describe('AccountsView — remover e restaurar conta (Story 4.4)', () => {
     expect(section.get('h2').text()).toBe('Removidas')
     const removedItem = section.get('[data-testid="removed-account-item-a2"]')
     expect(removedItem.text()).toContain('BB')
-    expect(removedItem.find('[data-testid="edit-account-a2"]').exists()).toBe(false)
+    expect(removedItem.find('[data-testid="account-actions-a2"]').exists()).toBe(false)
     const restoreButton = removedItem.get('[data-testid="restore-account-a2"]')
     expect(restoreButton.text()).toBe('Restaurar')
     expect(restoreButton.attributes('aria-label')).toBe('Restaurar BB')
@@ -1051,7 +1059,7 @@ describe('AccountsView — remover e restaurar conta (Story 4.4)', () => {
     expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 150,00')
     expect(wrapper.get('[data-testid="accounts-success"]').text()).toBe('Conta restaurada')
     await flushPromises()
-    expect(document.activeElement?.getAttribute('data-testid')).toBe('edit-account-a2')
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('account-actions-a2')
   })
 
   it('a conta restaurada volta na ordem da criação', async () => {
@@ -1110,7 +1118,7 @@ describe('AccountsView — remover e restaurar conta (Story 4.4)', () => {
     bodyButton('cancel-remove-account').click()
     await flushPromises()
     expect(removeDialog()).toBeNull()
-    expect(document.activeElement?.getAttribute('data-testid')).toBe('remove-account-a1')
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('account-actions-a1')
   })
 
   it('outra falha mostra a mensagem genérica no diálogo', async () => {
@@ -1159,7 +1167,7 @@ describe('AccountsView — remover e restaurar conta (Story 4.4)', () => {
     expect(removeDialog()).toBeNull()
     expect(wrapper.find('[data-testid="account-item-a2"]').exists()).toBe(true)
     expect(plain(wrapper.get('[data-testid="accounts-total"]').text())).toBe('R$ 150,00')
-    expect(document.activeElement?.getAttribute('data-testid')).toBe('remove-account-a2')
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('account-actions-a2')
   })
 
   it('enquanto remove, os botões ficam travados, mostra "Removendo…" e o diálogo não fecha', async () => {
@@ -1606,16 +1614,14 @@ describe('AccountsView — transferências (Story 4.5)', () => {
     const wrapper = await mountView()
     expect(mockListTransfers).toHaveBeenCalledTimes(1)
 
-    await wrapper.get('[data-testid="edit-account-a2"]').trigger('click')
-    await flushPromises()
+    await chooseAccountAction(wrapper, 'edit', 'a2')
     const accountForm = wrapper.findComponent(AccountForm)
     await accountForm.get('[data-testid="account-name-input"]').setValue('Inter PJ')
     await accountForm.get('[data-testid="account-form"]').trigger('submit')
     await flushPromises()
     expect(mockListTransfers).toHaveBeenCalledTimes(2)
 
-    await wrapper.get('[data-testid="remove-account-a2"]').trigger('click')
-    await flushPromises()
+    await chooseAccountAction(wrapper, 'remove', 'a2')
     bodyButton('confirm-remove-account').click()
     await flushPromises()
     expect(mockListTransfers).toHaveBeenCalledTimes(3)
