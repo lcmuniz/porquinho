@@ -266,7 +266,7 @@ describe('BudgetView', () => {
     expect(w.find('[data-testid="committed-c1"]').exists()).toBe(false)
   })
 
-  it('salva só os campos preenchidos e mostra "Orçamento mensal definido"', async () => {
+  it('salva só os campos preenchidos e mostra o toast "Orçamento salvo"', async () => {
     mockSave.mockResolvedValue(
       budget({
         categories: [
@@ -284,7 +284,8 @@ describe('BudgetView', () => {
       { categoryId: 'c1', amount: 400 },
       { categoryId: 'c2', amount: 0 },
     ])
-    expect(w.get('[data-testid="budget-success"]').text()).toBe('Orçamento mensal definido')
+    expect(w.get('[data-testid="budget-toast"]').text()).toContain('Orçamento salvo')
+    expect(w.get('[data-testid="budget-toast"]').element.parentElement!.getAttribute('role')).toBe('status')
     expect(w.find('[data-testid="no-budget-c2"]').exists()).toBe(false)
   })
 
@@ -377,15 +378,15 @@ describe('BudgetView', () => {
     expect(w.get('[data-testid="save-budget"]').attributes('disabled')).toBeUndefined()
   })
 
-  it('a mensagem de sucesso some ao trocar de mês e não aparece se o mês mudou durante o salvamento', async () => {
+  it('o toast some ao trocar de mês e não aparece se o mês mudou durante o salvamento', async () => {
     mockSave.mockResolvedValue(budget())
     const w = await mountView()
     await w.get('[data-testid="budget-form"]').trigger('submit')
     await flushPromises()
-    expect(w.get('[data-testid="budget-success"]').text()).toBe('Orçamento mensal definido')
+    expect(w.find('[data-testid="budget-toast"]').exists()).toBe(true)
     await w.get('[data-testid="next-month"]').trigger('click')
     await flushPromises()
-    expect(w.get('[data-testid="budget-success"]').text()).toBe('')
+    expect(w.find('[data-testid="budget-toast"]').exists()).toBe(false)
 
     let resolve: (b: Budget) => void = () => {}
     mockSave.mockReturnValueOnce(new Promise<Budget>((r) => (resolve = r)))
@@ -393,7 +394,73 @@ describe('BudgetView', () => {
     await w.get('[data-testid="previous-month"]').trigger('click')
     resolve(budget())
     await flushPromises()
-    expect(w.get('[data-testid="budget-success"]').text()).toBe('')
+    expect(w.find('[data-testid="budget-toast"]').exists()).toBe(false)
+  })
+
+  describe('Desfazer depois de salvar', () => {
+    const before = budget({
+      categories: [
+        { categoryId: 'c1', allocated: 400, spent: 100, committed: 50, remaining: 300, status: 'HEALTHY' },
+        { categoryId: 'c2', allocated: null, spent: 30, committed: 0, remaining: -30, status: 'OVERSPENT' },
+      ],
+    })
+    const after = budget({
+      version: 'v2',
+      categories: [
+        { categoryId: 'c1', allocated: 500, spent: 100, committed: 50, remaining: 400, status: 'HEALTHY' },
+        { categoryId: 'c2', allocated: 50, spent: 30, committed: 0, remaining: 20, status: 'HEALTHY' },
+      ],
+    })
+
+    async function saveChanges() {
+      mockGet.mockResolvedValue(before)
+      mockSave.mockResolvedValueOnce(after)
+      const w = await mountView()
+      await type('amount-c1', '500')
+      await type('amount-c2', '50')
+      await w.get('[data-testid="budget-form"]').trigger('submit')
+      await flushPromises()
+      return w
+    }
+
+    afterEach(() => vi.useRealTimers())
+
+    it('restaura as alocações de antes com a versão nova e avisa', async () => {
+      const w = await saveChanges()
+      mockSave.mockResolvedValueOnce(before)
+      await w.get('[data-testid="budget-undo"]').trigger('click')
+      await flushPromises()
+
+      expect(mockSave).toHaveBeenLastCalledWith('2026-11', 'v2', [{ categoryId: 'c1', amount: 400 }])
+      expect(w.find('[data-testid="budget-toast"]').exists()).toBe(false)
+      expect((w.get('[data-testid="amount-c1"]').element as HTMLInputElement).value).toBe('400,00')
+      expect((w.get('[data-testid="amount-c2"]').element as HTMLInputElement).value).toBe('')
+      expect(w.get('[data-testid="budget-success"]').text()).toBe('Alterações desfeitas')
+      expect(document.activeElement?.getAttribute('data-testid')).toBe('save-budget')
+    })
+
+    it('some sozinho depois de alguns segundos, mas não enquanto tem foco', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      const w = await saveChanges()
+      const toast = w.get('[data-testid="budget-toast"]')
+      await toast.trigger('focusin')
+      vi.advanceTimersByTime(20000)
+      await flushPromises()
+      expect(w.find('[data-testid="budget-toast"]').exists()).toBe(true)
+
+      await toast.trigger('focusout')
+      vi.advanceTimersByTime(8000)
+      await flushPromises()
+      expect(w.find('[data-testid="budget-toast"]').exists()).toBe(false)
+    })
+
+    it('erro ao desfazer fica no aviso de erro', async () => {
+      const w = await saveChanges()
+      mockSave.mockRejectedValueOnce({ response: { status: 409, data: { detail: 'O orçamento mudou' } } })
+      await w.get('[data-testid="budget-undo"]').trigger('click')
+      await flushPromises()
+      expect(w.get('[data-testid="budget-error"]').text()).toBe('O orçamento mudou')
+    })
   })
 
   it('repete o orçamento do mês anterior sem salvar', async () => {

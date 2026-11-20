@@ -336,12 +336,38 @@
       :initial-month="month"
       @exported="setSuccess('Relatório de orçamento exportado')"
     />
+
+    <!-- Toast "Orçamento salvo · Desfazer": a região live fica sempre no DOM; o tempo pausa com o mouse ou o foco nele -->
+    <div
+      role="status"
+      class="pointer-events-none fixed inset-x-0 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-40 flex justify-center px-4 lg:bottom-6 lg:pl-62"
+    >
+      <div
+        v-if="undo"
+        class="pointer-events-auto flex items-center gap-4 rounded-lg bg-gray-900 py-1 pr-1 pl-4 text-sm text-white shadow-lg"
+        data-testid="budget-toast"
+        @mouseenter="pauseUndo"
+        @mouseleave="resumeUndo"
+        @focusin="pauseUndo"
+        @focusout="resumeUndo"
+      >
+        <span>Orçamento salvo</span>
+        <button
+          type="button"
+          class="min-h-[44px] rounded-md px-3 font-semibold text-purple-200 hover:bg-white/10 focus-visible:ring-[3px] focus-visible:ring-purple-300 focus-visible:outline-none"
+          data-testid="budget-undo"
+          @click="undoSave"
+        >
+          Desfazer
+        </button>
+      </div>
+    </div>
   </main>
 </template>
 
 <script setup lang="ts">
 import { ChevronLeft, ChevronRight } from 'lucide-vue-next'
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useFeedback } from '@/composables/useFeedback'
 import { useEventListener } from '@vueuse/core'
 import { onBeforeRouteLeave, RouterLink, useRoute, useRouter } from 'vue-router'
@@ -356,7 +382,7 @@ import { currentMonth, formatMonthBR, monthFromQuery, shiftMonth } from '@/lib/d
 import { formatBRL, formatBRLInput, parseBRL } from '@/lib/money'
 import { getBudget, saveBudget } from '@/services/budgetService'
 import { listCategories } from '@/services/categoryService'
-import type { Budget, CategoryBudget } from '@/types/budget'
+import type { Budget, BudgetAllocationInput, CategoryBudget } from '@/types/budget'
 import type { Category } from '@/types/category'
 import { apiErrorDetail, apiErrorStatus } from '@/lib/apiError'
 import type { ApiError } from '@/lib/apiError'
@@ -390,6 +416,12 @@ const saving = ref(false)
 const repeating = ref(false)
 const actionError = ref<string | null>(null)
 const { successMessage, setSuccess } = useFeedback()
+
+/** Tempo do toast "Desfazer" depois de salvar. */
+const UNDO_TIMEOUT_MS = 8000
+/** As alocações de antes do último salvamento, para o "Desfazer" do toast. */
+const undo = ref<{ month: string; allocations: BudgetAllocationInput[] } | null>(null)
+let undoTimer: ReturnType<typeof setTimeout> | undefined
 const notice = ref<string | null>(null)
 const reallocateOpen = ref(false)
 const exportOpen = ref(false)
@@ -526,6 +558,7 @@ async function load() {
   loadError.value = null
   actionError.value = null
   setSuccess(null)
+  dismissUndo()
   notice.value = null
   try {
     const [data, list] = await Promise.all([getBudget(month.value), listCategories()])
@@ -570,6 +603,33 @@ async function repeatPrevious() {
   }
 }
 
+/** As alocações salvas do mês mostrado (as de categorias excluídas não vão no salvar). */
+function savedAllocations(data: Budget): BudgetAllocationInput[] {
+  return data.categories
+    .filter((c) => !c.removedCategoryName && c.allocated !== null)
+    .map((c) => ({ categoryId: c.categoryId, amount: c.allocated! }))
+}
+
+/** Grava `allocations` no mês mostrado; devolve false se o mês mudou ou deu erro (o erro fica na tela). */
+async function persist(allocations: BudgetAllocationInput[]): Promise<boolean> {
+  const target = month.value
+  saving.value = true
+  try {
+    const data = await saveBudget(target, budget.value!.version, allocations)
+    if (target !== month.value) return false
+    fill(data)
+    notice.value = null
+    return true
+  } catch (err) {
+    const e = err as ApiError
+    const status = e.response?.status
+    actionError.value = status === 400 || status === 409 ? (e.response?.data?.detail ?? SAVE_FAILED) : SAVE_FAILED
+    return false
+  } finally {
+    saving.value = false
+  }
+}
+
 async function save() {
   if (saving.value || repeating.value || !budget.value) return
   actionError.value = null
@@ -577,22 +637,43 @@ async function save() {
   const allocations = Object.entries(values.value)
     .filter(([, text]) => text.trim())
     .map(([categoryId, text]) => ({ categoryId, amount: parseBRL(text)! }))
-  const target = month.value
-  saving.value = true
-  try {
-    const data = await saveBudget(target, budget.value.version, allocations)
-    if (target !== month.value) return
-    fill(data)
-    notice.value = null
-    setSuccess('Orçamento mensal definido')
-  } catch (err) {
-    const e = err as ApiError
-    const status = e.response?.status
-    actionError.value = status === 400 || status === 409 ? (e.response?.data?.detail ?? SAVE_FAILED) : SAVE_FAILED
-  } finally {
-    saving.value = false
+  const previous = { month: month.value, allocations: savedAllocations(budget.value) }
+  dismissUndo()
+  setSuccess(null)
+  if (await persist(allocations)) {
+    undo.value = previous
+    resumeUndo()
   }
 }
+
+/** Volta as alocações de antes do último salvamento. */
+async function undoSave() {
+  const previous = undo.value
+  if (!previous || saving.value || !budget.value || previous.month !== month.value) return
+  dismissUndo()
+  actionError.value = null
+  const ok = await persist(previous.allocations)
+  if (ok) setSuccess('Alterações desfeitas')
+  // o botão some com o toast: o foco vai para o "Salvar" (habilitado de novo só depois de gravar)
+  await nextTick()
+  document.querySelector<HTMLElement>('[data-testid="save-budget"]')?.focus()
+}
+
+function pauseUndo() {
+  clearTimeout(undoTimer)
+}
+
+function resumeUndo() {
+  clearTimeout(undoTimer)
+  if (undo.value) undoTimer = setTimeout(() => (undo.value = null), UNDO_TIMEOUT_MS)
+}
+
+function dismissUndo() {
+  clearTimeout(undoTimer)
+  undo.value = null
+}
+
+onBeforeUnmount(() => clearTimeout(undoTimer))
 
 function openReallocate() {
   reallocateError.value = null
