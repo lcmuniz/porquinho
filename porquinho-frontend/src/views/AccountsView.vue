@@ -129,11 +129,12 @@
             <li
               v-for="account in accounts"
               :key="account.id"
-              class="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3"
+              class="flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-white p-3"
               :data-testid="`account-item-${account.id}`"
             >
               <Landmark class="h-5 w-5 shrink-0 text-purple-600" aria-hidden="true" />
-              <div class="min-w-0 flex-1">
+              <!-- basis-40: sem ela o nome encolhia até sumir em vez de os botões irem para a linha de baixo -->
+              <div class="min-w-0 flex-1 basis-40">
                 <p class="truncate font-medium text-gray-900">{{ account.accountName }}</p>
                 <p class="truncate text-xs text-gray-500">
                   {{ ACCOUNT_TYPE_LABEL[account.accountType]
@@ -154,47 +155,49 @@
               >
                 {{ formatBRL(account.currentBalance) }}
               </span>
-              <!-- Story 4.7: gráfico do saldo ao longo do tempo -->
-              <RouterLink
-                :to="`/contas/${account.id}/historico`"
-                class="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium text-purple-700 hover:bg-purple-50"
-                :data-testid="`history-account-${account.id}`"
-                :aria-label="`Histórico de ${account.accountName}`"
-              >
-                <History class="h-4 w-4" aria-hidden="true" />
-                Histórico
-              </RouterLink>
-              <!-- Story 4.6: conferir o saldo com o banco -->
-              <Button
-                variant="ghost"
-                class="min-h-[44px] min-w-[44px] shrink-0 text-purple-700 hover:bg-purple-50"
-                :data-testid="`reconcile-account-${account.id}`"
-                :aria-label="`Reconciliar ${account.accountName}`"
-                @click="openReconcile(account)"
-              >
-                <Scale class="h-4 w-4" aria-hidden="true" />
-                Reconciliar
-              </Button>
-              <Button
-                variant="ghost"
-                class="min-h-[44px] min-w-[44px] shrink-0 text-purple-700 hover:bg-purple-50"
-                :data-testid="`edit-account-${account.id}`"
-                :aria-label="`Editar ${account.accountName}`"
-                @click="openEdit(account)"
-              >
-                <Pencil class="h-4 w-4" aria-hidden="true" />
-                Editar
-              </Button>
-              <Button
-                variant="ghost"
-                class="min-h-[44px] min-w-[44px] shrink-0 text-red-700 hover:bg-red-50"
-                :data-testid="`remove-account-${account.id}`"
-                :aria-label="`Remover ${account.accountName}`"
-                @click="openRemove(account)"
-              >
-                <Trash2 class="h-4 w-4" aria-hidden="true" />
-                Remover
-              </Button>
+              <div class="grid w-full grid-cols-2 gap-1 sm:ml-auto sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
+                <!-- Story 4.7: gráfico do saldo ao longo do tempo -->
+                <RouterLink
+                  :to="`/contas/${account.id}/historico`"
+                  class="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium text-purple-700 hover:bg-purple-50"
+                  :data-testid="`history-account-${account.id}`"
+                  :aria-label="`Histórico de ${account.accountName}`"
+                >
+                  <History class="h-4 w-4" aria-hidden="true" />
+                  Histórico
+                </RouterLink>
+                <!-- Story 4.6: conferir o saldo com o banco -->
+                <Button
+                  variant="ghost"
+                  class="min-h-[44px] min-w-[44px] shrink-0 text-purple-700 hover:bg-purple-50"
+                  :data-testid="`reconcile-account-${account.id}`"
+                  :aria-label="`Reconciliar ${account.accountName}`"
+                  @click="openReconcile(account)"
+                >
+                  <Scale class="h-4 w-4" aria-hidden="true" />
+                  Reconciliar
+                </Button>
+                <Button
+                  variant="ghost"
+                  class="min-h-[44px] min-w-[44px] shrink-0 text-purple-700 hover:bg-purple-50"
+                  :data-testid="`edit-account-${account.id}`"
+                  :aria-label="`Editar ${account.accountName}`"
+                  @click="openEdit(account)"
+                >
+                  <Pencil class="h-4 w-4" aria-hidden="true" />
+                  Editar
+                </Button>
+                <Button
+                  variant="ghost"
+                  class="min-h-[44px] min-w-[44px] shrink-0 text-red-700 hover:bg-red-50"
+                  :data-testid="`remove-account-${account.id}`"
+                  :aria-label="`Remover ${account.accountName}`"
+                  @click="openRemove(account)"
+                >
+                  <Trash2 class="h-4 w-4" aria-hidden="true" />
+                  Remover
+                </Button>
+              </div>
             </li>
           </ul>
         </section>
