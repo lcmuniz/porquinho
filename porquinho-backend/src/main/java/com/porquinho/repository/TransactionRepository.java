@@ -2,6 +2,7 @@ package com.porquinho.repository;
 
 import com.porquinho.entity.Transaction;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
@@ -312,6 +313,20 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID>,
         + "ORDER BY t.transactionDate DESC, t.createdAt DESC, t.id DESC")
     List<Transaction> findSpentInCategory(@Param("userId") UUID userId, @Param("categoryId") UUID categoryId,
                                           @Param("from") LocalDate from, @Param("to") LocalDate to);
+
+    /**
+     * Same spending rule as {@link #findSpentInCategory}, any category, largest first (dashboard layer 3 "Maiores
+     * gastos"). {@code page} limits the rows.
+     */
+    @Query("SELECT t FROM Transaction t "
+        + "WHERE t.userId = :userId "
+        + "AND t.reviewStatus = com.porquinho.entity.Transaction.ReviewStatus.CONFIRMED AND t.futureInstallment = false "
+        + "AND t.deletedAt IS NULL AND t.kind = com.porquinho.entity.Transaction.Kind.REGULAR "
+        + "AND t.transactionType = com.porquinho.entity.Transaction.Type.DEBIT "
+        + "AND t.transactionDate BETWEEN :from AND :to "
+        + "ORDER BY t.amount DESC, t.transactionDate DESC, t.id DESC")
+    List<Transaction> findLargestSpent(@Param("userId") UUID userId, @Param("from") LocalDate from,
+                                       @Param("to") LocalDate to, Pageable page);
 
     /**
      * Committed per category in [{@code from}, {@code to}] (Story 6.3): active confirmed future installments (an import

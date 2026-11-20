@@ -14,6 +14,7 @@ import com.porquinho.entity.Goal;
 import com.porquinho.repository.AccountBalanceHistoryRepository;
 import com.porquinho.repository.AccountRepository;
 import com.porquinho.repository.TransactionRepository;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -225,6 +226,14 @@ public class DashboardService {
         YearMonth current = YearMonth.from(LocalDate.now(clock.withZone(SAO_PAULO)));
         return transactionService.toResponses(userId,
             transactionRepository.findSpentInCategory(userId, categoryId, current.atDay(1), current.atEndOfMonth()));
+    }
+
+    /** Dashboard layer 3 "Maiores gastos": the current month's {@code limit} largest outflows, by the spending rule. */
+    @Transactional(readOnly = true)
+    public List<TransactionResponse> largestSpent(UUID userId, int limit) {
+        YearMonth current = YearMonth.from(LocalDate.now(clock.withZone(SAO_PAULO)));
+        return transactionService.toResponses(userId, transactionRepository.findLargestSpent(userId,
+            current.atDay(1), current.atEndOfMonth(), PageRequest.of(0, limit)));
     }
 
     private static String name(UUID id, Map<UUID, Category> active) {

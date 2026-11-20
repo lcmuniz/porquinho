@@ -1,6 +1,5 @@
 import { api } from './api'
 import type {
-  DashboardDetails,
   DashboardOverview,
   DashboardTactical,
   DetailsFilter,
@@ -48,11 +47,9 @@ function detailsParams(filter: DetailsFilter): URLSearchParams {
   return params
 }
 
-/** Story 7.6: página `page` (0 = primeira) da lista filtrada da Camada 3. */
-export async function getDetails(filter: DetailsFilter, page: number): Promise<DashboardDetails> {
-  const params = detailsParams(filter)
-  params.set('page', String(page))
-  const response = await api.get<DashboardDetails>('/api/v1/dashboard/layer3', { params })
+/** Camada 3 (pós-critique): as 10 maiores saídas do mês corrente, pela regra de gasto do backend. */
+export async function getLargestSpent(): Promise<Transaction[]> {
+  const response = await api.get<Transaction[]>('/api/v1/dashboard/layer3/largest')
   return response.data
 }
 

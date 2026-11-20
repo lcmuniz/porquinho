@@ -68,6 +68,12 @@ public class DashboardController {
         return ResponseEntity.ok(dashboardService.drilldown(UUID.fromString(jwt.getSubject()), categoryId));
     }
 
+    /** Layer 3 "Maiores gastos": the current month's 10 largest outflows. */
+    @GetMapping("/layer3/largest")
+    public ResponseEntity<List<TransactionResponse>> layer3Largest(@AuthenticationPrincipal Jwt jwt) {
+        return ResponseEntity.ok(dashboardService.largestSpent(UUID.fromString(jwt.getSubject()), 10));
+    }
+
     /** Story 7.6: page {@code page} (0-based, 50 rows) of the filtered transaction list. */
     @GetMapping("/layer3")
     public ResponseEntity<DashboardLayer3Response> layer3(@AuthenticationPrincipal Jwt jwt,

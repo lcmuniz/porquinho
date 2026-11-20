@@ -8,7 +8,7 @@ vi.mock('../api', () => ({
   },
 }))
 
-import { exportDetails, getDetails, getFinancialHealth, getOverview } from '../dashboardService'
+import { exportDetails, getFinancialHealth, getLargestSpent, getOverview } from '../dashboardService'
 
 const health = {
   status: 'ATTENTION',
@@ -36,9 +36,8 @@ describe('dashboardService', () => {
     expect(mockGet).toHaveBeenCalledWith('/api/v1/dashboard/layer1')
   })
 
-  it('getDetails manda os filtros como query params do backend', async () => {
-    const page = { items: [], page: 1, totalItems: 0, totalPages: 0 }
-    mockGet.mockResolvedValue({ data: page })
+  it('exportDetails manda os filtros como query params do backend', async () => {
+    mockGet.mockResolvedValue({ data: new Blob(['x']), headers: {} })
     const filter = {
       from: '2026-11-01',
       to: '2026-11-30',
@@ -48,13 +47,18 @@ describe('dashboardService', () => {
       sort: 'amount' as const,
       dir: 'desc' as const,
     }
-    await expect(getDetails(filter, 1)).resolves.toEqual(page)
-    const [url, config] = mockGet.mock.calls[0]!
-    expect(url).toBe('/api/v1/dashboard/layer3')
+    await exportDetails(filter)
+    const [, config] = mockGet.mock.calls[0]!
     expect((config.params as URLSearchParams).toString()).toBe(
       'from=2026-11-01&to=2026-11-30&sort=amount%2Cdesc&q=mercado&categoryIds=c1&uncategorized=true&categoryIds=c2' +
-        '&accountIds=a1&creditCardIds=k1&page=1',
+        '&accountIds=a1&creditCardIds=k1',
     )
+  })
+
+  it('getLargestSpent faz GET em /api/v1/dashboard/layer3/largest e devolve o data', async () => {
+    mockGet.mockResolvedValue({ data: [] })
+    await expect(getLargestSpent()).resolves.toEqual([])
+    expect(mockGet).toHaveBeenCalledWith('/api/v1/dashboard/layer3/largest')
   })
 
   it('exportDetails pede o CSV como blob, sem página, e devolve a contagem do cabeçalho', async () => {

@@ -1,4 +1,3 @@
-import type { Transaction } from './transaction'
 import type { BudgetStatus } from './budget'
 
 /** Story 7.2: cor do semáforo de saúde financeira. */
@@ -83,12 +82,4 @@ export interface DetailsFilter {
   q: string
   sort: DetailsSortField
   dir: 'asc' | 'desc'
-}
-
-/** Story 7.6: resposta de GET /api/v1/dashboard/layer3 (página de 50, começando em 0). */
-export interface DashboardDetails {
-  items: Transaction[]
-  page: number
-  totalItems: number
-  totalPages: number
 }

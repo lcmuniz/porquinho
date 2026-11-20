@@ -17,7 +17,8 @@ vi.mock('@/services/dashboardService', () => ({
   getOverview: () => mockGetOverview(),
   // Camadas 2 (Story 7.5) e 3 (Story 7.6): vazias, cobertas nos próprios specs; terminar de carregar libera o scroll
   getTactical: async () => ({ month: '2026-11', categories: [], trends: [] }),
-  getDetails: () => mockGetDetails(),
+  getLargestSpent: () => mockGetDetails(),
+  getDrilldown: () => mockGetDetails(),
   exportDetails: vi.fn(),
 }))
 vi.mock('@/services/accountService', () => ({ listAccounts: async () => [] }))
@@ -69,7 +70,7 @@ describe('DashboardView', () => {
       projectedBalance: 1500,
       wealthHistory: [],
     })
-    mockGetDetails.mockReset().mockResolvedValue({ items: [], page: 0, totalItems: 0, totalPages: 0 })
+    mockGetDetails.mockReset().mockResolvedValue([])
     mockPush.mockReset()
     mockReplace.mockReset()
     mockRoute = { path: '/dashboard', query: {} }
@@ -408,7 +409,7 @@ describe('DashboardView', () => {
       await flushPromises()
       expect(window.scrollTo).not.toHaveBeenCalled()
 
-      finishDetails({ items: [], page: 0, totalItems: 0, totalPages: 0 })
+      finishDetails([])
       await flushPromises()
       expect(window.scrollTo).toHaveBeenCalledTimes(1)
     })

@@ -13,8 +13,9 @@ const mockGetDetails = vi.fn()
 vi.mock('@/services/dashboardService', () => ({
   getOverview: () => mockGetOverview(),
   getTactical: () => mockGetTactical(),
-  // Camada 3 (Story 7.6): coberta no DashboardLayer3.spec
-  getDetails: () => mockGetDetails(),
+  // Camada 3: coberta no DashboardLayer3.spec (a mesma promessa para as duas listas)
+  getLargestSpent: () => mockGetDetails(),
+  getDrilldown: () => mockGetDetails(),
   exportDetails: vi.fn(),
 }))
 vi.mock('@/services/accountService', () => ({ listAccounts: async () => [] }))
@@ -56,7 +57,7 @@ describe('DashboardGps', () => {
     }
     expect(sections[0]!.find('[data-testid="overview-loading"]').exists()).toBe(true)
     expect(sections[1]!.find('[data-testid="tactical-loading"]').exists()).toBe(true)
-    expect(sections[2]!.find('[data-testid="details-filters"]').exists()).toBe(true)
+    expect(sections[2]!.find('[data-testid="details-view"]').exists()).toBe(true)
   })
 
   it('cada botão "Ir para" rola até a sua camada, sem forçar o behavior', async () => {
@@ -120,7 +121,7 @@ describe('DashboardGps', () => {
     await flushPromises()
     expect(wrapper.emitted('loaded')).toBeUndefined()
 
-    finishDetails({ items: [], page: 0, totalItems: 0, totalPages: 0 })
+    finishDetails([])
     await flushPromises()
     expect(wrapper.emitted('loaded')).toHaveLength(1)
 

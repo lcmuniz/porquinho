@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -313,6 +314,28 @@ class DashboardControllerTest {
 
         verify(dashboardService).drilldown(userId, categoryId);
         verify(dashboardService).drilldown(eq(userId), eq(null));
+    }
+
+    @Test
+    void largestReturnsTheTenLargestOutflowsOfTheUser() throws Exception {
+        UUID userId = UUID.randomUUID();
+        Jwt jwt = Jwt.withTokenValue("test-token").header("alg", "ES256").subject(userId.toString())
+            .issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(3600)).build();
+        when(dashboardService.largestSpent(any(), anyInt())).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/v1/dashboard/layer3/largest")
+                .with(authentication(new TestingAuthenticationToken(jwt, null, "ROLE_USER"))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$").isArray());
+
+        verify(dashboardService).largestSpent(userId, 10);
+    }
+
+    @Test
+    void largestWithoutATokenIs401() throws Exception {
+        mockMvc.perform(get("/api/v1/dashboard/layer3/largest"))
+            .andExpect(status().isUnauthorized());
+        verifyNoInteractions(dashboardService);
     }
 
     @Test

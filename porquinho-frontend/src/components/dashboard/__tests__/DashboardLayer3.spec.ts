@@ -1,24 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, RouterLinkStub, type VueWrapper } from '@vue/test-utils'
-import { createPinia, setActivePinia } from 'pinia'
 import DashboardLayer3 from '../DashboardLayer3.vue'
-import { useAuthStore } from '@/stores/auth'
 import type { Transaction } from '@/types/transaction'
-import type { DashboardDetails } from '@/types/dashboard'
 
-const mockGetDetails = vi.fn()
-const mockExport = vi.fn()
+const mockLargest = vi.fn()
+const mockDrilldown = vi.fn()
 const mockUpdate = vi.fn()
 vi.mock('@/services/dashboardService', () => ({
-  getDetails: (...a: unknown[]) => mockGetDetails(...a),
-  exportDetails: (...a: unknown[]) => mockExport(...a),
+  getLargestSpent: () => mockLargest(),
+  getDrilldown: (...a: unknown[]) => mockDrilldown(...a),
 }))
 vi.mock('@/services/transactionService', () => ({
   updateTransaction: (...a: unknown[]) => mockUpdate(...a),
   createTransaction: vi.fn(),
 }))
-const mockAccounts = vi.fn()
-vi.mock('@/services/accountService', () => ({ listAccounts: () => mockAccounts() }))
+vi.mock('@/services/accountService', () => ({ listAccounts: async () => [{ id: 'a1', accountName: 'Nubank' }] }))
 vi.mock('@/services/cardService', () => ({ listCards: async () => [{ id: 'k1', cardName: 'Roxinho' }] }))
 vi.mock('@/services/categoryService', () => ({
   listCategories: async () => [
@@ -27,8 +23,6 @@ vi.mock('@/services/categoryService', () => ({
     { id: 'c2', categoryName: 'Restaurante', parentCategoryId: 'g1' },
   ],
 }))
-
-const KEY = 'porquinho:dashboard-layer3:u1'
 
 function transaction(id: string, overrides: Partial<Transaction> = {}): Transaction {
   return {
@@ -57,12 +51,6 @@ function transaction(id: string, overrides: Partial<Transaction> = {}): Transact
   }
 }
 
-function page(items: Transaction[], totalItems = items.length, number = 0): DashboardDetails {
-  return { items, page: number, totalItems, totalPages: Math.ceil(totalItems / 50) }
-}
-
-const THIS_MONTH = { from: '2026-11-01', to: '2026-11-30', categoryIds: [], targets: [], q: '', sort: 'date', dir: 'desc' }
-
 let wrapper: VueWrapper | null = null
 
 async function mountLayer() {
@@ -73,270 +61,132 @@ async function mountLayer() {
 
 /** Intl separa "R$" do número com espaço não separável. */
 const norm = (text: string) => text.replace(/\u00a0/g, ' ')
+const checked = (w: VueWrapper, value: string) =>
+  (w.get(`[data-testid="details-view-${value}"]`).element as HTMLInputElement).checked
 
-const lastFilter = () => mockGetDetails.mock.lastCall![0]
-const lastPage = () => mockGetDetails.mock.lastCall![1]
+const loose = transaction('u1', { description: 'Pix sem nome', amount: 30, category: null })
 
 describe('DashboardLayer3', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    localStorage.clear()
-    setActivePinia(createPinia())
-    useAuthStore().setUser({ id: 'u1', email: 'u1@example.com', authProvider: 'EMAIL', createdAt: '' })
-    mockGetDetails.mockResolvedValue(page([transaction('t1')]))
-    mockAccounts.mockResolvedValue([{ id: 'a1', accountName: 'Nubank' }])
-    vi.useFakeTimers({ toFake: ['Date'] })
-    vi.setSystemTime(new Date('2026-11-09T15:00:00Z'))
+    mockLargest.mockResolvedValue([transaction('t1', { amount: 500 }), transaction('t2', { amount: 80 })])
+    mockDrilldown.mockResolvedValue([loose])
   })
 
   afterEach(() => {
     wrapper?.unmount()
     wrapper = null
-    vi.useRealTimers()
+    document.body.innerHTML = ''
   })
 
-  it('abre com a página 1 do mês corrente por data desc, em tabela e em cards', async () => {
-    const pix = transaction('pix', { isPix: true, pixDetails: { direction: 'SENT', counterpart_name: 'MARIA' } })
-    const p3 = transaction('p3', {
-      type: 'CREDIT',
-      category: null,
-      accountId: null,
-      creditCardId: 'k1',
-      isInstallment: true,
-      installmentNumber: 3,
-      installmentTotal: 10,
-      remainingInstallments: 7,
-    })
-    mockGetDetails.mockResolvedValue(page([pix, p3], 120))
+  it('não repete a lista de transações: grupo de rádios com Maiores gastos e Não classificadas', async () => {
     const w = await mountLayer()
-
-    expect(mockGetDetails).toHaveBeenCalledTimes(1)
-    expect(mockGetDetails).toHaveBeenCalledWith(THIS_MONTH, 0)
-    const row = w.get('[data-testid="details-row-pix"]').findAll('td').map((td) => norm(td.text()))
-    expect(row.slice(0, 5)).toEqual(['03/11/2026', 'Compra pix', '-R$ 100,00', 'Alimentação › Mercado', 'Nubank'])
-    expect(w.get('[data-testid="details-row-pix"] [data-testid="row-pix"]').text()).toBe('Pix enviado para MARIA')
-    const card = w.get('[data-testid="details-row-p3"]').findAll('td').map((td) => norm(td.text()))
-    expect(card.slice(2, 5)).toEqual(['+R$ 100,00', 'Não classificado', 'Roxinho'])
-    expect(w.get('[data-testid="details-row-p3"] [data-testid="row-installment"]').text()).toBe(
-      'Compra parcelada: 3/10 — restam 7 parcelas',
-    )
-    expect(w.find('[data-testid="details-card-p3"]').text()).toContain('Compra parcelada: 3/10')
-    expect(w.get('[data-testid="details-page"]').text()).toBe('120 transações · página 1 de 3')
-    expect(w.get('th[aria-sort="descending"]').text()).toContain('Data')
+    const group = w.get('[data-testid="details-view"]')
+    expect(group.element.tagName).toBe('FIELDSET')
+    expect(group.get('legend').text()).toBe('O que mostrar')
+    const radios = group.findAll('input[type="radio"]')
+    expect(radios.map((r) => r.element.parentElement!.textContent!.trim().replace(/\s+/g, ' '))).toEqual([
+      'Maiores gastos',
+      'Não classificadas (1)',
+    ])
+    expect(w.find('[data-testid="details-filters"]').exists()).toBe(false)
+    expect(w.findComponent(RouterLinkStub).props('to')).toBe('/transacoes')
+    // só as saídas sem categoria (regra de gasto do backend)
+    expect(mockDrilldown).toHaveBeenCalledExactlyOnceWith(null)
   })
 
-  it('filtros persistem por usuário e um id salvo que não existe mais é descartado', async () => {
-    localStorage.setItem(
-      KEY,
-      JSON.stringify({ ...THIS_MONTH, preset: 'last-month', categoryIds: ['gone', 'c1', 'uncategorized'], targets: ['card:k1', 'account:old'], q: 'mercado', sort: 'amount', dir: 'asc' }),
-    )
-    await mountLayer()
-
-    expect(mockGetDetails).toHaveBeenLastCalledWith(
-      {
-        from: '2026-10-01',
-        to: '2026-10-31',
-        categoryIds: ['c1', 'uncategorized'],
-        targets: ['card:k1'],
-        q: 'mercado',
-        sort: 'amount',
-        dir: 'asc',
-      },
-      0,
-    )
-    expect(JSON.parse(localStorage.getItem(KEY)!).categoryIds).toEqual(['c1', 'uncategorized'])
-  })
-
-  it('trocar um filtro grava no localStorage e volta para a página 1', async () => {
-    mockGetDetails.mockResolvedValue(page([transaction('t1')], 120))
+  it('abre em Não classificadas quando há alguma, com o atalho Classificar', async () => {
     const w = await mountLayer()
-    await w.get('[data-testid="details-next"]').trigger('click')
-    await flushPromises()
-    expect(lastPage()).toBe(1)
-    expect(w.get('[data-testid="details-page"]').text()).toContain('página 2 de 3')
-
-    await w.get('[data-testid="details-categories"]').trigger('click')
-    await flushPromises()
-    await w.get('[data-testid="details-categories-option-c2"]').setValue(true)
-    await flushPromises()
-
-    expect(lastFilter().categoryIds).toEqual(['c2'])
-    expect(lastPage()).toBe(0)
-    expect(JSON.parse(localStorage.getItem(KEY)!).categoryIds).toEqual(['c2'])
-
-    await w.get('[data-testid="details-period"]').setValue('last-3-months')
-    await flushPromises()
-    expect(lastFilter()).toMatchObject({ from: '2026-09-01', to: '2026-11-30' })
+    expect(checked(w, 'uncategorized')).toBe(true)
+    const row = w.get('[data-testid="details-row-u1"]')
+    expect(norm(row.text())).toContain('Pix sem nome')
+    expect(norm(row.text())).toContain('-R$ 30,00')
+    expect(row.get('[data-testid="details-classify-u1"]').attributes('aria-label')).toBe('Classificar Pix sem nome')
   })
 
-  it('a busca por texto espera a digitação parar', async () => {
+  it('sem não classificadas abre em Maiores gastos, na ordem do backend e com a categoria', async () => {
+    mockDrilldown.mockResolvedValue([])
     const w = await mountLayer()
-    await w.get('[data-testid="details-q"]').setValue('Mercado')
-    await flushPromises()
-    expect(mockGetDetails).toHaveBeenCalledTimes(1)
-    await new Promise((resolve) => setTimeout(resolve, 350))
-    await flushPromises()
-    expect(lastFilter().q).toBe('Mercado')
+    expect(checked(w, 'largest')).toBe(true)
+    const rows = w.findAll('[data-testid^="details-row-"]')
+    expect(rows.map((r) => r.attributes('data-testid'))).toEqual(['details-row-t1', 'details-row-t2'])
+    expect(norm(rows[0]!.text())).toContain('-R$ 500,00')
+    expect(rows[0]!.text()).toContain('Alimentação › Mercado')
+    expect(w.find('[data-testid^="details-classify-"]').exists()).toBe(false)
   })
 
-  it('cabeçalho escolhe a ordenação e o segundo clique inverte, com aria-sort', async () => {
+  it('trocar o rádio troca a lista sem buscar de novo', async () => {
     const w = await mountLayer()
-    await w.get('[data-testid="sort-amount"]').trigger('click')
-    await flushPromises()
-    expect(lastFilter()).toMatchObject({ sort: 'amount', dir: 'desc' })
-    expect(w.get('[data-testid="sort-amount"]').element.closest('th')!.getAttribute('aria-sort')).toBe('descending')
-
-    await w.get('[data-testid="sort-amount"]').trigger('click')
-    await flushPromises()
-    expect(lastFilter()).toMatchObject({ sort: 'amount', dir: 'asc' })
-    expect(w.get('[data-testid="sort-amount"]').element.closest('th')!.getAttribute('aria-sort')).toBe('ascending')
-    expect(w.get('[data-testid="sort-date"]').element.closest('th')!.getAttribute('aria-sort')).toBe('none')
-
-    await w.get('[data-testid="sort-category"]').trigger('click')
-    await flushPromises()
-    expect(lastFilter()).toMatchObject({ sort: 'category', dir: 'asc' })
+    await w.get('[data-testid="details-view-largest"]').setValue(true)
+    expect(w.find('[data-testid="details-row-t1"]').exists()).toBe(true)
+    expect(w.find('[data-testid="details-row-u1"]').exists()).toBe(false)
+    expect(mockLargest).toHaveBeenCalledTimes(1)
   })
 
-  it('período personalizado inválido não consulta e avisa no filtro', async () => {
+  it('mensagens de vazio de cada lista', async () => {
+    mockDrilldown.mockResolvedValue([])
+    mockLargest.mockResolvedValue([])
     const w = await mountLayer()
-    await w.get('[data-testid="details-period"]').setValue('custom')
-    await flushPromises()
-    expect(w.get('[data-testid="details-period-error"]').text()).toContain('datas válidas')
-    await w.get('[data-testid="details-from"]').setValue('2026-11-30')
-    await w.get('[data-testid="details-to"]').setValue('2026-11-01')
-    await flushPromises()
-
-    expect(mockGetDetails).toHaveBeenCalledTimes(1)
-    expect(w.find('[data-testid="details-period-error"]').exists()).toBe(true)
-
-    await w.get('[data-testid="details-to"]').setValue('2026-12-15')
-    await flushPromises()
-    expect(lastFilter()).toMatchObject({ from: '2026-11-30', to: '2026-12-15' })
+    expect(w.get('[data-testid="details-empty"]').text()).toBe('Nenhum gasto neste mês.')
+    await w.get('[data-testid="details-view-uncategorized"]').setValue(true)
+    expect(w.get('[data-testid="details-empty"]').text()).toBe('Tudo classificado neste mês.')
   })
 
-  it('sem resultado mostra a mensagem', async () => {
-    mockGetDetails.mockResolvedValue(page([]))
-    const w = await mountLayer()
-    expect(w.get('[data-testid="details-empty"]').text()).toBe('Nenhuma transação encontrada')
-  })
-
-  it('falha da API mostra o erro só na Camada 3 e tenta de novo', async () => {
-    mockGetDetails.mockRejectedValue(new Error('500'))
+  it('erro ao carregar mostra Tentar de novo', async () => {
+    mockLargest.mockRejectedValueOnce(new Error('rede'))
     const w = await mountLayer()
     expect(w.get('[data-testid="details-error"]').text()).toContain('Não foi possível carregar as transações')
-
-    mockGetDetails.mockResolvedValue(page([transaction('t1')]))
     await w.get('[data-testid="details-error"] button').trigger('click')
     await flushPromises()
-    expect(w.find('[data-testid="details-row-t1"]').exists()).toBe(true)
+    expect(w.find('[data-testid="details-error"]').exists()).toBe(false)
+    expect(w.find('[data-testid="details-row-u1"]').exists()).toBe(true)
   })
 
-  it('edita pelo diálogo de /transacoes, recarrega a página e avisa o dashboard', async () => {
+  it('Classificar abre o diálogo de /transacoes; salvar recarrega as listas e avisa o dashboard', async () => {
     const w = await mountLayer()
-    await w.get('[data-testid="details-edit-t1"]').trigger('click')
+    await w.get('[data-testid="details-classify-u1"]').trigger('click')
     await flushPromises()
-    const amount = document.body.querySelector<HTMLInputElement>('[data-testid="edit-amount"]')!
-    expect(amount.value).toBe('100,00')
-    amount.value = '150,50'
-    amount.dispatchEvent(new Event('input'))
-    await flushPromises() // o ui/input emite o v-model no flush do watcher
-    mockUpdate.mockResolvedValue(transaction('t1', { amount: 150.5 }))
-    mockGetDetails.mockResolvedValue(page([transaction('t1', { amount: 150.5 })]))
+    const category = document.body.querySelector<HTMLSelectElement>('[data-testid="edit-category"]')!
+    category.value = 'c2'
+    category.dispatchEvent(new Event('change'))
+    await flushPromises()
+    mockUpdate.mockResolvedValue({ ...loose, category: { id: 'c2', name: 'Restaurante', group: 'Alimentação' } })
+    mockDrilldown.mockResolvedValue([])
     document.body.querySelector<HTMLFormElement>('[data-testid="edit-form"]')!.dispatchEvent(new Event('submit'))
     await flushPromises()
 
-    expect(mockUpdate).toHaveBeenCalledExactlyOnceWith('t1', expect.objectContaining({ amount: 150.5, accountId: 'a1' }))
-    expect(mockGetDetails).toHaveBeenCalledTimes(2)
-    expect(norm(w.get('[data-testid="details-row-t1"]').text())).toContain('-R$ 150,50')
+    expect(mockUpdate).toHaveBeenCalledExactlyOnceWith('u1', expect.objectContaining({ categoryId: 'c2' }))
+    expect(mockDrilldown).toHaveBeenCalledTimes(2)
     expect(w.emitted('transaction-saved')).toHaveLength(1)
+    // a escolha do usuário fica: a lista vazia mostra que acabou
+    expect(checked(w, 'uncategorized')).toBe(true)
+    expect(w.get('[data-testid="details-empty"]').text()).toBe('Tudo classificado neste mês.')
     expect(w.get('[data-testid="details-success"]').text()).toBe('Transação atualizada')
   })
 
-  it('erro ao salvar fica no diálogo', async () => {
+  it('a linha classificada sai da lista e o foco vai para o rádio da lista', async () => {
     const w = await mountLayer()
-    await w.get('[data-testid="details-edit-t1"]').trigger('click')
-    await flushPromises()
-    mockUpdate.mockRejectedValue({ response: { status: 400, data: { detail: 'Saldo fora do limite' } } })
-    document.body.querySelector<HTMLFormElement>('[data-testid="edit-form"]')!.dispatchEvent(new Event('submit'))
-    await flushPromises()
-
-    expect(document.body.querySelector('[data-testid="edit-error"]')?.textContent).toContain('Saldo fora do limite')
-    expect(w.emitted('transaction-saved')).toBeUndefined()
-  })
-
-  it('o export abre o diálogo com o filtro da tela, sem a busca, e avisa quantas transações saíram', async () => {
-    const blob = new Blob(['x'])
-    mockExport.mockResolvedValue({ blob, count: 1 })
-    const createObjectURL = vi.fn(() => 'blob:csv')
-    vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL: vi.fn() })
-    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
-    localStorage.setItem(
-      KEY,
-      JSON.stringify({ preset: 'last-month', categoryIds: ['c1'], targets: ['card:k1'], q: 'mercado', sort: 'amount', dir: 'asc' }),
-    )
-    const w = await mountLayer()
-
-    await w.get('[data-testid="details-export"]').trigger('click')
-    await flushPromises()
-    expect(document.body.querySelector<HTMLSelectElement>('[data-testid="export-period"]')!.value).toBe('custom')
-    expect(document.body.querySelector<HTMLInputElement>('[data-testid="export-from"]')!.value).toBe('2026-10-01')
-    document.body.querySelector<HTMLFormElement>('[data-testid="export-form"]')!.dispatchEvent(new Event('submit'))
-    await flushPromises()
-
-    expect(mockExport).toHaveBeenCalledExactlyOnceWith(
-      { from: '2026-10-01', to: '2026-10-31', categoryIds: ['c1'], targets: ['card:k1'], q: '', sort: 'date', dir: 'desc' },
-      { includeFutureInstallments: false, includeDeleted: false },
-    )
-    expect(createObjectURL).toHaveBeenCalledWith(blob)
-    expect(click).toHaveBeenCalledOnce()
-    expect(w.get('[data-testid="details-success"]').text()).toBe('Relatório exportado: 1 transação')
-    expect(document.body.querySelector('[data-testid="export-dialog"]')).toBeNull()
-    click.mockRestore()
-    vi.unstubAllGlobals()
-  })
-
-  it('página que ficou além do fim depois de uma edição volta para a última', async () => {
-    mockGetDetails.mockResolvedValue(page([transaction('t1')], 51))
-    const w = await mountLayer()
-    await w.get('[data-testid="details-next"]').trigger('click')
-    await flushPromises()
-    expect(lastPage()).toBe(1)
-
-    // a única linha da página 2 saiu do filtro com a edição
-    await w.get('[data-testid="details-edit-t1"]').trigger('click')
-    await flushPromises()
-    mockUpdate.mockResolvedValue(transaction('t1'))
-    mockGetDetails.mockImplementation(async (_f: unknown, n: number) =>
-      n === 0 ? page([transaction('t2')], 50) : { items: [], page: n, totalItems: 50, totalPages: 1 },
-    )
-    document.body.querySelector<HTMLFormElement>('[data-testid="edit-form"]')!.dispatchEvent(new Event('submit'))
-    await flushPromises()
-
-    expect(lastPage()).toBe(0)
-    expect(w.find('[data-testid="details-row-t2"]').exists()).toBe(true)
-    expect(w.get('[data-testid="details-page"]').text()).toBe('50 transações · página 1 de 1')
-  })
-
-  it('opções que não carregaram aparecem como erro ao abrir o diálogo', async () => {
-    mockAccounts.mockRejectedValue(new Error('rede'))
-    const w = await mountLayer()
-    await w.get('[data-testid="details-edit-t1"]').trigger('click')
-    await flushPromises()
-
-    expect(document.body.querySelector('[data-testid="edit-error"]')?.textContent).toContain(
-      'Não foi possível carregar suas contas, cartões e categorias.',
-    )
-  })
-
-  it('ao fechar o diálogo o foco volta ao Editar da linha', async () => {
-    const w = await mountLayer()
-    await w.get('[data-testid="details-edit-t1"]').trigger('click')
+    await w.get('[data-testid="details-classify-u1"]').trigger('click')
     await flushPromises()
     document.body.querySelector<HTMLButtonElement>('[data-testid="edit-cancel"]')!.click()
     await flushPromises()
     await new Promise((resolve) => setTimeout(resolve, 0))
     await flushPromises()
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('details-classify-u1')
 
-    expect(document.activeElement?.getAttribute('data-testid')).toBe('details-edit-t1')
+    mockDrilldown.mockResolvedValue([])
+    await w.get('[data-testid="details-classify-u1"]').trigger('click')
+    await flushPromises()
+    mockUpdate.mockResolvedValue(loose)
+    document.body.querySelector<HTMLFormElement>('[data-testid="edit-form"]')!.dispatchEvent(new Event('submit'))
+    await flushPromises()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await flushPromises()
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('details-view-uncategorized')
+  })
+
+  it('avisa loaded depois da primeira carga', async () => {
+    const w = await mountLayer()
+    expect(w.emitted('loaded')).toHaveLength(1)
   })
 })

@@ -170,4 +170,21 @@ class DashboardTacticalIntegrationTest {
         assertThat(dashboardService.drilldown(userId, null)).extracting(TransactionResponse::amount)
             .containsExactly(new BigDecimal("5.00"));
     }
+
+    @Test
+    void largestSpentListsTheBiggestOutflowsOfTheMonthBySpendingRule() {
+        spent(food, CURRENT, "100.00");
+        spent(food, CURRENT, "20.00");
+        spent(null, CURRENT, "50.00");
+        spent(food, CURRENT.minusMonths(1), "900.00");
+        row(userId, account, food, CURRENT, "800.00", "CREDIT", "REGULAR", "CONFIRMED", false);
+        row(userId, account, null, CURRENT, "700.00", "DEBIT", "CARD_PAYMENT", "CONFIRMED", false);
+        row(userId, account, food, CURRENT, "600.00", "DEBIT", "REGULAR", "PENDING", false);
+        UUID other = newUser();
+        row(other, newAccount(other), null, CURRENT, "777.00", "DEBIT", "REGULAR", "CONFIRMED", false);
+
+        assertThat(dashboardService.largestSpent(userId, 10)).extracting(TransactionResponse::amount)
+            .containsExactly(new BigDecimal("100.00"), new BigDecimal("50.00"), new BigDecimal("20.00"));
+        assertThat(dashboardService.largestSpent(userId, 2)).hasSize(2);
+    }
 }
