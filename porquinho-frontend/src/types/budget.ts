@@ -12,6 +12,8 @@ export interface CategoryBudget {
   committed: number | null
   remaining: number | null
   status: BudgetStatus | null
+  /** Retro Epic 6 A4: nome da filha excluída que manteve o orçamento de um mês fechado; ausente/nulo na ativa. */
+  removedCategoryName?: string | null
 }
 
 /** Story 6.3: resposta de GET/PUT /api/v1/budgets/{AAAA-MM}. `version` volta no PUT (409 se o mês mudou). */

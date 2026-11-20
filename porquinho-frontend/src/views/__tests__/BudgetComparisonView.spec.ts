@@ -162,6 +162,19 @@ describe('BudgetComparisonView', () => {
     expect(w.find('[data-testid="total-percent"]').exists()).toBe(false)
   })
 
+  it('categoria excluída com orçamento de mês fechado vem em "Categorias excluídas" e entra no total', async () => {
+    mockGet.mockResolvedValue(
+      budget('2026-11', [
+        cb('c2', 200, 50),
+        { ...cb('gone', 10, 0), removedCategoryName: 'Academia' },
+      ]),
+    )
+    const w = await mountView()
+    expect(groupIds(w)).toEqual(['g1', 'removed'])
+    expect(w.get('[data-testid="row-gone"]').text()).toContain('Academia')
+    expect(plain(w.get('[data-testid="total-allocated"]').text())).toBe('R$ 210,00')
+  })
+
   it('o grupo abre e fecha mantendo o total', async () => {
     const w = await mountView()
     const toggle = () => w.get('[data-testid="toggle-g1"]')

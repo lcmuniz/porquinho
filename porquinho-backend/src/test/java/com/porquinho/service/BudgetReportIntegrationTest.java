@@ -146,6 +146,22 @@ class BudgetReportIntegrationTest {
     }
 
     @Test
+    void aRemovedChildWithAnAllocationInTheRangeComesInItsOwnGroupAtTheEnd() {
+        allocate(userId, food, NOV, "100.00");
+        UUID gym = newCategory(userId, "Academia", home);
+        allocate(userId, gym, NOV, "10.00");
+        jdbc.update("UPDATE categories SET deleted_at = NOW() WHERE id = ?", gym);
+
+        assertThat(lines(service.csv(userId, "2026-11", "2026-11", false, false))).containsExactly(HEADER,
+            "Água;Essenciais;100,00;0,00;100,00;0;Saudável;0,00",
+            "Transporte;Essenciais;;0,00;;;;",
+            "Aluguel;Moradia;;0,00;;;;",
+            "Academia;Categorias excluídas;10,00;0,00;10,00;0;Saudável;0,00");
+        assertThat(lines(service.csv(userId, "2026-11", "2026-11", true, false)))
+            .contains("Categorias excluídas;;10,00;0,00;10,00;0;Saudável;0,00");
+    }
+
+    @Test
     void aRangeSumsAllocatedAndSpentAndTheStatusComesFromTheSums() {
         allocate(userId, food, YearMonth.of(2026, 9), "100.00");
         allocate(userId, food, YearMonth.of(2026, 10), "100.00");

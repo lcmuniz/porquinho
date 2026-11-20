@@ -861,6 +861,7 @@ class BudgetIntegrationTest {
         row(account, null, food, CURRENT, "40.00", "DEBIT", "REGULAR", "CONFIRMED", false);
         row(null, card, food, next, "25.00", "DEBIT", "REGULAR", "CONFIRMED", true);  // future installment
         allocationRow(food, PAST, "100");
+        allocationRow(transport, PAST, "30");
         allocationRow(food, CURRENT, "300");
         allocationRow(transport, CURRENT, "200");
         allocationRow(food, next, "50");
@@ -888,6 +889,14 @@ class BudgetIntegrationTest {
         // the closed month keeps food's row as history
         assertThat(jdbc.queryForList("SELECT month_year FROM budget_allocations WHERE category_id = ?", java.sql.Date.class,
             food)).containsExactly(java.sql.Date.valueOf(PAST.atDay(1)));
+        // ... and still shows it, by name, so the closed month's total does not change
+        BudgetResponse past = service.get(userId, PAST.toString());
+        assertThat(past.totalAllocated()).isEqualByComparingTo("130");
+        assertThat(of(past, transport).allocated()).isEqualByComparingTo("30");
+        assertThat(of(past, transport).removedCategoryName()).isNull();
+        assertThat(of(past, food).allocated()).isEqualByComparingTo("100");
+        assertThat(of(past, food).removedCategoryName()).isEqualTo("Alimentação");
+        assertThat(of(past, food).committed()).isNull();
         assertThat(reallocations()).isEqualTo(2);
         assertThat(categoryOf("mercado")).isEqualTo(transport.toString());
     }

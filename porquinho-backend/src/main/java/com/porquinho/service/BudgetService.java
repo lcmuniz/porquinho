@@ -26,6 +26,8 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -256,10 +258,28 @@ public class BudgetService {
         Map<UUID, BigDecimal> spent = cached.spent();
         Map<UUID, BigDecimal> committed = open ? cached.committed() : null;
 
-        List<BudgetResponse.CategoryBudget> categories = children.stream()
+        List<BudgetResponse.CategoryBudget> categories = new ArrayList<>(children.stream()
             .map(c -> category(c.getId(), allocated.get(c.getId()), spent.getOrDefault(c.getId(), BigDecimal.ZERO),
                 committed == null ? null : committed.getOrDefault(c.getId(), BigDecimal.ZERO)))
-            .toList();
+            .toList());
+        // A removed child keeps its rows of the closed months (moveAllocations): shown by name so the total holds
+        Set<UUID> active = new HashSet<>();
+        children.forEach(c -> active.add(c.getId()));
+        Set<UUID> removedIds = new HashSet<>();
+        rows.stream().filter(a -> !active.contains(a.getCategoryId()) && a.getAllocatedAmount().signum() > 0)
+            .forEach(a -> removedIds.add(a.getCategoryId()));
+        if (!removedIds.isEmpty()) {
+            categoryRepository.findByUserIdAndIdIn(userId, removedIds).stream()
+                .filter(c -> c.isDeleted() && c.getParentCategoryId() != null)
+                .sorted(Comparator.comparing(Category::getCategoryName))
+                .forEach(c -> {
+                    BigDecimal amount = allocated.get(c.getId());
+                    BigDecimal remaining = amount.subtract(spent.getOrDefault(c.getId(), BigDecimal.ZERO));
+                    categories.add(new BudgetResponse.CategoryBudget(c.getId(), amount,
+                        spent.getOrDefault(c.getId(), BigDecimal.ZERO), committed == null ? null : BigDecimal.ZERO,
+                        remaining, status(amount, remaining), c.getCategoryName()));
+                });
+        }
         BigDecimal totalAllocated = categories.stream().map(BudgetResponse.CategoryBudget::allocated)
             .filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal totalAvailable = accountRepository.findActiveByUserId(userId).stream()

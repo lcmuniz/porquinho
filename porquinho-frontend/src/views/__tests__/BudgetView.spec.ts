@@ -266,6 +266,35 @@ describe('BudgetView', () => {
     expect(w.find('[data-testid="no-budget-c2"]').exists()).toBe(false)
   })
 
+  it('categoria excluída com orçamento de mês fechado aparece só para leitura, entra no total e não vai no salvar', async () => {
+    mockGet.mockResolvedValue(
+      budget({
+        categories: [
+          { categoryId: 'c1', allocated: 90, spent: 0, committed: null, remaining: 90, status: 'HEALTHY' },
+          {
+            categoryId: 'gone',
+            allocated: 10,
+            spent: 0,
+            committed: null,
+            remaining: 10,
+            status: 'HEALTHY',
+            removedCategoryName: 'Academia',
+          },
+        ],
+      }),
+    )
+    const w = await mountView()
+    expect(w.get('[data-testid="removed-gone"]').text().replace(/\s/g, ' ')).toBe('AcademiaR$ 0,00 de R$ 10,00')
+    expect(w.find('[data-testid="amount-gone"]').exists()).toBe(false)
+    expect(w.get('[data-testid="total-allocated"]').text().replace(/\s/g, ' ')).toBe('R$ 100,00')
+    expect(w.find('[data-testid="reallocate-hint"]').exists()).toBe(false) // a excluída não deixa o form "sujo"
+
+    await type('amount-c1', '95')
+    await w.get('[data-testid="budget-form"]').trigger('submit')
+    await flushPromises()
+    expect(mockSave).toHaveBeenCalledWith('2026-11', 'v1', [{ categoryId: 'c1', amount: 95 }])
+  })
+
   it('não envia valor negativo ou inválido', async () => {
     const w = await mountView()
     await type('amount-c2', '-10')

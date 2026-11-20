@@ -33,6 +33,8 @@ import java.util.UUID;
 @Service
 public class BudgetReportService {
 
+    static final String REMOVED_GROUP = "Categorias excluídas";
+
     public static final String INVALID_RANGE_MESSAGE =
         "Período inválido: use meses AAAA-MM, com o início até o fim e no máximo 12 meses";
     static final int MAX_MONTHS = 12;
@@ -117,6 +119,28 @@ public class BudgetReportService {
                 spent.getOrDefault(c.getId(), BigDecimal.ZERO), win3.getOrDefault(c.getId(), BigDecimal.ZERO),
                 win6.getOrDefault(c.getId(), BigDecimal.ZERO),
                 allocated.containsKey(c.getId()) ? unbudgeted.getOrDefault(c.getId(), BigDecimal.ZERO) : null));
+        }
+
+        // Removed children with an allocation in the period (closed months keep it, retro Epic 6 A4): their own group,
+        // so the period's allocated total is the same as on the budget screen
+        Set<UUID> activeIds = new HashSet<>();
+        children.forEach(c -> activeIds.add(c.getId()));
+        Set<UUID> removedIds = new HashSet<>(allocated.keySet());
+        removedIds.removeAll(activeIds);
+        if (!removedIds.isEmpty()) {
+            List<Line> removed = categoryRepository.findByUserIdAndIdIn(userId, removedIds).stream()
+                .filter(c -> c.isDeleted() && c.getParentCategoryId() != null
+                    && allocated.get(c.getId()).signum() > 0)
+                .sorted(Comparator.comparing(Category::getCategoryName, collator))
+                .map(c -> new Line(c.getCategoryName(), REMOVED_GROUP, allocated.get(c.getId()),
+                    spent.getOrDefault(c.getId(), BigDecimal.ZERO), win3.getOrDefault(c.getId(), BigDecimal.ZERO),
+                    win6.getOrDefault(c.getId(), BigDecimal.ZERO), unbudgeted.getOrDefault(c.getId(), BigDecimal.ZERO)))
+                .toList();
+            if (!removed.isEmpty()) {
+                UUID key = new UUID(0, 0);
+                groups.put(key, REMOVED_GROUP);
+                byGroup.put(key, removed);
+            }
         }
 
         // Always present: with or without hierarchy, the spent outside the budget must not vanish from the file

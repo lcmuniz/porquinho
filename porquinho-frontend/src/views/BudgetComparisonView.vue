@@ -443,6 +443,21 @@ const childRows = computed(() => {
   return rows
 })
 
+// Filhas excluídas que mantiveram orçamento de meses fechados (retro Epic 6 A4): grupo próprio, para o total bater
+const removedRows = computed(() => {
+  const sums = new Map<string, { name: string; allocated: number; spent: number }>()
+  for (const budget of data.value?.budgets ?? []) {
+    for (const c of budget.categories) {
+      if (!c.removedCategoryName) continue
+      const sum = sums.get(c.categoryId) ?? { name: c.removedCategoryName, allocated: 0, spent: 0 }
+      sum.allocated += Math.round((c.allocated ?? 0) * 100)
+      sum.spent += Math.round(c.spent * 100)
+      sums.set(c.categoryId, sum)
+    }
+  }
+  return [...sums].map(([id, s]) => makeRow(id, s.name, s.allocated, s.spent))
+})
+
 const visible = (r: Row) => filter.value === 'all' || r.status === filter.value
 
 function compare(a: Row, b: Row): number {
@@ -474,8 +489,14 @@ const groups = computed(() =>
       return { row: sumRows(parent.id, parent.categoryName, children), children }
     })
     .filter((g) => g.children.length > 0)
-    .sort((a, b) => compare(a.row, b.row)),
+    .sort((a, b) => compare(a.row, b.row))
+    .concat(removedGroup.value),
 )
+
+const removedGroup = computed(() => {
+  const children = removedRows.value.filter(visible).sort(compare)
+  return children.length > 0 ? [{ row: sumRows('removed', 'Categorias excluídas', children), children }] : []
+})
 
 const filteredRows = computed(() => groups.value.flatMap((g) => g.children))
 

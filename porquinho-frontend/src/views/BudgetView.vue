@@ -222,6 +222,26 @@
           </ul>
         </section>
 
+        <section
+          v-if="removedCategories.length > 0"
+          class="space-y-3 rounded-lg border border-gray-200 bg-white p-4"
+          aria-labelledby="group-removed"
+          data-testid="group-removed"
+        >
+          <h3 id="group-removed" class="text-sm font-semibold text-gray-900">Categorias excluídas</h3>
+          <ul class="space-y-2">
+            <li
+              v-for="c in removedCategories"
+              :key="c.categoryId"
+              class="flex flex-wrap justify-between gap-x-4 text-sm text-gray-700"
+              :data-testid="`removed-${c.categoryId}`"
+            >
+              <span class="font-medium text-gray-900">{{ c.removedCategoryName }}</span>
+              <span>{{ formatBRL(c.spent) }} de {{ formatBRL(c.allocated ?? 0) }}</span>
+            </li>
+          </ul>
+        </section>
+
         <div v-if="groups.length > 0" class="flex flex-col gap-2 sm:flex-row sm:justify-end">
           <Button
             v-if="!closedMonth"
@@ -365,8 +385,12 @@ const reallocateButton = ref<InstanceType<typeof Button> | null>(null)
 
 const monthLabel = computed(() => formatMonthBR(month.value))
 
+// Filhas excluídas com orçamento de um mês fechado: só leitura, mas entram no total
+const removedCategories = computed(() => (budget.value?.categories ?? []).filter((c) => c.removedCategoryName))
+const activeBudgets = computed(() => (budget.value?.categories ?? []).filter((c) => !c.removedCategoryName))
+
 const byCategory = computed<Record<string, CategoryBudget>>(() =>
-  Object.fromEntries((budget.value?.categories ?? []).map((c) => [c.categoryId, c])),
+  Object.fromEntries(activeBudgets.value.map((c) => [c.categoryId, c])),
 )
 
 const byName = (a: Category, b: Category) =>
@@ -420,10 +444,13 @@ const fieldErrors = computed<Record<string, string | null>>(() =>
 // Soma em centavos: em float, 0,10 + 0,20 passaria de 0,30 e acenderia o aviso de excesso à toa
 const totalAllocated = computed(
   () =>
-    Object.values(values.value).reduce((cents, text) => {
-      const value = text.trim() ? parseBRL(text) : null
-      return value !== null && value >= 0 ? cents + Math.round(value * 100) : cents
-    }, 0) / 100,
+    Object.values(values.value).reduce(
+      (cents, text) => {
+        const value = text.trim() ? parseBRL(text) : null
+        return value !== null && value >= 0 ? cents + Math.round(value * 100) : cents
+      },
+      removedCategories.value.reduce((cents, c) => cents + Math.round((c.allocated ?? 0) * 100), 0),
+    ) / 100,
 )
 
 const overAvailable = computed(
@@ -435,7 +462,7 @@ const closedMonth = computed(() => month.value < currentMonth())
 
 // Compara o valor, não o texto: "400" num campo salvo como "400,00" não é edição; texto inválido conta como edição
 const dirty = computed(() =>
-  (budget.value?.categories ?? []).some((c) => {
+  activeBudgets.value.some((c) => {
     const text = (values.value[c.categoryId] ?? '').trim()
     return (text ? (parseBRL(text) ?? text) : null) !== c.allocated
   }),
@@ -469,7 +496,9 @@ function exact(c: CategoryBudget): string {
 function fill(data: Budget) {
   budget.value = data
   values.value = Object.fromEntries(
-    data.categories.map((c) => [c.categoryId, c.allocated === null ? '' : formatBRLInput(c.allocated)]),
+    data.categories
+      .filter((c) => !c.removedCategoryName)
+      .map((c) => [c.categoryId, c.allocated === null ? '' : formatBRLInput(c.allocated)]),
   )
 }
 
