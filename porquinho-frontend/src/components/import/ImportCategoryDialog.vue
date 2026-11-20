@@ -94,7 +94,10 @@ import type { ImportTransaction } from '@/types/transactionImport'
 
 /** "Editar" de uma linha e "Alterar categoria" das selecionadas na revisão da importação (Story 5.10). */
 const props = defineProps<{ importId: string }>()
-const emit = defineEmits<{ saved: [affected: number, ids: string[]]; failed: [err: unknown] }>()
+const emit = defineEmits<{
+  saved: [affected: number, ids: string[], category: NonNullable<ImportTransaction['category']>]
+  failed: [err: unknown]
+}>()
 
 const dialogOpen = ref(false)
 /** A linha do "Editar"; null no "Alterar categoria" das selecionadas. */
@@ -150,9 +153,16 @@ async function save() {
   isSaving.value = true
   const ids = editingIds.value
   try {
-    const result = await updateImportCategory(props.importId, ids, chosenCategoryId.value)
+    const categoryId = chosenCategoryId.value
+    const result = await updateImportCategory(props.importId, ids, categoryId)
+    const chosen = categories.value.find((category) => category.id === categoryId)!
+    const group = categories.value.find((category) => category.id === chosen.parentCategoryId)
     dialogOpen.value = false
-    emit('saved', result.affectedTransactions, ids)
+    emit('saved', result.affectedTransactions, ids, {
+      id: chosen.id,
+      name: chosen.categoryName,
+      group: group?.categoryName ?? null,
+    })
   } catch (err) {
     dialogOpen.value = false
     emit('failed', err)

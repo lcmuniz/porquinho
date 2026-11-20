@@ -713,6 +713,25 @@ describe('ImportReviewView', () => {
       expect(inDialog('category-dialog')).toBeNull()
     })
 
+    it('a linha muda de categoria já ao salvar, antes de a recarga voltar', async () => {
+      const w = await mountView([transaction('t1', { confidence: 60 })])
+      await openEdit(w, 't1')
+      await choose('c2')
+      const reload = deferred<ImportTransaction[]>()
+      mockList.mockReturnValue(reload.promise)
+
+      await save()
+
+      expect(groupIds(w)).toEqual(['group-reviewed'])
+      expect(w.get('[data-testid="transaction-t1"] [data-testid="row-category"]').text()).toBe(
+        'Alimentação › Restaurante',
+      )
+      expect(w.get('[data-testid="review-success"]').text()).toBe('1 categoria alterada')
+      reload.resolve([transaction('t1', { confidence: 60 })])
+      await flushPromises()
+      expect(groupIds(w)).toEqual(['group-medium'])
+    })
+
     it('salvar a mesma categoria também é permitido (decisão 2A)', async () => {
       const w = await mountView([transaction('t1', { confidence: 60 })])
 

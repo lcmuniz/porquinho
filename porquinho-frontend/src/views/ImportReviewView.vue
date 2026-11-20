@@ -245,6 +245,7 @@ import { categoryLabel, installmentLabel, pixLabel, signedAmount } from '@/lib/t
 import { listAccounts } from '@/services/accountService'
 import { approveHighConfidence } from '@/services/transactionImportService'
 import { BANK_LABELS } from '@/types/transactionImport'
+import type { ImportTransaction } from '@/types/transactionImport'
 import type { ApiError } from '@/lib/apiError'
 
 /** Revisão de uma importação (Story 5.9), com a edição das categorias e a conclusão (Story 5.10). */
@@ -352,10 +353,18 @@ async function approveAll() {
   }
 }
 
-async function onCategorySaved(affected: number, ids: string[]) {
+async function onCategorySaved(
+  affected: number,
+  ids: string[],
+  category: NonNullable<ImportTransaction['category']>,
+) {
   for (const id of ids) selected.value.delete(id)
-  await load()
+  // Mostra já o que o PATCH gravou; a recarga confirma (no servidor lento ela demora uns segundos)
+  for (const row of transactions.value)
+    if (ids.includes(row.id))
+      Object.assign(row, { category, source: 'USER', confidence: 100, reviewStatus: 'APPROVED' })
   showSuccess(plural(affected, 'categoria alterada', 'categorias alteradas'))
+  await load()
 }
 
 /** 404 aqui é uma linha ou uma categoria que saiu de cena, e não a importação: a recarga mostra o que sobrou. */
