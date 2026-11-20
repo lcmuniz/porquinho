@@ -11,6 +11,7 @@
         :aria-invalid="errors.fromCategoryId ? 'true' : undefined"
         :aria-describedby="errors.fromCategoryId ? 'reallocate-from-error' : undefined"
       >
+        <option value="" disabled>Escolha a categoria</option>
         <option v-for="option in sources" :key="option.id" :value="option.id">{{ optionLabel(option) }}</option>
       </select>
       <p
@@ -33,6 +34,7 @@
         :aria-invalid="errors.toCategoryId ? 'true' : undefined"
         :aria-describedby="errors.toCategoryId ? 'reallocate-to-error' : undefined"
       >
+        <option value="" disabled>Escolha a categoria</option>
         <option v-for="option in options" :key="option.id" :value="option.id">{{ optionLabel(option) }}</option>
       </select>
       <p
@@ -115,9 +117,10 @@ const FIELDS: Field[] = ['fromCategoryId', 'toCategoryId', 'amount']
 // estourada ou com restante 0: o backend sempre recusa
 const sources = computed(() => props.options.filter((o) => o.remaining !== null && o.remaining > 0))
 
+// aberto pelo botão da tela, sem transação de origem: nenhuma categoria vem escolhida
 const form = reactive({
-  fromCategoryId: sources.value[0]?.id ?? '',
-  toCategoryId: props.options.find((o) => o.id !== sources.value[0]?.id)?.id ?? '',
+  fromCategoryId: '',
+  toCategoryId: '',
   amount: '',
 })
 const errors = reactive<Partial<Record<Field, string>>>({})

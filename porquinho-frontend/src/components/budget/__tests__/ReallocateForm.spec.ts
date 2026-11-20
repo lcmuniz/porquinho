@@ -45,12 +45,14 @@ describe('ReallocateForm', () => {
   it('a origem lista só categorias com restante > 0 e cada opção mostra o restante', () => {
     const w = mountForm()
     const from = w.findAll('[data-testid="reallocate-from-select"] option').map((o) => o.text().replace(/\s/g, ' '))
-    expect(from).toEqual(['Lazer — restante R$ 200,00'])
+    expect(from).toEqual(['Escolha a categoria', 'Lazer — restante R$ 200,00'])
     const to = w.findAll('[data-testid="reallocate-to-select"] option').map((o) => o.text())
-    expect(to).toHaveLength(3)
-    expect(to[1]!.replace(/\s/g, ' ')).toBe('Mercado — restante -R$ 10,00')
-    expect(to[2]).toBe('Farmácia — sem orçamento')
-    expect((w.get('[data-testid="reallocate-to-select"]').element as HTMLSelectElement).value).toBe('c2')
+    expect(to).toHaveLength(4)
+    expect(to[2]!.replace(/\s/g, ' ')).toBe('Mercado — restante -R$ 10,00')
+    expect(to[3]).toBe('Farmácia — sem orçamento')
+    // nenhuma categoria vem escolhida
+    expect((w.get('[data-testid="reallocate-from-select"]').element as HTMLSelectElement).value).toBe('')
+    expect((w.get('[data-testid="reallocate-to-select"]').element as HTMLSelectElement).value).toBe('')
   })
 
   it('envia e emite o mês recalculado com a mensagem de sucesso', async () => {
@@ -64,6 +66,8 @@ describe('ReallocateForm', () => {
   })
 
   it.each([
+    ['', 'c3', '10', 'reallocate-from-error', 'Escolha a categoria de origem'],
+    ['c1', '', '10', 'reallocate-to-error', 'Escolha a categoria de destino'],
     ['c1', 'c1', '10', 'reallocate-to-error', 'Escolha categorias diferentes'],
     ['c1', 'c3', '', 'reallocate-amount-error', 'Informe o valor'],
     ['c1', 'c3', '0', 'reallocate-amount-error', 'O valor precisa ser maior que zero'],

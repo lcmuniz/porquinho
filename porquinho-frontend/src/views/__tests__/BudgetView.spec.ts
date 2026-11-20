@@ -473,8 +473,12 @@ describe('BudgetView', () => {
         [...document.body.querySelectorAll(`[data-testid="${testId}"] option`)].map((o) =>
           o.textContent!.trim().replace(/\s/g, ' '),
         )
-      expect(labels('reallocate-from-select')).toEqual(['Mercado — restante R$ 300,00'])
-      expect(labels('reallocate-to-select')).toEqual(['Mercado — restante R$ 300,00', 'Transporte — sem orçamento'])
+      expect(labels('reallocate-from-select')).toEqual(['Escolha a categoria', 'Mercado — restante R$ 300,00'])
+      expect(labels('reallocate-to-select')).toEqual([
+        'Escolha a categoria',
+        'Mercado — restante R$ 300,00',
+        'Transporte — sem orçamento',
+      ])
     })
 
     it('fica bloqueado com valores digitados e não salvos', async () => {
