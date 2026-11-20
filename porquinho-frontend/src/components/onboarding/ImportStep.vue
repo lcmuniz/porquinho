@@ -40,7 +40,7 @@
         </ul>
         <p class="text-xs text-gray-500">
           Os nomes dos menus podem mudar de um banco para outro. Se não achar a opção, procure por
-          "extrato" e "exportar" no app ou no internet banking.
+          “extrato” e “exportar” no app ou no internet banking.
         </p>
       </div>
     </section>

@@ -1,5 +1,5 @@
 <template>
-  <form class="space-y-4" novalidate data-testid="reconcile-form" @submit.prevent="submit">
+  <form ref="formEl" class="space-y-4" novalidate data-testid="reconcile-form" @submit.prevent="submit">
     <p class="text-sm text-gray-700" data-testid="reconcile-current-balance">
       Saldo no porquinho:
       <span
@@ -134,6 +134,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { formatBRL, formatSignedBRL, parseBRL } from '@/lib/money'
 import { reconcileAccount } from '@/services/accountService'
+import { focusFirstInvalid } from '@/lib/focusInvalid'
 import type { Account, ReconciliationResult } from '@/types/account'
 import type { ApiError } from '@/lib/apiError'
 
@@ -170,6 +171,7 @@ const FIELDS: Field[] = ['bankBalance', 'reason']
 
 const form = reactive({ bankBalance: '', reason: '' })
 const errors = reactive<Partial<Record<Field, string>>>({})
+const formEl = ref<HTMLFormElement | null>(null)
 const bankInput = ref<{ $el?: HTMLInputElement } | null>(null)
 
 /** Diferença em centavos inteiros (banco − tela); null enquanto o saldo do banco não é um valor válido. */
@@ -215,7 +217,7 @@ async function submit() {
   if (props.disabled || submitting.value || inFlight) return
   emit('attempt')
   const bankBalance = validate()
-  if (bankBalance === null) return
+  if (bankBalance === null) return void focusFirstInvalid(formEl.value)
 
   inFlight = true
   submitting.value = true

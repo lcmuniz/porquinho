@@ -12,6 +12,7 @@
       </div>
 
       <form
+        ref="formEl"
         class="space-y-4 rounded-lg border border-gray-200 p-4"
         novalidate
         data-testid="goal-form"
@@ -231,6 +232,7 @@ import {
 import { formatBRL, formatBRLInput, parseBRL } from '@/lib/money'
 import { createGoal, listGoals } from '@/services/goalService'
 import { finishOnboarding } from '@/services/onboardingService'
+import { focusFirstInvalid } from '@/lib/focusInvalid'
 import type { OnboardingProgress } from '@/types/onboarding'
 import { apiErrorDetail, apiErrorStatus } from '@/lib/apiError'
 import type { ApiError } from '@/lib/apiError'
@@ -276,6 +278,7 @@ const goalCreated = ref(false)
 /** Enquanto a lista de metas carrega, os botões ficam desabilitados para não criar meta repetida. */
 const loadingGoals = ref(true)
 const finishing = ref<'create' | 'skip' | null>(null)
+const formEl = ref<HTMLFormElement | null>(null)
 const heading = ref<HTMLElement | null>(null)
 
 const busy = computed(() => finishing.value !== null)
@@ -330,7 +333,7 @@ async function createAndFinish() {
   if (busy.value || loadingGoals.value) return
   if (!goalCreated.value) {
     const values = validate()
-    if (values === null) return
+    if (values === null) return void focusFirstInvalid(formEl.value)
     finishing.value = 'create'
     try {
       await createGoal(values)

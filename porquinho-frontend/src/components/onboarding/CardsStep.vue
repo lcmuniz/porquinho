@@ -52,14 +52,15 @@
             </span>
             <Button
               variant="ghost"
-              class="min-h-[44px] text-gray-600"
+              class="min-h-[44px] min-w-[44px] shrink-0 text-gray-600"
               :data-testid="`remove-card-${card.id}`"
               :aria-label="`Remover o cartão ${card.cardName}`"
               :disabled="busy"
               @click="removeCard(card)"
             >
               <Trash2 class="h-4 w-4" aria-hidden="true" />
-              Remover
+              <!-- no celular só o ícone (o aria-label fala "Remover…"): o nome da conta/cartão precisa do espaço -->
+              <span class="hidden sm:inline">Remover</span>
             </Button>
           </li>
         </ul>

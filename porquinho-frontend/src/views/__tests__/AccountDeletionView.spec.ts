@@ -13,6 +13,7 @@ vi.mock('@/services/accountDeletionService', () => ({
 }))
 
 vi.mock('vue-router', () => ({
+  RouterLink: { props: ['to'], template: '<a><slot /></a>' },
   useRouter: () => ({
     push: (...args: unknown[]) => mockRouterPush(...args),
   }),

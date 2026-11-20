@@ -6,7 +6,7 @@
     <div>
       <h3 class="text-xl font-semibold text-foreground mb-4">Escala Tipografica (Plus Jakarta Sans)</h3>
       <div class="space-y-3">
-        <div v-for="scale in typeScales" :key="scale.class" class="flex items-baseline gap-4">
+        <div v-for="scale in typeScales" :key="scale.class" class="flex flex-wrap items-baseline gap-x-4">
           <span class="text-sm font-medium text-muted-foreground w-20 shrink-0">{{ scale.class }}</span>
           <span class="text-muted-foreground text-xs w-16 shrink-0">{{ scale.size }}</span>
           <span :class="scale.class" class="text-foreground font-normal">Porquinho</span>

@@ -179,6 +179,7 @@ onMounted(() => {
                 >
                   <svg
                     v-if="!showNewPassword"
+                    aria-hidden="true"
                     class="h-5 w-5"
                     fill="none"
                     stroke="currentColor"
@@ -197,7 +198,7 @@ onMounted(() => {
                       d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
                     />
                   </svg>
-                  <svg v-else class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg v-else class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
@@ -229,11 +230,12 @@ onMounted(() => {
                 <button
                   type="button"
                   @click="toggleConfirmPasswordVisibility"
-                  class="absolute right-2 top-1/2 -translate-y-1/2 rounded text-gray-500 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-600 focus:ring-offset-2"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 rounded text-gray-500 hover:text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:ring-offset-2"
                   :aria-label="showConfirmPassword ? 'Ocultar senha' : 'Mostrar senha'"
                 >
                   <svg
                     v-if="!showConfirmPassword"
+                    aria-hidden="true"
                     class="h-5 w-5"
                     fill="none"
                     stroke="currentColor"
@@ -252,7 +254,7 @@ onMounted(() => {
                       d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
                     />
                   </svg>
-                  <svg v-else class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg v-else class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"

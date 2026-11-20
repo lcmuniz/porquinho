@@ -1,5 +1,5 @@
 <template>
-  <form class="space-y-4" novalidate data-testid="transfer-form" @submit.prevent="submit">
+  <form ref="formEl" class="space-y-4" novalidate data-testid="transfer-form" @submit.prevent="submit">
     <div class="space-y-1">
       <label for="transfer-from" class="text-sm font-medium text-gray-900">Conta de origem</label>
       <select
@@ -140,6 +140,7 @@ import { Input } from '@/components/ui/input'
 import { toISODate, todayInSaoPaulo } from '@/lib/goalPlan'
 import { formatBRL, parseBRL } from '@/lib/money'
 import { createTransfer } from '@/services/transferService'
+import { focusFirstInvalid } from '@/lib/focusInvalid'
 import type { Account } from '@/types/account'
 import type { Transfer } from '@/types/transfer'
 import type { ApiError } from '@/lib/apiError'
@@ -196,6 +197,7 @@ const form = reactive({
   description: '',
 })
 const errors = reactive<Partial<Record<Field, string>>>({})
+const formEl = ref<HTMLFormElement | null>(null)
 const fromSelect = ref<HTMLSelectElement | null>(null)
 
 function optionLabel(account: Account): string {
@@ -251,7 +253,7 @@ async function submit() {
   if (props.disabled || submitting.value || inFlight) return
   emit('attempt')
   const amount = validate()
-  if (amount === null) return
+  if (amount === null) return void focusFirstInvalid(formEl.value)
 
   inFlight = true
   submitting.value = true

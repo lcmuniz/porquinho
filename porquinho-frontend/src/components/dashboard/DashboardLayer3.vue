@@ -36,7 +36,7 @@
       </div>
       <div class="space-y-1">
         <label for="details-q" class="text-sm font-medium text-gray-900">Buscar na descrição</label>
-        <Input id="details-q" v-model="qInput" type="search" class="min-h-[44px]" data-testid="details-q" />
+        <Input id="details-q" v-model="qInput" type="search" autocomplete="off" class="min-h-[44px]" data-testid="details-q" />
       </div>
       <div v-if="stored.preset === 'custom'" class="grid grid-cols-2 gap-3 md:col-span-2">
         <div class="space-y-1">

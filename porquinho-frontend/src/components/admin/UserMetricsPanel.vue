@@ -201,14 +201,15 @@ function formatPercent(value: number | null) {
   return value === null ? 'sem dados' : `${percent.format(value)} %`
 }
 
+// 'AAAA-MM' vira data UTC: formatar em UTC evita cair no mês anterior
+const monthFormat = new Intl.DateTimeFormat('pt-BR', { month: '2-digit', year: '2-digit', timeZone: 'UTC' })
 function monthLabel(month: string) {
-  const [year, mm] = month.split('-')
-  return `${mm}/${year?.slice(2)}`
+  return monthFormat.format(new Date(`${month}-01`))
 }
 
+const dayFormat = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' })
 function weekLabel(day: string) {
-  const [, mm, dd] = day.split('-')
-  return `${dd}/${mm}`
+  return dayFormat.format(new Date(day))
 }
 
 // Topo par: a marca do meio do eixo fica inteira

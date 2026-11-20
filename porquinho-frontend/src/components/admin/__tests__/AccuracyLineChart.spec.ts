@@ -39,7 +39,7 @@ describe('AccuracyLineChart', () => {
   it('tabela acessível com um valor por mês e "sem dados" no null', () => {
     const wrapper = mountChart([{ label: 'Nubank', color: '#7c3aed', values: [90, null, 85, 88] }])
     const table = wrapper.get('[data-testid="c-table"]')
-    expect(table.classes()).toContain('sr-only')
+    expect(table.element.parentElement!.classList).toContain('sr-only')
     expect(table.findAll('thead th').map((th) => th.text())).toEqual(['Banco', '06/26', '07/26', '08/26', '09/26'])
     expect(table.get('tbody tr').text()).toContain('sem dados')
     expect(wrapper.get('svg').attributes('role')).toBe('img')

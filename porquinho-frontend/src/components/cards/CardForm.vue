@@ -1,5 +1,5 @@
 <template>
-  <form class="space-y-4" novalidate data-testid="card-form" @submit.prevent="submit">
+  <form ref="formEl" class="space-y-4" novalidate data-testid="card-form" @submit.prevent="submit">
     <div class="space-y-1">
       <label for="card-name" class="text-sm font-medium text-gray-900">Nome do cartão</label>
       <Input
@@ -138,6 +138,7 @@ import { Input } from '@/components/ui/input'
 import { BANKS } from '@/lib/banks'
 import { formatBRLInput, parseBRL } from '@/lib/money'
 import { createCard, updateCard } from '@/services/cardService'
+import { focusFirstInvalid } from '@/lib/focusInvalid'
 import type { CreditCard } from '@/types/creditCard'
 import type { ApiError } from '@/lib/apiError'
 
@@ -200,6 +201,7 @@ const form = reactive({
 })
 const errors = reactive<Partial<Record<Field, string>>>({})
 const isEdit = computed(() => props.card != null)
+const formEl = ref<HTMLFormElement | null>(null)
 const nameInput = ref<{ $el?: HTMLInputElement } | null>(null)
 
 function clearErrors() {
@@ -264,7 +266,7 @@ async function submit() {
   if (props.disabled || submitting.value || inFlight) return
   emit('attempt')
   const values = validate()
-  if (values === null) return
+  if (values === null) return void focusFirstInvalid(formEl.value)
 
   inFlight = true
   submitting.value = true

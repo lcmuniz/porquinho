@@ -48,18 +48,21 @@
       </text>
     </g>
   </svg>
-  <table class="sr-only" :data-testid="`${testId}-table`">
-    <caption>{{ label }}</caption>
-    <thead>
-      <tr><th scope="col">{{ columnLabel }}</th><th scope="col">Valor</th></tr>
-    </thead>
-    <tbody>
-      <tr v-for="(point, i) in points" :key="i">
-        <td>{{ point.label }}</td>
-        <td>{{ point.value === null ? 'sem dados' : format(point.value) }}</td>
-      </tr>
-    </tbody>
-  </table>
+  <!-- table ignora o width/overflow do sr-only e alarga a página; o div recorta -->
+  <div class="sr-only">
+    <table :data-testid="`${testId}-table`">
+      <caption>{{ label }}</caption>
+      <thead>
+        <tr><th scope="col">{{ columnLabel }}</th><th scope="col">Valor</th></tr>
+      </thead>
+      <tbody>
+        <tr v-for="(point, i) in points" :key="i">
+          <td>{{ point.label }}</td>
+          <td>{{ point.value === null ? 'sem dados' : format(point.value) }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
   </template>
 </template>
 

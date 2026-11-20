@@ -39,6 +39,15 @@ export function balanceDomain(values: number[]): [number, number] {
   return [lo, hi]
 }
 
+/** Topo do eixo em `ticks` passos redondos (1; 1,5; 2; 2,5; 3; 4; 5; 6 ou 8 × 10ⁿ) que cobrem `max`: rótulos R$ 800, não R$ 617,5. */
+export function niceMax(max: number, ticks: number): number {
+  if (!(max > 0)) return 1
+  const raw = max / ticks
+  const pow = 10 ** Math.floor(Math.log10(raw))
+  const step = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].find((m) => m * pow >= raw)! * pow
+  return step * ticks
+}
+
 /** y do valor: `hi` no topo da área, `lo` na base. */
 export function yOf(value: number, [lo, hi]: [number, number], height: number, pad: ChartPadding): number {
   return pad.top + ((hi - value) / (hi - lo || 1)) * (height - pad.top - pad.bottom)

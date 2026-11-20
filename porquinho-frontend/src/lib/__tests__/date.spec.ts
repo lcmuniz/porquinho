@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { dateInSaoPaulo, formatDateTimeBR, formatLocalDateBR } from '../date'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { dateInSaoPaulo, formatDateTimeBR, formatLocalDateBR, monthFromQuery } from '../date'
 
 describe('formatLocalDateBR', () => {
   it('mostra o mesmo dia do texto, sem conversão de fuso', () => {
@@ -30,5 +30,22 @@ describe('formatDateTimeBR', () => {
   it('vazio para ausente ou inválido', () => {
     expect(formatDateTimeBR(null)).toBe('')
     expect(formatDateTimeBR('xyz')).toBe('')
+  })
+})
+
+describe('monthFromQuery', () => {
+  afterEach(() => vi.useRealTimers())
+
+  it('aceita AAAA-MM válido', () => {
+    expect(monthFromQuery('2026-03')).toBe('2026-03')
+    expect(monthFromQuery('2025-12')).toBe('2025-12')
+  })
+
+  it('cai no mês atual (São Paulo) com valor ausente ou inválido', () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-09T15:00:00Z'))
+    for (const value of [undefined, '', '2026-13', '2026-00', '2026-3', 'abc', ['2026-03']]) {
+      expect(monthFromQuery(value)).toBe('2026-11')
+    }
   })
 })

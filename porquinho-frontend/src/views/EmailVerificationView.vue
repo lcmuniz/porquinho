@@ -12,113 +12,119 @@
           </CardDescription>
         </CardHeader>
         <CardContent class="space-y-4">
-          <!-- Verificando -->
-          <div v-if="verificationStatus === 'verifying'" class="text-center py-8">
-            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
-            <p class="mt-4 text-gray-600">Verificando seu email…</p>
-          </div>
-
-          <!-- Sucesso -->
-          <div v-else-if="verificationStatus === 'success'" class="text-center py-4">
-            <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
-              <svg
-                class="h-6 w-6 text-green-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M5 13l4 4L19 7"
-                />
-              </svg>
+          <!-- Região viva: anuncia a troca verificando→sucesso/erro -->
+          <div role="status">
+            <!-- Verificando -->
+            <div v-if="verificationStatus === 'verifying'" class="text-center py-8">
+              <div aria-hidden="true" class="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
+              <p class="mt-4 text-gray-600">Verificando seu email…</p>
             </div>
-            <p class="mt-4 text-gray-900 font-medium text-lg">Email verificado com sucesso!</p>
-            <p class="mt-2 text-sm text-gray-600">
-              Sua conta <strong>{{ userEmail }}</strong> foi ativada.
-            </p>
-            <Button
-              @click="router.push('/login')"
-              class="mt-6 w-full min-h-[44px] bg-purple-600 hover:bg-purple-700 text-white"
-            >
-              Ir para Login
-            </Button>
-          </div>
 
-          <!-- Erro -->
-          <div v-else-if="verificationStatus === 'error'" class="text-center py-4">
-            <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
-              <svg
-                class="h-6 w-6 text-red-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </div>
-            <p class="mt-4 text-red-600 font-medium">Erro na verificação</p>
-            <p class="mt-2 text-sm text-gray-600">{{ errorMessage }}</p>
-            <Button
-              @click="router.push('/login')"
-              class="mt-4 w-full min-h-[44px] bg-purple-600 hover:bg-purple-700 text-white"
-            >
-              Ir para Login
-            </Button>
-            <Button
-              @click="router.push('/register')"
-              variant="outline"
-              class="mt-2 w-full min-h-[44px]"
-            >
-              Voltar para Registro
-            </Button>
-          </div>
-
-          <!-- Aguardando verificação (default) -->
-          <div v-else class="text-center py-4">
-            <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
-              <svg
-                class="h-6 w-6 text-blue-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                />
-              </svg>
-            </div>
-            <p class="mt-4 text-gray-900 font-medium">Verifique seu email</p>
-            <p class="mt-2 text-sm text-gray-600">
-              Enviamos um link de verificação para <strong>{{ userEmail || 'seu email' }}</strong>
-            </p>
-            <p class="mt-4 text-sm text-gray-600">
-              Por favor, verifique sua caixa de entrada e clique no link para ativar sua conta.
-            </p>
-            <div class="mt-6 space-y-2">
+            <!-- Sucesso -->
+            <div v-else-if="verificationStatus === 'success'" class="text-center py-4">
+              <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
+                <svg
+                  class="h-6 w-6 text-green-600"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+              </div>
+              <p class="mt-4 text-gray-900 font-medium text-lg">Email verificado com sucesso!</p>
+              <p class="mt-2 text-sm text-gray-600">
+                Sua conta <strong>{{ userEmail }}</strong> foi ativada.
+              </p>
               <Button
-                @click="router.push('/login')"
-                class="w-full min-h-[44px] bg-purple-600 hover:bg-purple-700 text-white"
+                as-child
+                class="mt-6 w-full min-h-[44px] bg-purple-600 hover:bg-purple-700 text-white"
               >
-                Já verifiquei - Ir para Login
+                <RouterLink to="/login">Ir para Login</RouterLink>
+              </Button>
+            </div>
+
+            <!-- Erro -->
+            <div v-else-if="verificationStatus === 'error'" role="alert" class="text-center py-4">
+              <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+                <svg
+                  class="h-6 w-6 text-red-600"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </div>
+              <p class="mt-4 text-red-600 font-medium">Erro na verificação</p>
+              <p class="mt-2 text-sm text-gray-600">{{ errorMessage }}</p>
+              <Button
+                as-child
+                class="mt-4 w-full min-h-[44px] bg-purple-600 hover:bg-purple-700 text-white"
+              >
+                <RouterLink to="/login">Ir para Login</RouterLink>
               </Button>
               <Button
-                @click="router.push('/register')"
+                as-child
                 variant="outline"
-                class="w-full min-h-[44px]"
+                class="mt-2 w-full min-h-[44px]"
               >
-                Voltar para Registro
+                <RouterLink to="/register">Voltar para Registro</RouterLink>
               </Button>
+            </div>
+
+            <!-- Aguardando verificação (default) -->
+            <div v-else class="text-center py-4">
+              <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-100">
+                <svg
+                  class="h-6 w-6 text-blue-600"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                  />
+                </svg>
+              </div>
+              <p class="mt-4 text-gray-900 font-medium">Verifique seu email</p>
+              <p class="mt-2 text-sm text-gray-600">
+                Enviamos um link de verificação para <strong>{{ userEmail || 'seu email' }}</strong>
+              </p>
+              <p class="mt-4 text-sm text-gray-600">
+                Por favor, verifique sua caixa de entrada e clique no link para ativar sua conta.
+              </p>
+              <div class="mt-6 space-y-2">
+                <Button
+                  as-child
+                  class="w-full min-h-[44px] bg-purple-600 hover:bg-purple-700 text-white"
+                >
+                  <RouterLink to="/login">Já verifiquei - Ir para Login</RouterLink>
+                </Button>
+                <Button
+                  as-child
+                  variant="outline"
+                  class="w-full min-h-[44px]"
+                >
+                  <RouterLink to="/register">Voltar para Registro</RouterLink>
+                </Button>
+              </div>
             </div>
           </div>
         </CardContent>
@@ -130,13 +136,11 @@
 <script setup lang="ts">
 import BrandMark from '@/components/common/BrandMark.vue'
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { RouterLink } from 'vue-router'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { supabase } from '@/services/supabase'
 import { errorMessageOf } from '@/lib/apiError'
-
-const router = useRouter()
 
 const verificationStatus = ref<'pending' | 'verifying' | 'success' | 'error'>('pending')
 const errorMessage = ref('')

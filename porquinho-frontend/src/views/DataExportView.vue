@@ -11,10 +11,9 @@
         <Button
           variant="outline"
           class="min-h-[44px]"
-          @click="goBack"
-          aria-label="Voltar para configurações"
+          as-child
         >
-          Voltar
+          <RouterLink to="/configuracoes" aria-label="Voltar para configurações">Voltar</RouterLink>
         </Button>
       </div>
 
@@ -192,7 +191,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { RouterLink } from 'vue-router'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -209,8 +208,6 @@ import type { DataExportResponse } from '@/types/dataExport'
 import { api } from '@/services/api'
 import { formatDateTimeBR } from '@/lib/date'
 import { apiErrorStatus } from '@/lib/apiError'
-
-const router = useRouter()
 
 const exportData = ref<DataExportResponse | null>(null)
 const isLoading = ref(false)
@@ -325,11 +322,6 @@ function stopPolling() {
     clearInterval(pollingInterval)
     pollingInterval = null
   }
-}
-
-
-function goBack() {
-  router.push('/configuracoes')
 }
 
 onMounted(loadStatus)

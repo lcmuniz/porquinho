@@ -79,6 +79,7 @@
               v-model="newName"
               type="text"
               maxlength="50"
+              autocomplete="off"
               class="min-h-[44px] w-full rounded-md border border-gray-300 px-3 focus:border-purple-500 focus:ring-2 focus:ring-purple-500 focus:outline-none"
               placeholder="Ex.: Pets"
               :aria-invalid="addError ? 'true' : undefined"

@@ -13,11 +13,11 @@ const withShell = computed(() => route.meta.requiresAuth === true && route.name 
   <SkipLink target="#main-content" />
   <AppShell v-if="withShell">
     <!-- Cada tela tem o seu <main> (um por página); este wrapper só é o alvo do link "Pular para o conteúdo" -->
-    <div id="main-content">
+    <div id="main-content" tabindex="-1" class="outline-none">
       <RouterView />
     </div>
   </AppShell>
-  <div v-else id="main-content">
+  <div v-else id="main-content" tabindex="-1" class="outline-none">
     <RouterView />
   </div>
 </template>

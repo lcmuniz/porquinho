@@ -276,7 +276,7 @@
 
 <script setup lang="ts">
 import { computed, defineComponent, h, onMounted, ref, watch } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { ChevronDown, ChevronRight } from 'lucide-vue-next'
 import BudgetStatusLabel from '@/components/budget/BudgetStatusLabel.vue'
 import PlannedVsActualChart from '@/components/budget/PlannedVsActualChart.vue'
@@ -340,7 +340,11 @@ const NO_BUDGET = 'Sem orçamento'
 // Ordem crescente do status: pior primeiro
 const STATUS_RANK: Record<BudgetStatus, number> = { OVERSPENT: 0, LOW: 1, HEALTHY: 2 }
 
-const period = ref<Period>('current')
+const route = useRoute()
+const router = useRouter()
+// o período escolhido fica na URL (?periodo=); valor desconhecido cai no mês atual
+const period = ref<Period>(PERIOD_OPTIONS.find((o) => o.value === route.query.periodo)?.value ?? 'current')
+watch(period, (periodo) => void router.replace({ query: { ...route.query, periodo } }))
 const customFrom = ref(currentMonth())
 const customTo = ref(currentMonth())
 const filter = ref<Filter>('all')
@@ -431,6 +435,8 @@ const childRows = computed(() => {
   for (const c of data.value?.categories ?? []) {
     const sum = sums.get(c.id)
     if (c.parentCategoryId === null || !sum) continue
+    // Sem orçamento e sem gasto no período não há o que comparar: a linha seria só "—" (critique: parede de traços)
+    if (sum.allocated === null && sum.unbudgeted === 0) continue
     // Sem orçamento em nenhum mês: gasto total, como antes
     if (sum.allocated === null) {
       rows.set(c.id, makeRow(c.id, c.categoryName, null, sum.unbudgeted))

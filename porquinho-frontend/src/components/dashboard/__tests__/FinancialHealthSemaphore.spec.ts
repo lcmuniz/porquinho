@@ -94,6 +94,18 @@ describe('FinancialHealthSemaphore', () => {
     ])
   })
 
+  it.each([
+    [{ status: 'ATTENTION', healthyCategories: 10, lowCategories: 0, goalsBehind: 1 }, '1 meta atrasada'],
+    [
+      { status: 'CRITICAL', healthyCategories: 5, lowCategories: 1, negativeAccounts: 1 },
+      '5 categorias saudáveis, 1 com saldo baixo, 0 estouradas; 1 conta com saldo negativo',
+    ],
+    [{ healthyCategories: 10, lowCategories: 0 }, '10 categorias saudáveis, 0 com saldo baixo, 0 estouradas'],
+  ] as const)('fechado, o resumo mostra o motivo do status (%o)', async (overrides, text) => {
+    const wrapper = await mountWith(health(overrides as Partial<FinancialHealth>))
+    expect(wrapper.get('[data-testid="health-summary"]').text()).toBe(text)
+  })
+
   it('enquanto a busca não volta mostra "Carregando saúde financeira…"', () => {
     mockGetFinancialHealth.mockReturnValue(new Promise(() => {}))
     const wrapper = mount(FinancialHealthSemaphore)

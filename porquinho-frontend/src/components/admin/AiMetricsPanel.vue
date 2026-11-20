@@ -329,9 +329,10 @@ function formatAccuracy(value: number | null) {
   return value === null ? 'sem dados' : `${percent.format(value)} %`
 }
 
+// 'AAAA-MM' vira data UTC: formatar em UTC evita cair no mês anterior
+const monthFormat = new Intl.DateTimeFormat('pt-BR', { month: '2-digit', year: '2-digit', timeZone: 'UTC' })
 function monthLabel(month: string) {
-  const [year, mm] = month.split('-')
-  return `${mm}/${year?.slice(2)}`
+  return monthFormat.format(new Date(`${month}-01`))
 }
 
 const monthChangeText = computed(() => {

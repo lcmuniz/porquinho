@@ -44,7 +44,7 @@
           aria-hidden="true"
         />
       </button>
-      <p v-show="!open" class="mb-1.5 ml-9 text-[15px] text-gray-800" data-testid="health-summary">{{ detail[0] }}</p>
+      <p v-show="!open" class="mb-1.5 ml-9 text-[15px] text-gray-800" data-testid="health-summary">{{ summary }}</p>
       <ul v-show="open" id="health-detail" data-testid="health-detail" class="mb-2 ml-9 space-y-1 text-[15px] text-gray-800">
         <li v-for="line in detail" :key="line">{{ line }}</li>
       </ul>
@@ -101,6 +101,13 @@ const detail = computed(() => {
   }
   if (h.goalsBehind > 0) lines.push(plural(h.goalsBehind, 'meta atrasada', 'metas atrasadas'))
   return lines
+})
+
+// Fechado, o resumo mostra o que puxou o status (meta atrasada, conta negativa, categoria apertada), não só as categorias
+const summary = computed(() => {
+  const h = health.value!
+  const reasons = detail.value.filter((_, i) => i > 0 || h.lowCategories + h.overspentCategories > 0)
+  return (reasons.length ? reasons : detail.value).join('; ')
 })
 
 // Sem keep-alive: cada volta ao dashboard remonta e busca de novo

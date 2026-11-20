@@ -123,7 +123,7 @@
             <li
               v-for="row in group.rows"
               :key="row.id"
-              class="flex items-start gap-1 px-2 py-3 sm:px-4"
+              class="flex items-start gap-1 px-2 py-3 [contain-intrinsic-size:auto_64px] [content-visibility:auto] sm:px-4"
               :data-testid="`transaction-${row.id}`"
             >
               <label

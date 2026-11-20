@@ -22,6 +22,8 @@
                 id="name"
                 v-model="name"
                 type="text"
+                name="name"
+                autocomplete="name"
                 required
                 placeholder="Seu nome"
                 aria-label="Nome completo"

@@ -45,6 +45,7 @@
             id="transaction-description"
             v-model="form.description"
             maxlength="500"
+            autocomplete="off"
             class="min-h-[44px]"
             data-testid="edit-description"
           />
@@ -55,6 +56,7 @@
             id="transaction-amount"
             v-model="form.amount"
             inputmode="decimal"
+            autocomplete="off"
             class="min-h-[44px]"
             data-testid="edit-amount"
           />

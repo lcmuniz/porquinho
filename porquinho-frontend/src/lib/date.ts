@@ -62,6 +62,11 @@ export function currentMonth(): string {
   return todaySaoPaulo().slice(0, 7)
 }
 
+/** O "AAAA-MM" da query (?mes=) se for válido; senão, o mês atual. */
+export function monthFromQuery(value: unknown): string {
+  return typeof value === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(value) ? value : currentMonth()
+}
+
 /** "AAAA-MM" deslocado em `delta` meses. */
 export function shiftMonth(value: string, delta: number): string {
   const [year, monthNumber] = value.split('-').map(Number)

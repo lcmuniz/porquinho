@@ -53,14 +53,15 @@
             </span>
             <Button
               variant="ghost"
-              class="min-h-[44px] text-gray-600"
+              class="min-h-[44px] min-w-[44px] shrink-0 text-gray-600"
               :data-testid="`remove-account-${account.id}`"
               :aria-label="`Remover a conta ${account.accountName}`"
               :disabled="busy"
               @click="removeAccount(account)"
             >
               <Trash2 class="h-4 w-4" aria-hidden="true" />
-              Remover
+              <!-- no celular só o ícone (o aria-label fala "Remover…"): o nome da conta/cartão precisa do espaço -->
+              <span class="hidden sm:inline">Remover</span>
             </Button>
           </li>
         </ul>
@@ -90,7 +91,7 @@
         </Button>
       </div>
       <p v-if="!loadingList && accounts.length === 0" class="text-center text-xs text-gray-500">
-        Adicione ao menos uma conta para continuar. Se pular, criamos a "Minha Conta Principal" com
+        Adicione ao menos uma conta para continuar. Se pular, criamos a “Minha Conta Principal” com
         saldo zero para você.
       </p>
       <Button

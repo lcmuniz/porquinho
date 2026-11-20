@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { mount, flushPromises, RouterLinkStub } from '@vue/test-utils'
 import EmailVerificationView from '../EmailVerificationView.vue'
 
 const mockGetSession = vi.fn()
 const mockSignOut = vi.fn()
 
-vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }))
+vi.mock('vue-router', () => ({ RouterLink: RouterLinkStub }))
 vi.mock('@/services/supabase', () => ({
   supabase: { auth: { getSession: () => mockGetSession(), signOut: (...a: unknown[]) => mockSignOut(...a) } },
 }))

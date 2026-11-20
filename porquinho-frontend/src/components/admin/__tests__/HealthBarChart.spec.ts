@@ -23,7 +23,7 @@ describe('HealthBarChart', () => {
   it('tem tabela sr-only com hora e valor', () => {
     const wrapper = mountChart(true)
     const table = wrapper.get('[data-testid="chart-table"]')
-    expect(table.classes()).toContain('sr-only')
+    expect(table.element.parentElement!.classList).toContain('sr-only')
     const rows = table.findAll('tbody tr').map((r) => r.text())
     expect(rows).toEqual(['10:000', '11:00sem dados'])
     expect(wrapper.get('svg').attributes('aria-label')).toContain('tabela')

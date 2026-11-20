@@ -1,5 +1,5 @@
 <template>
-  <form class="space-y-4" novalidate data-testid="reallocate-form" @submit.prevent="submit">
+  <form ref="formEl" class="space-y-4" novalidate data-testid="reallocate-form" @submit.prevent="submit">
     <div class="space-y-1">
       <label for="reallocate-from" class="text-sm font-medium text-gray-900">Tirar de</label>
       <select
@@ -83,6 +83,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { formatBRL, parseBRL } from '@/lib/money'
 import { reallocateBudget } from '@/services/budgetService'
+import { focusFirstInvalid } from '@/lib/focusInvalid'
 import type { Budget } from '@/types/budget'
 import type { ApiError } from '@/lib/apiError'
 
@@ -124,6 +125,7 @@ const form = reactive({
   amount: '',
 })
 const errors = reactive<Partial<Record<Field, string>>>({})
+const formEl = ref<HTMLFormElement | null>(null)
 const fromSelect = ref<HTMLSelectElement | null>(null)
 
 function optionLabel(option: ReallocateOption): string {
@@ -160,7 +162,7 @@ async function submit() {
   if (submitting.value || inFlight) return
   emit('attempt')
   const amount = validate()
-  if (amount === null) return
+  if (amount === null) return void focusFirstInvalid(formEl.value)
 
   inFlight = true
   submitting.value = true

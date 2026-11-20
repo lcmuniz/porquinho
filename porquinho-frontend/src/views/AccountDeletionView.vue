@@ -11,10 +11,9 @@
         <Button
           variant="outline"
           class="min-h-[44px]"
-          @click="goBack"
-          aria-label="Voltar para configurações"
+          as-child
         >
-          Voltar
+          <RouterLink to="/configuracoes" aria-label="Voltar para configurações">Voltar</RouterLink>
         </Button>
       </div>
 
@@ -118,7 +117,7 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -147,10 +146,6 @@ const error = ref<string | null>(null)
 const confirmInputRef = ref<HTMLInputElement | null>(null)
 
 const isConfirmTextValid = computed(() => confirmText.value.trim() === CONFIRM_PHRASE)
-
-function goBack() {
-  router.push('/configuracoes')
-}
 
 async function openConfirmDialog() {
   error.value = null

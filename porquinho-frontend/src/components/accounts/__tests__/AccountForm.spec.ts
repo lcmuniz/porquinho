@@ -103,6 +103,14 @@ describe('AccountForm', () => {
     expect(wrapper.emitted('failed')).toBeUndefined()
   })
 
+  it('validação falha no envio: o foco vai ao primeiro campo inválido', async () => {
+    const wrapper = mountForm()
+    await fill(wrapper, 'Inter', 'abc')
+    await submit(wrapper)
+
+    expect(document.activeElement).toBe(wrapper.get('[data-testid="initial-balance-input"]').element)
+  })
+
   it('400 em accountType marca os radios e liga o erro por aria-describedby', async () => {
     mockCreate.mockRejectedValue({
       response: { status: 400, data: { errors: { accountType: 'Escolha o tipo da conta' } } },

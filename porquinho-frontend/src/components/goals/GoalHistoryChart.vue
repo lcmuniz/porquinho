@@ -93,7 +93,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { axisBRL, labelPad, useChartWidth, xTickCount } from '@/lib/chart'
+import { axisBRL, labelPad, niceMax, useChartWidth, xTickCount } from '@/lib/chart'
 import type { GoalHistoryEntry } from '@/types/goal'
 
 /**
@@ -124,7 +124,7 @@ const svg = ref<SVGElement | null>(null)
 const { width: WIDTH, narrow } = useChartWidth(svg, 640)
 
 /** De 0 até o maior valor; tudo zero ganha uma faixa mínima. */
-const yMax = computed(() => Math.max(1, ...props.entries.map((e) => e.amount)))
+const yMax = computed(() => niceMax(Math.max(1, ...props.entries.map((e) => e.amount)), Y_TICKS))
 
 /** Rótulo a menos de meio rótulo (~40px) da ponta fica ancorado nela: não invade o eixo Y nem sai do gráfico. */
 function anchorOf(x: number): 'start' | 'middle' | 'end' {

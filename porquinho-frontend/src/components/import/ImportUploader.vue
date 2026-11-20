@@ -122,7 +122,7 @@
         <ul v-else class="divide-y divide-gray-200 rounded-lg border border-gray-200 bg-white" data-testid="import-list">
           <li v-for="item in imports" :key="item.id" class="space-y-1 px-4 py-3" :data-testid="`import-${item.id}`">
             <div class="flex flex-wrap items-baseline justify-between gap-2">
-              <span class="truncate text-sm font-medium text-gray-900">{{ item.fileName }}</span>
+              <span class="min-w-0 truncate text-sm font-medium text-gray-900">{{ item.fileName }}</span>
               <span class="text-xs text-gray-500">{{ formatDateTimeBR(item.createdAt) }}</span>
             </div>
             <p class="text-xs text-gray-600">
@@ -406,8 +406,9 @@ onUnmounted(() => {
 
 function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.ceil(bytes / 1024))} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1).replace('.', ',')} MB`
+  return `${mbFormat.format(bytes / (1024 * 1024))} MB`
 }
+const mbFormat = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
 
 
 onMounted(load)

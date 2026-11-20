@@ -1,5 +1,5 @@
 <template>
-  <form class="space-y-4" novalidate data-testid="account-form" @submit.prevent="submit">
+  <form ref="formEl" class="space-y-4" novalidate data-testid="account-form" @submit.prevent="submit">
     <div class="space-y-1">
       <label for="account-name" class="text-sm font-medium text-gray-900">Nome da conta</label>
       <Input
@@ -143,6 +143,7 @@ import { ACCOUNT_TYPE_OPTIONS } from '@/lib/accountTypes'
 import { BANKS } from '@/lib/banks'
 import { formatBRLInput, parseBRL } from '@/lib/money'
 import { createAccount, updateAccount } from '@/services/accountService'
+import { focusFirstInvalid } from '@/lib/focusInvalid'
 import type { Account, AccountType } from '@/types/account'
 import type { ApiError } from '@/lib/apiError'
 
@@ -204,6 +205,7 @@ const form = reactive({
 })
 const errors = reactive<Partial<Record<Field, string>>>({})
 const isEdit = computed(() => props.account != null)
+const formEl = ref<HTMLFormElement | null>(null)
 const nameInput = ref<{ $el?: HTMLInputElement } | null>(null)
 
 function clearErrors() {
@@ -268,7 +270,7 @@ async function submit() {
   if (props.disabled || submitting.value || inFlight) return
   emit('attempt')
   const balance = validate()
-  if (balance === null) return
+  if (balance === null) return void focusFirstInvalid(formEl.value)
 
   inFlight = true
   submitting.value = true

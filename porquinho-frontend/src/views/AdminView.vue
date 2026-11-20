@@ -41,14 +41,14 @@
           </button>
         </div>
 
-        <nav aria-label="Seções do admin" class="flex gap-2 border-b border-gray-200">
+        <nav aria-label="Seções do admin" class="flex gap-2 overflow-x-auto border-b border-gray-200">
           <button
             v-for="t in TABS"
             :key="t.key"
             type="button"
             :aria-current="tab === t.key ? 'page' : undefined"
             :data-testid="`tab-${t.key}`"
-            class="min-h-[44px] border-b-2 px-3 py-2 text-sm font-medium"
+            class="min-h-[44px] shrink-0 border-b-2 px-3 py-2 text-sm font-medium whitespace-nowrap"
             :class="tab === t.key ? 'border-purple-600 text-purple-700' : 'border-transparent text-gray-700 hover:text-gray-900'"
             @click="selectTab(t.key)"
           >

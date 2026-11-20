@@ -4,6 +4,13 @@ import BudgetComparisonView from '../BudgetComparisonView.vue'
 import PlannedVsActualChart from '@/components/budget/PlannedVsActualChart.vue'
 import type { Budget, CategoryBudget } from '@/types/budget'
 
+const route: { query: Record<string, string> } = { query: {} }
+const mockReplace = vi.fn()
+vi.mock('vue-router', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('vue-router')>()),
+  useRoute: () => route,
+  useRouter: () => ({ replace: mockReplace }),
+}))
 const mockGet = vi.fn()
 
 vi.mock('@/services/budgetService', () => ({ getBudget: (...a: unknown[]) => mockGet(...a) }))
@@ -63,6 +70,8 @@ const groupIds = (w: VueWrapper) =>
 
 describe('BudgetComparisonView', () => {
   beforeEach(() => {
+    route.query = {}
+    mockReplace.mockClear()
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-11-15T15:00:00Z'))
     mockGet.mockReset().mockImplementation(async (month: string) => budget(month))
@@ -74,6 +83,33 @@ describe('BudgetComparisonView', () => {
     vi.useRealTimers()
     vi.restoreAllMocks()
     document.body.innerHTML = ''
+  })
+
+  it('sem orçamento e sem gasto a filha some; período todo assim mostra o vazio, não uma parede de "—"', async () => {
+    mockGet.mockImplementation(async (month: string) => budget(month, [cb('c1', 400, 500), cb('c2', null, 0)]))
+    const w = await mountView()
+    expect(rowIds(w)).toEqual(['c1'])
+
+    w.unmount()
+    mockGet.mockImplementation(async (month: string) => budget(month, [cb('c1', null, 0), cb('c2', null, 0)]))
+    const empty = await mountView()
+    expect(empty.get('[data-testid="comparison-empty"]').text()).toBe('Nenhuma categoria para comparar neste período')
+  })
+
+  it('abre no período de ?periodo= e grava o período escolhido na URL', async () => {
+    route.query = { periodo: 'previous' }
+    const w = await mountView()
+    expect(mockGet).toHaveBeenCalledWith('2026-10')
+    expect(w.get('[data-testid="period-previous"]').attributes('aria-pressed')).toBe('true')
+    await w.get('[data-testid="period-current"]').trigger('click')
+    await flushPromises()
+    expect(mockReplace).toHaveBeenLastCalledWith({ query: { periodo: 'current' } })
+  })
+
+  it('?periodo= desconhecido abre no mês atual', async () => {
+    route.query = { periodo: 'xyz' }
+    const w = await mountView()
+    expect(w.get('[data-testid="period-current"]').attributes('aria-pressed')).toBe('true')
   })
 
   it('abre no mês atual com o maior estouro no topo, gráfico das alocadas e os quatro totais', async () => {

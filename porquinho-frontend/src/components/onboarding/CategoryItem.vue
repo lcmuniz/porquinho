@@ -33,6 +33,7 @@
         v-model="draft"
         type="text"
         maxlength="50"
+        autocomplete="off"
         class="min-h-[44px] min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 text-gray-900 hover:border-gray-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-500 focus:outline-none"
         :class="kind === 'group' ? 'text-sm font-semibold' : 'font-medium'"
         :aria-label="

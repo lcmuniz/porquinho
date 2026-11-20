@@ -11,10 +11,9 @@
         <Button
           variant="outline"
           class="min-h-[44px]"
-          @click="goBack"
-          aria-label="Voltar para configurações"
+          as-child
         >
-          Voltar
+          <RouterLink to="/configuracoes" aria-label="Voltar para configurações">Voltar</RouterLink>
         </Button>
       </div>
 
@@ -154,7 +153,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { RouterLink } from 'vue-router'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -168,8 +167,6 @@ import {
 import { getSessions, revokeSession, revokeAllOtherSessions } from '@/services/sessionService'
 import type { Session } from '@/types/session'
 import { formatDateTimeBR } from '@/lib/date'
-
-const router = useRouter()
 
 const sessions = ref<Session[]>([])
 const isLoading = ref(false)
@@ -230,11 +227,6 @@ function parseDeviceInfo(deviceInfo: string | null): string {
   if (deviceInfo.includes('Firefox')) return 'Mozilla Firefox'
   if (deviceInfo.includes('Safari')) return 'Safari'
   return deviceInfo.length > 50 ? deviceInfo.substring(0, 50) + '...' : deviceInfo
-}
-
-
-function goBack() {
-  router.push('/configuracoes')
 }
 
 onMounted(loadSessions)

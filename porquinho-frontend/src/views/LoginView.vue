@@ -242,11 +242,12 @@ function togglePasswordVisibility() {
                 <button
                   type="button"
                   @click="togglePasswordVisibility"
-                  class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-600 focus:ring-offset-2 rounded"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:ring-offset-2 rounded"
                   :aria-label="showPassword ? 'Ocultar senha' : 'Mostrar senha'"
                 >
                   <svg
                     v-if="!showPassword"
+                    aria-hidden="true"
                     class="h-5 w-5"
                     fill="none"
                     stroke="currentColor"
@@ -267,6 +268,7 @@ function togglePasswordVisibility() {
                   </svg>
                   <svg
                     v-else
+                    aria-hidden="true"
                     class="h-5 w-5"
                     fill="none"
                     stroke="currentColor"
@@ -322,7 +324,7 @@ function togglePasswordVisibility() {
             class="w-full min-h-[44px] border-gray-300 hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600"
             aria-label="Entrar com Google"
           >
-            <svg class="mr-2 h-5 w-5" viewBox="0 0 24 24">
+            <svg class="mr-2 h-5 w-5" aria-hidden="true" focusable="false" viewBox="0 0 24 24">
               <path
                 fill="#4285F4"
                 d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"

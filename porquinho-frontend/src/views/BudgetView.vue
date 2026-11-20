@@ -144,6 +144,7 @@
                     :id="`amount-${child.id}`"
                     v-model="values[child.id]"
                     inputmode="decimal"
+                    autocomplete="off"
                     placeholder="0,00"
                     class="min-h-[44px] text-right"
                     :aria-invalid="fieldErrors[child.id] ? 'true' : undefined"
@@ -340,10 +341,10 @@
 
 <script setup lang="ts">
 import { ChevronLeft, ChevronRight } from 'lucide-vue-next'
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useFeedback } from '@/composables/useFeedback'
 import { useEventListener } from '@vueuse/core'
-import { onBeforeRouteLeave, RouterLink } from 'vue-router'
+import { onBeforeRouteLeave, RouterLink, useRoute, useRouter } from 'vue-router'
 import BudgetExportDialog from '@/components/budget/BudgetExportDialog.vue'
 import BudgetStatusLabel from '@/components/budget/BudgetStatusLabel.vue'
 import ReallocateForm from '@/components/budget/ReallocateForm.vue'
@@ -351,7 +352,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { statusOf } from '@/lib/budgetStatus'
-import { currentMonth, formatMonthBR, shiftMonth } from '@/lib/date'
+import { currentMonth, formatMonthBR, monthFromQuery, shiftMonth } from '@/lib/date'
 import { formatBRL, formatBRLInput, parseBRL } from '@/lib/money'
 import { getBudget, saveBudget } from '@/services/budgetService'
 import { listCategories } from '@/services/categoryService'
@@ -375,7 +376,11 @@ const REPEAT_FAILED = 'Não foi possível carregar o orçamento do mês anterior
 const REALLOCATE_FAILED = 'Não foi possível mover o dinheiro. Verifique sua conexão e tente novamente.'
 const INVALID_AMOUNT = 'Informe um valor válido, zero ou maior'
 
-const month = ref(currentMonth())
+const route = useRoute()
+const router = useRouter()
+// o mês mostrado fica na URL (?mes=AAAA-MM): recarregar ou compartilhar abre no mesmo mês
+const month = ref(monthFromQuery(route.query.mes))
+watch(month, (mes) => void router.replace({ query: { ...route.query, mes } }))
 const budget = ref<Budget | null>(null)
 const categories = ref<Category[]>([])
 const values = ref<Record<string, string>>({})

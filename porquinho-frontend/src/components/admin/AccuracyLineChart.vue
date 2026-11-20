@@ -46,21 +46,24 @@
         {{ s.label }}
       </li>
     </ul>
-    <table class="sr-only" :data-testid="`${testId}-table`">
-      <caption>{{ label }}</caption>
-      <thead>
-        <tr>
-          <th scope="col">{{ seriesHeader }}</th>
-          <th v-for="month in months" :key="month" scope="col">{{ month }}</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="s in series" :key="s.label">
-          <th scope="row">{{ s.label }}</th>
-          <td v-for="(value, i) in s.values" :key="i">{{ value === null ? 'sem dados' : format(value) }}</td>
-        </tr>
-      </tbody>
-    </table>
+    <!-- table ignora o width/overflow do sr-only e alarga a página; o div recorta -->
+    <div class="sr-only">
+      <table :data-testid="`${testId}-table`">
+        <caption>{{ label }}</caption>
+        <thead>
+          <tr>
+            <th scope="col">{{ seriesHeader }}</th>
+            <th v-for="month in months" :key="month" scope="col">{{ month }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="s in series" :key="s.label">
+            <th scope="row">{{ s.label }}</th>
+            <td v-for="(value, i) in s.values" :key="i">{{ value === null ? 'sem dados' : format(value) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </template>
 </template>
 

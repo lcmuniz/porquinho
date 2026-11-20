@@ -14,6 +14,7 @@ vi.mock('@/services/dataExportService', () => ({
 
 // Mock vue-router
 vi.mock('vue-router', () => ({
+  RouterLink: { props: ['to'], template: '<a><slot /></a>' },
   useRouter: () => ({
     push: vi.fn(),
   }),

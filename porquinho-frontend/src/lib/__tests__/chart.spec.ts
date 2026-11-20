@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { axisBRL, balanceDomain, labelPad, valueTicks, xTickCount, yOf } from '../chart'
+import { axisBRL, balanceDomain, labelPad, niceMax, valueTicks, xTickCount, yOf } from '../chart'
 
 describe('balanceDomain', () => {
   it('inclui o zero quando há saldo negativo', () => {
@@ -39,5 +39,18 @@ describe('rótulos no gráfico estreito', () => {
     expect(xTickCount(204, 10, 4)).toBe(2)
     expect(xTickCount(520, 10, 4)).toBe(4)
     expect(xTickCount(40, 10, 4)).toBe(1)
+  })
+})
+
+describe('niceMax', () => {
+  it.each([
+    [617.5, 4, 800],
+    [463.1, 4, 600],
+    [4700, 4, 6000],
+    [100, 4, 100],
+    [1, 4, 1],
+    [0, 4, 1],
+  ])('niceMax(%d, %d) = %d', (max, ticks, expected) => {
+    expect(niceMax(max, ticks)).toBeCloseTo(expected)
   })
 })

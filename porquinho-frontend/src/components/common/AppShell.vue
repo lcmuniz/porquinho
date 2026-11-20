@@ -88,6 +88,7 @@
         </li>
         <li>
           <button
+            ref="moreButton"
             type="button"
             class="flex min-h-16 w-full flex-col items-center justify-center gap-1 text-[13px] font-medium text-gray-600"
             :class="(moreOpen || moreActive) && 'text-purple-700'"
@@ -110,6 +111,7 @@
         role="dialog"
         aria-modal="true"
         aria-label="Mais opções"
+        @keydown.tab="trapFocus"
         class="absolute inset-x-0 bottom-0 rounded-t-2xl bg-white px-4 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_-8px_32px_rgb(15_23_42/0.18)]"
       >
         <div class="mx-auto mb-3 h-1.5 w-10 rounded-full bg-gray-300" aria-hidden="true" />
@@ -204,12 +206,32 @@ function isActive(to: string) {
 const moreActive = computed(() => moreItems.value.some((i) => isActive(i.to)))
 
 const moreOpen = ref(false)
+const moreButton = ref<HTMLButtonElement>()
 watch(moreOpen, async (open) => {
-  if (!open) return
+  if (!open) {
+    // ao fechar, o foco volta ao botão "Mais"
+    moreButton.value?.focus()
+    return
+  }
   await nextTick()
   // foco entra na folha para quem navega por teclado
   document.querySelector<HTMLElement>('#more-sheet a, #more-sheet button')?.focus()
 })
+
+// Tab/Shift+Tab ciclam dentro da folha (aria-modal)
+function trapFocus(e: KeyboardEvent) {
+  const items = [...document.querySelectorAll<HTMLElement>('#more-sheet a, #more-sheet button')]
+  const first = items[0]
+  const last = items[items.length - 1]
+  if (!first || !last) return
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault()
+    last.focus()
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault()
+    first.focus()
+  }
+}
 watch(
   () => route.path,
   () => (moreOpen.value = false),

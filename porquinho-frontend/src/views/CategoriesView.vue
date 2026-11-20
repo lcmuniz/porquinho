@@ -170,6 +170,7 @@
               id="category-name"
               v-model="form.name"
               maxlength="50"
+              autocomplete="off"
               placeholder="Ex.: Pets"
               class="min-h-[44px]"
               :aria-invalid="nameError ? 'true' : undefined"
@@ -203,8 +204,8 @@
             <div class="flex flex-wrap gap-1">
               <button
                 type="button"
-                class="min-h-[44px] rounded-md border px-3 text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none"
-                :class="form.colorHex === '' ? 'border-purple-500 bg-purple-50' : 'border-gray-200'"
+                class="min-h-[44px] rounded-md border px-3 text-sm focus-visible:ring-2 focus-visible:ring-purple-500 focus:outline-none"
+                :class="form.colorHex === '' ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:bg-gray-50'"
                 :aria-pressed="form.colorHex === ''"
                 data-testid="color-option-auto"
                 @click="form.colorHex = ''"
@@ -215,7 +216,7 @@
                 v-for="color in options.colors"
                 :key="color"
                 type="button"
-                class="flex h-11 w-11 items-center justify-center rounded-full focus:ring-2 focus:ring-purple-500 focus:ring-offset-1 focus:outline-none"
+                class="flex h-11 w-11 items-center justify-center rounded-full hover:ring-2 hover:ring-gray-300 focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-1 focus:outline-none"
                 :aria-label="categoryColorLabel(color)"
                 :aria-pressed="form.colorHex === color"
                 :data-testid="`color-option-${color}`"
@@ -237,7 +238,7 @@
             <div class="flex flex-wrap gap-1">
               <button
                 type="button"
-                class="min-h-[44px] rounded-md border px-3 text-sm focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                class="min-h-[44px] rounded-md border px-3 text-sm focus-visible:ring-2 focus-visible:ring-purple-500 focus:outline-none"
                 :class="form.iconName === '' ? 'border-purple-500 bg-purple-50' : 'border-gray-200'"
                 :aria-pressed="form.iconName === ''"
                 data-testid="icon-option-default"
@@ -249,7 +250,7 @@
                 v-for="icon in pickableIcons"
                 :key="icon"
                 type="button"
-                class="flex h-11 w-11 items-center justify-center rounded-md border focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                class="flex h-11 w-11 items-center justify-center rounded-md border focus-visible:ring-2 focus-visible:ring-purple-500 focus:outline-none"
                 :class="form.iconName === icon ? 'border-purple-500 bg-purple-50' : 'border-transparent hover:bg-gray-50'"
                 :aria-label="categoryIconLabel(icon)"
                 :aria-pressed="form.iconName === icon"

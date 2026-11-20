@@ -3,6 +3,13 @@ import { mount, flushPromises, RouterLinkStub, type VueWrapper } from '@vue/test
 import TransactionsView from '../TransactionsView.vue'
 import type { Transaction } from '@/types/transaction'
 
+const route: { query: Record<string, string> } = { query: {} }
+const mockReplace = vi.fn()
+vi.mock('vue-router', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('vue-router')>()),
+  useRoute: () => route,
+  useRouter: () => ({ replace: mockReplace }),
+}))
 const mockList = vi.fn()
 const mockUpdate = vi.fn()
 const mockCreate = vi.fn()
@@ -82,6 +89,7 @@ async function setValue(testId: string, value: string) {
 describe('TransactionsView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    route.query = {}
     mockAccounts.mockResolvedValue([
       { id: 'a1', accountName: 'Nubank' },
       { id: 'a2', accountName: 'Itaú' },
@@ -94,6 +102,22 @@ describe('TransactionsView', () => {
     wrapper?.unmount()
     wrapper = null
     vi.useRealTimers()
+  })
+
+  it('abre no mês de ?mes= e grava o mês navegado na URL', async () => {
+    route.query = { mes: '2026-03' }
+    const w = await mountView([])
+    expect(mockList).toHaveBeenLastCalledWith('2026-03')
+    await w.get('[data-testid="next-month"]').trigger('click')
+    await flushPromises()
+    expect(mockList).toHaveBeenLastCalledWith('2026-04')
+    expect(mockReplace).toHaveBeenLastCalledWith({ query: { mes: '2026-04' } })
+  })
+
+  it('?mes= inválido abre no mês atual', async () => {
+    route.query = { mes: '2026-13' }
+    await mountView([])
+    expect(mockList).toHaveBeenLastCalledWith('2026-11')
   })
 
   it('lista o mês atual com Pix e parcela em texto, e navega entre os meses', async () => {

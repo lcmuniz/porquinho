@@ -3,6 +3,13 @@ import { mount, flushPromises, RouterLinkStub, type VueWrapper } from '@vue/test
 import BudgetView from '../BudgetView.vue'
 import type { Budget } from '@/types/budget'
 
+const route: { query: Record<string, string> } = { query: {} }
+const mockReplace = vi.fn()
+vi.mock('vue-router', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('vue-router')>()),
+  useRoute: () => route,
+  useRouter: () => ({ replace: mockReplace }),
+}))
 const mockGet = vi.fn()
 const mockSave = vi.fn()
 const mockReallocate = vi.fn()
@@ -56,6 +63,7 @@ async function type(testId: string, value: string) {
 describe('BudgetView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    route.query = {}
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-11-09T15:00:00Z'))
     mockGet.mockResolvedValue(budget())
@@ -66,6 +74,20 @@ describe('BudgetView', () => {
     wrapper = null
     document.body.innerHTML = ''
     vi.useRealTimers()
+  })
+
+  it('abre no mês de ?mes= e grava o mês navegado na URL; inválido cai no mês atual', async () => {
+    route.query = { mes: '2026-03' }
+    const w = await mountView()
+    expect(mockGet).toHaveBeenLastCalledWith('2026-03')
+    await w.get('[data-testid="next-month"]').trigger('click')
+    await flushPromises()
+    expect(mockReplace).toHaveBeenLastCalledWith({ query: { mes: '2026-04' } })
+    w.unmount()
+
+    route.query = { mes: 'abc' }
+    await mountView()
+    expect(mockGet).toHaveBeenLastCalledWith('2026-11')
   })
 
   it('carrega o mês atual agrupado, com gasto, comprometido, barra e restante', async () => {

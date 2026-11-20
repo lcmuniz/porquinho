@@ -100,4 +100,34 @@ describe('AppShell', () => {
 
     expect(mockPush).toHaveBeenCalledWith('/login')
   })
+
+  it('folha "Mais" prende o foco com Tab/Shift+Tab e devolve o foco ao botão ao fechar', async () => {
+    // <a> sem href não recebe foco no jsdom
+    const FocusableLink = { props: ['to'], template: '<a href="#"><slot /></a>' }
+    const wrapper = mount(AppShell, {
+      global: { stubs: { RouterLink: FocusableLink } },
+      attachTo: document.body,
+    })
+    await flushPromises()
+    const moreButton = wrapper.get('[aria-controls="more-sheet"]')
+    await moreButton.trigger('click')
+    await flushPromises()
+
+    const sheet = wrapper.get('#more-sheet')
+    const items = sheet.findAll('a, button')
+    const first = items[0]!.element as HTMLElement
+    const last = items[items.length - 1]!.element as HTMLElement
+    expect(document.activeElement).toBe(first)
+
+    await sheet.trigger('keydown', { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(last)
+    await sheet.trigger('keydown', { key: 'Tab' })
+    expect(document.activeElement).toBe(first)
+
+    await wrapper.get('.fixed.inset-0').trigger('keydown', { key: 'Escape' })
+    await flushPromises()
+    expect(wrapper.find('#more-sheet').exists()).toBe(false)
+    expect(document.activeElement).toBe(moreButton.element)
+    wrapper.unmount()
+  })
 })

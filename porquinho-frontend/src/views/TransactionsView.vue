@@ -84,7 +84,7 @@
         <li
           v-for="row in transactions"
           :key="row.id"
-          class="px-4 py-3 sm:flex sm:items-center sm:gap-4"
+          class="px-4 py-3 [contain-intrinsic-size:auto_72px] [content-visibility:auto] sm:flex sm:items-center sm:gap-4"
           :data-testid="`transaction-${row.id}`"
         >
           <div class="flex min-w-0 flex-1 items-start justify-between gap-3">
@@ -222,7 +222,8 @@
 
 <script setup lang="ts">
 import { RouterLink } from 'vue-router'
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useFeedback } from '@/composables/useFeedback'
 import { ArrowLeftRight, ChevronLeft, ChevronRight, CreditCard, Download, Inbox } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
@@ -236,7 +237,7 @@ import {
 } from '@/components/ui/dialog'
 import TransactionExportDialog, { type ExportInitial } from '@/components/transactions/TransactionExportDialog.vue'
 import TransactionFormDialog from '@/components/transactions/TransactionFormDialog.vue'
-import { currentMonth, formatLocalDateBR, formatMonthBR, shiftMonth } from '@/lib/date'
+import { formatLocalDateBR, formatMonthBR, monthFromQuery, shiftMonth } from '@/lib/date'
 import { formatSignedBRL } from '@/lib/money'
 import { plural } from '@/lib/plural'
 import { categoryLabel, installmentLabel, pixLabel, signedAmount, targetName } from '@/lib/transactionLabels'
@@ -261,7 +262,11 @@ const ACTION_FAILED = 'Não foi possível concluir a ação. Tente de novo.'
 const heading = ref<HTMLElement | null>(null)
 const addButton = ref<{ $el: HTMLElement } | null>(null)
 const list = ref<HTMLElement | null>(null)
-const month = ref(currentMonth())
+const route = useRoute()
+const router = useRouter()
+// o mês mostrado fica na URL (?mes=AAAA-MM): recarregar ou compartilhar abre no mesmo mês
+const month = ref(monthFromQuery(route.query.mes))
+watch(month, (mes) => void router.replace({ query: { ...route.query, mes } }))
 const transactions = ref<Transaction[]>([])
 const accounts = ref<Account[]>([])
 const cards = ref<Card[]>([])
