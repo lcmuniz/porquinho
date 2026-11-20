@@ -161,7 +161,7 @@
                     inputmode="decimal"
                     autocomplete="off"
                     placeholder="0,00"
-                    class="min-h-[44px] text-right"
+                    class="min-h-[44px] scroll-mb-40 text-right lg:scroll-mb-24"
                     :aria-invalid="fieldErrors[child.id] ? 'true' : undefined"
                     :aria-describedby="fieldErrors[child.id] ? `amount-error-${child.id}` : undefined"
                     :data-testid="`amount-${child.id}`"
@@ -259,11 +259,20 @@
         <!-- novo-design: barra de ações fixa; no celular fica acima da barra de navegação inferior -->
         <div
           v-if="groups.length > 0"
-          class="sticky bottom-16 z-20 -mx-4 grid grid-cols-2 gap-2 border-t border-gray-200 bg-white/95 px-4 py-3 backdrop-blur sm:flex sm:items-center sm:justify-end md:-mx-8 md:px-8 lg:bottom-0"
+          class="sticky bottom-16 z-20 -mx-4 grid grid-cols-[minmax(0,1fr)_auto] gap-2 border-t border-gray-200 bg-white/95 px-4 py-3 backdrop-blur sm:flex sm:items-center sm:justify-end md:-mx-8 md:px-8 lg:bottom-0"
           data-testid="budget-actions"
         >
           <p v-if="dirty" class="col-span-2 text-sm font-semibold text-amber-800 sm:mr-auto" data-testid="unsaved-changes">
             Alterações não salvas
+            <!-- Critique de 20/11/2026 (3ª): a dica fica na barra, à vista; no celular ela vai no item do menu "⋯" -->
+            <span
+              v-if="!closedMonth"
+              id="reallocate-hint"
+              class="ml-2 hidden font-normal text-gray-600 sm:inline"
+              data-testid="reallocate-hint"
+            >
+              Salve o orçamento antes de mover dinheiro
+            </span>
           </p>
           <!-- Critique de 20/11/2026: a confirmação (com "Desfazer") aparece aqui, junto do botão que salvou -->
           <FeedbackBanner
@@ -280,7 +289,7 @@
             ref="reallocateButton"
             type="button"
             variant="outline"
-            class="min-h-[44px]"
+            class="hidden min-h-[44px] sm:inline-flex"
             :disabled="saving || repeating || dirty || !canReallocate"
             :aria-describedby="dirty ? 'reallocate-hint' : undefined"
             data-testid="open-reallocate"
@@ -292,7 +301,7 @@
             type="button"
             variant="outline"
             class="min-h-[44px]"
-            :class="{ 'col-span-2': closedMonth }"
+            :class="closedMonth ? 'col-span-2' : 'hidden sm:inline-flex'"
             :disabled="saving || repeating"
             data-testid="repeat-previous"
             @click="repeatPrevious"
@@ -300,18 +309,50 @@
             <span class="sm:hidden">Repetir mês anterior</span>
             <span class="hidden sm:inline">Repetir orçamento do mês anterior</span>
           </Button>
-          <Button type="submit" class="col-span-2 min-h-[44px]" :disabled="saving || repeating || !dirty" data-testid="save-budget">
+          <Button
+            type="submit"
+            class="min-h-[44px]"
+            :class="{ 'col-span-2': closedMonth }"
+            :disabled="saving || repeating || !dirty"
+            data-testid="save-budget"
+          >
             {{ saving ? 'Salvando…' : 'Salvar orçamento' }}
           </Button>
+          <!-- Critique de 20/11/2026 (3ª): no celular, Mover e Repetir vão para o "⋯" e a barra fica numa linha -->
+          <DropdownMenu v-if="!closedMonth" :modal="false">
+            <DropdownMenuTrigger as-child>
+              <Button
+                ref="moreButton"
+                type="button"
+                variant="outline"
+                class="min-h-[44px] min-w-[44px] sm:hidden"
+                aria-label="Mais ações do orçamento"
+                data-testid="budget-more"
+              >
+                <MoreHorizontal class="size-5" aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" class="min-w-56">
+              <DropdownMenuItem
+                class="min-h-[44px] flex-col items-start gap-0"
+                :disabled="saving || repeating || dirty || !canReallocate"
+                data-testid="menu-reallocate"
+                @select="openReallocate"
+              >
+                Mover dinheiro
+                <span v-if="dirty" class="text-xs text-gray-600">Salve o orçamento antes</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                class="min-h-[44px]"
+                :disabled="saving || repeating"
+                data-testid="menu-repeat"
+                @select="repeatPrevious"
+              >
+                Repetir mês anterior
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-        <p
-          v-if="groups.length > 0 && !closedMonth && dirty"
-          id="reallocate-hint"
-          class="text-right text-sm text-gray-600"
-          data-testid="reallocate-hint"
-        >
-          Salve o orçamento antes de mover dinheiro
-        </p>
       </form>
     </div>
 
@@ -366,7 +407,8 @@
 </template>
 
 <script setup lang="ts">
-import { ChevronLeft, ChevronRight } from 'lucide-vue-next'
+import { ChevronLeft, ChevronRight, MoreHorizontal } from 'lucide-vue-next'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useFeedback } from '@/composables/useFeedback'
 import { useEventListener } from '@vueuse/core'
@@ -426,6 +468,7 @@ const reallocating = ref(false)
 const reallocateError = ref<string | null>(null)
 const reallocateForm = ref<InstanceType<typeof ReallocateForm> | null>(null)
 const reallocateButton = ref<InstanceType<typeof Button> | null>(null)
+const moreButton = ref<InstanceType<typeof Button> | null>(null)
 
 const monthLabel = computed(() => formatMonthBR(month.value))
 
@@ -687,7 +730,12 @@ function onReallocateOpenAutoFocus(event: Event) {
 
 function onReallocateCloseAutoFocus(event: Event) {
   event.preventDefault()
-  void nextTick(() => (reallocateButton.value?.$el as HTMLElement | undefined)?.focus())
+  void nextTick(() => {
+    // no celular o botão fica escondido (a ação está no "⋯"): o foco volta para o "⋯"
+    const button = reallocateButton.value?.$el as HTMLElement | undefined
+    const target = button?.offsetParent ? button : (moreButton.value?.$el as HTMLElement | undefined)
+    ;(target ?? button)?.focus()
+  })
 }
 
 function onMoved(data: Budget, message: string) {

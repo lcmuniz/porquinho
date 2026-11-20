@@ -113,7 +113,7 @@
               <input
                 v-model="selected"
                 type="checkbox"
-                class="size-5 accent-purple-700"
+                class="size-5 scroll-mb-48 accent-purple-700 lg:scroll-mb-32"
                 :value="row.id"
                 :aria-label="`Selecionar ${row.description}`"
                 :data-testid="`select-${row.id}`"

@@ -697,6 +697,31 @@ describe('BudgetView', () => {
       await flushPromises()
       expect(w.find('[data-testid="open-reallocate"]').exists()).toBe(false)
     })
+
+    it('no celular, Mover e Repetir ficam no "⋯", com a dica no item quando há valor não salvo', async () => {
+      const w = await mountView()
+      expect(w.get('[data-testid="open-reallocate"]').classes()).toContain('hidden')
+      expect(w.get('[data-testid="repeat-previous"]').classes()).toContain('hidden')
+      const more = w.get('[data-testid="budget-more"]')
+      expect(more.attributes('aria-label')).toBe('Mais ações do orçamento')
+      expect(more.classes()).toContain('sm:hidden')
+
+      await type('amount-c1', '450,00')
+      await more.trigger('keydown', { key: 'Enter' })
+      await flushPromises()
+      const reallocate = document.body.querySelector('[data-testid="menu-reallocate"]')!
+      expect(reallocate.hasAttribute('data-disabled')).toBe(true)
+      expect(reallocate.textContent).toContain('Salve o orçamento antes')
+      expect(document.body.querySelector('[data-testid="menu-repeat"]')!.textContent!.trim()).toBe('Repetir mês anterior')
+    })
+
+    it('em mês fechado não há "⋯": Repetir fica à vista', async () => {
+      const w = await mountView()
+      await w.get('[data-testid="previous-month"]').trigger('click')
+      await flushPromises()
+      expect(w.find('[data-testid="budget-more"]').exists()).toBe(false)
+      expect(w.get('[data-testid="repeat-previous"]').classes()).not.toContain('hidden')
+    })
   })
 })
 
