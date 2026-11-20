@@ -16,14 +16,6 @@
           >
             Adicionar categoria
           </Button>
-          <Button
-            variant="outline"
-            class="min-h-[44px]"
-            data-testid="budget-export"
-            @click="exportOpen = true"
-          >
-            Exportar relatório de orçamento
-          </Button>
         </div>
       </div>
 
@@ -330,12 +322,6 @@
       @close="deleting = null"
       @close-auto-focus="returnDeleteFocus"
     />
-
-    <BudgetExportDialog
-      v-model:open="exportOpen"
-      :initial-month="currentMonth()"
-      @exported="setSuccess('Relatório de orçamento exportado')"
-    />
   </main>
 </template>
 
@@ -346,9 +332,7 @@ import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { useFeedback } from '@/composables/useFeedback'
 import { Check, ChevronDown, ChevronRight, FolderInput, Trash2 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
-import BudgetExportDialog from '@/components/budget/BudgetExportDialog.vue'
 import CategoryDeleteDialog from '@/components/category/CategoryDeleteDialog.vue'
-import { currentMonth } from '@/lib/date'
 import {
   Dialog,
   DialogContent,
@@ -387,7 +371,6 @@ const form = reactive({ name: '', parentId: '', colorHex: '', iconName: '' })
 const nameError = ref<string | null>(null)
 const formError = ref<string | null>(null)
 const { successMessage, setSuccess } = useFeedback()
-const exportOpen = ref(false)
 
 // Grupos começam expandidos: guarda só os recolhidos
 const collapsed = ref(new Set<string>())
