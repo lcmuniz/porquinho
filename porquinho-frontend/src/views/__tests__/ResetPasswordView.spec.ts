@@ -9,11 +9,30 @@ vi.mock('@/composables/useAuth', () => ({
   useAuth: () => ({ updatePassword: (...a: unknown[]) => mockUpdatePassword(...a) }),
 }))
 vi.mock('@/services/authService', () => ({ authService: { logPasswordResetCompleted: vi.fn() } }))
+const mockSignOut = vi.fn()
+vi.mock('@/services/supabase', () => ({
+  supabase: { auth: { signOut: (...a: unknown[]) => mockSignOut(...a) } },
+}))
 
 const stubs = { global: { stubs: { 'router-link': true, RouterLink: true } } }
 
 describe('ResetPasswordView', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockSignOut.mockResolvedValue({ error: null })
+  })
+
+  it('sucesso: encerra a sessão local do link, para o /login não redirecionar ao dashboard', async () => {
+    mockUpdatePassword.mockResolvedValue({})
+    const wrapper = mount(ResetPasswordView, stubs)
+    const inputs = wrapper.findAll('input[type="password"]')
+    await inputs[0]!.setValue('Senha1234')
+    await inputs[1]!.setValue('Senha1234')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    expect(wrapper.text()).toContain('Senha redefinida com sucesso!')
+    expect(mockSignOut).toHaveBeenCalledWith({ scope: 'local' })
+  })
   afterEach(() => window.history.replaceState(null, '', '/'))
 
   it('mesma senha (Supabase same_password): mostra a mensagem específica', async () => {

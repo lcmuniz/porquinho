@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useAuth } from '@/composables/useAuth'
 import { authService } from '@/services/authService'
 import { errorMessageOf } from '@/lib/apiError'
+import { supabase } from '@/services/supabase'
 
 const router = useRouter()
 const { updatePassword } = useAuth()
@@ -67,6 +68,10 @@ async function handleSubmit() {
 
     // Show success message
     isSuccess.value = true
+
+    // A sessão do link de recuperação continua ativa: sem encerrá-la, o /login redireciona ao dashboard e a pessoa
+    // não chega a entrar com a senha nova.
+    await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
 
     // Redirect to login after 3 seconds
     setTimeout(() => {
