@@ -127,7 +127,7 @@ public class EmailService {
                 "Recebemos sua solicitação de exclusão de conta no Porquinho.\n\n" +
                 "Sua conta foi marcada para exclusão e seus dados serão permanentemente removidos em " + formattedDate + " (30 dias).\n\n" +
                 "Durante este período de retenção, sua conta permanecerá inativa e você não poderá fazer login.\n\n" +
-                "IMPORTANTE: Se você não solicitou esta exclusão, entre em contato imediatamente com nosso suporte para reverter a solicitação.\n\n" +
+                "IMPORTANTE: Se você não solicitou esta exclusão, entre em contato imediatamente com nosso suporte em suporte@eficaztech.com para reverter a solicitação.\n\n" +
                 "Atenciosamente,\nEquipe Porquinho"
             );
             mailSender.send(message);
