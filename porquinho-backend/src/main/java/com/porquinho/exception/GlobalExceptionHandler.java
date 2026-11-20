@@ -40,7 +40,7 @@ public class GlobalExceptionHandler {
             ex.getMessage()
         );
         problemDetail.setTitle("Conflict");
-        problemDetail.setType(URI.create("https://api.porquinho.com/errors/conflict"));
+        problemDetail.setType(URI.create("https://porquinho.eficaztech.com/errors/conflict"));
         return problemDetail;
     }
 
@@ -57,7 +57,7 @@ public class GlobalExceptionHandler {
             : StaleDataMessages.GENERIC;
         ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, detail);
         problemDetail.setTitle("Conflict");
-        problemDetail.setType(URI.create("https://api.porquinho.com/errors/conflict"));
+        problemDetail.setType(URI.create("https://porquinho.eficaztech.com/errors/conflict"));
         return problemDetail;
     }
 
@@ -74,7 +74,7 @@ public class GlobalExceptionHandler {
             ex.getMessage()
         );
         problemDetail.setTitle("Too Many Requests");
-        problemDetail.setType(URI.create("https://api.porquinho.com/errors/rate-limit-exceeded"));
+        problemDetail.setType(URI.create("https://porquinho.eficaztech.com/errors/rate-limit-exceeded"));
         problemDetail.setProperty("retryAfter", 60); // 60 seconds
         return problemDetail;
     }
@@ -92,7 +92,7 @@ public class GlobalExceptionHandler {
             ex.getMessage()
         );
         problemDetail.setTitle("Account Locked");
-        problemDetail.setType(URI.create("https://api.porquinho.com/errors/account-locked"));
+        problemDetail.setType(URI.create("https://porquinho.eficaztech.com/errors/account-locked"));
         problemDetail.setProperty("retryAfter", 900); // 900 seconds = 15 minutes
         return problemDetail;
     }
@@ -108,7 +108,7 @@ public class GlobalExceptionHandler {
             "Pagamento indisponível no momento. Tente novamente mais tarde."
         );
         problemDetail.setTitle("Pagamento indisponível");
-        problemDetail.setType(URI.create("https://api.porquinho.com/errors/payment-provider-unavailable"));
+        problemDetail.setType(URI.create("https://porquinho.eficaztech.com/errors/payment-provider-unavailable"));
         return problemDetail;
     }
 
@@ -123,7 +123,7 @@ public class GlobalExceptionHandler {
             "Invalid webhook signature"
         );
         problemDetail.setTitle("Invalid Webhook Signature");
-        problemDetail.setType(URI.create("https://api.porquinho.com/errors/invalid-webhook-signature"));
+        problemDetail.setType(URI.create("https://porquinho.eficaztech.com/errors/invalid-webhook-signature"));
         return problemDetail;
     }
 
@@ -135,7 +135,7 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleForbiddenException(ForbiddenException ex) {
         ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, ex.getMessage());
         problemDetail.setTitle("Acesso restrito");
-        problemDetail.setType(URI.create("https://api.porquinho.com/errors/forbidden"));
+        problemDetail.setType(URI.create("https://porquinho.eficaztech.com/errors/forbidden"));
         return problemDetail;
     }
 
@@ -152,7 +152,7 @@ public class GlobalExceptionHandler {
             ex.getMessage()
         );
         problemDetail.setTitle("Resource Not Found");
-        problemDetail.setType(URI.create("https://api.porquinho.com/errors/not-found"));
+        problemDetail.setType(URI.create("https://porquinho.eficaztech.com/errors/not-found"));
         return problemDetail;
     }
 
@@ -172,7 +172,7 @@ public class GlobalExceptionHandler {
             : errors.values().iterator().next();
         ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, detail);
         problemDetail.setTitle("Dados inválidos");
-        problemDetail.setType(URI.create("https://api.porquinho.com/errors/validation"));
+        problemDetail.setType(URI.create("https://porquinho.eficaztech.com/errors/validation"));
         problemDetail.setProperty("errors", errors);
         return problemDetail;
     }
@@ -185,7 +185,7 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleBadRequestException(BadRequestException ex) {
         ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
         problemDetail.setTitle("Dados inválidos");
-        problemDetail.setType(URI.create("https://api.porquinho.com/errors/validation"));
+        problemDetail.setType(URI.create("https://porquinho.eficaztech.com/errors/validation"));
         if (ex.getField() != null) {
             problemDetail.setProperty("errors", Map.of(ex.getField(), ex.getMessage()));
         }
@@ -203,7 +203,7 @@ public class GlobalExceptionHandler {
             "Dados inválidos. Confira os campos e tente novamente."
         );
         problemDetail.setTitle("Dados inválidos");
-        problemDetail.setType(URI.create("https://api.porquinho.com/errors/validation"));
+        problemDetail.setType(URI.create("https://porquinho.eficaztech.com/errors/validation"));
         return problemDetail;
     }
 
@@ -218,7 +218,7 @@ public class GlobalExceptionHandler {
             "Arquivo muito grande (máximo 10MB)"
         );
         problemDetail.setTitle("Dados inválidos");
-        problemDetail.setType(URI.create("https://api.porquinho.com/errors/validation"));
+        problemDetail.setType(URI.create("https://porquinho.eficaztech.com/errors/validation"));
         return problemDetail;
     }
 }
