@@ -14,7 +14,8 @@
         class="rounded-lg bg-green-100 px-4 py-3 text-sm text-green-800"
       >
         Assinatura confirmada!
-        <template v-if="subscription?.planType === 'TRIAL'">
+        <!-- Pela data, não pelo planType: o webhook pode virar MONTHLY antes da volta do Stripe -->
+        <template v-if="trialStillRunning">
           A primeira cobrança acontece no fim do trial.
         </template>
       </p>
@@ -341,6 +342,11 @@ async function subscribe() {
     loading.value = false
   }
 }
+
+const trialStillRunning = computed(() => {
+  const end = subscription.value?.trialEndDate
+  return !!end && new Date(end).getTime() > Date.now()
+})
 
 let pollTimer: ReturnType<typeof setTimeout> | null = null
 

@@ -21,6 +21,10 @@ vi.mock('vue-router', async (importOriginal) => ({
   useRoute: () => mockRoute,
 }))
 
+function inDays(days: number): string {
+  return new Date(Date.now() + days * 86_400_000).toISOString()
+}
+
 function trial(overrides: Partial<Subscription> = {}): Subscription {
   return {
     planType: 'TRIAL',
@@ -122,6 +126,7 @@ describe('SubscriptionView', () => {
 
   it('confirma a assinatura e esconde o botão no retorno com ?status=sucesso', async () => {
     mockRoute.query = { status: 'sucesso' }
+    mockGetMySubscription.mockResolvedValue(trial({ trialEndDate: inDays(10) }))
     const wrapper = mountView()
     await flushPromises()
 
@@ -140,7 +145,7 @@ describe('SubscriptionView', () => {
       mockGetMySubscription
         .mockResolvedValueOnce(trial())
         .mockResolvedValueOnce(trial())
-        .mockResolvedValue(trial({ planType: 'MONTHLY', daysRemaining: 0 }))
+        .mockResolvedValue(trial({ planType: 'MONTHLY', daysRemaining: 0, trialEndDate: inDays(-1) }))
       const wrapper = mountView()
       await flushPromises()
       expect(mockGetMySubscription).toHaveBeenCalledTimes(1)
@@ -158,6 +163,16 @@ describe('SubscriptionView', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('mantém o aviso do fim do trial quando o webhook já virou MONTHLY antes da volta', async () => {
+    mockRoute.query = { status: 'sucesso' }
+    mockGetMySubscription.mockResolvedValue(trial({ planType: 'MONTHLY', trialEndDate: inDays(10) }))
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="checkout-success"]').text()).toContain('primeira cobrança acontece no fim do trial')
+    wrapper.unmount()
   })
 
   it('para de recarregar depois de 5 tentativas', async () => {
