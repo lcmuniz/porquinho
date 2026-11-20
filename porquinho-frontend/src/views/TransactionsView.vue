@@ -135,37 +135,43 @@
                   {{ formatSignedBRL(signedAmount(row)) }}
                 </span>
               </div>
-              <div class="-ml-3 mt-1 flex flex-wrap gap-1 sm:mt-0 sm:ml-0 sm:shrink-0">
-                <Button
-                  variant="ghost"
-                  class="min-h-[44px] text-purple-700"
-                  :aria-label="`Editar ${row.description}`"
-                  :data-testid="`edit-${row.id}`"
-                  @click="openEdit(row)"
-                >
-                  Editar
-                </Button>
-                <Button
-                  variant="ghost"
-                  class="min-h-[44px] text-gray-700 hover:bg-red-50 hover:text-red-700"
-                  :aria-label="`Remover ${row.description}`"
-                  :data-testid="`remove-${row.id}`"
-                  @click="openConfirm(row, 'delete')"
-                >
-                  Remover
-                </Button>
-                <Button
-                  v-if="row.remainingInstallments > 0"
-                  variant="ghost"
-                  class="min-h-[44px] text-gray-700 hover:bg-red-50 hover:text-red-700"
-                  :aria-label="`Remover parcelas futuras desta compra: ${row.description}`"
-                  :data-testid="`remove-futures-${row.id}`"
-                  @click="openConfirm(row, 'futures')"
-                >
-                  Remover parcelas futuras desta compra
-                </Button>
-              </div>
             </div>
+            <!-- Critique de 20/11/2026: com 2 ou mais ações, elas ficam no menu "⋯" -->
+            <DropdownMenu :modal="false">
+              <DropdownMenuTrigger as-child>
+                <Button
+                  variant="ghost"
+                  class="-my-1 min-h-[44px] min-w-[44px] shrink-0 self-start text-gray-700 hover:bg-gray-100 sm:self-center"
+                  :aria-label="`Mais ações de ${row.description}`"
+                  :data-testid="`actions-${row.id}`"
+                >
+                  <MoreHorizontal class="size-4" aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem :data-testid="`edit-${row.id}`" @select="openEdit(row)">
+                  <Pencil aria-hidden="true" />
+                  Editar
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  class="text-red-700 focus:bg-red-50 focus:text-red-700"
+                  :data-testid="`remove-${row.id}`"
+                  @select="openConfirm(row, 'delete')"
+                >
+                  <Trash2 aria-hidden="true" />
+                  Remover
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  v-if="row.remainingInstallments > 0"
+                  class="text-red-700 focus:bg-red-50 focus:text-red-700"
+                  :data-testid="`remove-futures-${row.id}`"
+                  @select="openConfirm(row, 'futures')"
+                >
+                  <CalendarX aria-hidden="true" />
+                  Remover parcelas futuras
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </li>
         </ul>
       </template>
@@ -356,7 +362,19 @@ import { useRoute, useRouter } from 'vue-router'
 import { useFeedback } from '@/composables/useFeedback'
 import type { FeedbackAction } from '@/composables/useFeedback'
 import FeedbackBanner from '@/components/common/FeedbackBanner.vue'
-import { ArrowLeftRight, ChevronLeft, ChevronRight, CreditCard, Download, Inbox } from 'lucide-vue-next'
+import {
+  ArrowLeftRight,
+  CalendarX,
+  ChevronLeft,
+  ChevronRight,
+  CreditCard,
+  Download,
+  Inbox,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+} from 'lucide-vue-next'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -513,14 +531,14 @@ function onConfirmOpenChange(open: boolean) {
   if (!confirming.value) confirmOpen.value = open
 }
 
-/** O foco volta ao "Adicionar transação" ou ao "Editar" da linha, se ela ainda estiver na lista; senão, ao título. */
+/** O foco volta ao "Adicionar transação" ou ao "⋯" da linha, se ela ainda estiver na lista; senão, ao título. */
 function returnFocus(event: Event) {
   event.preventDefault()
   void nextTick(() => {
     const button = creating.value
       ? addButton.value?.$el
       : current.value
-      ? list.value?.querySelector<HTMLElement>(`[data-testid="edit-${current.value.id}"]`)
+      ? list.value?.querySelector<HTMLElement>(`[data-testid="actions-${current.value.id}"]`)
       : null
     ;(button ?? heading.value)?.focus()
   })

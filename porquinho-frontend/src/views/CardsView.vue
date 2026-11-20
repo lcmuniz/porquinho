@@ -122,28 +122,33 @@
                 >
                   {{ formatBRL(card.cardLimit) }}
                 </span>
-              </div>
-              <div class="mt-2 -mb-1 flex justify-end gap-1">
-              <Button
-                variant="ghost"
-                class="min-h-[44px] min-w-[44px] shrink-0 text-purple-700 hover:bg-purple-50"
-                :data-testid="`edit-card-${card.id}`"
-                :aria-label="`Editar ${card.cardName}`"
-                @click="openEdit(card)"
-              >
-                <Pencil class="h-4 w-4" aria-hidden="true" />
-                Editar
-              </Button>
-              <Button
-                variant="ghost"
-                class="min-h-[44px] min-w-[44px] shrink-0 text-gray-700 hover:bg-red-50 hover:text-red-700"
-                :data-testid="`remove-card-${card.id}`"
-                :aria-label="`Remover ${card.cardName}`"
-                @click="openRemove(card)"
-              >
-                <Trash2 class="h-4 w-4" aria-hidden="true" />
-                Remover
-              </Button>
+                <!-- Critique de 20/11/2026: com 2 ou mais ações, elas ficam no menu "⋯" -->
+                <DropdownMenu :modal="false">
+                  <DropdownMenuTrigger as-child>
+                    <Button
+                      variant="ghost"
+                      class="-my-2.5 -mr-2 min-h-[44px] min-w-[44px] shrink-0 text-gray-700 hover:bg-gray-100"
+                      :data-testid="`card-actions-${card.id}`"
+                      :aria-label="`Mais ações de ${card.cardName}`"
+                    >
+                      <MoreHorizontal class="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem :data-testid="`edit-card-${card.id}`" @select="openEdit(card)">
+                      <Pencil aria-hidden="true" />
+                      Editar
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      class="text-red-700 focus:bg-red-50 focus:text-red-700"
+                      :data-testid="`remove-card-${card.id}`"
+                      @select="openRemove(card)"
+                    >
+                      <Trash2 aria-hidden="true" />
+                      Remover
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </li>
           </ul>
@@ -334,7 +339,8 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { CreditCard as CreditCardIcon, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-vue-next'
+import { CreditCard as CreditCardIcon, MoreHorizontal, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-vue-next'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import CardForm from '@/components/cards/CardForm.vue'
 import { Button } from '@/components/ui/button'
 import {
@@ -398,8 +404,8 @@ const {
   onCloseAutoFocus,
 } = useFormDialog({
   form: () => cardForm.value,
-  // Na edição, o foco volta para o "Editar" do cartão
-  returnFocus: () => cardButton('edit-card', editing.value) ?? fallbackFocus(),
+  // Na edição, o foco volta para o "⋯" do cartão
+  returnFocus: () => cardButton('card-actions', editing.value) ?? fallbackFocus(),
 })
 const {
   open: removeDialogOpen,
@@ -407,7 +413,7 @@ const {
   error: removeError,
   onOpenChange: onRemoveDialogOpenChange,
   onCloseAutoFocus: onRemoveCloseAutoFocus,
-} = useFormDialog({ returnFocus: () => cardButton('remove-card', removing.value) ?? fallbackFocus() })
+} = useFormDialog({ returnFocus: () => cardButton('card-actions', removing.value) ?? fallbackFocus() })
 
 /** Soma em centavos inteiros: 0,10 + 0,20 dá exatamente 0,30. */
 const totalCents = computed(() =>
@@ -597,7 +603,7 @@ async function restore(card: CreditCard) {
     insertByCreation(restored)
     setSuccess('Cartão restaurado')
     // O botão "Restaurar" some: o foco vai para o "Editar" do cartão restaurado
-    void nextTick(() => cardButton('edit-card', restored)?.focus())
+    void nextTick(() => cardButton('card-actions', restored)?.focus())
   } catch (err) {
     if (apiErrorStatus(err) === 404) {
       removed.value = removed.value.filter((x) => x.id !== card.id)

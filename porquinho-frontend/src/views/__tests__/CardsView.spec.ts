@@ -66,6 +66,15 @@ async function fillAndSave(form: Form, name: string, limit: string, dueDay: stri
   await flushPromises()
 }
 
+
+/** Abre o menu "⋯" do cartão e escolhe a ação (critique de 20/11/2026). */
+async function chooseCardAction(wrapper: Wrapper, action: 'edit' | 'remove', id: string) {
+  await wrapper.get(`[data-testid="card-actions-${id}"]`).trigger('keydown', { key: 'Enter' })
+  await flushPromises()
+  document.body.querySelector<HTMLElement>(`[data-testid="${action}-card-${id}"]`)!.click()
+  await flushPromises()
+}
+
 describe('CardsView', () => {
   beforeEach(() => {
     mockList.mockReset().mockResolvedValue([])
@@ -402,8 +411,7 @@ describe('CardsView — editar cartão (Story 4.3)', () => {
     form.get(`[data-testid="${testid}"]`).element as HTMLInputElement
 
   async function openEdit(wrapper: Wrapper, id = 'c1') {
-    await wrapper.get(`[data-testid="edit-card-${id}"]`).trigger('click')
-    await flushPromises()
+    await chooseCardAction(wrapper, 'edit', id)
     return wrapper.findComponent(CardForm)
   }
 
@@ -428,13 +436,15 @@ describe('CardsView — editar cartão (Story 4.3)', () => {
     document.body.innerHTML = ''
   })
 
-  it('cada cartão tem o botão "Editar" com o nome no rótulo acessível e alvo de 44px', async () => {
+  it('cada cartão tem o menu "⋯" com o nome no rótulo acessível, alvo de 44px e "Editar" dentro', async () => {
     const wrapper = await mountView()
-    const button = wrapper.get('[data-testid="edit-card-c2"]')
-    expect(button.text()).toBe('Editar')
-    expect(button.attributes('aria-label')).toBe('Editar Inter')
+    const button = wrapper.get('[data-testid="card-actions-c2"]')
+    expect(button.attributes('aria-label')).toBe('Mais ações de Inter')
     expect(button.classes()).toContain('min-h-[44px]')
     expect(button.classes()).toContain('min-w-[44px]')
+    await button.trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+    expect(document.body.querySelector('[data-testid="edit-card-c2"]')?.textContent?.trim()).toBe('Editar')
   })
 
   it('abre o diálogo "Editar cartão" com os valores atuais (limite no formato brasileiro) e foco no nome', async () => {
@@ -476,7 +486,7 @@ describe('CardsView — editar cartão (Story 4.3)', () => {
     expect(plain(wrapper.get('[data-testid="cards-total"]').text())).toBe('R$ 7.000,00')
     expect(wrapper.get('[data-testid="cards-success"]').text()).toBe('Informações atualizadas')
     await flushPromises()
-    expect(document.activeElement?.getAttribute('data-testid')).toBe('edit-card-c1')
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('card-actions-c1')
   })
 
   it('dia 0 não chama a API e mostra o erro no campo', async () => {
@@ -616,14 +626,14 @@ describe('CardsView — editar cartão (Story 4.3)', () => {
     expect(editDialog()).toBeNull()
   })
 
-  it('cancelar a edição volta o foco para o "Editar" do cartão', async () => {
+  it('cancelar a edição volta o foco para o "⋯" do cartão', async () => {
     const wrapper = await mountView()
     await openEdit(wrapper, 'c2')
     document.body.querySelector<HTMLButtonElement>('[data-testid="cancel-add-card"]')!.click()
     await flushPromises()
 
     expect(mockUpdate).not.toHaveBeenCalled()
-    expect(document.activeElement?.getAttribute('data-testid')).toBe('edit-card-c2')
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('card-actions-c2')
   })
 
   it('depois de editar, "Adicionar cartão" abre o diálogo de criação vazio', async () => {
@@ -659,8 +669,7 @@ describe('CardsView — remover e restaurar cartão (Story 4.4)', () => {
     document.body.querySelector<HTMLButtonElement>(`[data-testid="${testid}"]`)!
 
   async function openRemove(wrapper: Wrapper, id = 'c2') {
-    await wrapper.get(`[data-testid="remove-card-${id}"]`).trigger('click')
-    await flushPromises()
+    await chooseCardAction(wrapper, 'remove', id)
   }
 
   async function confirm() {
@@ -701,13 +710,11 @@ describe('CardsView — remover e restaurar cartão (Story 4.4)', () => {
     document.body.innerHTML = ''
   })
 
-  it('cada cartão tem "Remover" com o nome no rótulo acessível e alvo de 44px', async () => {
+  it('o menu "⋯" do cartão tem "Remover"', async () => {
     const wrapper = await mountView()
-    const button = wrapper.get('[data-testid="remove-card-c2"]')
-    expect(button.text()).toBe('Remover')
-    expect(button.attributes('aria-label')).toBe('Remover Inter Gold')
-    expect(button.classes()).toContain('min-h-[44px]')
-    expect(button.classes()).toContain('min-w-[44px]')
+    await wrapper.get('[data-testid="card-actions-c2"]').trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+    expect(bodyButton('remove-card-c2').textContent?.trim()).toBe('Remover')
   })
 
   it('remover: confirmação, some da lista, total recalculado e "Cartão removido"; restaurar o traz de volta', async () => {
@@ -731,7 +738,7 @@ describe('CardsView — remover e restaurar cartão (Story 4.4)', () => {
     const section = wrapper.get('[data-testid="removed-cards"]')
     expect(section.get('h2').text()).toBe('Removidos')
     const removedItem = section.get('[data-testid="removed-card-item-c2"]')
-    expect(removedItem.find('[data-testid="edit-card-c2"]').exists()).toBe(false)
+    expect(removedItem.find('[data-testid="card-actions-c2"]').exists()).toBe(false)
     const restoreButton = removedItem.get('[data-testid="restore-card-c2"]')
     expect(restoreButton.attributes('aria-label')).toBe('Restaurar Inter Gold')
     expect(plain(wrapper.get('[data-testid="cards-total"]').text())).toBe('R$ 5.000,00')
@@ -751,7 +758,7 @@ describe('CardsView — remover e restaurar cartão (Story 4.4)', () => {
     expect(plain(wrapper.get('[data-testid="cards-total"]').text())).toBe('R$ 6.000,00')
     expect(wrapper.get('[data-testid="cards-success"]').text()).toBe('Cartão restaurado')
     await flushPromises()
-    expect(document.activeElement?.getAttribute('data-testid')).toBe('edit-card-c2')
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('card-actions-c2')
   })
 
   it('o único cartão pode ser removido (sem mínimo) e restaurado a partir do estado vazio', async () => {
@@ -829,7 +836,7 @@ describe('CardsView — remover e restaurar cartão (Story 4.4)', () => {
     expect(wrapper.find('[data-testid="card-item-new-Novo"]').exists()).toBe(true)
   })
 
-  it('cancelar não muda nada e devolve o foco ao "Remover" do cartão', async () => {
+  it('cancelar não muda nada e devolve o foco ao "⋯" do cartão', async () => {
     const wrapper = await mountView()
     await openRemove(wrapper)
     bodyButton('cancel-remove-card').click()
@@ -837,7 +844,7 @@ describe('CardsView — remover e restaurar cartão (Story 4.4)', () => {
 
     expect(mockDelete).not.toHaveBeenCalled()
     expect(wrapper.find('[data-testid="card-item-c2"]').exists()).toBe(true)
-    expect(document.activeElement?.getAttribute('data-testid')).toBe('remove-card-c2')
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('card-actions-c2')
   })
 
   it('enquanto remove, os botões ficam travados e o diálogo não fecha', async () => {

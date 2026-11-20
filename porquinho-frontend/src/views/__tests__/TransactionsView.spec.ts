@@ -83,6 +83,14 @@ async function mountView(rows: Transaction[]) {
 const inDialog = <T extends Element = HTMLElement>(testId: string) =>
   document.body.querySelector<T>(`[data-testid="${testId}"]`)
 
+/** Abre o menu "⋯" da linha e escolhe a ação (Editar, Remover ou Remover parcelas futuras). */
+async function chooseRowAction(w: VueWrapper, action: 'edit' | 'remove' | 'remove-futures', id: string) {
+  await w.get(`[data-testid="actions-${id}"]`).trigger('keydown', { key: 'Enter' })
+  await flushPromises()
+  inDialog(`${action}-${id}`)!.click()
+  await flushPromises()
+}
+
 async function setValue(testId: string, value: string) {
   const element = inDialog<HTMLInputElement | HTMLSelectElement>(testId)!
   element.value = value
@@ -137,7 +145,11 @@ describe('TransactionsView', () => {
       'Compra parcelada: 3/10 — restam 7 parcelas',
     )
     expect(w.get('[data-testid="transaction-pix"] [data-testid="row-target"]').text()).toBe('Nubank')
-    expect(w.find('[data-testid="remove-futures-pix"]').exists()).toBe(false)
+    await w.get('[data-testid="actions-pix"]').trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+    expect(inDialog('edit-pix')).not.toBeNull()
+    expect(inDialog('remove-futures-pix')).toBeNull()
+    await w.get('[data-testid="actions-pix"]').trigger('keydown', { key: 'Escape' })
 
     await w.get('[data-testid="previous-month"]').trigger('click')
     await flushPromises()
@@ -173,7 +185,7 @@ describe('TransactionsView', () => {
 
   it('edita e mostra "Transação atualizada" numa região de status', async () => {
     const w = await mountView([transaction('t1')])
-    await w.get('[data-testid="edit-t1"]').trigger('click')
+    await chooseRowAction(w, 'edit', 't1')
     await flushPromises()
 
     expect(inDialog<HTMLInputElement>('edit-amount')?.value).toBe('100,00')
@@ -205,7 +217,7 @@ describe('TransactionsView', () => {
     const w = await mountView([transaction('p3', { ...installment, remainingInstallments: 7 })])
     const status = () => w.get('[data-testid="transactions-success"]').text()
 
-    await w.get('[data-testid="edit-p3"]').trigger('click')
+    await chooseRowAction(w, 'edit', 'p3')
     await flushPromises()
     await setValue('edit-category', 'c2')
     mockUpdate.mockResolvedValue(transaction('p3', { ...installment, remainingInstallments: 7 }))
@@ -213,7 +225,7 @@ describe('TransactionsView', () => {
     await flushPromises()
     expect(status()).toBe('Transação atualizada. As 7 parcelas futuras também mudaram de categoria')
 
-    await w.get('[data-testid="edit-p3"]').trigger('click')
+    await chooseRowAction(w, 'edit', 'p3')
     await flushPromises()
     await setValue('edit-category', '')
     mockUpdate.mockResolvedValue(transaction('p3', { ...installment, remainingInstallments: 1 }))
@@ -222,7 +234,7 @@ describe('TransactionsView', () => {
     expect(status()).toBe('Transação atualizada. A parcela futura também mudou de categoria')
 
     // sem mudar a categoria, as futuras não mudam
-    await w.get('[data-testid="edit-p3"]').trigger('click')
+    await chooseRowAction(w, 'edit', 'p3')
     await flushPromises()
     await setValue('edit-amount', '150,50')
     inDialog<HTMLFormElement>('edit-form')!.dispatchEvent(new Event('submit'))
@@ -232,7 +244,7 @@ describe('TransactionsView', () => {
 
   it('avisa sobre data futura sem bloquear o envio', async () => {
     const w = await mountView([transaction('t1')])
-    await w.get('[data-testid="edit-t1"]').trigger('click')
+    await chooseRowAction(w, 'edit', 't1')
     await flushPromises()
     expect(inDialog('future-date-warning')).toBeNull()
 
@@ -246,7 +258,7 @@ describe('TransactionsView', () => {
 
   it('valor zero não é enviado', async () => {
     const w = await mountView([transaction('t1')])
-    await w.get('[data-testid="edit-t1"]').trigger('click')
+    await chooseRowAction(w, 'edit', 't1')
     await flushPromises()
     await setValue('edit-amount', '0')
     inDialog<HTMLFormElement>('edit-form')!.dispatchEvent(new Event('submit'))
@@ -260,7 +272,7 @@ describe('TransactionsView', () => {
     'valor fora do formato (%s) pede o formato, não "maior que zero"',
     async (amount) => {
       const w = await mountView([transaction('t1')])
-      await w.get('[data-testid="edit-t1"]').trigger('click')
+      await chooseRowAction(w, 'edit', 't1')
       await flushPromises()
       await setValue('edit-amount', amount)
       inDialog<HTMLFormElement>('edit-form')!.dispatchEvent(new Event('submit'))
@@ -273,7 +285,7 @@ describe('TransactionsView', () => {
 
   it('remove depois de confirmar e a linha sai da lista', async () => {
     const w = await mountView([transaction('t1')])
-    await w.get('[data-testid="remove-t1"]').trigger('click')
+    await chooseRowAction(w, 'remove', 't1')
     await flushPromises()
     mockList.mockResolvedValue([])
     inDialog<HTMLButtonElement>('confirm-action')!.click()
@@ -287,7 +299,7 @@ describe('TransactionsView', () => {
   it('remove as parcelas futuras e o texto deixa de falar em "restam"', async () => {
     const installment = { isInstallment: true, installmentNumber: 3, installmentTotal: 10 }
     const w = await mountView([transaction('p3', { ...installment, remainingInstallments: 7 })])
-    await w.get('[data-testid="remove-futures-p3"]').trigger('click')
+    await chooseRowAction(w, 'remove-futures', 'p3')
     await flushPromises()
     expect(inDialog('confirm-dialog')?.textContent).toContain('7 parcelas futuras')
     mockRemoveFutures.mockResolvedValue(7)
@@ -297,15 +309,17 @@ describe('TransactionsView', () => {
 
     expect(mockRemoveFutures).toHaveBeenCalledExactlyOnceWith('p3')
     expect(w.get('[data-testid="row-installment"]').text()).toBe('Compra parcelada: 3/10')
-    expect(w.find('[data-testid="remove-futures-p3"]').exists()).toBe(false)
+    await w.get('[data-testid="actions-p3"]').trigger('keydown', { key: 'Enter' })
+    await flushPromises()
+    expect(inDialog('remove-futures-p3')).toBeNull()
     expect(w.get('[data-testid="transactions-success"]').text()).toBe('7 parcelas futuras removidas')
   })
 
-  it('o botão de remover futuras cita a descrição', async () => {
+  it('o menu "⋯" da linha cita a descrição', async () => {
     const w = await mountView([
       transaction('p3', { isInstallment: true, installmentNumber: 3, installmentTotal: 10, remainingInstallments: 7 }),
     ])
-    expect(w.get('[data-testid="remove-futures-p3"]').attributes('aria-label')).toContain('Compra p3')
+    expect(w.get('[data-testid="actions-p3"]').attributes('aria-label')).toBe('Mais ações de Compra p3')
   })
 
   it('numa parcela, conta/cartão e tipo ficam desabilitados', async () => {
@@ -318,7 +332,7 @@ describe('TransactionsView', () => {
         creditCardId: 'k1',
       }),
     ])
-    await w.get('[data-testid="edit-p3"]').trigger('click')
+    await chooseRowAction(w, 'edit', 'p3')
     await flushPromises()
 
     expect(inDialog<HTMLSelectElement>('edit-type')?.disabled).toBe(true)
@@ -332,13 +346,13 @@ describe('TransactionsView', () => {
       transaction('only', { ...installment, confirmedInstallments: 1 }),
       transaction('one-of-two', { ...installment, confirmedInstallments: 2 }),
     ])
-    await w.get('[data-testid="remove-only"]').trigger('click')
+    await chooseRowAction(w, 'remove', 'only')
     await flushPromises()
     expect(inDialog('futures-going-along')?.textContent).toContain('7 parcelas futuras')
     inDialog<HTMLButtonElement>('confirm-cancel')!.click()
     await flushPromises()
 
-    await w.get('[data-testid="remove-one-of-two"]').trigger('click')
+    await chooseRowAction(w, 'remove', 'one-of-two')
     await flushPromises()
     expect(inDialog('futures-going-along')).toBeNull()
   })
@@ -349,7 +363,7 @@ describe('TransactionsView', () => {
     [409, 'Esta transação acabou de ser alterada. Recarregue a página e tente de novo.', true],
   ])('falha %i no salvar mostra o detail e recarrega só em 404/409', async (status, detail, reloads) => {
     const w = await mountView([transaction('t1')])
-    await w.get('[data-testid="edit-t1"]').trigger('click')
+    await chooseRowAction(w, 'edit', 't1')
     await flushPromises()
     mockUpdate.mockRejectedValue({ response: { status, data: { detail } } })
     inDialog<HTMLFormElement>('edit-form')!.dispatchEvent(new Event('submit'))
@@ -362,7 +376,7 @@ describe('TransactionsView', () => {
 
   it('falha ao remover mostra o detail e recarrega a lista', async () => {
     const w = await mountView([transaction('t1')])
-    await w.get('[data-testid="remove-t1"]').trigger('click')
+    await chooseRowAction(w, 'remove', 't1')
     await flushPromises()
     mockDelete.mockRejectedValue({ response: { status: 404, data: { detail: 'Transação não encontrada' } } })
     mockList.mockResolvedValue([])
@@ -392,31 +406,31 @@ describe('TransactionsView', () => {
       expect((await focused())?.getAttribute('data-testid')).toBe('add-transaction')
     })
 
-    it('cancelar a edição devolve o foco ao "Editar" da linha', async () => {
+    it('cancelar a edição devolve o foco ao "⋯" da linha', async () => {
       const w = await mountView([transaction('t1')])
-      await w.get('[data-testid="edit-t1"]').trigger('click')
+      await chooseRowAction(w, 'edit', 't1')
       await flushPromises()
       inDialog<HTMLButtonElement>('edit-cancel')!.click()
       await flushPromises()
 
       expect(inDialog('edit-dialog')).toBeNull()
-      expect((await focused())?.getAttribute('data-testid')).toBe('edit-t1')
+      expect((await focused())?.getAttribute('data-testid')).toBe('actions-t1')
     })
 
-    it('cancelar a remoção devolve o foco ao "Editar" da linha', async () => {
+    it('cancelar a remoção devolve o foco ao "⋯" da linha', async () => {
       const w = await mountView([transaction('t1')])
-      await w.get('[data-testid="remove-t1"]').trigger('click')
+      await chooseRowAction(w, 'remove', 't1')
       await flushPromises()
       inDialog<HTMLButtonElement>('confirm-cancel')!.click()
       await flushPromises()
 
       expect(inDialog('confirm-dialog')).toBeNull()
-      expect((await focused())?.getAttribute('data-testid')).toBe('edit-t1')
+      expect((await focused())?.getAttribute('data-testid')).toBe('actions-t1')
     })
 
     it('remover a linha devolve o foco ao título, porque o botão dela saiu da lista', async () => {
       const w = await mountView([transaction('t1')])
-      await w.get('[data-testid="remove-t1"]').trigger('click')
+      await chooseRowAction(w, 'remove', 't1')
       await flushPromises()
       mockList.mockResolvedValue([])
       inDialog<HTMLButtonElement>('confirm-action')!.click()
