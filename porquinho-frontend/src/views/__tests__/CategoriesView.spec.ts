@@ -132,6 +132,12 @@ describe('CategoriesView', () => {
     expect(error.getAttribute('role')).toBe('alert')
     expect(inDialog('category-name')!.getAttribute('aria-describedby')).toBe('category-name-error')
     expect(inDialog('category-dialog')).not.toBeNull()
+
+    const input = inDialog<HTMLInputElement>('category-name')!
+    input.value = 'moradia 2'
+    input.dispatchEvent(new Event('input'))
+    await flushPromises()
+    expect(inDialog('category-name-error')).toBeNull()
   })
 
   it('bloqueia nome vazio sem chamar a API', async () => {

@@ -180,6 +180,7 @@
               :aria-invalid="nameError ? 'true' : undefined"
               :aria-describedby="nameError ? 'category-name-error' : undefined"
               data-testid="category-name"
+              @update:model-value="nameError = null"
             />
             <p
               v-if="nameError"
