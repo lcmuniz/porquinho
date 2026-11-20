@@ -99,7 +99,9 @@ describe('BudgetView', () => {
     const items = w.findAll('[data-testid^="category-"]').map((li) => li.attributes('data-testid'))
     expect(items).toEqual(['category-c1', 'category-c2'])
     expect((w.get('[data-testid="amount-c1"]').element as HTMLInputElement).value).toBe('400,00')
-    expect(w.get('[data-testid="spent-c1"]').text()).toContain('100,00')
+    // com orçamento, o gasto aparece só em "R$ X de R$ Y"
+    expect(w.find('[data-testid="spent-c1"]').exists()).toBe(false)
+    expect(w.get('[data-testid="progress-text-c1"]').text()).toContain('100,00 de')
     expect(w.get('[data-testid="committed-c1"]').text()).toContain('50,00')
     // ajuda contextual: alocado e comprometido nos totais, uma vez cada, e não nas linhas
     expect(w.get('[data-testid="help-allocated"]').attributes('aria-label')).toBe('O que é alocado?')
@@ -282,6 +284,21 @@ describe('BudgetView', () => {
     const w = await mountView()
     expect(w.find('[data-testid="committed-c1"]').exists()).toBe(false)
     expect(w.find('[data-testid="total-committed"]').exists()).toBe(false)
+  })
+
+  it('comprometido zero não aparece na linha nem no quadro de totais', async () => {
+    mockGet.mockResolvedValue(
+      budget({
+        categories: [
+          { categoryId: 'c1', allocated: 400, spent: 100, committed: 0, remaining: 300, status: 'HEALTHY' },
+          { categoryId: 'c2', allocated: null, spent: 0, committed: 0, remaining: null, status: null },
+        ],
+      }),
+    )
+    const w = await mountView()
+    expect(w.find('[data-testid="committed-c1"]').exists()).toBe(false)
+    expect(w.find('[data-testid="total-committed"]').exists()).toBe(false)
+    expect(w.find('[data-testid="help-committed"]').exists()).toBe(false)
   })
 
   it('salva só os campos preenchidos e mostra "Orçamento salvo" com Desfazer na barra, com o foco nele', async () => {
@@ -661,7 +678,7 @@ describe('BudgetView', () => {
       await type('amount-c1', '450,00')
 
       expect(w.get('[data-testid="open-reallocate"]').attributes('disabled')).toBeDefined()
-      expect(w.get('[data-testid="reallocate-hint"]').text()).toBe('Salve o orçamento antes de mover dinheiro')
+      expect(w.get('[data-testid="reallocate-hint"]').text()).toBe('Salve antes de mover dinheiro')
       expect(w.get('[data-testid="open-reallocate"]').attributes('aria-describedby')).toBe('reallocate-hint')
     })
 

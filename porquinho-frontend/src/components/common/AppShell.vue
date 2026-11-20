@@ -52,7 +52,7 @@
 
     <!-- Mobile: topbar -->
     <header class="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-gray-200 bg-white/95 px-4 backdrop-blur lg:hidden">
-      <RouterLink to="/dashboard" class="flex items-center gap-2" aria-label="porquinho, ir para o início">
+      <RouterLink to="/dashboard" class="flex min-h-[44px] items-center gap-2" aria-label="porquinho, ir para o início">
         <PiggyBank class="size-6 text-purple-600" aria-hidden="true" />
         <span class="text-base font-bold tracking-tight text-gray-900">porquinho</span>
       </RouterLink>

@@ -12,7 +12,7 @@
               v-if="showSubscribeCta"
               to="/assinatura"
               data-testid="subscribe-cta"
-              class="text-sm font-medium text-gray-700 underline hover:text-gray-900"
+              class="inline-flex min-h-[44px] items-center text-sm font-medium text-gray-700 underline hover:text-gray-900"
             >
               {{ isFormerSubscriber ? 'Reativar' : 'Assinar' }}
             </RouterLink>

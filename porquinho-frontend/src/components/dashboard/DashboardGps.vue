@@ -69,7 +69,7 @@ const layers: { id: string; title: string; help?: string }[] = [
     id: 'layer-tactical',
     title: 'Visão tática',
     // Critique de 20/11/2026: só o título que não se explica sozinho tem ajuda, e sem a palavra "camada"
-    help: 'Para onde o seu dinheiro está indo: o gasto de cada categoria no mês e como ele mudou nos últimos 12 meses.',
+    help: 'Para onde o seu dinheiro está indo: o gasto de cada categoria no mês e como ele mudou nos últimos meses (3, 6 ou 12).',
   },
   {
     id: 'layer-details',

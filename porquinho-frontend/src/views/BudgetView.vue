@@ -75,7 +75,7 @@
 
       <form v-else-if="budget" class="space-y-6" novalidate data-testid="budget-form" @submit.prevent="save">
         <div class="space-y-3 rounded-lg border border-gray-200 bg-white p-4 text-sm md:p-6" data-testid="budget-totals">
-          <div class="grid grid-cols-2 gap-4" :class="{ 'sm:grid-cols-3': totalCommitted !== null }">
+          <div class="grid grid-cols-2 gap-4" :class="{ 'sm:grid-cols-3': totalCommitted }">
             <!-- Rótulos com a mesma altura (44px, a do botão de ajuda), para os valores ficarem alinhados -->
             <p class="text-gray-600">
               <span class="flex min-h-11 items-center gap-1">
@@ -92,7 +92,7 @@
               <span class="block text-xl font-bold text-gray-900 md:text-2xl" data-testid="total-available">{{ formatBRL(budget.totalAvailable) }}</span>
             </p>
             <!-- Critique de 20/11/2026: a ajuda do termo fica aqui, uma vez, e não na primeira linha da lista -->
-            <p v-if="totalCommitted !== null" class="col-span-2 text-gray-600 sm:col-span-1">
+            <p v-if="totalCommitted" class="col-span-2 text-gray-600 sm:col-span-1">
               <span class="flex min-h-11 items-center gap-1">
                 Comprometido
                 <HelpTip term="comprometido" testid="committed">
@@ -177,8 +177,11 @@
                 {{ fieldErrors[child.id] }}
               </p>
               <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-700">
-                <span :data-testid="`spent-${child.id}`">Gasto: {{ formatBRL(byCategory[child.id]!.spent) }}</span>
-                <span v-if="byCategory[child.id]!.committed !== null" :data-testid="`committed-${child.id}`">
+                <!-- Critique de 20/11/2026 (3ª): com orçamento, o gasto já está em "R$ X de R$ Y"; comprometido só se houver -->
+                <span v-if="byCategory[child.id]!.allocated === null" :data-testid="`spent-${child.id}`">
+                  Gasto: {{ formatBRL(byCategory[child.id]!.spent) }}
+                </span>
+                <span v-if="(byCategory[child.id]!.committed ?? 0) > 0" :data-testid="`committed-${child.id}`">
                   Comprometido: {{ formatBRL(byCategory[child.id]!.committed!) }}
                 </span>
               </div>
@@ -268,10 +271,10 @@
             <span
               v-if="!closedMonth"
               id="reallocate-hint"
-              class="ml-2 hidden font-normal text-gray-600 sm:inline"
+              class="hidden font-normal text-gray-600 sm:block"
               data-testid="reallocate-hint"
             >
-              Salve o orçamento antes de mover dinheiro
+              Salve antes de mover dinheiro
             </span>
           </p>
           <!-- Critique de 20/11/2026: a confirmação (com "Desfazer") aparece aqui, junto do botão que salvou -->
@@ -502,7 +505,10 @@ const groups = computed(() =>
     .sort((a, b) => Number(overspent(b.children[0]!)) - Number(overspent(a.children[0]!))),
 )
 
-/** Soma do comprometido das categorias mostradas; null em mês fechado (o backend não manda comprometido). */
+/**
+ * Soma do comprometido das categorias mostradas; null em mês fechado (o backend não manda comprometido). Zero não
+ * aparece no quadro: uma coluna "R$ 0,00" não diz nada.
+ */
 const totalCommitted = computed(() => {
   const values = groups.value.flatMap((g) => g.children).map((c) => byCategory.value[c.id]!.committed)
   // soma em centavos inteiros, para não acumular erro de ponto flutuante

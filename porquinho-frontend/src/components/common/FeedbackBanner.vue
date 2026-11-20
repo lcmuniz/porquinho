@@ -10,7 +10,10 @@
     @focusin="emit('pause')"
     @focusout="emit('resume')"
   >
-    <p role="status" :data-testid="testid" :class="message ? 'py-3' : 'sr-only'">{{ message }}</p>
+    <!-- Ícone + texto, nunca só a cor (PRODUCT.md) -->
+    <p role="status" :data-testid="testid" :class="message ? 'flex items-center gap-2 py-3' : 'sr-only'">
+      <CircleCheck v-if="message" class="size-4 shrink-0 text-green-700" aria-hidden="true" />{{ message }}
+    </p>
     <button
       v-if="message && action"
       ref="actionButton"
@@ -25,6 +28,7 @@
 </template>
 
 <script setup lang="ts">
+import { CircleCheck } from 'lucide-vue-next'
 import { ref } from 'vue'
 import type { FeedbackAction } from '@/composables/useFeedback'
 
