@@ -70,8 +70,8 @@
           <h2 class="text-2xl font-semibold text-gray-900">8. Contato</h2>
           <p class="mt-2 text-gray-700">
             Para questões sobre estes Termos de Uso, entre em contato através do email:
-            <a href="mailto:suporte@porquinho.com" class="text-purple-600 hover:text-purple-700 underline">
-              suporte@porquinho.com
+            <a href="mailto:suporte@eficaztech.com" class="text-purple-600 hover:text-purple-700 underline">
+              suporte@eficaztech.com
             </a>
           </p>
         </section>

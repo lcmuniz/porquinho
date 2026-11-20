@@ -101,8 +101,8 @@
           <p class="mt-2 text-gray-700">
             Para exercer seus direitos, acesse as configurações da sua conta ou entre em contato
             através do email:
-            <a href="mailto:privacidade@porquinho.com" class="text-purple-600 hover:text-purple-700 underline">
-              privacidade@porquinho.com
+            <a href="mailto:privacidade@eficaztech.com" class="text-purple-600 hover:text-purple-700 underline">
+              privacidade@eficaztech.com
             </a>
           </p>
         </section>
@@ -152,8 +152,8 @@
             Encarregado de Dados:
           </p>
           <p class="mt-2 text-gray-700">
-            <a href="mailto:dpo@porquinho.com" class="text-purple-600 hover:text-purple-700 underline">
-              dpo@porquinho.com
+            <a href="mailto:dpo@eficaztech.com" class="text-purple-600 hover:text-purple-700 underline">
+              dpo@eficaztech.com
             </a>
           </p>
         </section>
