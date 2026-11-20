@@ -119,7 +119,6 @@ public class TransactionImportReviewService {
         }
         int approved = transactionRepository.approveHighConfidence(userId, importId, HIGH_CONFIDENCE, OffsetDateTime.now());
         if (approved > 0) {
-            patternService.markReviewed(userId, importId);
             auditLogService.log(AUDIT_HIGH_CONFIDENCE_APPROVED, userId, ipAddress,
                 "{\"import_id\":\"" + importId + "\",\"approved_transactions\":" + approved + "}");
         }

@@ -34,13 +34,13 @@ public interface AiClassificationHistoryRepository extends JpaRepository<AiClass
                        @Param("categoryId") UUID categoryId);
 
     /**
-     * Retro do Epic 10, A3: the rows of import {@code importId} whose transaction left the review (approved or the
-     * import completed) get their review date, unless the user already chose a category for them.
+     * The import {@code importId} was completed: its rows get the completion as review date, also the ones the user
+     * corrected during the review (decision of 2026-11-20: the panel counts an import only once it is completed).
      */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(value = "UPDATE ai_classification_history h SET reviewed_at = now() FROM transactions t "
         + "WHERE t.id = h.transaction_id AND h.user_id = :userId AND t.import_id = :importId "
-        + "AND t.review_status <> 'PENDING' AND h.reviewed_at IS NULL", nativeQuery = true)
+        + "AND t.review_status <> 'PENDING'", nativeQuery = true)
     int markReviewed(@Param("userId") UUID userId, @Param("importId") UUID importId);
 
     /**
@@ -52,7 +52,8 @@ public interface AiClassificationHistoryRepository extends JpaRepository<AiClass
     int deleteByUserId(@Param("userId") UUID userId);
 
     // Story 10.3: aggregates of the admin panel over every user. A row counts once its transaction left the review
-    // (not PENDING) and was not deleted (a discarded import deletes them); was_corrected is an AI error. The bank is
+    // (not PENDING), its import was completed (decision of 2026-11-20: nothing of an import in review counts) and it
+    // was not deleted; was_corrected is an AI error. The bank is
     // the one of the import, a null bank_name is UNKNOWN. No index for these: they scan, fine at the current volume.
     // Retro do Epic 10, A3: the period (and the month) is the review date, so a correction made the day after the
     // import enters the 24 h window of the 10.5 alert; the panel uses the same date, so the alert link matches it.
@@ -60,6 +61,7 @@ public interface AiClassificationHistoryRepository extends JpaRepository<AiClass
     String COUNTED = "FROM ai_classification_history h JOIN transactions t ON t.id = h.transaction_id "
         + "LEFT JOIN transaction_imports i ON i.id = t.import_id "
         + "WHERE t.deleted_at IS NULL AND t.review_status <> 'PENDING' "
+        + "AND (t.import_id IS NULL OR i.status = 'COMPLETED') "
         + "AND h.reviewed_at >= :from AND h.reviewed_at < :to ";
 
     interface BankCounts {

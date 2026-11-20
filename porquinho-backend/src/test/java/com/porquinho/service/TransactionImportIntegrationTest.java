@@ -1689,8 +1689,11 @@ class TransactionImportIntegrationTest {
         UUID padaria = (UUID) byDescription(first, "Padaria do Bairro").get("id");
         assertThat(jdbc.queryForObject(reviewedAt, java.time.OffsetDateTime.class, uber)).isNotNull();
         assertThat(jdbc.queryForObject(reviewedAt, java.time.OffsetDateTime.class, padaria)).isNull();
+        java.time.OffsetDateTime correctedAt = jdbc.queryForObject(reviewedAt, java.time.OffsetDateTime.class, uber);
         reviewService.complete(userId, first, "127.0.0.1");
         assertThat(jdbc.queryForObject(reviewedAt, java.time.OffsetDateTime.class, padaria)).isNotNull();
+        // decision of 2026-11-20: the correction made in review also takes the completion date
+        assertThat(jdbc.queryForObject(reviewedAt, java.time.OffsetDateTime.class, uber)).isAfter(correctedAt);
         String lastUsed = "SELECT last_used_at FROM user_classification_patterns WHERE user_id = ? "
             + "AND description_pattern = 'uber trip'";
         java.time.OffsetDateTime learnedAt = jdbc.queryForObject(lastUsed, java.time.OffsetDateTime.class, userId);

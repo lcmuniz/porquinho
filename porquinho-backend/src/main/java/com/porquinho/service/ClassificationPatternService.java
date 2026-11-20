@@ -96,7 +96,7 @@ public class ClassificationPatternService {
             ids.size(), history, patterns.size());
     }
 
-    /** Retro do Epic 10, A3: the rows of the import that left the review get their review date. */
+    /** The import was completed: its rows get the completion as review date (see the repository method). */
     @Transactional
     public void markReviewed(UUID userId, UUID importId) {
         historyRepository.markReviewed(userId, importId);

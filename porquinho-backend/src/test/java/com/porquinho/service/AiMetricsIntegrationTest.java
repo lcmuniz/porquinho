@@ -136,6 +136,10 @@ class AiMetricsIntegrationTest {
         classified(nubank, "DEBIT", false, false, "CONFIRMED", false, 90, true, "2020-04-01T00:00:00-03:00"); // outside
         UUID unknown = importOf(null);
         classified(unknown, "CREDIT", false, false, "APPROVED", false, 90, false, "2020-03-11T12:00:00Z");
+        // decision of 2026-11-20: a row approved or corrected in an import still in review does not count yet
+        UUID inReview = importOf("NUBANK");
+        jdbc.update("UPDATE transaction_imports SET status = 'REVIEW' WHERE id = ?", inReview);
+        classified(inReview, "DEBIT", false, false, "APPROVED", false, 90, true, "2020-03-10T12:00:00Z");
 
         mockMvc.perform(get("/api/v1/admin/ai?" + PERIOD).with(jwt().jwt(j -> j.subject(admin.toString()))))
             .andExpect(status().isOk())
