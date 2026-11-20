@@ -24,6 +24,7 @@ import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -75,10 +76,16 @@ class AuthControllerTest {
     /** JWT as Supabase issues it: sub, e-mail and (Google) user_metadata. */
     private static org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken jwtAuth(
             UUID sub, String email) {
+        return jwtAuth(sub, email, "oauth");
+    }
+
+    private static org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken jwtAuth(
+            UUID sub, String email, String amrMethod) {
         org.springframework.security.oauth2.jwt.Jwt jwt = org.springframework.security.oauth2.jwt.Jwt.withTokenValue("t")
             .header("alg", "ES256")
             .subject(sub.toString())
             .claim("email", email)
+            .claim("amr", java.util.List.of(java.util.Map.of("method", amrMethod, "timestamp", 1)))
             .claim("user_metadata", java.util.Map.of("sub", "google-sub", "provider_id", "google-sub"))
             .claim("session_id", UUID.randomUUID().toString())
             .issuedAt(java.time.Instant.now())
@@ -159,6 +166,24 @@ class AuthControllerTest {
 
         verify(authService).registerOrGetUserFromGoogle(
             eq(sub.toString()), eq("me@example.com"), eq("google-sub"), anyString());
+    }
+
+    @Test
+    void registerWithGoogleFromPasswordSessionPassesNoGoogleId() throws Exception {
+        // An e-mail/password session also has user_metadata.sub; it must not be taken as a Google id
+        UUID sub = UUID.randomUUID();
+        User existingUser = new User("me@example.com", User.AuthProvider.EMAIL, null);
+        existingUser.setId(sub);
+        when(authService.registerOrGetUserFromGoogle(anyString(), anyString(), isNull(), anyString()))
+            .thenReturn(new AuthService.UserRegistrationResult(existingUser, false));
+
+        mockMvc.perform(post("/api/v1/auth/register/google").with(csrf())
+                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                    .authentication(jwtAuth(sub, "me@example.com", "password"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.authProvider").value("EMAIL"));
+
+        verify(authService).registerOrGetUserFromGoogle(eq(sub.toString()), eq("me@example.com"), isNull(), anyString());
     }
 
     @Test

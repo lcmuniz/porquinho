@@ -93,6 +93,22 @@ class AuthServiceTest {
     }
 
     @Test
+    void registerOrGetUserFromGoogleWithoutGoogleIdDoesNotLinkEmailAccount() {
+        // Session not from Google (e-mail/password): the controller passes no Google id, nothing is linked
+        UUID userId = UUID.randomUUID();
+        User existingUser = new User("me@example.com", User.AuthProvider.EMAIL, null);
+        existingUser.setId(userId);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(existingUser));
+
+        AuthService.UserRegistrationResult result = authService.registerOrGetUserFromGoogle(
+            userId.toString(), "me@example.com", null, "192.168.1.1");
+
+        assertThat(result.getUser().getAuthProvider()).isEqualTo(User.AuthProvider.EMAIL);
+        assertThat(result.getUser().getGoogleId()).isNull();
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
     void shouldLinkGoogleWhenSubAndEmailMatch() {
         // E-mail/password user signing in with Google: same Supabase sub, same e-mail
         UUID userId = UUID.randomUUID();

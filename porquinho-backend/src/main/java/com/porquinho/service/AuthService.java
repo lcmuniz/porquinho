@@ -70,7 +70,8 @@ public class AuthService {
         Optional<User> existingById = userRepository.findById(userUuid);
         if (existingById.isPresent()) {
             User existingUser = existingById.get();
-            if (!googleId.equals(existingUser.getGoogleId()) && existingUser.getEmail().equalsIgnoreCase(email)) {
+            // googleId null: the session is not from Google (e-mail/password), so there is nothing to link
+            if (googleId != null && !googleId.equals(existingUser.getGoogleId()) && existingUser.getEmail().equalsIgnoreCase(email)) {
                 // Same sub and same e-mail: the user registered with e-mail/password and now signs in with Google
                 boolean wasEmail = existingUser.getAuthProvider() == User.AuthProvider.EMAIL;
                 existingUser.setGoogleId(googleId);

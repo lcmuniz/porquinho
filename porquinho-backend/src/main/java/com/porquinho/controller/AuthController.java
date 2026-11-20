@@ -457,6 +457,17 @@ public class AuthController {
     }
 
     /** E-mail claim of a JWT that also has a sub; null when either is missing. */
+    private static boolean isOAuthSession(Jwt jwt) {
+        if (jwt.getClaims().get("amr") instanceof List<?> entries) {
+            for (Object entry : entries) {
+                if (entry instanceof Map<?, ?> m && "oauth".equals(m.get("method"))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     private static String jwtEmail(Jwt jwt) {
         if (jwt == null || jwt.getSubject() == null) {
             return null;
@@ -465,8 +476,15 @@ public class AuthController {
         return email == null || email.isBlank() ? null : email;
     }
 
-    /** Google id as the frontend used to send it: user_metadata.sub, then provider_id, then the Supabase sub. */
+    /**
+     * Google id as the frontend used to send it: user_metadata.sub, then provider_id, then the Supabase sub.
+     * Null when the session did not come from OAuth (amr): an e-mail/password session also has user_metadata.sub,
+     * and taking it as a Google id would "link" a Google account that never signed in.
+     */
     private static String googleId(Jwt jwt) {
+        if (!isOAuthSession(jwt)) {
+            return null;
+        }
         Map<String, Object> metadata = jwt.getClaimAsMap("user_metadata");
         if (metadata != null) {
             for (String key : List.of("sub", "provider_id")) {
