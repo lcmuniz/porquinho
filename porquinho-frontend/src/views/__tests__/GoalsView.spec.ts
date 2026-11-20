@@ -198,8 +198,12 @@ describe('GoalsView', () => {
     await mountView()
     await openDialog()
     await type('goal-target-amount-input', '12.000,00')
+    expect(inDialog('goal-monthly-allocation-hint')).toBeNull()
     await type('goal-target-date-input', '2027-11-13')
     expect(inDialog<HTMLInputElement>('goal-monthly-allocation-input')!.value).toBe('1.000,00')
+    expect(inDialog('goal-monthly-allocation-hint')!.textContent).toContain(
+      'Calculado pelo valor-alvo',
+    )
 
     await type('goal-monthly-allocation-input', '500,00')
     await type('goal-target-date-input', '2027-05-13')
@@ -253,9 +257,7 @@ describe('GoalsView', () => {
 
   describe('Story 8.6: modelos de meta', () => {
     async function choose(code: string) {
-      const radio = inDialog<HTMLInputElement>(`goal-template-${code}`)!
-      radio.checked = true
-      radio.dispatchEvent(new Event('change'))
+      inDialog<HTMLInputElement>(`goal-template-${code}`)!.click()
       await flushPromises()
     }
     const value = (testId: string) => inDialog<HTMLInputElement>(testId)!.value
@@ -291,6 +293,17 @@ describe('GoalsView', () => {
       expect(
         wrapper!.get('[data-testid="goal-g2"] [data-testid="goal-template-badge"]').text(),
       ).toBe('Template: Férias')
+    })
+
+    it('clicar de novo no modelo marcado preenche os campos outra vez', async () => {
+      await mountView()
+      await openDialog()
+      await choose('VACATION')
+      await type('goal-name-input', 'Outra')
+      await type('goal-monthly-allocation-input', '10,00')
+      await choose('VACATION')
+      expect(value('goal-name-input')).toBe('Férias')
+      expect(value('goal-monthly-allocation-input')).toBe('1.333,34')
     })
 
     it('"Reserva de Emergência" recalcula o aporte mesmo depois de editado', async () => {
@@ -563,7 +576,7 @@ describe('GoalsView', () => {
       [
         { monthlyAllocation: null, targetDate: '2027-07-13' },
         'Defina alocação mensal para ver projeção',
-        null,
+        'Defina alocação de R$ 125,00/mês para atingir meta no prazo',
       ],
       [{ currentAmount: 1200 }, 'Valor-alvo atingido', null],
       [

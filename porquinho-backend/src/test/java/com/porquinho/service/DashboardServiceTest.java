@@ -233,6 +233,11 @@ class DashboardServiceTest {
         assertTrue(goal("1000", "0", LocalDate.of(2026, 11, 30), "1000").isBehind(nov14));
         // Target already in a past month
         assertTrue(goal("1000", "0", LocalDate.of(2026, 10, 31), "1000").isBehind(nov14));
+        // decision of 2026-11-20: a target date without allocation is behind; without the date it is not
+        assertTrue(goal("1000", "0", LocalDate.of(2027, 6, 30), null).isBehind(nov14));
+        assertTrue(goal("1000", "0", LocalDate.of(2027, 6, 30), "0").isBehind(nov14));
+        assertFalse(goal("1000", "0", null, null).isBehind(nov14));
+        assertFalse(goal("1000", "1000", LocalDate.of(2027, 6, 30), null).isBehind(nov14));
     }
 
     @Test
@@ -247,17 +252,30 @@ class DashboardServiceTest {
     }
 
     @Test
-    void goalsWithoutAllocationOrDateOrAlreadyReachedAreLeftOut() {
+    void goalsWithoutDateOrAlreadyReachedAreLeftOut() {
         budget(10, 0, 0);
-        goals.add(goal("25000", "0", TODAY.plusMonths(1), null));
-        goals.add(goal("25000", "0", TODAY.plusMonths(1), "0"));
+        goals.add(goal("25000", "0", null, null));
         goals.add(goal("25000", "0", null, "100"));
+        goals.add(goal("1000", "1000", TODAY.plusMonths(1), null));
         goals.add(goal("1000", "1000", TODAY.minusMonths(1), "100"));
 
         FinancialHealthResponse response = service.health(userId);
 
         assertEquals(HealthStatus.HEALTHY, response.status());
         assertEquals(0, response.goalsBehind());
+    }
+
+    @Test
+    void aGoalWithDateButNoAllocationIsBehind() {
+        // decision of 2026-11-20: same rule as goalPace in the front
+        budget(10, 0, 0);
+        goals.add(goal("25000", "0", TODAY.plusMonths(1), null));
+        goals.add(goal("25000", "0", TODAY.plusMonths(1), "0"));
+
+        FinancialHealthResponse response = service.health(userId);
+
+        assertEquals(HealthStatus.ATTENTION, response.status());
+        assertEquals(2, response.goalsBehind());
     }
 
     @Test

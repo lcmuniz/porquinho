@@ -34,7 +34,7 @@
                 :value="option.code"
                 :checked="template === option.code"
                 :data-testid="`goal-template-${option.code || 'CUSTOM'}`"
-                @change="selectTemplate(option.code)"
+                @click="selectTemplate(option.code)"
               />
               {{ option.name }}
             </label>
@@ -142,7 +142,12 @@
           >
             {{ errors.monthlyAllocation }}
           </p>
-          <p id="goal-monthly-allocation-hint" class="text-xs text-gray-500">
+          <p
+            v-if="form.targetDate"
+            id="goal-monthly-allocation-hint"
+            class="text-xs text-gray-500"
+            data-testid="goal-monthly-allocation-hint"
+          >
             Calculado pelo valor-alvo e pela data. Você pode mudar.
           </p>
         </div>

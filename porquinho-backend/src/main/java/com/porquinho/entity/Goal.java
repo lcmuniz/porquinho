@@ -135,12 +135,14 @@ public class Goal {
 
     /**
      * Story 8.4 rule, by calendar month (same as goalPace in the front): ceil(missing / monthly allocation) months
-     * from the current month past the target date's month.
+     * from the current month past the target date's month. With a target date and no allocation it is behind
+     * (decision of 2026-11-20).
      */
     public boolean isBehind(LocalDate today) {
-        if (targetDate == null || monthlyAllocation == null || monthlyAllocation.signum() <= 0) return false;
+        if (targetDate == null) return false;
         BigDecimal missing = targetAmount.subtract(currentAmount);
         if (missing.signum() <= 0) return false;
+        if (monthlyAllocation == null || monthlyAllocation.signum() <= 0) return true;
         BigDecimal months = missing.divide(monthlyAllocation, 0, RoundingMode.CEILING);
         long monthsLeft = YearMonth.from(today).until(YearMonth.from(targetDate), ChronoUnit.MONTHS);
         return months.compareTo(BigDecimal.valueOf(monthsLeft)) > 0;

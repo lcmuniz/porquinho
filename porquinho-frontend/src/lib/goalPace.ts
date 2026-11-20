@@ -37,12 +37,14 @@ export function monthsToTarget(
 
 /**
  * Atraso = meses entre o mês da data-alvo e o mês projetado. ≤ 0 em dia; 1 a 3 atrasada; > 3 muito atrasada.
- * Sem data-alvo, sem alocação ou com o alvo atingido: em dia.
+ * Sem data-alvo ou com o alvo atingido: em dia. Com data-alvo e sem alocação: atrasada (decisão de 20/11), para a
+ * sugestão de aporte aparecer antes de o prazo vencer.
  */
 export function goalPace(goal: Goal, currentMonth: string): GoalPace {
   if (!goal.targetDate) return 'on-track'
   const months = monthsToTarget(goal.targetAmount, goal.currentAmount, goal.monthlyAllocation)
-  if (!months) return 'on-track'
+  if (months === 0) return 'on-track'
+  if (months === null) return 'late'
   const delay = months - monthsBetween(currentMonth, goal.targetDate.slice(0, 7))
   if (delay <= 0) return 'on-track'
   return delay <= 3 ? 'late' : 'very-late'

@@ -158,9 +158,11 @@ const suggestion = computed(() => {
   const p = projection.value
   if (p.kind === 'reached' || !p.suggestion) return null
   const { kind, amount } = p.suggestion
-  return kind === 'monthly'
-    ? `Aumente alocação para ${formatBRL(amount)}/mês para atingir meta no prazo`
-    : `O prazo desta meta já chegou. Aporte ${formatBRL(amount)} para concluí-la`
+  if (kind === 'monthly')
+    return p.kind === 'no-allocation'
+      ? `Defina alocação de ${formatBRL(amount)}/mês para atingir meta no prazo`
+      : `Aumente alocação para ${formatBRL(amount)}/mês para atingir meta no prazo`
+  return `O prazo desta meta já chegou. Aporte ${formatBRL(amount)} para concluí-la`
 })
 
 function templateName(code: GoalTemplate): string {

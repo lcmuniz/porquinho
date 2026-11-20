@@ -67,13 +67,16 @@ describe('goalPace', () => {
     )
   })
 
-  it('sem data-alvo, sem alocação ou com o alvo atingido fica em dia', () => {
+  it('sem data-alvo ou com o alvo atingido fica em dia; com data-alvo e sem alocação, atrasada', () => {
     expect(goalPace(goal({ targetDate: null }), '2026-11')).toBe('on-track')
-    expect(goalPace(goal({ targetDate: '2026-12-01', monthlyAllocation: null }), '2026-11')).toBe(
+    expect(goalPace(goal({ targetDate: null, monthlyAllocation: null }), '2026-11')).toBe(
       'on-track',
     )
+    expect(goalPace(goal({ targetDate: '2026-12-01', monthlyAllocation: null }), '2026-11')).toBe(
+      'late',
+    )
     expect(goalPace(goal({ targetDate: '2026-12-01', monthlyAllocation: 0 }), '2026-11')).toBe(
-      'on-track',
+      'late',
     )
     expect(goalPace(goal({ targetDate: '2026-12-01', currentAmount: 1000 }), '2026-11')).toBe(
       'on-track',
@@ -100,7 +103,7 @@ describe('goalProjection', () => {
     [
       'sem alocação com prazo futuro',
       { monthlyAllocation: 0, targetDate: '2027-07-13' },
-      { kind: 'no-allocation', suggestion: null },
+      { kind: 'no-allocation', suggestion: { kind: 'monthly', amount: 125 } },
     ],
     ['atingida', { currentAmount: 1200, targetDate: '2026-01-01' }, { kind: 'reached' }],
     [

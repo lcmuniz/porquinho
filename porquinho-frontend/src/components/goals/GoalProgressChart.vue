@@ -113,6 +113,7 @@
           data-testid="goal-chart-real"
         />
 
+        <!-- Com um ponto só não há linha: o ponto fica sempre visível -->
         <!-- Tabindex móvel, como no WealthChart: Tab entra por um ponto; setas e Home/End movem entre eles -->
         <circle
           v-for="(p, i) in real"
@@ -120,7 +121,7 @@
           :cx="p.x"
           :cy="p.y"
           r="5"
-          :fill="active === i ? '#10B981' : 'transparent'"
+          :fill="active === i || real.length === 1 ? '#10B981' : 'transparent'"
           :stroke="active === i ? '#ffffff' : 'transparent'"
           stroke-width="1.5"
           :tabindex="i === focusIndex ? 0 : -1"

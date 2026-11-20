@@ -129,7 +129,7 @@
           >
             {{ errors.monthlyAllocation }}
           </p>
-          <p id="goal-monthly-allocation-hint" class="text-xs text-gray-500">
+          <p v-if="form.targetDate" id="goal-monthly-allocation-hint" class="text-xs text-gray-500">
             Calculado pelo valor-alvo e pela data. Você pode mudar.
           </p>
         </div>
@@ -338,7 +338,9 @@ async function createAndFinish() {
     } catch (err) {
       finishing.value = null
       const fieldErrors = (err as ApiError)?.response?.data?.errors ?? {}
-      const known = Object.entries(fieldErrors).filter(([key]) => GOAL_FIELDS.includes(key as GoalField))
+      const known = Object.entries(fieldErrors).filter(([key]) =>
+        GOAL_FIELDS.includes(key as GoalField),
+      )
       if (apiErrorStatus(err) === 400 && known.length > 0) {
         Object.assign(errors, Object.fromEntries(known))
       } else {

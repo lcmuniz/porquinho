@@ -37,12 +37,14 @@ describe('GoalProgressChart', () => {
   it('meta nova: um ponto, sem linha projetada', () => {
     const w = render(goal({ currentAmount: 0 }), [{ month: '2026-11', amount: 0 }])
     expect(w.findAll('[data-testid^="goal-chart-point-"]')).toHaveLength(1)
+    expect(w.get('[data-testid="goal-chart-point-0"]').attributes('fill')).toBe('#10B981')
     expect(w.find('[data-testid="goal-chart-projected"]').exists()).toBe(false)
   })
 
   it('desenha a linha real com um ponto por mês e os marcos de 25/50/75/100%', () => {
     const w = render(goal())
     expect(count(w.get('[data-testid="goal-chart-real"]').attributes('points'))).toBe(3)
+    expect(w.get('[data-testid="goal-chart-point-0"]').attributes('fill')).toBe('transparent')
     for (const m of [25, 50, 75, 100])
       expect(w.find(`[data-testid="goal-chart-milestone-${m}"]`).exists()).toBe(true)
     expect(plain(w.get('[data-testid="goal-chart-milestone-50"]').text())).toContain('R$ 500,00')
