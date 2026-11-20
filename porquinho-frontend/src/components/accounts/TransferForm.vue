@@ -11,6 +11,7 @@
         :aria-invalid="errors.fromAccountId ? 'true' : undefined"
         :aria-describedby="errors.fromAccountId ? 'transfer-from-error' : undefined"
       >
+        <option v-if="!form.fromAccountId" value="" disabled>Escolha a conta de origem</option>
         <option v-for="account in accounts" :key="account.id" :value="account.id">
           {{ optionLabel(account) }}
         </option>
@@ -35,6 +36,7 @@
         :aria-invalid="errors.toAccountId ? 'true' : undefined"
         :aria-describedby="errors.toAccountId ? 'transfer-to-error' : undefined"
       >
+        <option v-if="!form.toAccountId" value="" disabled>Escolha a conta de destino</option>
         <option v-for="account in accounts" :key="account.id" :value="account.id">
           {{ optionLabel(account) }}
         </option>
@@ -285,16 +287,15 @@ async function submit() {
 
 /**
  * A lista de contas pode mudar com o diálogo aberto (o pai recarrega depois de um 404): uma conta escolhida que
- * sumiu dá lugar a outra disponível.
+ * sumiu fica vazia, e o usuário escolhe de novo. Trocar por outra sozinho mandaria o dinheiro para uma conta que ele
+ * não escolheu.
  */
 watch(
   () => props.accounts,
   (accounts) => {
     const ids = accounts.map((a) => a.id)
-    if (!ids.includes(form.fromAccountId)) form.fromAccountId = ids[0] ?? ''
-    if (!ids.includes(form.toAccountId)) {
-      form.toAccountId = ids.find((id) => id !== form.fromAccountId) ?? ''
-    }
+    if (!ids.includes(form.fromAccountId)) form.fromAccountId = ''
+    if (!ids.includes(form.toAccountId)) form.toAccountId = ''
   },
 )
 

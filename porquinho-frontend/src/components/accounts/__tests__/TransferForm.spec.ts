@@ -252,7 +252,7 @@ describe('TransferForm', () => {
     }
   })
 
-  it('se a conta escolhida some da lista, outra disponível é escolhida', async () => {
+  it('se a conta escolhida some da lista, o campo fica vazio e pede outra escolha', async () => {
     const wrapper = mountForm()
     await wrapper.setProps({ accounts: [ACCOUNTS[0]!, account('a3', 'BB', 10)] })
     await nextTick()
@@ -262,6 +262,13 @@ describe('TransferForm', () => {
     ).toBe('a1')
     expect(
       (wrapper.get('[data-testid="transfer-to-select"]').element as HTMLSelectElement).value,
-    ).toBe('a3')
+    ).toBe('')
+
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="transfer-to-error"]').text()).toBe(
+      'Escolha a conta de destino',
+    )
+    expect(mockCreate).not.toHaveBeenCalled()
   })
 })

@@ -1556,10 +1556,11 @@ describe('AccountsView — transferências (Story 4.5)', () => {
 
     expect(mockList).toHaveBeenCalledTimes(2)
     const options = form.get('[data-testid="transfer-to-select"]').findAll('option')
-    expect(options.map((o) => o.attributes('value'))).toEqual(['a1', 'a3'])
+    // O destino removido não é trocado por outra conta: fica vazio até o usuário escolher de novo
+    expect(options.map((o) => o.attributes('value'))).toEqual(['', 'a1', 'a3'])
     expect(
       (form.get('[data-testid="transfer-to-select"]').element as HTMLSelectElement).value,
-    ).toBe('a3')
+    ).toBe('')
 
     const error = document.body.querySelector('[data-testid="transfer-error"]')
     expect(error?.textContent?.trim()).toBe('Conta não encontrada')
