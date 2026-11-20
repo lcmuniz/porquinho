@@ -41,9 +41,9 @@ describe('FinancialHealthSemaphore', () => {
     expect(wrapper.get('[data-testid="health-toggle"]').text()).toBe(`Saúde Financeira: ${label}`)
   })
 
-  it('fica fixo no topo', async () => {
+  it('fica fixo no topo no desktop (no celular a topbar já é fixa)', async () => {
     const wrapper = await mountWith(health())
-    expect(wrapper.classes()).toEqual(expect.arrayContaining(['sticky', 'top-0']))
+    expect(wrapper.classes()).toEqual(expect.arrayContaining(['lg:sticky', 'lg:top-0']))
   })
 
   it('o clique abre e fecha o detalhe e alterna aria-expanded', async () => {

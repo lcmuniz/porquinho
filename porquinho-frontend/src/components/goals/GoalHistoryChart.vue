@@ -1,6 +1,7 @@
 <template>
   <figure class="space-y-3" data-testid="goal-history-chart">
     <svg
+      ref="svg"
       :viewBox="`0 0 ${WIDTH} ${HEIGHT}`"
       class="h-auto w-full overflow-visible"
       role="img"
@@ -15,7 +16,7 @@
             :x2="WIDTH - PAD.right"
             :y1="tick.y"
             :y2="tick.y"
-            stroke="#e5e7eb"
+            stroke="#E2E8F0"
             stroke-width="1"
           />
           <text
@@ -23,10 +24,10 @@
             :y="tick.y"
             text-anchor="end"
             dominant-baseline="middle"
-            font-size="11"
-            fill="#6b7280"
+            font-size="13"
+            fill="#475569"
           >
-            {{ formatBRL(tick.value) }}
+            {{ tick.label }}
           </text>
         </g>
       </g>
@@ -38,7 +39,7 @@
           :x2="WIDTH - PAD.right"
           :y1="HEIGHT - PAD.bottom"
           :y2="HEIGHT - PAD.bottom"
-          stroke="#9ca3af"
+          stroke="#94A3B8"
           stroke-width="1"
         />
         <text
@@ -46,9 +47,9 @@
           :key="tick.month"
           :x="tick.x"
           :y="HEIGHT - PAD.bottom + 18"
-          text-anchor="middle"
-          font-size="11"
-          fill="#6b7280"
+          :text-anchor="anchorOf(tick.x)"
+          font-size="13"
+          fill="#475569"
           data-testid="chart-x-tick"
         >
           {{ tick.label }}
@@ -78,11 +79,11 @@
     <figcaption>
       <ul class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-700" data-testid="chart-legend">
         <li class="inline-flex items-center gap-1.5">
-          <span class="inline-block h-0.5 w-4 bg-[#10B981]" aria-hidden="true" />
+          <span class="inline-block h-0.5 w-4 bg-[#059669]" aria-hidden="true" />
           Acumulado
         </li>
         <li class="inline-flex items-center gap-1.5">
-          <span class="inline-block size-2 rounded-full bg-[#10B981]" aria-hidden="true" />
+          <span class="inline-block size-2 rounded-full bg-[#059669]" aria-hidden="true" />
           Aporte
         </li>
       </ul>
@@ -91,8 +92,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { formatBRL } from '@/lib/money'
+import { computed, ref } from 'vue'
+import { axisBRL, labelPad, useChartWidth, xTickCount } from '@/lib/chart'
 import type { GoalHistoryEntry } from '@/types/goal'
 
 /**
@@ -101,12 +102,11 @@ import type { GoalHistoryEntry } from '@/types/goal'
  */
 const props = defineProps<{ entries: GoalHistoryEntry[] }>()
 
-const WIDTH = 640
 const HEIGHT = 280
-const PAD = { top: 16, right: 24, bottom: 32, left: 104 }
+const DESIGN_PAD = { top: 16, right: 24, bottom: 32, left: 104 }
 const Y_TICKS = 4
 const MAX_X_LABELS = 6
-const COLOR = '#10B981'
+const COLOR = '#059669'
 
 const SHORT_MONTH = new Intl.DateTimeFormat('pt-BR', { month: 'short', year: '2-digit', timeZone: 'UTC' })
 
@@ -120,17 +120,34 @@ const times = computed(() => props.entries.map((e) => timeOf(e.date)))
 const minTime = computed(() => Math.min(...times.value))
 const maxTime = computed(() => Math.max(...times.value))
 
+const svg = ref<SVGElement | null>(null)
+const { width: WIDTH, narrow } = useChartWidth(svg, 640)
+
 /** De 0 até o maior valor; tudo zero ganha uma faixa mínima. */
 const yMax = computed(() => Math.max(1, ...props.entries.map((e) => e.amount)))
 
+/** Rótulo a menos de meio rótulo (~40px) da ponta fica ancorado nela: não invade o eixo Y nem sai do gráfico. */
+function anchorOf(x: number): 'start' | 'middle' | 'end' {
+  if (xTicks.value.length < 2) return 'middle'
+  if (x - PAD.value.left < 40) return 'start'
+  return WIDTH.value - PAD.value.right - x < 40 ? 'end' : 'middle'
+}
+
+/** Estreito: margem esquerda do tamanho do maior rótulo. */
+const PAD = computed(() =>
+  narrow.value ? { ...DESIGN_PAD, left: labelPad([axisBRL(yMax.value, true)]) } : DESIGN_PAD,
+)
+
 function xOf(time: number): number {
-  const inner = WIDTH - PAD.left - PAD.right
+  const inner = WIDTH.value - PAD.value.left - PAD.value.right
   const span = maxTime.value - minTime.value
-  return span === 0 ? PAD.left + inner / 2 : PAD.left + ((time - minTime.value) / span) * inner
+  return span === 0 ? PAD.value.left + inner / 2 : PAD.value.left + ((time - minTime.value) / span) * inner
 }
 
 function yOf(value: number): number {
-  return PAD.top + ((yMax.value - Math.max(value, 0)) / yMax.value) * (HEIGHT - PAD.top - PAD.bottom)
+  return (
+    DESIGN_PAD.top + ((yMax.value - Math.max(value, 0)) / yMax.value) * (HEIGHT - DESIGN_PAD.top - DESIGN_PAD.bottom)
+  )
 }
 
 const points = computed(() =>
@@ -142,7 +159,7 @@ const markers = computed(() => points.value.filter((p) => p.contribution !== nul
 const yTicks = computed(() =>
   Array.from({ length: Y_TICKS + 1 }, (_, i) => {
     const value = Math.round(((yMax.value * i) / Y_TICKS) * 100) / 100
-    return { value, y: yOf(value) }
+    return { value, label: axisBRL(value, narrow.value), y: yOf(value) }
   }),
 )
 
@@ -156,7 +173,9 @@ const xTicks = computed(() => {
   for (let i = 0; Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + i, 1) <= maxTime.value; i++) {
     months.push(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + i, 1))
   }
-  const step = Math.ceil(months.length / MAX_X_LABELS)
+  // Rótulo na ponta fica ancorado nela (não invade o eixo Y): cada intervalo precisa de 1,5 rótulo
+  const labels = xTickCount(WIDTH.value - PAD.value.left - PAD.value.right, 15, MAX_X_LABELS - 1) + 1
+  const step = Math.ceil(months.length / labels)
   const lastIndex = months.length - 1
   return months
     .filter((_, i) => (lastIndex - i) % step === 0)

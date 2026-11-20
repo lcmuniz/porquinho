@@ -12,7 +12,7 @@
       <button
         ref="pickerTrigger"
         type="button"
-        class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full focus:ring-2 focus:ring-purple-500 focus:outline-none"
+        class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full focus-visible:ring-2 focus-visible:ring-purple-500 focus:outline-none"
         :style="{ backgroundColor: `${category.colorHex}1A` }"
         :aria-label="`Trocar cor e ícone de ${category.categoryName}`"
         aria-haspopup="dialog"
@@ -53,7 +53,7 @@
       <button
         v-if="canDelete"
         type="button"
-        class="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-red-50 hover:text-red-600 focus:ring-2 focus:ring-purple-500 focus:outline-none"
+        class="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-red-50 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-purple-500 focus:outline-none"
         :aria-label="
           kind === 'group'
             ? `Excluir o grupo ${category.categoryName}`
@@ -93,7 +93,7 @@
             v-for="color in options.colors"
             :key="color"
             type="button"
-            class="flex h-11 w-11 items-center justify-center rounded-full focus:ring-2 focus:ring-purple-500 focus:ring-offset-1 focus:outline-none aria-disabled:cursor-wait aria-disabled:opacity-50"
+            class="flex h-11 w-11 items-center justify-center rounded-full focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-1 focus:outline-none aria-disabled:cursor-wait aria-disabled:opacity-50"
             :aria-label="categoryColorLabel(color)"
             :aria-disabled="choosing ? 'true' : undefined"
             :aria-pressed="sameColor(color, category.colorHex)"
@@ -105,7 +105,7 @@
               :style="{ backgroundColor: color }"
               aria-hidden="true"
             >
-              <Check v-if="sameColor(color, category.colorHex)" class="h-4 w-4 text-white" />
+              <Check v-if="sameColor(color, category.colorHex)" class="h-4 w-4 text-white" aria-hidden="true" />
             </span>
           </button>
         </div>
@@ -118,7 +118,7 @@
             v-for="icon in options.icons"
             :key="icon"
             type="button"
-            class="flex h-11 w-11 items-center justify-center rounded-md border focus:ring-2 focus:ring-purple-500 focus:outline-none aria-disabled:cursor-wait aria-disabled:opacity-50"
+            class="flex h-11 w-11 items-center justify-center rounded-md border focus-visible:ring-2 focus-visible:ring-purple-500 focus:outline-none aria-disabled:cursor-wait aria-disabled:opacity-50"
             :class="
               icon === category.iconName
                 ? 'border-purple-500 bg-purple-50'
@@ -143,7 +143,7 @@
       <div class="flex justify-end">
         <button
           type="button"
-          class="min-h-[44px] rounded-md px-3 text-sm font-medium text-purple-700 hover:bg-purple-50 focus:ring-2 focus:ring-purple-500 focus:outline-none"
+          class="min-h-[44px] rounded-md px-3 text-sm font-medium text-purple-700 hover:bg-purple-50 focus-visible:ring-2 focus-visible:ring-purple-500 focus:outline-none"
           :data-testid="`category-picker-close-${category.id}`"
           @click="closePicker(true)"
         >

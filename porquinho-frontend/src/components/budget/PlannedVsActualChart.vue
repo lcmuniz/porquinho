@@ -1,6 +1,7 @@
 <template>
   <figure class="space-y-3" data-testid="comparison-chart">
     <svg
+      ref="svg"
       :viewBox="`0 0 ${WIDTH} ${height}`"
       class="h-auto w-full overflow-visible"
       role="img"
@@ -15,17 +16,17 @@
             :x2="tick.x"
             :y1="PAD.top"
             :y2="height - PAD.bottom"
-            stroke="#e5e7eb"
+            stroke="#E2E8F0"
             stroke-width="1"
           />
           <text
             :x="tick.x"
             :y="height - PAD.bottom + 16"
-            text-anchor="middle"
-            font-size="11"
-            fill="#6b7280"
+            :text-anchor="i === xTicks.length - 1 && i > 0 ? 'end' : 'middle'"
+            font-size="13"
+            fill="#475569"
           >
-            {{ formatBRL(tick.value) }}
+            {{ axisBRL(tick.value, narrow) }}
           </text>
         </g>
       </g>
@@ -36,8 +37,8 @@
           :y="rowY(i) + BAR + GAP / 2"
           text-anchor="end"
           dominant-baseline="middle"
-          font-size="11"
-          fill="#374151"
+          font-size="13"
+          fill="#334155"
         >
           {{ shortName(item.name) }}
         </text>
@@ -70,8 +71,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { formatBRL } from '@/lib/money'
+import { computed, ref } from 'vue'
+import { axisBRL, useChartWidth, xTickCount } from '@/lib/chart'
 
 /**
  * Story 6.9: alocado × gasto por categoria em barras horizontais SVG feitas à mão (padrão do AllocationHistoryChart).
@@ -81,7 +82,6 @@ const props = defineProps<{
   items: { id: string; name: string; allocated: number; spent: number }[]
 }>()
 
-const WIDTH = 640
 const PAD = { top: 8, right: 24, bottom: 28, left: 128 }
 const BAR = 10
 const GAP = 2
@@ -89,9 +89,12 @@ const ROW = 2 * BAR + GAP + 12
 const X_TICKS = 4
 const MAX_NAME = 18
 
+const svg = ref<SVGElement | null>(null)
+const { width: WIDTH, narrow } = useChartWidth(svg, 640)
+
 const SERIES = [
-  { key: 'allocated', label: 'Alocado', color: '#8b5cf6' },
-  { key: 'spent', label: 'Gasto', color: '#4c1d95' },
+  { key: 'allocated', label: 'Alocado', color: '#93B1F5' },
+  { key: 'spent', label: 'Gasto', color: '#1E40AF' },
 ] as const
 
 const height = computed(() => PAD.top + props.items.length * ROW + PAD.bottom)
@@ -100,7 +103,7 @@ const height = computed(() => PAD.top + props.items.length * ROW + PAD.bottom)
 const xMax = computed(() => Math.max(1, ...props.items.flatMap((c) => [c.allocated, c.spent])))
 
 function widthOf(value: number): number {
-  return (Math.max(value, 0) / xMax.value) * (WIDTH - PAD.left - PAD.right)
+  return (Math.max(value, 0) / xMax.value) * (WIDTH.value - PAD.left - PAD.right)
 }
 
 function rowY(i: number): number {
@@ -109,13 +112,16 @@ function rowY(i: number): number {
 
 function shortName(name: string): string {
   const chars = Array.from(name) // por code point, para não partir emoji
-  return chars.length > MAX_NAME ? `${chars.slice(0, MAX_NAME - 1).join('')}…` : name
+  // Estreito: nome mais curto, para sobrar barra; o nome inteiro está na tabela
+  const max = narrow.value ? 14 : MAX_NAME
+  return chars.length > max ? `${chars.slice(0, max - 1).join('')}…` : name
 }
 
-const xTicks = computed(() =>
-  Array.from({ length: X_TICKS + 1 }, (_, i) => {
-    const value = Math.round(((xMax.value * i) / X_TICKS) * 100) / 100
+const xTicks = computed(() => {
+  const count = xTickCount(WIDTH.value - PAD.left - PAD.right, narrow.value ? 10 : 12, X_TICKS)
+  return Array.from({ length: count + 1 }, (_, i) => {
+    const value = Math.round(((xMax.value * i) / count) * 100) / 100
     return { value, x: PAD.left + widthOf(value) }
-  }),
-)
+  })
+})
 </script>

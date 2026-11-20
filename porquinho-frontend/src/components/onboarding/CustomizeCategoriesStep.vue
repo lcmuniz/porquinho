@@ -14,7 +14,7 @@
       <div v-if="loading" class="space-y-3" aria-busy="true" data-testid="customize-skeleton">
         <div class="h-5 w-1/3 animate-pulse rounded bg-gray-100" />
         <div v-for="n in 4" :key="n" class="h-14 animate-pulse rounded-lg bg-gray-100" />
-        <span class="sr-only">Carregando suas categorias...</span>
+        <span class="sr-only">Carregando suas categorias…</span>
       </div>
 
       <div
@@ -113,7 +113,7 @@
                 data-testid="save-add-button"
                 :disabled="adding || finishing"
               >
-                {{ adding ? 'Salvando...' : 'Adicionar' }}
+                {{ adding ? 'Salvando…' : 'Adicionar' }}
               </Button>
             </div>
           </form>
@@ -151,7 +151,7 @@
           :disabled="finishing || loading"
           @click="finish(false)"
         >
-          {{ finishing && !skipping ? 'Salvando...' : 'Próximo' }}
+          {{ finishing && !skipping ? 'Salvando…' : 'Próximo' }}
           <ChevronRight class="h-4 w-4" aria-hidden="true" />
         </Button>
       </div>

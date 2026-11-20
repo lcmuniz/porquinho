@@ -9,7 +9,7 @@
         </p>
 
         <section class="mt-8">
-          <h2 class="text-2xl font-semibold text-gray-900">1. Aceitação dos Termos</h2>
+          <h2 class="text-2xl font-bold text-gray-900 md:text-[28px]">1. Aceitação dos Termos</h2>
           <p class="mt-2 text-gray-700">
             Ao utilizar o Porquinho, você concorda com estes Termos de Uso. Se você não concordar,
             não utilize nosso serviço.
@@ -17,7 +17,7 @@
         </section>
 
         <section class="mt-6">
-          <h2 class="text-2xl font-semibold text-gray-900">2. Descrição do Serviço</h2>
+          <h2 class="text-2xl font-bold text-gray-900 md:text-[28px]">2. Descrição do Serviço</h2>
           <p class="mt-2 text-gray-700">
             O Porquinho é uma plataforma de gestão financeira pessoal que permite aos usuários
             organizar suas finanças, categorizar transações e definir metas financeiras.
@@ -25,7 +25,7 @@
         </section>
 
         <section class="mt-6">
-          <h2 class="text-2xl font-semibold text-gray-900">3. Conta de Usuário</h2>
+          <h2 class="text-2xl font-bold text-gray-900 md:text-[28px]">3. Conta de Usuário</h2>
           <p class="mt-2 text-gray-700">
             Você é responsável por manter a confidencialidade de suas credenciais de acesso e
             por todas as atividades realizadas em sua conta.
@@ -33,7 +33,7 @@
         </section>
 
         <section class="mt-6">
-          <h2 class="text-2xl font-semibold text-gray-900">4. Privacidade e Proteção de Dados</h2>
+          <h2 class="text-2xl font-bold text-gray-900 md:text-[28px]">4. Privacidade e Proteção de Dados</h2>
           <p class="mt-2 text-gray-700">
             Seus dados são protegidos de acordo com nossa
             <router-link to="/privacy" class="text-purple-600 hover:text-purple-700 underline">
@@ -43,7 +43,7 @@
         </section>
 
         <section class="mt-6">
-          <h2 class="text-2xl font-semibold text-gray-900">5. Uso Aceitável</h2>
+          <h2 class="text-2xl font-bold text-gray-900 md:text-[28px]">5. Uso Aceitável</h2>
           <p class="mt-2 text-gray-700">
             Você concorda em não usar o serviço para atividades ilegais, fraudulentas ou que
             violem os direitos de terceiros.
@@ -51,7 +51,7 @@
         </section>
 
         <section class="mt-6">
-          <h2 class="text-2xl font-semibold text-gray-900">6. Limitação de Responsabilidade</h2>
+          <h2 class="text-2xl font-bold text-gray-900 md:text-[28px]">6. Limitação de Responsabilidade</h2>
           <p class="mt-2 text-gray-700">
             O Porquinho não se responsabiliza por decisões financeiras tomadas com base nas
             informações fornecidas pela plataforma.
@@ -59,7 +59,7 @@
         </section>
 
         <section class="mt-6">
-          <h2 class="text-2xl font-semibold text-gray-900">7. Modificações dos Termos</h2>
+          <h2 class="text-2xl font-bold text-gray-900 md:text-[28px]">7. Modificações dos Termos</h2>
           <p class="mt-2 text-gray-700">
             Reservamo-nos o direito de modificar estes termos a qualquer momento. Notificaremos
             os usuários sobre mudanças significativas.
@@ -67,7 +67,7 @@
         </section>
 
         <section class="mt-6">
-          <h2 class="text-2xl font-semibold text-gray-900">8. Contato</h2>
+          <h2 class="text-2xl font-bold text-gray-900 md:text-[28px]">8. Contato</h2>
           <p class="mt-2 text-gray-700">
             Para questões sobre estes Termos de Uso, entre em contato através do email:
             <a href="mailto:suporte@eficaztech.com" class="text-purple-600 hover:text-purple-700 underline">

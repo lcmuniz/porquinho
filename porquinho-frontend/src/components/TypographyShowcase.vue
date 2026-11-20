@@ -4,7 +4,7 @@
 
     <!-- Type Scale -->
     <div>
-      <h3 class="text-xl font-semibold text-foreground mb-4">Escala Tipografica (Inter)</h3>
+      <h3 class="text-xl font-semibold text-foreground mb-4">Escala Tipografica (Plus Jakarta Sans)</h3>
       <div class="space-y-3">
         <div v-for="scale in typeScales" :key="scale.class" class="flex items-baseline gap-4">
           <span class="text-sm font-medium text-muted-foreground w-20 shrink-0">{{ scale.class }}</span>

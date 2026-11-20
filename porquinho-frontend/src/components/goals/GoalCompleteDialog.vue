@@ -31,7 +31,7 @@
           data-testid="complete-confirm"
           @click="confirm"
         >
-          {{ saving ? 'Salvando...' : 'Marcar como concluída' }}
+          {{ saving ? 'Salvando…' : 'Marcar como concluída' }}
         </Button>
       </DialogFooter>
     </DialogContent>

@@ -54,7 +54,7 @@
     </form>
 
     <div v-if="!metrics && loading && !error" role="status" class="py-12 text-center text-sm text-gray-700">
-      Carregando...
+      Carregando…
     </div>
 
     <div
@@ -157,7 +157,7 @@
       <h2 id="bank-detail-heading" class="text-base font-semibold text-gray-900">{{ LABELS[selected] }}</h2>
 
       <div v-if="detailError" role="alert" class="text-sm text-red-800" data-testid="detail-error">{{ detailError }}</div>
-      <p v-else-if="!detail" role="status" class="text-sm text-gray-700">Carregando...</p>
+      <p v-else-if="!detail" role="status" class="text-sm text-gray-700">Carregando…</p>
 
       <template v-if="detail">
         <div>
@@ -260,8 +260,8 @@ const STATUS_LABELS: Record<TransactionImportStatus, string> = {
   DISCARDED: 'Descartada',
 }
 
-const GREEN = '#16a34a'
-const RED = '#dc2626'
+const GREEN = '#047857'
+const RED = '#B91C1C'
 
 // 1 casa, como o backend arredonda antes da cor (retro do Epic 10, A2)
 const percent = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 })

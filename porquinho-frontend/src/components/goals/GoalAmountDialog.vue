@@ -58,7 +58,7 @@
             Cancelar
           </Button>
           <Button type="submit" class="min-h-[44px]" :disabled="saving" data-testid="amount-save">
-            {{ saving ? 'Salvando...' : 'Salvar' }}
+            {{ saving ? 'Salvando…' : 'Salvar' }}
           </Button>
         </DialogFooter>
       </form>

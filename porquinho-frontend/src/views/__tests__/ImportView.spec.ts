@@ -139,7 +139,7 @@ describe('ImportView', () => {
     expect(links).toContain('/cartoes')
   })
 
-  it('envia o arquivo para a conta escolhida, mostra "Arquivo enviado, processando..." e a importação na lista', async () => {
+  it('envia o arquivo para a conta escolhida, mostra "Arquivo enviado, processando…" e a importação na lista', async () => {
     mockUpload.mockImplementation(async (_file: File, _target: unknown, onProgress?: (p: number) => void) => {
       onProgress?.(100)
       return imported()
@@ -151,11 +151,11 @@ describe('ImportView', () => {
     await submit(wrapper)
 
     expect(mockUpload).toHaveBeenCalledWith(file, { kind: 'account', id: 'a1' }, expect.any(Function))
-    expect(wrapper.get('[data-testid="success-message"]').text()).toBe('Arquivo enviado, processando...')
+    expect(wrapper.get('[data-testid="success-message"]').text()).toBe('Arquivo enviado, processando…')
     const item = wrapper.get('[data-testid="import-i1"]')
     expect(item.text()).toContain('nubank-conta.ofx')
     expect(item.text()).toContain('Conta: Nubank')
-    expect(item.get('[data-testid="import-status"]').text()).toBe('Recebido — identificando o banco...')
+    expect(item.get('[data-testid="import-status"]').text()).toBe('Recebido — identificando o banco…')
   })
 
   it('envia para o cartão com o destino de cartão', async () => {
@@ -286,7 +286,7 @@ describe('ImportView', () => {
     const wrapper = await mountView()
 
     expect(wrapper.findAll('[data-testid="import-status"]').map((s) => s.text())).toEqual([
-      'Recebido — identificando o banco...',
+      'Recebido — identificando o banco…',
       'Concluída',
     ])
   })
@@ -429,7 +429,7 @@ describe('ImportView', () => {
       await tick()
       expect(mockGetImport).toHaveBeenCalledTimes(2)
       expect(wrapper.get('[data-testid="import-i1"] [data-testid="import-status"]').text()).toBe(
-        'Banco detectado: Nubank — lendo as transações...',
+        'Banco detectado: Nubank — lendo as transações…',
       )
 
       // com o banco detectado a consulta continua até a importação sair de PROCESSING (decisão 2A)
@@ -456,11 +456,11 @@ describe('ImportView', () => {
       const wrapper = await mountView()
       const label = () => wrapper.get('[data-testid="import-i1"] [data-testid="import-status"]').text()
 
-      expect(label()).toBe('Classificando transações com IA... 0 de 250')
+      expect(label()).toBe('Classificando transações com IA… 0 de 250')
       await tick()
-      expect(label()).toBe('Classificando transações com IA... 100 de 250')
+      expect(label()).toBe('Classificando transações com IA… 100 de 250')
       await tick()
-      expect(label()).toBe('Classificando transações com IA... 250 de 250')
+      expect(label()).toBe('Classificando transações com IA… 250 de 250')
       await tick()
       expect(label()).toBe('Pronta para revisão: 250 transações')
 
@@ -474,7 +474,7 @@ describe('ImportView', () => {
       const wrapper = await mountView()
 
       expect(wrapper.get('[data-testid="import-i1"] [data-testid="import-status"]').text()).toBe(
-        'Banco detectado: Nubank — lendo as transações...',
+        'Banco detectado: Nubank — lendo as transações…',
       )
     })
 
@@ -533,7 +533,7 @@ describe('ImportView', () => {
       const wrapper = await mountView()
 
       expect(wrapper.get('[data-testid="import-status"]').text()).toBe(
-        'Banco não identificado — lendo as transações...',
+        'Banco não identificado — lendo as transações…',
       )
       await tick()
       await tick()

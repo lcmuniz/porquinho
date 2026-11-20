@@ -151,7 +151,7 @@ describe('AccountForm', () => {
   it('informa o envio em andamento por v-model:submitting e usa os rótulos recebidos', async () => {
     let resolve: (a: Account) => void = () => {}
     mockCreate.mockReturnValue(new Promise<Account>((r) => (resolve = r)))
-    const wrapper = mountForm({ submitLabel: 'Salvar conta', submittingLabel: 'Salvando...' })
+    const wrapper = mountForm({ submitLabel: 'Salvar conta', submittingLabel: 'Salvando…' })
     expect(wrapper.get('[data-testid="add-account-button"]').text()).toBe('Salvar conta')
 
     await fill(wrapper, 'Inter', '1')
@@ -159,7 +159,7 @@ describe('AccountForm', () => {
     expect(wrapper.emitted('update:submitting')?.[0]).toEqual([true])
     await flushPromises()
     const button = wrapper.get('[data-testid="add-account-button"]')
-    expect(button.text()).toBe('Salvando...')
+    expect(button.text()).toBe('Salvando…')
     expect(button.attributes('disabled')).toBeDefined()
 
     resolve(created())

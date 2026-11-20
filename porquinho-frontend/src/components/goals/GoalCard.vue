@@ -1,14 +1,14 @@
 <template>
   <li
-    class="space-y-3 rounded-lg border border-gray-200 bg-white p-4"
+    class="space-y-3 rounded-lg border border-gray-200 bg-white p-4 md:p-5"
     :data-testid="`goal-${goal.id}`"
   >
-    <div class="flex items-center gap-2">
-      <Target class="h-5 w-5 text-purple-600" aria-hidden="true" />
-      <h2 class="min-w-0 font-medium break-words text-gray-900">{{ goal.name }}</h2>
+    <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <Target class="h-5 w-5 shrink-0 text-purple-600" aria-hidden="true" />
+      <h2 class="min-w-0 text-lg font-bold break-words text-gray-900">{{ goal.name }}</h2>
       <span
         v-if="goal.template"
-        class="shrink-0 rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-800"
+        class="rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-800"
         data-testid="goal-template-badge"
       >
         Template: {{ templateName(goal.template) }}

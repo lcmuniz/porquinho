@@ -1,11 +1,11 @@
 <template>
-  <main class="min-h-screen bg-gray-50 px-4 py-8">
+  <main class="px-4 py-6 md:px-8 md:py-8">
     <div class="mx-auto max-w-xl space-y-6">
-      <RouterLink to="/dashboard" class="text-sm text-gray-600 underline hover:text-gray-900">
-        Voltar ao dashboard
+      <RouterLink to="/configuracoes" class="text-sm text-gray-600 underline hover:text-gray-900">
+        Voltar às configurações
       </RouterLink>
 
-      <h1 class="text-2xl font-semibold text-gray-900">Assinatura</h1>
+      <h1 class="text-2xl font-bold text-gray-900 md:text-[28px]">Assinatura</h1>
 
       <p
         v-if="returnStatus === 'sucesso'"
@@ -96,7 +96,7 @@
             :disabled="reactivating"
             @click="reactivate"
           >
-            {{ reactivating ? 'Reativando...' : 'Reativar assinatura' }}
+            {{ reactivating ? 'Reativando…' : 'Reativar assinatura' }}
           </Button>
         </template>
         <template v-else-if="returnStatus !== 'sucesso'">
@@ -115,11 +115,11 @@
           <button
             type="button"
             data-testid="subscribe-button"
-            class="inline-flex min-h-[44px] items-center rounded-lg bg-gray-900 px-6 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-60"
+            class="inline-flex min-h-[44px] items-center rounded-[10px] bg-purple-600 px-6 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-60"
             :disabled="loading"
             @click="subscribe"
           >
-            {{ loading ? 'Redirecionando...' : isFormerSubscriber ? 'Reativar assinatura' : 'Assinar' }}
+            {{ loading ? 'Redirecionando…' : isFormerSubscriber ? 'Reativar assinatura' : 'Assinar' }}
           </button>
         </template>
 
@@ -170,7 +170,7 @@
               :disabled="cancelling"
               @click="confirmCancel"
             >
-              {{ cancelling ? 'Cancelando...' : 'Cancelar assinatura' }}
+              {{ cancelling ? 'Cancelando…' : 'Cancelar assinatura' }}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -34,7 +34,7 @@
             :disabled="isLoadingCategories || isSaving"
             data-testid="category-select"
           >
-            <option value="" disabled>{{ isLoadingCategories ? 'Carregando...' : 'Escolha a categoria' }}</option>
+            <option value="" disabled>{{ isLoadingCategories ? 'Carregando…' : 'Escolha a categoria' }}</option>
             <optgroup v-for="group in categoryGroups" :key="group.id" :label="group.name">
               <option v-for="category in group.children" :key="category.id" :value="category.id">
                 {{ category.categoryName }}
@@ -63,7 +63,7 @@
             Cancelar
           </Button>
           <Button type="submit" class="min-h-[44px]" :disabled="!canSave" data-testid="category-save">
-            {{ isSaving ? 'Salvando...' : 'Salvar' }}
+            {{ isSaving ? 'Salvando…' : 'Salvar' }}
           </Button>
         </DialogFooter>
       </form>

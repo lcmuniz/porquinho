@@ -90,7 +90,7 @@
           data-testid="reconcile-adjust-button"
           :disabled="disabled || submitting"
         >
-          {{ submitting ? 'Salvando...' : 'Ajustar saldo' }}
+          {{ submitting ? 'Salvando…' : 'Ajustar saldo' }}
         </Button>
         <Button
           type="button"
@@ -111,7 +111,7 @@
         data-testid="reconcile-confirm-button"
         :disabled="disabled || submitting"
       >
-        {{ submitting ? 'Salvando...' : 'Confirmar reconciliação' }}
+        {{ submitting ? 'Salvando…' : 'Confirmar reconciliação' }}
       </Button>
       <!-- Com diferença ≠ 0, "Investigar depois" já fecha sem mudar nada -->
       <Button

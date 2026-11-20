@@ -1,9 +1,9 @@
 <template>
-  <main class="min-h-screen bg-gray-50 px-4 py-8">
-    <div class="mx-auto max-w-3xl space-y-6">
-      <div class="flex items-start justify-between gap-4">
+  <main class="px-4 py-6 md:px-8 md:py-8">
+    <div class="mx-auto max-w-4xl space-y-6">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div class="min-w-0">
-          <h1 class="text-2xl font-semibold text-gray-900">Vamos revisar</h1>
+          <h1 class="text-2xl font-bold text-gray-900 md:text-[28px]">Vamos revisar</h1>
           <p v-if="transactionImport" class="mt-1 truncate text-sm text-gray-600" data-testid="review-target">
             {{ transactionImport.targetName ?? '—' }} · {{ transactionImport.fileName }}
           </p>
@@ -18,7 +18,7 @@
 
       <div v-if="loading" class="space-y-2" aria-busy="true" data-testid="review-skeleton">
         <div class="h-32 animate-pulse rounded-lg bg-gray-200" />
-        <span class="sr-only">Carregando as transações...</span>
+        <span class="sr-only">Carregando as transações…</span>
       </div>
 
       <div
@@ -72,7 +72,7 @@
               data-testid="approve-all"
               @click="approveAll"
             >
-              {{ isApproving ? 'Aprovando...' : 'Aprovar todas de alta confiança' }}
+              {{ isApproving ? 'Aprovando…' : 'Aprovar todas de alta confiança' }}
             </Button>
             <Button
               variant="outline"

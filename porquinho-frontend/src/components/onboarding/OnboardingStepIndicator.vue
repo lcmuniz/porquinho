@@ -10,7 +10,7 @@
       :aria-label="`Passo ${step} de ${total}`"
     >
       <div
-        class="h-full rounded-full bg-purple-600 transition-all"
+        class="h-full rounded-full bg-purple-600 transition-[width]"
         :style="{ width: `${(step / total) * 100}%` }"
       />
     </div>

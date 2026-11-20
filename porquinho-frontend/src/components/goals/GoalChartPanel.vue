@@ -1,7 +1,7 @@
 <template>
   <div :id="`goal-chart-${goal.id}`">
     <p v-if="state === 'loading'" class="py-6 text-center text-sm text-gray-600" aria-busy="true">
-      Carregando evolução...
+      Carregando evolução…
     </p>
     <p
       v-else-if="state === 'error'"

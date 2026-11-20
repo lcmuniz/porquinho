@@ -104,7 +104,7 @@
             :aria-describedby="!period ? 'export-period-help' : undefined"
             data-testid="export-submit"
           >
-            {{ exporting ? 'Gerando...' : 'Gerar CSV' }}
+            {{ exporting ? 'Gerando…' : 'Gerar CSV' }}
           </Button>
         </DialogFooter>
       </form>

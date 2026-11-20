@@ -1,12 +1,12 @@
 <template>
-  <main class="min-h-screen bg-gray-50 px-4 py-8">
-    <div class="mx-auto max-w-6xl space-y-8">
+  <main class="px-4 py-6 md:px-8 md:py-8">
+    <div class="mx-auto max-w-6xl space-y-6">
       <FinancialHealthSemaphore :refresh="healthKey" @loaded="onLoaded" />
 
       <div class="flex items-start justify-between gap-4">
         <div>
           <div class="flex flex-wrap items-center gap-3">
-            <h1 class="text-2xl font-semibold text-gray-900">Dashboard</h1>
+            <h1 class="text-2xl font-bold text-gray-900 md:text-[28px]">Início</h1>
             <TrialBadge v-if="subscription" :subscription="subscription" />
             <RouterLink
               v-if="showSubscribeCta"
@@ -18,13 +18,6 @@
             </RouterLink>
           </div>
         </div>
-        <button
-          type="button"
-          class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-          @click="logout"
-        >
-          Sair
-        </button>
       </div>
 
       <!-- Story 3.8: fim do onboarding (sem confete: só a mensagem) -->
@@ -88,120 +81,6 @@
       <!-- Story 7.6 (Q1=B): editar na Camada 3 recarrega o semáforo -->
       <DashboardGps @transaction-saved="healthKey++" @loaded="onLoaded" />
 
-      <section aria-labelledby="account-settings-heading" class="space-y-3">
-        <h2
-          id="account-settings-heading"
-          class="text-lg font-semibold text-gray-900"
-        >
-          Configurações da conta
-        </h2>
-        <nav aria-label="Configurações da conta" class="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-          <RouterLink
-            to="/contas"
-            data-testid="accounts-link"
-            class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-          >
-            Contas bancárias
-          </RouterLink>
-          <RouterLink
-            to="/cartoes"
-            data-testid="cards-link"
-            class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-          >
-            Cartões de crédito
-          </RouterLink>
-          <RouterLink
-            to="/importar"
-            data-testid="import-link"
-            class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-          >
-            Importar extrato
-          </RouterLink>
-          <RouterLink
-            to="/transacoes"
-            data-testid="transactions-link"
-            class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-          >
-            Transações
-          </RouterLink>
-          <RouterLink
-            to="/categorias"
-            data-testid="categories-link"
-            class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-          >
-            Categorias
-          </RouterLink>
-          <RouterLink
-            to="/metas"
-            data-testid="goals-link"
-            class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-          >
-            Metas
-          </RouterLink>
-          <RouterLink
-            to="/orcamento"
-            data-testid="budget-link"
-            class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-          >
-            Orçamento
-          </RouterLink>
-          <RouterLink
-            to="/auth/sessions"
-            class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-          >
-            Sessões ativas
-          </RouterLink>
-          <RouterLink
-            to="/auth/data-export"
-            class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-          >
-            Exportar meus dados
-          </RouterLink>
-          <RouterLink
-            v-if="isAdmin"
-            to="/admin"
-            data-testid="admin-link"
-            class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-          >
-            Admin
-          </RouterLink>
-        </nav>
-        <!-- Pré-Epic 10: chave global do alerta de orçamento; some se a leitura falhar (ex.: sem acesso, 402) -->
-        <label
-          v-if="budgetAlertEmail !== null"
-          class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm text-gray-900"
-        >
-          <input
-            :checked="budgetAlertEmail"
-            type="checkbox"
-            class="size-4 accent-purple-600"
-            data-testid="budget-alert-email"
-            :disabled="savingPreferences"
-            @change="toggleBudgetAlert(($event.target as HTMLInputElement).checked)"
-          />
-          Receber alerta de orçamento por e-mail
-        </label>
-        <p v-if="preferencesError" role="alert" class="text-sm text-red-700" data-testid="budget-alert-email-error">
-          {{ preferencesError }}
-        </p>
-      </section>
-
-      <section aria-labelledby="danger-zone-heading" class="space-y-3">
-        <h2
-          id="danger-zone-heading"
-          class="text-lg font-semibold text-red-700"
-        >
-          Zona de perigo
-        </h2>
-        <nav aria-label="Zona de perigo" class="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-          <RouterLink
-            to="/auth/account-deletion"
-            class="inline-flex min-h-[44px] items-center rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
-          >
-            Excluir minha conta
-          </RouterLink>
-        </nav>
-      </section>
     </div>
   </main>
 </template>
@@ -219,10 +98,6 @@ import TrialBadge from '@/components/subscription/TrialBadge.vue'
 import DashboardGps from '@/components/dashboard/DashboardGps.vue'
 import FinancialHealthSemaphore from '@/components/dashboard/FinancialHealthSemaphore.vue'
 import { getMySubscription } from '@/services/subscriptionService'
-import { getMyPreferences, updateMyPreferences } from '@/services/userPreferencesService'
-import { getAdminAccess } from '@/services/adminService'
-import { supabase } from '@/services/supabase'
-import { useAuthStore } from '@/stores/auth'
 import type { Subscription } from '@/types/subscription'
 
 const subscription = ref<Subscription | null>(null)
@@ -250,7 +125,6 @@ function updatePayment() {
 }
 const router = useRouter()
 const route = useRoute()
-const authStore = useAuthStore()
 
 // Story 3.8: o onboarding acabou de ser concluído (/dashboard?onboarding=done)
 const showOnboardingDone = ref(false)
@@ -262,65 +136,15 @@ if (route.query.onboarding === 'done') {
   void router.replace({ path: route.path, query })
 }
 
-async function logout() {
-  // O guard do router usa a chave 'user' do localStorage: limpar primeiro garante a ida ao /login
-  authStore.clearUser()
-  try {
-    await supabase.auth.signOut()
-  } catch (err) {
-    console.warn('Supabase signOut failed', err)
-  }
-  await router.push('/login')
-  // A saída disparou o leave guard: o próximo login na mesma aba abre no topo
-  savedScrollY = 0
-}
 
 // Story 7.1: volta na mesma altura ao retornar ao dashboard; F5 recarrega o módulo e zera
-onBeforeRouteLeave(() => {
-  savedScrollY = window.scrollY
+onBeforeRouteLeave((to) => {
+  // Sair (ida ao /login) zera: o próximo login na mesma aba abre no topo
+  savedScrollY = to.name === 'login' ? 0 : window.scrollY
 })
 
-// Pré-Epic 10: null enquanto carrega ou se a leitura falhou (o checkbox fica escondido)
-const budgetAlertEmail = ref<boolean | null>(null)
-const savingPreferences = ref(false)
-const preferencesError = ref('')
-
-async function loadPreferences() {
-  try {
-    budgetAlertEmail.value = (await getMyPreferences()).budgetAlertEmail
-  } catch {
-    budgetAlertEmail.value = null
-  }
-}
-
-async function toggleBudgetAlert(enabled: boolean) {
-  const previous = budgetAlertEmail.value
-  budgetAlertEmail.value = enabled
-  savingPreferences.value = true
-  preferencesError.value = ''
-  try {
-    budgetAlertEmail.value = (await updateMyPreferences({ budgetAlertEmail: enabled })).budgetAlertEmail
-  } catch {
-    budgetAlertEmail.value = previous
-    preferencesError.value = 'Não foi possível salvar a preferência. Tente de novo.'
-  } finally {
-    savingPreferences.value = false
-  }
-}
-
-// Story 10.1: o link "Admin" só aparece para admin; falha na leitura esconde o link
-const isAdmin = ref(false)
-async function loadAdminAccess() {
-  try {
-    isAdmin.value = (await getAdminAccess()).admin
-  } catch {
-    isAdmin.value = false
-  }
-}
 
 onMounted(async () => {
-  void loadPreferences()
-  void loadAdminAccess()
   try {
     subscription.value = await getMySubscription()
   } catch {

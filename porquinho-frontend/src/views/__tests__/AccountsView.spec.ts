@@ -278,12 +278,6 @@ describe('AccountsView', () => {
     expect(wrapper.find('[data-testid="account-item-a1"]').exists()).toBe(true)
   })
 
-  it('tem o link de volta ao dashboard', async () => {
-    const wrapper = await mountView()
-    const link = wrapper.getComponent(RouterLinkStub)
-    expect(link.props('to')).toBe('/dashboard')
-  })
-
   it('cada conta tem o botão "Histórico", que leva à página de histórico', async () => {
     mockList.mockResolvedValue([account(), account({ id: 'a2', accountName: 'Inter' })])
     const wrapper = await mountView()
@@ -626,7 +620,7 @@ describe('AccountsView — editar conta (Story 4.3)', () => {
     expect(wrapper.get('[data-testid="account-item-a1"]').text()).not.toContain('Nubank PJ')
   })
 
-  it('enquanto salva, o botão mostra "Salvando...", Cancelar fica desabilitado e o diálogo não fecha', async () => {
+  it('enquanto salva, o botão mostra "Salvando…", Cancelar fica desabilitado e o diálogo não fecha', async () => {
     let resolveUpdate: (a: Account) => void = () => {}
     mockUpdate.mockReturnValue(new Promise<Account>((resolve) => (resolveUpdate = resolve)))
     const wrapper = await mountView()
@@ -635,7 +629,7 @@ describe('AccountsView — editar conta (Story 4.3)', () => {
     await flushPromises()
 
     const save = form.get('[data-testid="save-account-button"]')
-    expect(save.text()).toBe('Salvando...')
+    expect(save.text()).toBe('Salvando…')
     expect(save.attributes('disabled')).toBeDefined()
     expect(
       document.body.querySelector<HTMLButtonElement>('[data-testid="cancel-add-account"]')
@@ -1168,7 +1162,7 @@ describe('AccountsView — remover e restaurar conta (Story 4.4)', () => {
     expect(document.activeElement?.getAttribute('data-testid')).toBe('remove-account-a2')
   })
 
-  it('enquanto remove, os botões ficam travados, mostra "Removendo..." e o diálogo não fecha', async () => {
+  it('enquanto remove, os botões ficam travados, mostra "Removendo…" e o diálogo não fecha', async () => {
     let resolveDelete: () => void = () => {}
     mockDelete.mockReturnValue(new Promise<void>((resolve) => (resolveDelete = resolve)))
     const wrapper = await mountView()
@@ -1176,7 +1170,7 @@ describe('AccountsView — remover e restaurar conta (Story 4.4)', () => {
     await confirm()
 
     expect(bodyButton('confirm-remove-account').disabled).toBe(true)
-    expect(bodyButton('confirm-remove-account').textContent?.trim()).toBe('Removendo...')
+    expect(bodyButton('confirm-remove-account').textContent?.trim()).toBe('Removendo…')
     expect(bodyButton('cancel-remove-account').disabled).toBe(true)
     wrapper.findAllComponents({ name: 'Dialog' })[1]!.vm.$emit('update:open', false)
     await flushPromises()
@@ -1216,7 +1210,7 @@ describe('AccountsView — remover e restaurar conta (Story 4.4)', () => {
 
     await wrapper.get('[data-testid="restore-account-a2"]').trigger('click')
     await flushPromises()
-    expect(wrapper.get('[data-testid="restore-account-a2"]').text()).toBe('Restaurando...')
+    expect(wrapper.get('[data-testid="restore-account-a2"]').text()).toBe('Restaurando…')
     expect(wrapper.get('[data-testid="restore-account-a9"]').attributes('disabled')).toBeDefined()
     await wrapper.get('[data-testid="restore-account-a9"]').trigger('click')
     expect(mockRestore).toHaveBeenCalledOnce()
@@ -1648,7 +1642,7 @@ describe('AccountsView — transferências (Story 4.5)', () => {
     ).toBe('10,50')
   })
 
-  it('enquanto salva, mostra "Salvando...", Cancelar fica desabilitado e o diálogo não fecha', async () => {
+  it('enquanto salva, mostra "Salvando…", Cancelar fica desabilitado e o diálogo não fecha', async () => {
     let resolve: (t: Transfer) => void = () => {}
     mockCreateTransfer.mockReturnValue(new Promise<Transfer>((r) => (resolve = r)))
     const wrapper = await mountView()
@@ -1656,7 +1650,7 @@ describe('AccountsView — transferências (Story 4.5)', () => {
     await fillAndSubmit(form, '10')
 
     expect(bodyButton('save-transfer-button').disabled).toBe(true)
-    expect(bodyButton('save-transfer-button').textContent?.trim()).toBe('Salvando...')
+    expect(bodyButton('save-transfer-button').textContent?.trim()).toBe('Salvando…')
     expect(bodyButton('cancel-transfer').disabled).toBe(true)
     wrapper.findAllComponents({ name: 'Dialog' })[2]!.vm.$emit('update:open', false)
     await flushPromises()
@@ -1990,7 +1984,7 @@ describe('AccountsView — reconciliar com o banco (Story 4.6)', () => {
     ).toBe('R$ 1.050,00')
   })
 
-  it('enquanto envia, mostra "Salvando...", os botões travam e o diálogo não fecha', async () => {
+  it('enquanto envia, mostra "Salvando…", os botões travam e o diálogo não fecha', async () => {
     let resolve: (r: ReconciliationResult) => void = () => {}
     mockReconcile.mockReturnValue(new Promise<ReconciliationResult>((r) => (resolve = r)))
     const wrapper = await mountView()
@@ -1999,7 +1993,7 @@ describe('AccountsView — reconciliar com o banco (Story 4.6)', () => {
     await submit(form)
 
     expect(bodyButton('reconcile-adjust-button').disabled).toBe(true)
-    expect(bodyButton('reconcile-adjust-button').textContent?.trim()).toBe('Salvando...')
+    expect(bodyButton('reconcile-adjust-button').textContent?.trim()).toBe('Salvando…')
     expect(bodyButton('reconcile-later-button').disabled).toBe(true)
     // Diferença ≠ 0: só "Ajustar saldo" e "Investigar depois"
     expect(document.body.querySelector('[data-testid="cancel-reconcile"]')).toBeNull()

@@ -255,7 +255,7 @@ describe('ReconcileForm', () => {
     await wrapper.get('[data-testid="reconcile-form"]').trigger('submit')
 
     expect(mockReconcile).toHaveBeenCalledTimes(1)
-    expect(wrapper.get('[data-testid="reconcile-adjust-button"]').text()).toBe('Salvando...')
+    expect(wrapper.get('[data-testid="reconcile-adjust-button"]').text()).toBe('Salvando…')
     expect(
       wrapper.get('[data-testid="reconcile-later-button"]').attributes('disabled'),
     ).toBeDefined()

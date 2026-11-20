@@ -1,9 +1,9 @@
 <template>
-  <main class="min-h-screen bg-gray-50 px-4 py-8 print:min-h-0 print:bg-white print:p-0">
-    <div class="mx-auto max-w-3xl space-y-6">
-      <div class="flex items-start justify-between gap-4">
+  <main class="px-4 py-6 md:px-8 md:py-8 print:min-h-0 print:bg-white print:p-0">
+    <div class="mx-auto max-w-4xl space-y-6">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 class="text-2xl font-semibold text-gray-900">Planejado × real</h1>
+          <h1 class="text-2xl font-bold text-gray-900 md:text-[28px]">Planejado × real</h1>
           <p class="mt-1 text-sm text-gray-600 first-letter:uppercase" data-testid="period-label">
             {{ periodLabel }}
           </p>
@@ -93,7 +93,7 @@
 
       <div v-else-if="loading" class="space-y-2" aria-busy="true" data-testid="comparison-skeleton">
         <div class="h-64 animate-pulse rounded-lg bg-gray-100" />
-        <span class="sr-only">Carregando a comparação...</span>
+        <span class="sr-only">Carregando a comparação…</span>
       </div>
 
       <div
@@ -125,7 +125,7 @@
         </p>
 
         <template v-else>
-          <div class="flex flex-wrap justify-end gap-2 print:hidden">
+          <div class="flex flex-wrap gap-2 sm:justify-end print:hidden">
             <Button
               variant="outline"
               class="min-h-[44px]"
@@ -540,7 +540,7 @@ const RowCells = defineComponent({
           r.difference === null ? '—' : formatBRL(r.difference),
         ),
         h('td', { class: num }, r.percent === null ? '—' : `${r.percent}%`),
-        h('td', { class: 'px-3 py-2' }, [
+        h('td', { class: 'min-w-52 px-3 py-2' }, [
           h(
             BudgetStatusLabel,
             { status: r.status, remaining: r.difference },

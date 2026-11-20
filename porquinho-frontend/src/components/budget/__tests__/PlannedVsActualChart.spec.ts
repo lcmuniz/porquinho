@@ -18,8 +18,8 @@ describe('PlannedVsActualChart', () => {
       '[data-testid="chart-bars-c1"] [data-testid="chart-bar-allocated"]',
     )
     const spent = wrapper.get('[data-testid="chart-bars-c1"] [data-testid="chart-bar-spent"]')
-    expect(allocated.attributes('fill')).toBe('#8b5cf6')
-    expect(spent.attributes('fill')).toBe('#4c1d95')
+    expect(allocated.attributes('fill')).toBe('#93B1F5')
+    expect(spent.attributes('fill')).toBe('#1E40AF')
     expect(Number(spent.attributes('width'))).toBeCloseTo(Number(allocated.attributes('width')) / 2)
     expect(
       Number(

@@ -45,6 +45,7 @@
 
       <div class="relative">
         <svg
+          ref="svg"
           :viewBox="`0 0 ${WIDTH} ${HEIGHT}`"
           class="h-auto w-full overflow-visible"
           role="group"
@@ -58,7 +59,7 @@
               :x2="WIDTH - PAD.right"
               :y1="tick.y"
               :y2="tick.y"
-              stroke="#e5e7eb"
+              stroke="#E2E8F0"
               stroke-width="1"
             />
             <text
@@ -66,10 +67,10 @@
               :y="tick.y"
               text-anchor="end"
               dominant-baseline="middle"
-              font-size="11"
-              fill="#6b7280"
+              font-size="13"
+              fill="#475569"
             >
-              {{ formatBRL(tick.value) }}
+              {{ tick.label }}
             </text>
           </g>
           <line
@@ -78,7 +79,7 @@
             :x2="WIDTH - PAD.right"
             :y1="zeroY"
             :y2="zeroY"
-            stroke="#9ca3af"
+            stroke="#94A3B8"
             stroke-width="1"
             stroke-dasharray="4 3"
             data-testid="wealth-zero-line"
@@ -88,7 +89,7 @@
             :x2="WIDTH - PAD.right"
             :y1="HEIGHT - PAD.bottom"
             :y2="HEIGHT - PAD.bottom"
-            stroke="#9ca3af"
+            stroke="#94A3B8"
             stroke-width="1"
           />
           <text
@@ -97,8 +98,8 @@
             :x="tick.x"
             :y="HEIGHT - PAD.bottom + 18"
             :text-anchor="i === 0 ? 'start' : i === xTicks.length - 1 ? 'end' : 'middle'"
-            font-size="11"
-            fill="#6b7280"
+            font-size="13"
+            fill="#475569"
           >
             {{ tick.label }}
           </text>
@@ -107,7 +108,7 @@
           <path
             :d="curve"
             fill="none"
-            stroke="#9333EA"
+            stroke="#1E40AF"
             stroke-width="2.5"
             stroke-linejoin="round"
             stroke-linecap="round"
@@ -125,7 +126,7 @@
             :cx="p.x"
             :cy="p.y"
             r="5"
-            :fill="active === i ? '#9333EA' : 'transparent'"
+            :fill="active === i ? '#1E40AF' : 'transparent'"
             :stroke="active === i ? '#ffffff' : 'transparent'"
             stroke-width="1.5"
             :tabindex="i === focusIndex ? 0 : -1"
@@ -168,7 +169,17 @@
 import { computed, ref, watch } from 'vue'
 import { ArrowDown, ArrowUp, Minus } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
-import { LINE_CHART, balanceDomain, movePointFocus, valueTicks, yOf as chartY } from '@/lib/chart'
+import {
+  LINE_CHART,
+  axisBRL,
+  balanceDomain,
+  labelPad,
+  movePointFocus,
+  useChartWidth,
+  valueTicks,
+  xTickCount,
+  yOf as chartY,
+} from '@/lib/chart'
 import { formatLocalDateBR } from '@/lib/date'
 import { formatBRL, formatSignedBRL } from '@/lib/money'
 import type { WealthPoint } from '@/types/dashboard'
@@ -180,7 +191,7 @@ import type { WealthPoint } from '@/types/dashboard'
 const props = defineProps<{ points: WealthPoint[] }>()
 
 const RANGES = [3, 6, 12] as const
-const { WIDTH, HEIGHT, PAD } = LINE_CHART
+const { HEIGHT } = LINE_CHART
 const Y_TICKS = 4
 const X_TICKS = 4
 const DAY = 86_400_000
@@ -188,6 +199,9 @@ const DAY = 86_400_000
 const months = ref<(typeof RANGES)[number]>(3)
 const active = ref<number | null>(null)
 const drawing = ref(true)
+
+const svg = ref<SVGElement | null>(null)
+const { width: WIDTH, narrow } = useChartWidth(svg, LINE_CHART.WIDTH)
 
 const toTime = (date: string) => Date.parse(`${date}T00:00:00Z`)
 const toDate = (time: number) => new Date(time).toISOString().slice(0, 10)
@@ -226,12 +240,12 @@ const trend = computed(() => {
   const first = s[0]!.balance
   const diff = s[s.length - 1]!.balance - first
   const label = `${formatSignedBRL(Math.round(diff * 100) / 100)} em ${months.value} meses`
-  // Texto text-sm precisa de 4,5:1 (WCAG 1.4.3): amarelo e verde 600 não chegam, o 700 sim (retro Epic 7 A3)
+  // Queda de patrimônio não é erro: tom neutro (vermelho fica para saldo negativo). Texto sm precisa de 4,5:1
   if (diff === 0 || Math.abs(diff) < Math.abs(first) * 0.01)
-    return { icon: Minus, text: 'text-yellow-700', label }
+    return { icon: Minus, text: 'text-gray-600', label }
   return diff > 0
     ? { icon: ArrowUp, text: 'text-green-700', label }
-    : { icon: ArrowDown, text: 'text-red-600', label }
+    : { icon: ArrowDown, text: 'text-gray-700', label }
 })
 
 const xDomain = computed<[number, number]>(() => {
@@ -241,13 +255,22 @@ const xDomain = computed<[number, number]>(() => {
 
 const yDomain = computed(() => balanceDomain(series.value.map((p) => p.balance)))
 
+const yLabels = computed(() =>
+  valueTicks(yDomain.value, Y_TICKS).map((value) => ({ value, label: axisBRL(value, narrow.value) })),
+)
+
+/** Estreito: margem esquerda do tamanho do maior rótulo. */
+const PAD = computed(() =>
+  narrow.value ? { ...LINE_CHART.PAD, left: labelPad(yLabels.value.map((t) => t.label)) } : LINE_CHART.PAD,
+)
+
 function xOf(time: number): number {
   const [min, max] = xDomain.value
-  return PAD.left + ((time - min) / (max - min || 1)) * (WIDTH - PAD.left - PAD.right)
+  return PAD.value.left + ((time - min) / (max - min || 1)) * (WIDTH.value - PAD.value.left - PAD.value.right)
 }
 
 function yOf(value: number): number {
-  return chartY(value, yDomain.value, HEIGHT, PAD)
+  return chartY(value, yDomain.value, HEIGHT, PAD.value)
 }
 
 const plotted = computed(() =>
@@ -293,19 +316,21 @@ const activePoint = computed(() => (active.value === null ? null : plotted.value
 
 /** Perto das bordas, o tooltip abre para dentro do card em vez de centralizar no ponto. */
 const tooltipAlign = computed(() => {
-  const ratio = (activePoint.value?.x ?? 0) / WIDTH
+  const ratio = (activePoint.value?.x ?? 0) / WIDTH.value
   if (ratio < 0.2) return 'translate-x-0'
   return ratio > 0.8 ? '-translate-x-full' : '-translate-x-1/2'
 })
 
-const yTicks = computed(() => valueTicks(yDomain.value, Y_TICKS).map((value) => ({ value, y: yOf(value) })))
+const yTicks = computed(() => yLabels.value.map((t) => ({ ...t, y: yOf(t.value) })))
 
 const zeroY = computed(() => (yDomain.value[0] < 0 ? yOf(0) : null))
 
 const xTicks = computed(() => {
   const [min, max] = xDomain.value
-  return Array.from({ length: X_TICKS + 1 }, (_, i) => {
-    const time = Math.round((min + ((max - min) * i) / X_TICKS) / DAY) * DAY
+  // Pontas ancoradas no início/fim: o rótulo da ponta ocupa um lado só, então cada intervalo precisa de 1,5 rótulo
+  const count = xTickCount(WIDTH.value - PAD.value.left - PAD.value.right, 15, X_TICKS)
+  return Array.from({ length: count + 1 }, (_, i) => {
+    const time = Math.round((min + ((max - min) * i) / count) / DAY) * DAY
     return { x: xOf(time), label: formatLocalDateBR(toDate(time)) }
   })
 })

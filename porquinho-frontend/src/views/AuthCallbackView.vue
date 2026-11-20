@@ -1,5 +1,6 @@
 <template>
-  <main class="flex min-h-screen items-center justify-center bg-white px-4">
+  <main class="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 py-10">
+    <BrandMark />
     <div class="text-center">
       <div v-if="isLoading" class="space-y-4">
         <div
@@ -7,7 +8,7 @@
           role="status"
           aria-label="Carregando"
         ></div>
-        <p class="text-gray-600">Finalizando seu cadastro...</p>
+        <p class="text-gray-600">Finalizando seu cadastro…</p>
       </div>
 
       <div v-if="errorMessage" class="space-y-4">
@@ -24,6 +25,7 @@
 </template>
 
 <script setup lang="ts">
+import BrandMark from '@/components/common/BrandMark.vue'
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Button } from '@/components/ui/button'

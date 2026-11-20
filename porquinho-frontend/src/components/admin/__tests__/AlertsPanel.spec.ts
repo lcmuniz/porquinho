@@ -105,7 +105,7 @@ describe('AlertsPanel', () => {
 
     await wrapper.get('[data-testid="alert-resolve-1"]').trigger('click')
     expect(mockResolveAlert).toHaveBeenCalledWith(1)
-    expect(wrapper.get('[data-testid="alert-resolve-1"]').text()).toBe('Salvando...')
+    expect(wrapper.get('[data-testid="alert-resolve-1"]').text()).toBe('Salvando…')
     expect(wrapper.get('[data-testid="alert-resolve-1"]').attributes('disabled')).toBeDefined()
 
     finish(alert({ resolvedAt: '2026-11-19T13:30:00Z' }))

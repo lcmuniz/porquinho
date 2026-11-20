@@ -1,7 +1,7 @@
 <template>
   <div class="space-y-6">
     <div v-if="!health && loading && !error" role="status" class="py-12 text-center text-sm text-gray-700">
-      Carregando...
+      Carregando…
     </div>
 
     <div
@@ -50,7 +50,7 @@
         </h2>
         <HealthBarChart
           :points="hourlyTime"
-          color="#7c3aed"
+          color="#1E40AF"
           test-id="chart-time"
           :has-data="hasHourlyData"
           label="Tempo médio de resposta de cada hora nas últimas 24 horas"
@@ -64,7 +64,7 @@
         </h2>
         <HealthBarChart
           :points="hourlyErrors"
-          color="#dc2626"
+          color="#B91C1C"
           test-id="chart-errors"
           :has-data="hasHourlyData"
           label="Erros 5xx de cada hora nas últimas 24 horas"

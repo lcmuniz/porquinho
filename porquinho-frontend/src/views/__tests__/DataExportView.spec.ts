@@ -79,7 +79,7 @@ describe('DataExportView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Solicitar exportação')
-    expect(wrapper.text()).toContain('Exportar Meus Dados')
+    expect(wrapper.text()).toContain('Exportar meus dados')
   })
 
   it('should render idle state when previous export expired', async () => {
@@ -88,7 +88,7 @@ describe('DataExportView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Solicitar exportação')
-    expect(wrapper.text()).toContain('Exportar Meus Dados')
+    expect(wrapper.text()).toContain('Exportar meus dados')
   })
 
   it('should show confirm dialog when clicking export button', async () => {

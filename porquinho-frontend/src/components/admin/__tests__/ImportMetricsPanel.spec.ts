@@ -79,8 +79,8 @@ describe('ImportMetricsPanel', () => {
     expect(wrapper.get('[data-testid="bank-row-UNKNOWN"]').text()).toContain('Não identificado')
     expect(wrapper.get('[data-testid="bank-row-UNKNOWN"]').text()).toContain('sem dados')
     expect(wrapper.findAll('[data-testid="chart-banks"] rect').map((r) => r.attributes('fill'))).toEqual([
-      '#dc2626',
-      '#16a34a',
+      '#B91C1C',
+      '#047857',
     ])
     expect(wrapper.get('[data-testid="filter-from"]').element).toHaveProperty('value', '2026-10-19')
   })
@@ -109,7 +109,7 @@ describe('ImportMetricsPanel', () => {
     expect(wrapper.get('[data-testid="chart-trend-table"]').findAll('tbody tr')).toHaveLength(30)
     // Só o último dia (75 %) passa da meta
     const fills = wrapper.findAll('[data-testid="chart-trend"] rect').map((r) => r.attributes('fill'))
-    expect(fills).toEqual(['#dc2626'])
+    expect(fills).toEqual(['#B91C1C'])
   })
 
   it('os filtros mandam os parâmetros e o status vale para o detalhe e o CSV', async () => {
@@ -185,7 +185,7 @@ describe('ImportMetricsPanel', () => {
     await flushPromises()
 
     const fills = wrapper.findAll('[data-testid="chart-trend"] rect').map((r) => r.attributes('fill'))
-    expect(fills).toEqual(['#dc2626', '#16a34a', '#dc2626'])
+    expect(fills).toEqual(['#B91C1C', '#047857', '#B91C1C'])
   })
 
   it('a resposta antiga do detalhe não sobrescreve a mais nova', async () => {

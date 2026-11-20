@@ -1,8 +1,8 @@
 <template>
-  <main class="min-h-screen bg-gray-50 px-4 py-8">
-    <div class="mx-auto max-w-3xl space-y-6">
-      <div class="flex items-start justify-between gap-4">
-        <h1 class="min-w-0 text-2xl font-semibold text-gray-900" data-testid="history-heading">
+  <main class="px-4 py-6 md:px-8 md:py-8">
+    <div class="mx-auto max-w-4xl space-y-6">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <h1 class="min-w-0 text-2xl font-bold text-gray-900 md:text-[28px]" data-testid="history-heading">
           Histórico do orçamento<template v-if="history"> — {{ history.categoryName }}</template>
         </h1>
         <RouterLink
@@ -41,7 +41,7 @@
 
       <div v-if="loading" class="space-y-2" aria-busy="true" data-testid="history-skeleton">
         <div class="h-64 animate-pulse rounded-lg bg-gray-100" />
-        <span class="sr-only">Carregando o histórico...</span>
+        <span class="sr-only">Carregando o histórico…</span>
       </div>
 
       <div
@@ -149,7 +149,7 @@
                     >
                       {{ formatBRL(m.remaining) }}
                     </td>
-                    <td class="px-4 py-2">
+                    <td class="min-w-52 px-4 py-2">
                       <BudgetStatusLabel class="text-gray-900" :status="m.status" :remaining="m.remaining" />
                     </td>
                   </tr>

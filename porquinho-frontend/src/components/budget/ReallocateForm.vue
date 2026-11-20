@@ -71,7 +71,7 @@
       data-testid="save-reallocate-button"
       :disabled="submitting"
     >
-      {{ submitting ? 'Movendo...' : 'Mover dinheiro' }}
+      {{ submitting ? 'Movendo…' : 'Mover dinheiro' }}
     </Button>
   </form>
 </template>

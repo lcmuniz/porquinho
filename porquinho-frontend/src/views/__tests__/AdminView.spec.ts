@@ -180,7 +180,7 @@ describe('AdminView', () => {
     expect(mockGetSystemHealth).toHaveBeenCalledTimes(2)
   })
 
-  it('com erro e nova tentativa pendente, não mostra "Carregando..." e desabilita o botão', async () => {
+  it('com erro e nova tentativa pendente, não mostra "Carregando…" e desabilita o botão', async () => {
     mockGetSystemHealth.mockRejectedValue(new Error('rede'))
     const wrapper = mountView()
     await flushPromises()
@@ -190,7 +190,7 @@ describe('AdminView', () => {
     await wrapper.get('[data-testid="admin-retry"]').trigger('click')
 
     expect(wrapper.get('[data-testid="admin-retry"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.text()).not.toContain('Carregando...')
+    expect(wrapper.text()).not.toContain('Carregando…')
     expect(wrapper.find('[data-testid="admin-error"]').exists()).toBe(true)
   })
 

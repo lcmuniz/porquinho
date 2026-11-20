@@ -64,7 +64,7 @@
         :disabled="finishing"
         @click="finish()"
       >
-        {{ finishing ? 'Salvando...' : 'Importar depois' }}
+        {{ finishing ? 'Salvando…' : 'Importar depois' }}
         <ChevronRight class="h-4 w-4" aria-hidden="true" />
       </Button>
       <Button
@@ -74,7 +74,7 @@
         :disabled="finishing"
         @click="finish(completedImport.id)"
       >
-        {{ finishing ? 'Salvando...' : 'Continuar' }}
+        {{ finishing ? 'Salvando…' : 'Continuar' }}
         <ChevronRight class="h-4 w-4" aria-hidden="true" />
       </Button>
     </div>

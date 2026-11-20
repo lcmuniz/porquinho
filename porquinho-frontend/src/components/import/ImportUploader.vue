@@ -97,9 +97,9 @@
                 aria-valuemin="0"
                 aria-valuemax="100"
               >
-                <div class="h-full bg-purple-600 transition-all" :style="{ width: `${progress}%` }" />
+                <div class="h-full bg-purple-600 transition-[width]" :style="{ width: `${progress}%` }" />
               </div>
-              <p class="text-xs text-gray-600">Enviando... {{ progress }}%</p>
+              <p class="text-xs text-gray-600">Enviando… {{ progress }}%</p>
             </div>
 
             <p v-if="formError" class="text-sm text-red-600" role="alert" data-testid="form-error">{{ formError }}</p>
@@ -108,7 +108,7 @@
             </p>
 
             <Button type="submit" class="min-h-[44px]" :disabled="isUploading" data-testid="submit-import">
-              {{ isUploading ? 'Enviando...' : 'Enviar arquivo' }}
+              {{ isUploading ? 'Enviando…' : 'Enviar arquivo' }}
             </Button>
           </form>
         </CardContent>
@@ -184,7 +184,7 @@ const MESSAGES = {
   fileRequired: 'Escolha o arquivo do extrato',
   tooLarge: 'Arquivo muito grande (máximo 10MB)',
   unsupported: 'Formato de arquivo não suportado',
-  uploaded: 'Arquivo enviado, processando...',
+  uploaded: 'Arquivo enviado, processando…',
   uploadFailed: 'Não foi possível enviar o arquivo. Tente novamente.',
   loadFailed: 'Não foi possível carregar suas contas e cartões. Tente novamente.',
 }
@@ -193,10 +193,10 @@ const MESSAGES = {
 const POLL_INTERVAL_MS = 2000
 
 /** Story 5.4 (decisão 2A): sem progresso real; as contagens só aparecem no fim. */
-const READING = 'lendo as transações...'
+const READING = 'lendo as transações…'
 
 const STATUS_LABELS: Record<TransactionImportStatus, string> = {
-  PROCESSING: 'Recebido — identificando o banco...',
+  PROCESSING: 'Recebido — identificando o banco…',
   REVIEW: 'Aguardando revisão',
   COMPLETED: 'Concluída',
   FAILED: 'Falhou',
@@ -340,7 +340,7 @@ function skippedSuffix(item: TransactionImport): string {
  */
 function statusLabel(item: TransactionImport): string {
   if (item.status === 'PROCESSING' && item.classificationTotal > 0) {
-    return `Classificando transações com IA... ${item.classifiedCount} de ${item.classificationTotal}`
+    return `Classificando transações com IA… ${item.classifiedCount} de ${item.classificationTotal}`
   }
   if (item.status === 'PROCESSING' && item.bankName) {
     const bank = BANK_LABELS[item.bankName] ?? item.bankName

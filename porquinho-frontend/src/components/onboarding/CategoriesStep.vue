@@ -25,7 +25,7 @@
         <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <div v-for="n in 4" :key="n" class="h-14 animate-pulse rounded-lg bg-gray-100" />
         </div>
-        <span class="sr-only">Carregando as sugestões...</span>
+        <span class="sr-only">Carregando as sugestões…</span>
       </div>
 
       <div
@@ -119,7 +119,7 @@
           :aria-describedby="showNoneHint ? 'categories-none-hint' : undefined"
           @click="finish"
         >
-          {{ finishing ? 'Salvando...' : 'Próximo' }}
+          {{ finishing ? 'Salvando…' : 'Próximo' }}
           <ChevronRight class="h-4 w-4" aria-hidden="true" />
         </Button>
       </div>

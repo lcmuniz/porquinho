@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BrandMark from '@/components/common/BrandMark.vue'
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Button } from '@/components/ui/button'
@@ -113,7 +114,8 @@ onMounted(() => {
 </script>
 
 <template>
-  <main class="flex min-h-screen items-center justify-center bg-white px-4">
+  <main class="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 py-10">
+    <BrandMark />
     <section class="w-full max-w-md">
       <Card>
         <CardHeader>
@@ -132,7 +134,7 @@ onMounted(() => {
             class="rounded-md border border-green-200 bg-green-50 p-4 text-sm text-green-700"
           >
             <p class="font-medium">Senha redefinida com sucesso!</p>
-            <p class="mt-1">Redirecionando para login...</p>
+            <p class="mt-1">Redirecionando para login…</p>
           </div>
 
           <!-- Error message -->
@@ -160,6 +162,8 @@ onMounted(() => {
               <div class="relative">
                 <Input
                   id="new-password"
+                  name="new-password"
+                  autocomplete="new-password"
                   v-model="newPassword"
                   :type="showNewPassword ? 'text' : 'password'"
                   required
@@ -170,7 +174,7 @@ onMounted(() => {
                 <button
                   type="button"
                   @click="toggleNewPasswordVisibility"
-                  class="absolute right-2 top-1/2 -translate-y-1/2 rounded text-gray-500 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-600 focus:ring-offset-2"
+                  class="absolute right-2 top-1/2 -translate-y-1/2 rounded text-gray-500 hover:text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-600 focus-visible:ring-offset-2"
                   :aria-label="showNewPassword ? 'Ocultar senha' : 'Mostrar senha'"
                 >
                   <svg
@@ -212,6 +216,8 @@ onMounted(() => {
               <div class="relative">
                 <Input
                   id="confirm-password"
+                  name="confirm-password"
+                  autocomplete="new-password"
                   v-model="confirmPassword"
                   :type="showConfirmPassword ? 'text' : 'password'"
                   required
@@ -284,7 +290,7 @@ onMounted(() => {
               class="w-full min-h-[44px] bg-purple-600 hover:bg-purple-700 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600 disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label="Redefinir senha"
             >
-              <span v-if="isLoading">Redefinindo...</span>
+              <span v-if="isLoading">Redefinindo…</span>
               <span v-else>Redefinir senha</span>
             </Button>
           </form>

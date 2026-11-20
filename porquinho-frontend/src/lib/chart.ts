@@ -3,6 +3,10 @@
  * navegação por teclado entre os pontos (retro Epic 7 A6).
  */
 
+import { computed, type Ref } from 'vue'
+import { useElementSize } from '@vueuse/core'
+import { formatBRL } from './money'
+
 export interface ChartPadding {
   top: number
   right: number
@@ -67,4 +71,40 @@ export function movePointFocus(event: KeyboardEvent, index: number, last: number
   const svg = (event.currentTarget as SVGElement).ownerSVGElement
   svg?.querySelector<SVGElement>(`[data-testid="${testIdPrefix}-${next}"]`)?.focus()
   return next
+}
+
+/**
+ * Largura do viewBox: a do projeto, ou a largura real (px) quando o SVG é mais estreito. Assim 1 unidade = 1px e o
+ * font-size 13 dos rótulos fica com 13px na tela, em qualquer largura. Sem medida (jsdom, antes de montar), a do projeto.
+ */
+export function useChartWidth(svg: Ref<SVGElement | null | undefined>, design: number) {
+  const { width } = useElementSize(svg)
+  const value = computed(() => (width.value > 0 && width.value < design ? Math.floor(width.value) : design))
+  return { width: value, narrow: computed(() => value.value < design) }
+}
+
+const COMPACT_BRL = new Intl.NumberFormat('pt-BR', {
+  style: 'currency',
+  currency: 'BRL',
+  notation: 'compact',
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 1,
+})
+
+/** Rótulo de eixo em R$: compacto ("R$ 33 mil") no gráfico estreito; o valor exato fica no tooltip e na tabela. */
+export function axisBRL(value: number, compact: boolean): string {
+  return compact ? COMPACT_BRL.format(value) : formatBRL(value)
+}
+
+/** Largura média aproximada de um caractere em 13px. */
+const CHAR_PX = 7.5
+
+/** Margem esquerda que cabe o maior rótulo do eixo Y (+ 8 de folga até a área e 4 da borda). */
+export function labelPad(labels: string[]): number {
+  return Math.ceil(Math.max(0, ...labels.map((l) => l.length)) * CHAR_PX) + 12
+}
+
+/** Quantos intervalos de eixo X cabem em `inner` px sem sobrepor rótulos de `chars` caracteres (no máximo `max`). */
+export function xTickCount(inner: number, chars: number, max: number): number {
+  return Math.max(1, Math.min(max, Math.floor(inner / (chars * CHAR_PX + 16))))
 }

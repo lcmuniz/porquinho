@@ -173,7 +173,7 @@ describe('GoalsView', () => {
     await submit()
 
     expect(inDialog<HTMLButtonElement>('goal-cancel')!.disabled).toBe(true)
-    expect(inDialog('goal-save')!.textContent?.trim()).toBe('Salvando...')
+    expect(inDialog('goal-save')!.textContent?.trim()).toBe('Salvando…')
     wrapper!.findComponent({ name: 'Dialog' }).vm.$emit('update:open', false)
     await flushPromises()
     expect(inDialog('goal-dialog')).not.toBeNull()

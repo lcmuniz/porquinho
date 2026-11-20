@@ -83,9 +83,9 @@ describe('AiMetricsPanel', () => {
     expect(wrapper.get('[data-testid="ai-row-UNKNOWN"]').text()).toContain('Não identificado')
     expect(wrapper.get('[data-testid="ai-row-UNKNOWN"]').classes()).toContain('text-gray-900')
     expect(wrapper.findAll('[data-testid="ai-chart-banks"] rect').map((r) => r.attributes('fill'))).toEqual([
-      '#dc2626',
-      '#ca8a04',
-      '#16a34a',
+      '#B91C1C',
+      '#B45309',
+      '#047857',
     ])
     const series = wrapper.findAll('[data-testid="ai-chart-trend-series"]')
     expect(series).toHaveLength(2)

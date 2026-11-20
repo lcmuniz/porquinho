@@ -2,7 +2,7 @@ import { ref, type Ref } from 'vue'
 
 /**
  * Lista carregada do servidor em que só a resposta da carga mais recente é aplicada (removidas, transferências).
- * `quiet` recarrega sem trocar a lista pelo "Carregando...". `onError` recebe a falha da carga mais recente (quem precisa
+ * `quiet` recarrega sem trocar a lista pelo "Carregando…". `onError` recebe a falha da carga mais recente (quem precisa
  * distinguir 403 ou 400).
  */
 export function useSequencedList<T>(fetch: () => Promise<T[]>, onError?: (err: unknown) => void) {

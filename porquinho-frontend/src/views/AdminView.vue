@@ -1,8 +1,8 @@
 <template>
-  <main class="min-h-screen bg-gray-50 px-4 py-8">
+  <main class="px-4 py-6 md:px-8 md:py-8">
     <div class="mx-auto max-w-6xl space-y-6">
       <div class="flex items-center justify-between gap-4">
-        <h1 class="text-2xl font-semibold text-gray-900">Admin</h1>
+        <h1 class="text-2xl font-bold text-gray-900 md:text-[28px]">Admin</h1>
         <RouterLink
           to="/dashboard"
           class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"

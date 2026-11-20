@@ -55,7 +55,7 @@
           :disabled="!canConfirm"
           @click="confirm"
         >
-          {{ deleting ? 'Excluindo...' : 'Excluir' }}
+          {{ deleting ? 'Excluindo…' : 'Excluir' }}
         </Button>
       </DialogFooter>
     </DialogContent>

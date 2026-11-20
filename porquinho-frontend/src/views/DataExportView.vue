@@ -1,9 +1,9 @@
 <template>
-  <main class="min-h-screen bg-gray-50 px-4 py-8">
+  <main class="px-4 py-6 md:px-8 md:py-8">
     <div class="mx-auto max-w-3xl space-y-6">
       <div class="flex items-center justify-between">
         <div>
-          <h1 class="text-2xl font-semibold text-gray-900">Exportar meus dados</h1>
+          <h1 class="text-2xl font-bold text-gray-900 md:text-[28px]">Exportar meus dados</h1>
           <p class="mt-1 text-sm text-gray-600">
             Exporte todos os seus dados em um ZIP com arquivos JSON (direito LGPD)
           </p>
@@ -12,7 +12,7 @@
           variant="outline"
           class="min-h-[44px]"
           @click="goBack"
-          aria-label="Voltar para o dashboard"
+          aria-label="Voltar para configurações"
         >
           Voltar
         </Button>
@@ -21,7 +21,7 @@
       <!-- Loading state -->
       <div v-if="isLoading" class="flex items-center justify-center py-12" role="status" aria-label="Carregando status da exportação">
         <div class="h-8 w-8 animate-spin rounded-full border-4 border-purple-200 border-t-purple-600" />
-        <span class="sr-only">Carregando...</span>
+        <span class="sr-only">Carregando…</span>
       </div>
 
       <!-- Error state -->
@@ -61,7 +61,7 @@
               @click="showConfirmDialog = true"
               aria-label="Solicitar exportação de dados"
             >
-              Exportar Meus Dados
+              Exportar meus dados
             </Button>
           </CardContent>
         </Card>
@@ -75,7 +75,7 @@
             <div class="flex items-center gap-3">
               <div class="h-5 w-5 animate-spin rounded-full border-2 border-purple-200 border-t-purple-600" />
               <p class="text-sm text-gray-600">
-                Seus dados estão sendo coletados e preparados para download...
+                Seus dados estão sendo coletados e preparados para download…
               </p>
             </div>
             <p class="text-xs text-gray-500">
@@ -180,7 +180,7 @@
                 class="min-h-[44px]"
                 :disabled="isRequesting || !passwordValid"
               >
-                {{ isRequesting ? 'Solicitando...' : 'Exportar' }}
+                {{ isRequesting ? 'Solicitando…' : 'Exportar' }}
               </Button>
             </DialogFooter>
           </form>
@@ -329,7 +329,7 @@ function stopPolling() {
 
 
 function goBack() {
-  router.push('/dashboard')
+  router.push('/configuracoes')
 }
 
 onMounted(loadStatus)

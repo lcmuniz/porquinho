@@ -35,7 +35,7 @@
           data-testid="discard-confirm"
           @click="discard"
         >
-          {{ isDiscarding ? 'Descartando...' : 'Descartar' }}
+          {{ isDiscarding ? 'Descartando…' : 'Descartar' }}
         </Button>
       </DialogFooter>
     </DialogContent>

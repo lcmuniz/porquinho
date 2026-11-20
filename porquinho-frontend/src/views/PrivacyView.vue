@@ -11,7 +11,7 @@
         </p>
 
         <section class="mt-8">
-          <h2 class="text-2xl font-semibold text-gray-900">1. Introdução</h2>
+          <h2 class="text-2xl font-bold text-gray-900 md:text-[28px]">1. Introdução</h2>
           <p class="mt-2 text-gray-700">
             Esta Política de Privacidade descreve como o Porquinho coleta, usa, armazena e
             protege seus dados pessoais, em conformidade com a Lei Geral de Proteção de Dados
@@ -20,7 +20,7 @@
         </section>
 
         <section class="mt-6">
-          <h2 class="text-2xl font-semibold text-gray-900">2. Dados Coletados</h2>
+          <h2 class="text-2xl font-bold text-gray-900 md:text-[28px]">2. Dados Coletados</h2>
           <p class="mt-2 text-gray-700">Coletamos os seguintes dados pessoais:</p>
           <ul class="mt-2 ml-6 list-disc text-gray-700">
             <li>Nome e endereço de e-mail (através do Google OAuth ou cadastro direto)</li>
@@ -31,7 +31,7 @@
         </section>
 
         <section class="mt-6">
-          <h2 class="text-2xl font-semibold text-gray-900">3. Finalidade do Tratamento</h2>
+          <h2 class="text-2xl font-bold text-gray-900 md:text-[28px]">3. Finalidade do Tratamento</h2>
           <p class="mt-2 text-gray-700">Seus dados são utilizados para:</p>
           <ul class="mt-2 ml-6 list-disc text-gray-700">
             <li>Fornecer os serviços de gestão financeira pessoal</li>
@@ -43,7 +43,7 @@
         </section>
 
         <section class="mt-6">
-          <h2 class="text-2xl font-semibold text-gray-900">4. Base Legal</h2>
+          <h2 class="text-2xl font-bold text-gray-900 md:text-[28px]">4. Base Legal</h2>
           <p class="mt-2 text-gray-700">
             O tratamento de seus dados pessoais é baseado no seu consentimento, na execução de
             contrato e no cumprimento de obrigação legal, conforme Art. 7º da LGPD.
@@ -51,7 +51,7 @@
         </section>
 
         <section class="mt-6">
-          <h2 class="text-2xl font-semibold text-gray-900">5. Compartilhamento de Dados</h2>
+          <h2 class="text-2xl font-bold text-gray-900 md:text-[28px]">5. Compartilhamento de Dados</h2>
           <p class="mt-2 text-gray-700">
             Não vendemos seus dados pessoais. Compartilhamos dados apenas quando necessário com:
           </p>
@@ -78,7 +78,7 @@
         </section>
 
         <section class="mt-6">
-          <h2 class="text-2xl font-semibold text-gray-900">6. Armazenamento e Segurança</h2>
+          <h2 class="text-2xl font-bold text-gray-900 md:text-[28px]">6. Armazenamento e Segurança</h2>
           <p class="mt-2 text-gray-700">
             Seus dados são armazenados em servidores seguros com criptografia. Implementamos
             medidas técnicas e organizacionais para proteger seus dados contra acesso não
@@ -87,7 +87,7 @@
         </section>
 
         <section class="mt-6">
-          <h2 class="text-2xl font-semibold text-gray-900">7. Seus Direitos (LGPD)</h2>
+          <h2 class="text-2xl font-bold text-gray-900 md:text-[28px]">7. Seus Direitos (LGPD)</h2>
           <p class="mt-2 text-gray-700">Você tem o direito de:</p>
           <ul class="mt-2 ml-6 list-disc text-gray-700">
             <li>Confirmação da existência de tratamento dos seus dados</li>
@@ -108,7 +108,7 @@
         </section>
 
         <section class="mt-6">
-          <h2 class="text-2xl font-semibold text-gray-900">8. Retenção de Dados</h2>
+          <h2 class="text-2xl font-bold text-gray-900 md:text-[28px]">8. Retenção de Dados</h2>
           <p class="mt-2 text-gray-700">
             Mantemos seus dados pelo tempo necessário para fornecer nossos serviços e cumprir
             obrigações legais. Após solicitação de exclusão, seus dados são mantidos por 30 dias
@@ -130,7 +130,7 @@
         </section>
 
         <section class="mt-6">
-          <h2 class="text-2xl font-semibold text-gray-900">9. Cookies</h2>
+          <h2 class="text-2xl font-bold text-gray-900 md:text-[28px]">9. Cookies</h2>
           <p class="mt-2 text-gray-700">
             Utilizamos cookies essenciais para autenticação e funcionamento da plataforma.
             Você pode gerenciar cookies nas configurações do seu navegador.
@@ -138,7 +138,7 @@
         </section>
 
         <section class="mt-6">
-          <h2 class="text-2xl font-semibold text-gray-900">10. Alterações na Política</h2>
+          <h2 class="text-2xl font-bold text-gray-900 md:text-[28px]">10. Alterações na Política</h2>
           <p class="mt-2 text-gray-700">
             Esta política pode ser atualizada periodicamente. Notificaremos você sobre mudanças
             significativas através do email cadastrado.
@@ -146,7 +146,7 @@
         </section>
 
         <section class="mt-6">
-          <h2 class="text-2xl font-semibold text-gray-900">11. Encarregado de Dados (DPO)</h2>
+          <h2 class="text-2xl font-bold text-gray-900 md:text-[28px]">11. Encarregado de Dados (DPO)</h2>
           <p class="mt-2 text-gray-700">
             Para questões relacionadas à proteção de dados pessoais, entre em contato com nosso
             Encarregado de Dados:

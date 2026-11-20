@@ -37,7 +37,7 @@ describe('GoalProgressChart', () => {
   it('meta nova: um ponto, sem linha projetada', () => {
     const w = render(goal({ currentAmount: 0 }), [{ month: '2026-11', amount: 0 }])
     expect(w.findAll('[data-testid^="goal-chart-point-"]')).toHaveLength(1)
-    expect(w.get('[data-testid="goal-chart-point-0"]').attributes('fill')).toBe('#10B981')
+    expect(w.get('[data-testid="goal-chart-point-0"]').attributes('fill')).toBe('#059669')
     expect(w.find('[data-testid="goal-chart-projected"]').exists()).toBe(false)
   })
 

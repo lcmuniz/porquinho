@@ -36,7 +36,7 @@
         dominant-baseline="middle"
         font-size="14"
         font-weight="700"
-        fill="#111827"
+        fill="#0F172A"
         aria-hidden="true"
       >
         {{ formatBRL(total) }}

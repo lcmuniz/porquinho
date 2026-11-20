@@ -16,11 +16,11 @@ describe('GoalHistoryChart', () => {
   it('linha verde do acumulado e marcador só nos aportes', () => {
     const wrapper = mount(GoalHistoryChart, { props: { entries } })
     const line = wrapper.get('[data-testid="chart-line"]')
-    expect(line.attributes('stroke')).toBe('#10B981')
+    expect(line.attributes('stroke')).toBe('#059669')
     expect(xs(line.attributes('points')!)).toHaveLength(4)
     const markers = wrapper.findAll('[data-testid="chart-contribution-marker"]')
     expect(markers).toHaveLength(2)
-    expect(markers.every((m) => m.attributes('fill') === '#10B981')).toBe(true)
+    expect(markers.every((m) => m.attributes('fill') === '#059669')).toBe(true)
   })
 
   it('eixo X em escala de tempo: distância proporcional às datas e rótulos por mês', () => {

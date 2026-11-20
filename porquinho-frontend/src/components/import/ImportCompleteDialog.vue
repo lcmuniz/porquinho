@@ -28,7 +28,7 @@
           Cancelar
         </Button>
         <Button class="min-h-[44px]" :disabled="isCompleting" data-testid="complete-confirm" @click="finish">
-          {{ isCompleting ? 'Concluindo...' : 'Concluir' }}
+          {{ isCompleting ? 'Concluindo…' : 'Concluir' }}
         </Button>
       </DialogFooter>
     </DialogContent>

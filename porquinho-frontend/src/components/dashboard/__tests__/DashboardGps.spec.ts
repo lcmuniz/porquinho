@@ -52,7 +52,7 @@ describe('DashboardGps', () => {
     for (const section of sections) {
       const h2 = section.get('h2')
       expect(section.attributes('aria-labelledby')).toBe(h2.attributes('id'))
-      expect(section.classes()).toContain('py-12')
+      expect(section.classes()).toContain('py-8')
     }
     expect(sections[0]!.find('[data-testid="overview-loading"]').exists()).toBe(true)
     expect(sections[1]!.find('[data-testid="tactical-loading"]').exists()).toBe(true)

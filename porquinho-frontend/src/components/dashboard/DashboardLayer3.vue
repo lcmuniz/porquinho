@@ -147,7 +147,7 @@
           <tr
             v-for="row in details.items"
             :key="row.id"
-            class="border-b border-gray-100 align-top"
+            class="border-b border-gray-100 align-middle"
             :data-testid="`details-row-${row.id}`"
           >
             <td class="px-3 py-2 text-gray-600">{{ formatLocalDateBR(row.date) }}</td>

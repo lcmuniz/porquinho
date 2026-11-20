@@ -127,7 +127,7 @@
       data-testid="save-transfer-button"
       :disabled="disabled || submitting"
     >
-      {{ submitting ? 'Salvando...' : 'Transferir' }}
+      {{ submitting ? 'Salvando…' : 'Transferir' }}
     </Button>
   </form>
 </template>

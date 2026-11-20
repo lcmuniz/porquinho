@@ -10,7 +10,7 @@
     </p>
 
     <div v-if="!data && loading && !error" role="status" class="py-12 text-center text-sm text-gray-700">
-      Carregando...
+      Carregando…
     </div>
 
     <div
@@ -102,7 +102,7 @@
                     :disabled="resolving !== null"
                     @click="resolve(a)"
                   >
-                    {{ resolving === a.id ? 'Salvando...' : 'Marcar como resolvido' }}
+                    {{ resolving === a.id ? 'Salvando…' : 'Marcar como resolvido' }}
                   </button>
                 </div>
                 <p v-if="a.normalizedAt" class="mt-1 text-xs text-gray-600">

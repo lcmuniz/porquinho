@@ -1,5 +1,9 @@
 <template>
-  <div class="sticky top-0 z-10 rounded-lg border border-gray-200 bg-white px-4 py-3 shadow-sm">
+  <div
+    class="z-10 rounded-lg border px-4 py-2 transition-colors md:px-5 lg:sticky lg:top-0"
+    :class="health && !error && !noBudget ? look.band : 'border-gray-200 bg-white'"
+  >
+    <!-- novo-design: a faixa do semáforo é o único elemento "ousado" do dashboard; a cor do fundo acompanha o estado -->
     <div
       v-if="error"
       role="alert"
@@ -9,24 +13,39 @@
       <p class="text-sm text-gray-700">Não foi possível carregar a saúde financeira</p>
       <Button variant="outline" class="min-h-[44px]" data-testid="health-error-retry" @click="retry">Tentar de novo</Button>
     </div>
+    <!-- novo-design: sem orçamento não há o que avaliar; o semáforo não elogia o vazio -->
+    <div
+      v-else-if="health && noBudget"
+      data-testid="health-empty"
+      class="flex flex-col gap-1 py-1.5 sm:flex-row sm:items-center sm:gap-3"
+    >
+      <p class="flex items-center gap-3 text-base font-bold text-gray-900">
+        <CircleDashed class="size-6 shrink-0 text-gray-500" aria-hidden="true" />
+        Saúde financeira: sem orçamento
+      </p>
+      <RouterLink to="/orcamento" class="ml-9 text-[15px] font-semibold text-purple-700 underline sm:ml-auto">
+        Definir orçamento do mês
+      </RouterLink>
+    </div>
     <template v-else-if="health">
       <button
         type="button"
         data-testid="health-toggle"
         :aria-expanded="open"
         aria-controls="health-detail"
-        class="inline-flex min-h-[44px] w-full items-center gap-2 text-left text-sm font-semibold text-gray-900"
+        class="inline-flex min-h-[44px] w-full items-center gap-3 text-left text-base font-bold text-gray-900 md:text-[17px]"
         @click="open = !open"
       >
-        <component :is="look.icon" class="h-5 w-5 shrink-0" :class="look.color" aria-hidden="true" />
+        <component :is="look.icon" class="size-6 shrink-0" :class="look.color" aria-hidden="true" />
         <span>Saúde Financeira: {{ look.label }}</span>
         <ChevronDown
-          class="ml-auto h-4 w-4 shrink-0 transition-transform"
+          class="ml-auto size-5 shrink-0 text-gray-600 transition-transform"
           :class="{ 'rotate-180': open }"
           aria-hidden="true"
         />
       </button>
-      <ul v-show="open" id="health-detail" data-testid="health-detail" class="mt-2 space-y-1 text-sm text-gray-700">
+      <p v-show="!open" class="mb-1.5 ml-9 text-[15px] text-gray-800" data-testid="health-summary">{{ detail[0] }}</p>
+      <ul v-show="open" id="health-detail" data-testid="health-detail" class="mb-2 ml-9 space-y-1 text-[15px] text-gray-800">
         <li v-for="line in detail" :key="line">{{ line }}</li>
       </ul>
     </template>
@@ -37,7 +56,8 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button'
 import { computed, onMounted, ref, watch } from 'vue'
-import { ChevronDown, CircleCheck, OctagonAlert, TriangleAlert } from 'lucide-vue-next'
+import { RouterLink } from 'vue-router'
+import { ChevronDown, CircleCheck, CircleDashed, OctagonAlert, TriangleAlert } from 'lucide-vue-next'
 import { getFinancialHealth } from '@/services/dashboardService'
 import { plural } from '@/lib/plural'
 import { STATUS } from '@/lib/budgetStatus'
@@ -45,9 +65,9 @@ import type { FinancialHealth, HealthStatus } from '@/types/dashboard'
 
 // Story 7.2: sempre com ícone e texto junto da cor. A cor do ícone vem de STATUS (amarelo no 700, 3:1 pela WCAG 1.4.11)
 const LOOKS = {
-  HEALTHY: { label: 'Saudável', color: STATUS.HEALTHY.text, icon: CircleCheck },
-  ATTENTION: { label: 'Atenção', color: STATUS.LOW.text, icon: TriangleAlert },
-  CRITICAL: { label: 'Crítico', color: STATUS.OVERSPENT.text, icon: OctagonAlert },
+  HEALTHY: { label: 'Saudável', color: STATUS.HEALTHY.text, icon: CircleCheck, band: 'border-green-200 bg-green-50' },
+  ATTENTION: { label: 'Atenção', color: STATUS.LOW.text, icon: TriangleAlert, band: 'border-amber-200 bg-amber-50' },
+  CRITICAL: { label: 'Crítico', color: STATUS.OVERSPENT.text, icon: OctagonAlert, band: 'border-red-200 bg-red-50' },
 } satisfies Record<HealthStatus, unknown>
 
 // Retro Epic 7 A4: `refresh` busca de novo sem voltar ao "Carregando…"; `loaded` avisa a primeira carga (a view restaura o scroll)
@@ -58,6 +78,11 @@ const error = ref(false)
 const open = ref(false)
 
 const look = computed(() => LOOKS[health.value!.status])
+const noBudget = computed(() => {
+  const h = health.value!
+  // conta negativa ou meta atrasada continuam aparecendo mesmo sem orçamento
+  return h.healthyCategories + h.lowCategories + h.overspentCategories + h.negativeAccounts + h.goalsBehind === 0
+})
 
 const detail = computed(() => {
   const h = health.value!

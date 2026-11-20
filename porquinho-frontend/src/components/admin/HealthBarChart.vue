@@ -4,6 +4,7 @@
   </p>
   <template v-else>
   <svg
+    ref="svg"
     :viewBox="`0 0 ${WIDTH} ${HEIGHT}`"
     class="h-auto w-full"
     role="img"
@@ -15,13 +16,13 @@
       :x2="WIDTH"
       :y1="BASE"
       :y2="BASE"
-      stroke="#e5e7eb"
+      stroke="#E2E8F0"
       stroke-width="1"
     />
-    <text :x="PAD_LEFT - 6" :y="TOP" text-anchor="end" dominant-baseline="middle" font-size="11" fill="#6b7280">
+    <text :x="PAD_LEFT - 6" :y="TOP" text-anchor="end" dominant-baseline="middle" font-size="13" fill="#475569">
       {{ format(max) }}
     </text>
-    <text :x="PAD_LEFT - 6" :y="BASE" text-anchor="end" dominant-baseline="middle" font-size="11" fill="#6b7280">
+    <text :x="PAD_LEFT - 6" :y="BASE" text-anchor="end" dominant-baseline="middle" font-size="13" fill="#475569">
       0
     </text>
     <g v-for="(point, i) in points" :key="i">
@@ -36,12 +37,12 @@
         <title>{{ point.label }}: {{ format(point.value) }}</title>
       </rect>
       <text
-        v-if="i % labelEvery === 0"
+        v-if="i % every === 0"
         :x="xOf(i) + barWidth / 2"
         :y="BASE + 16"
         text-anchor="middle"
-        font-size="11"
-        fill="#6b7280"
+        font-size="13"
+        fill="#475569"
       >
         {{ point.label }}
       </text>
@@ -63,7 +64,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { useChartWidth, xTickCount } from '@/lib/chart'
 
 // Story 10.1: barras simples em SVG próprio (sem biblioteca de gráfico), uma por hora. Story 10.2: também por banco
 // e por dia, com texto vazio, rótulo a cada N, cabeçalho da tabela e cor por barra configuráveis
@@ -87,14 +89,22 @@ const props = withDefaults(defineProps<{
   max: undefined,
 })
 
-const WIDTH = 600
+const svg = ref<SVGElement | null>(null)
+const { width: WIDTH } = useChartWidth(svg, 600)
 const HEIGHT = 180
 const PAD_LEFT = 56
 const TOP = 10
 const BASE = HEIGHT - 24
 
 const max = computed(() => props.max ?? Math.max(0, ...props.points.map((p) => p.value ?? 0)))
-const barWidth = computed(() => (WIDTH - PAD_LEFT) / Math.max(1, props.points.length))
+const barWidth = computed(() => (WIDTH.value - PAD_LEFT) / Math.max(1, props.points.length))
+
+// Estreito: rótulo a cada N maior, para não sobrepor; os valores todos estão na tabela
+const every = computed(() => {
+  const n = props.points.length
+  const chars = Math.max(1, ...props.points.map((p) => p.label.length))
+  return Math.max(props.labelEvery, Math.ceil(n / xTickCount(WIDTH.value - PAD_LEFT, chars, n)))
+})
 
 function xOf(i: number) {
   return PAD_LEFT + i * barWidth.value

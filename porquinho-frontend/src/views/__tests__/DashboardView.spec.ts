@@ -7,8 +7,7 @@ const mockGetMySubscription = vi.fn()
 const mockPush = vi.fn()
 const mockReplace = vi.fn()
 let mockRoute: { path: string; query: Record<string, string> } = { path: '/dashboard', query: {} }
-const mockSignOut = vi.fn()
-let leaveGuard: (() => void) | undefined
+let leaveGuard: ((to: { name: string }) => void) | undefined
 
 const mockGetFinancialHealth = vi.fn()
 const mockGetOverview = vi.fn()
@@ -28,18 +27,6 @@ vi.mock('@/services/categoryService', () => ({ listCategories: async () => [] })
 // O drill-down da Camada 2 importa o transactionService; sem mock, api.ts exige o .env (CI)
 vi.mock('@/services/transactionService', () => ({ listTransactions: vi.fn(), updateTransaction: vi.fn() }))
 
-const mockGetMyPreferences = vi.fn()
-const mockUpdateMyPreferences = vi.fn()
-vi.mock('@/services/userPreferencesService', () => ({
-  getMyPreferences: () => mockGetMyPreferences(),
-  updateMyPreferences: (...args: unknown[]) => mockUpdateMyPreferences(...args),
-}))
-
-const mockGetAdminAccess = vi.fn()
-vi.mock('@/services/adminService', () => ({
-  getAdminAccess: () => mockGetAdminAccess(),
-}))
-
 vi.mock('@/services/subscriptionService', () => ({
   getMySubscription: (...args: unknown[]) => mockGetMySubscription(...args),
 }))
@@ -48,19 +35,10 @@ vi.mock('vue-router', async (importOriginal) => ({
   ...(await importOriginal<typeof import('vue-router')>()),
   useRouter: () => ({ push: mockPush, replace: mockReplace }),
   useRoute: () => mockRoute,
-  onBeforeRouteLeave: (guard: () => void) => {
+  onBeforeRouteLeave: (guard: (to: { name: string }) => void) => {
     leaveGuard = guard
   },
 }))
-
-vi.mock('@/services/supabase', () => ({
-  supabase: { auth: { signOut: () => mockSignOut() } },
-}))
-
-// O semáforo (Story 7.2) também é um botão: localiza o Sair pelo texto
-function logoutButton(wrapper: ReturnType<typeof mountView>) {
-  return wrapper.findAll('button').find((b) => b.text() === 'Sair')!
-}
 
 function mountView() {
   return mount(DashboardView, { global: { stubs: { RouterLink: RouterLinkStub } } })
@@ -74,9 +52,6 @@ describe('DashboardView', () => {
     vi.stubGlobal('location', { ...window.location, assign })
     setActivePinia(createPinia())
     mockGetMySubscription.mockReset()
-    mockGetAdminAccess.mockReset().mockResolvedValue({ admin: false })
-    mockGetMyPreferences.mockReset().mockResolvedValue({ budgetAlertEmail: true })
-    mockUpdateMyPreferences.mockReset()
     mockGetFinancialHealth.mockReset().mockResolvedValue({
       status: 'HEALTHY',
       healthyCategories: 9,
@@ -98,33 +73,12 @@ describe('DashboardView', () => {
     mockPush.mockReset()
     mockReplace.mockReset()
     mockRoute = { path: '/dashboard', query: {} }
-    mockSignOut.mockReset().mockResolvedValue({ error: null })
     vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
   })
 
   afterEach(() => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
-  })
-
-  it('mostra o link Admin só para admin (Story 10.1)', async () => {
-    mockGetMySubscription.mockResolvedValue(null)
-    const user = mountView()
-    await flushPromises()
-    expect(user.find('[data-testid="admin-link"]').exists()).toBe(false)
-
-    mockGetAdminAccess.mockResolvedValue({ admin: true })
-    const admin = mountView()
-    await flushPromises()
-    expect(admin.get('[data-testid="admin-link"]').text()).toBe('Admin')
-  })
-
-  it('esconde o link Admin quando a leitura do papel falha', async () => {
-    mockGetMySubscription.mockResolvedValue(null)
-    mockGetAdminAccess.mockRejectedValue(new Error('rede'))
-    const wrapper = mountView()
-    await flushPromises()
-    expect(wrapper.find('[data-testid="admin-link"]').exists()).toBe(false)
   })
 
   it('mostra o badge do trial quando a API responde', async () => {
@@ -151,101 +105,9 @@ describe('DashboardView', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-testid="trial-badge"]').exists()).toBe(false)
-    expect(wrapper.get('h1').text()).toBe('Dashboard')
-    expect(wrapper.text()).toContain('Excluir minha conta')
+    expect(wrapper.get('h1').text()).toBe('Início')
+    expect(wrapper.find('#layer-details').exists()).toBe(true)
   })
-  it('a navegação tem o link "Contas bancárias" para /contas (Story 4.1)', async () => {
-    mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
-
-    const wrapper = mountView()
-    await flushPromises()
-
-    const link = wrapper
-      .findAllComponents(RouterLinkStub)
-      .find((l) => l.attributes('data-testid') === 'accounts-link')
-    expect(link?.props('to')).toBe('/contas')
-    expect(link?.text()).toBe('Contas bancárias')
-  })
-
-  it('a navegação tem o link "Importar extrato" para /importar (Story 5.1)', async () => {
-    mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
-
-    const wrapper = mountView()
-    await flushPromises()
-
-    const link = wrapper
-      .findAllComponents(RouterLinkStub)
-      .find((l) => l.attributes('data-testid') === 'import-link')
-    expect(link?.props('to')).toBe('/importar')
-    expect(link?.text()).toBe('Importar extrato')
-  })
-
-  it('a navegação tem o link "Cartões de crédito" para /cartoes (Story 4.2)', async () => {
-    mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
-
-    const wrapper = mountView()
-    await flushPromises()
-
-    const link = wrapper
-      .findAllComponents(RouterLinkStub)
-      .find((l) => l.attributes('data-testid') === 'cards-link')
-    expect(link?.props('to')).toBe('/cartoes')
-    expect(link?.text()).toBe('Cartões de crédito')
-  })
-
-  it('a navegação tem o link "Categorias" para /categorias (Story 6.1)', async () => {
-    mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
-
-    const wrapper = mountView()
-    await flushPromises()
-
-    const link = wrapper
-      .findAllComponents(RouterLinkStub)
-      .find((l) => l.attributes('data-testid') === 'categories-link')
-    expect(link?.props('to')).toBe('/categorias')
-    expect(link?.text()).toBe('Categorias')
-  })
-
-  it('a navegação tem o link "Metas" para /metas (Story 8.1)', async () => {
-    mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
-
-    const wrapper = mountView()
-    await flushPromises()
-
-    const link = wrapper
-      .findAllComponents(RouterLinkStub)
-      .find((l) => l.attributes('data-testid') === 'goals-link')
-    expect(link?.props('to')).toBe('/metas')
-    expect(link?.text()).toBe('Metas')
-  })
-
-  it('a navegação tem o link "Orçamento" para /orcamento (Story 6.3)', async () => {
-    mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
-
-    const wrapper = mountView()
-    await flushPromises()
-
-    const link = wrapper
-      .findAllComponents(RouterLinkStub)
-      .find((l) => l.attributes('data-testid') === 'budget-link')
-    expect(link?.props('to')).toBe('/orcamento')
-    expect(link?.text()).toBe('Orçamento')
-  })
-
-  it('Sair limpa o usuário local, faz signOut e vai para /login', async () => {
-    mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
-    localStorage.setItem('user', '{"id":"x"}')
-
-    const wrapper = mountView()
-    await flushPromises()
-    await logoutButton(wrapper).trigger('click')
-    await flushPromises()
-
-    expect(localStorage.getItem('user')).toBeNull()
-    expect(mockSignOut).toHaveBeenCalled()
-    expect(mockPush).toHaveBeenCalledWith('/login')
-  })
-
   it('mostra "Assinatura ativa" e esconde o CTA para plano mensal', async () => {
     mockGetMySubscription.mockResolvedValue({
       planType: 'MONTHLY',
@@ -443,7 +305,7 @@ describe('DashboardView', () => {
 
       expect(wrapper.get('[data-testid="health-toggle"]').text()).toBe('Saúde Financeira: Saudável')
       const container = wrapper.get('main > div')
-      expect(container.element.firstElementChild?.classList.contains('sticky')).toBe(true)
+      expect(container.element.firstElementChild?.classList.contains('lg:sticky')).toBe(true)
     })
 
     it('falha do semáforo não derruba o resto do dashboard', async () => {
@@ -454,8 +316,8 @@ describe('DashboardView', () => {
       await flushPromises()
 
       expect(wrapper.find('[data-testid="health-error"]').exists()).toBe(true)
-      expect(wrapper.get('h1').text()).toBe('Dashboard')
-      expect(wrapper.text()).toContain('Excluir minha conta')
+      expect(wrapper.get('h1').text()).toBe('Início')
+      expect(wrapper.find('#layer-details').exists()).toBe(true)
     })
 
     it('recarrega quando uma edição é salva na Camada 3 (Story 7.6, Q1=B)', async () => {
@@ -492,12 +354,12 @@ describe('DashboardView', () => {
 
       expect(wrapper.find('[data-testid="overview-error"]').exists()).toBe(true)
       expect(wrapper.get('[data-testid="health-toggle"]').text()).toBe('Saúde Financeira: Saudável')
-      expect(wrapper.text()).toContain('Excluir minha conta')
+      expect(wrapper.find('#layer-details').exists()).toBe(true)
     })
   })
 
   describe('Story 7.1: Dashboard GPS', () => {
-    it('mostra as 3 camadas entre os banners e as configurações da conta', async () => {
+    it('mostra as 3 camadas depois dos banners, sem as configurações da conta', async () => {
       mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
 
       const wrapper = mountView()
@@ -508,8 +370,6 @@ describe('DashboardView', () => {
         'layer-overview-heading',
         'layer-tactical-heading',
         'layer-details-heading',
-        'account-settings-heading',
-        'danger-zone-heading',
       ])
       expect(wrapper.text()).not.toContain('Em desenvolvimento')
     })
@@ -530,7 +390,7 @@ describe('DashboardView', () => {
       const first = mountView()
       await flushPromises()
       vi.stubGlobal('scrollY', 800)
-      leaveGuard?.()
+      leaveGuard?.({ name: 'transactions' })
       first.unmount()
 
       mountView()
@@ -553,63 +413,19 @@ describe('DashboardView', () => {
       expect(window.scrollTo).toHaveBeenCalledTimes(1)
     })
 
-    it('Sair zera a posição: o próximo login abre no topo', async () => {
+    it('ir para o login (Sair) zera a posição: o próximo login abre no topo', async () => {
       mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
 
       const first = mountView()
       await flushPromises()
       vi.stubGlobal('scrollY', 800)
-      leaveGuard?.()
-      await logoutButton(first).trigger('click')
-      await flushPromises()
+      leaveGuard?.({ name: 'login' })
       first.unmount()
 
       mountView()
       await flushPromises()
 
       expect(window.scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: 'instant' })
-    })
-  })
-
-  describe('Pré-Epic 10: alerta de orçamento por e-mail', () => {
-    it('mostra o checkbox ligado e desligar salva a preferência', async () => {
-      mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
-      mockUpdateMyPreferences.mockResolvedValue({ budgetAlertEmail: false })
-      const wrapper = mountView()
-      await flushPromises()
-
-      const checkbox = wrapper.get<HTMLInputElement>('[data-testid="budget-alert-email"]')
-      expect(checkbox.element.checked).toBe(true)
-      expect(wrapper.text()).toContain('Receber alerta de orçamento por e-mail')
-
-      await checkbox.setValue(false)
-      await flushPromises()
-
-      expect(mockUpdateMyPreferences).toHaveBeenCalledWith({ budgetAlertEmail: false })
-      expect(checkbox.element.checked).toBe(false)
-    })
-
-    it('falha ao salvar volta o checkbox e mostra o erro', async () => {
-      mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
-      mockUpdateMyPreferences.mockRejectedValue(new Error('boom'))
-      const wrapper = mountView()
-      await flushPromises()
-
-      const checkbox = wrapper.get<HTMLInputElement>('[data-testid="budget-alert-email"]')
-      await checkbox.setValue(false)
-      await flushPromises()
-
-      expect(checkbox.element.checked).toBe(true)
-      expect(wrapper.find('[data-testid="budget-alert-email-error"]').exists()).toBe(true)
-    })
-
-    it('esconde o checkbox se a leitura falhar', async () => {
-      mockGetMySubscription.mockRejectedValue({ response: { status: 404 } })
-      mockGetMyPreferences.mockRejectedValue({ response: { status: 402 } })
-      const wrapper = mountView()
-      await flushPromises()
-
-      expect(wrapper.find('[data-testid="budget-alert-email"]').exists()).toBe(false)
     })
   })
 })

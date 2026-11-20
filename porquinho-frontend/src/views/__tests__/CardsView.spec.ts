@@ -261,12 +261,6 @@ describe('CardsView', () => {
     expect(wrapper.find('[data-testid="card-item-c1"]').exists()).toBe(true)
   })
 
-  it('tem o link de volta ao dashboard', async () => {
-    const wrapper = await mountView()
-    const link = wrapper.getComponent(RouterLinkStub)
-    expect(link.props('to')).toBe('/dashboard')
-  })
-
   it('enquanto salva, Cancelar fica desabilitado e Esc ou update:open(false) não fecham', async () => {
     let resolveCreate: (c: CreditCard) => void = () => {}
     mockCreate.mockReturnValue(new Promise<CreditCard>((resolve) => (resolveCreate = resolve)))
@@ -602,7 +596,7 @@ describe('CardsView — editar cartão (Story 4.3)', () => {
     expect(input(form, 'card-limit-input').value).toBe('7.000,00')
   })
 
-  it('enquanto salva, o botão mostra "Salvando..." e Cancelar fica desabilitado', async () => {
+  it('enquanto salva, o botão mostra "Salvando…" e Cancelar fica desabilitado', async () => {
     let resolveUpdate: (c: CreditCard) => void = () => {}
     mockUpdate.mockReturnValue(new Promise<CreditCard>((resolve) => (resolveUpdate = resolve)))
     const wrapper = await mountView()
@@ -611,7 +605,7 @@ describe('CardsView — editar cartão (Story 4.3)', () => {
     await flushPromises()
 
     const save = form.get('[data-testid="save-card-button"]')
-    expect(save.text()).toBe('Salvando...')
+    expect(save.text()).toBe('Salvando…')
     expect(save.attributes('disabled')).toBeDefined()
     expect(
       document.body.querySelector<HTMLButtonElement>('[data-testid="cancel-add-card"]')?.disabled,
@@ -854,7 +848,7 @@ describe('CardsView — remover e restaurar cartão (Story 4.4)', () => {
     await confirm()
 
     expect(bodyButton('confirm-remove-card').disabled).toBe(true)
-    expect(bodyButton('confirm-remove-card').textContent?.trim()).toBe('Removendo...')
+    expect(bodyButton('confirm-remove-card').textContent?.trim()).toBe('Removendo…')
     expect(bodyButton('cancel-remove-card').disabled).toBe(true)
     wrapper.findAllComponents({ name: 'Dialog' })[1]!.vm.$emit('update:open', false)
     await flushPromises()

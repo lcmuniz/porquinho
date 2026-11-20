@@ -295,6 +295,19 @@ describe('BudgetView', () => {
     expect(mockSave).toHaveBeenCalledWith('2026-11', 'v1', [{ categoryId: 'c1', amount: 95 }])
   })
 
+  it('com alteração não salva, fechar a aba pede confirmação ao navegador', async () => {
+    const w = await mountView()
+    const clean = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(clean)
+    expect(clean.defaultPrevented).toBe(false)
+
+    await type('amount-c2', '123')
+    expect(w.find('[data-testid="unsaved-changes"]').exists()).toBe(true)
+    const dirty = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(dirty)
+    expect(dirty.defaultPrevented).toBe(true)
+  })
+
   it('não envia valor negativo ou inválido', async () => {
     const w = await mountView()
     await type('amount-c2', '-10')

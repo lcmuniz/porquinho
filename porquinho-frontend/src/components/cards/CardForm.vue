@@ -164,7 +164,7 @@ const props = withDefaults(
   {
     disabled: false,
     submitLabel: 'Adicionar cartão',
-    submittingLabel: 'Adicionando...',
+    submittingLabel: 'Adicionando…',
     primary: false,
     card: null,
   },

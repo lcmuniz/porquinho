@@ -46,7 +46,7 @@
     </form>
 
     <div v-if="!metrics && loading && !error" role="status" class="py-12 text-center text-sm text-gray-700">
-      Carregando...
+      Carregando…
     </div>
 
     <div
@@ -177,7 +177,7 @@
       <h2 id="ai-detail-heading" class="text-base font-semibold text-gray-900">{{ LABELS[selected] }}</h2>
 
       <div v-if="detailError" role="alert" class="text-sm text-red-800" data-testid="ai-detail-error">{{ detailError }}</div>
-      <p v-else-if="!detail" role="status" class="text-sm text-gray-700">Carregando...</p>
+      <p v-else-if="!detail" role="status" class="text-sm text-gray-700">Carregando…</p>
 
       <template v-if="detail">
         <div v-for="g in groups" :key="g.key">
@@ -267,7 +267,7 @@ const BANK_COLORS: Record<AdminBankCode, string> = {
   BRADESCO: '#db2777',
   CAIXA: '#2563eb',
   OTHER: '#92400e',
-  UNKNOWN: '#6b7280',
+  UNKNOWN: '#475569',
 }
 
 // Traço fixo por banco (WCAG 1.4.1): o mesmo banco tem o mesmo traço com qualquer filtro
@@ -302,7 +302,7 @@ const ROW_CLASS: Record<HealthStatus, string> = {
   UNKNOWN: 'text-gray-900',
 }
 
-const COLORS = { GREEN: '#16a34a', YELLOW: '#ca8a04', RED: '#dc2626', UNKNOWN: '#9ca3af' }
+const COLORS = { GREEN: '#047857', YELLOW: '#B45309', RED: '#B91C1C', UNKNOWN: '#94A3B8' }
 
 const percent = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 })
 

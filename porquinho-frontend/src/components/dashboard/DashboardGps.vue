@@ -1,12 +1,12 @@
 <template>
   <div>
-    <nav aria-label="Ir para a camada" class="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+    <nav aria-label="Ir para a camada" class="flex gap-2 overflow-x-auto">
       <button
         v-for="layer in layers"
         :key="layer.id"
         type="button"
         :data-testid="`go-to-${layer.id}`"
-        class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+        class="inline-flex min-h-[44px] shrink-0 items-center rounded-full border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 hover:border-gray-400 hover:text-gray-900"
         @click="goTo(layer.id)"
       >
         {{ layer.title }}
@@ -20,9 +20,9 @@
         :key="layer.id"
         :aria-labelledby="`${layer.id}-heading`"
         tabindex="-1"
-        class="scroll-mt-24 py-12 focus:outline-none"
+        class="scroll-mt-32 py-8 focus:outline-none md:py-10"
       >
-        <h2 :id="`${layer.id}-heading`" class="text-lg font-semibold text-gray-900">
+        <h2 :id="`${layer.id}-heading`" class="text-xl font-bold text-gray-900">
           {{ layer.title }}
         </h2>
         <DashboardLayer1 v-if="layer.id === 'layer-overview'" :refresh="refresh" @loaded="onLoaded" />

@@ -17,7 +17,7 @@
     <p v-if="exportError" role="alert" class="text-sm text-red-800" data-testid="users-export-error">{{ exportError }}</p>
 
     <div v-if="!metrics && loading && !error" role="status" class="py-12 text-center text-sm text-gray-700">
-      Carregando...
+      Carregando…
     </div>
 
     <div
@@ -80,7 +80,7 @@
         <h2 id="users-growth-heading" class="mb-2 text-base font-semibold text-gray-900">Crescimento de usuários (12 meses)</h2>
         <AccuracyLineChart
           :months="metrics.months.map(monthLabel)"
-          :series="[{ label: 'Usuários', color: '#7c3aed', values: metrics.growth }]"
+          :series="[{ label: 'Usuários', color: '#1E40AF', values: metrics.growth }]"
           test-id="users-chart-growth"
           label="Total de usuários no fim de cada um dos últimos 12 meses"
           :format="formatCount"
@@ -269,7 +269,7 @@ const activeSeries = computed(() => {
   if (!m) return []
   return [
     { label: 'Ativos em 7 dias', color: '#2563eb', values: m.activeWeekly },
-    { label: 'Ativos em 30 dias', color: '#7c3aed', values: m.activeMonthly },
+    { label: 'Ativos em 30 dias', color: '#1E40AF', values: m.activeMonthly },
   ]
 })
 

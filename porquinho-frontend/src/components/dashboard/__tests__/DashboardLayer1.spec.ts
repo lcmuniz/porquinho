@@ -56,17 +56,17 @@ describe('DashboardLayer1', () => {
     const cards = ['balance', 'categories', 'goal', 'spent', 'projection'].map((id) =>
       wrapper.get(`[data-testid="card-${id}"]`),
     )
-    for (const card of cards) expect(card.classes()).toContain('p-6')
+    for (const card of cards) expect(card.classes()).toContain('md:p-6')
     expect(brl(cards[0]!.text())).toContain('R$ 1.500,00')
-    expect(brl(cards[0]!.get('.text-4xl').text())).toBe('R$ 1.500,00')
+    expect(brl(cards[0]!.get('[data-kpi]').text())).toBe('R$ 1.500,00')
     expect(brl(cards[3]!.text())).toContain('Você gastou R$ 320,00 de R$ 1.000,00 planejados este mês')
-    expect(brl(cards[4]!.get('.text-4xl').text())).toBe('R$ 800,00')
-    expect(cards[4]!.get('.text-4xl').classes()).not.toContain('text-red-600')
+    expect(brl(cards[4]!.get('[data-kpi]').text())).toBe('R$ 800,00')
+    expect(cards[4]!.get('[data-kpi]').classes()).not.toContain('text-red-600')
   })
 
   it('projeção negativa aparece em vermelho, com o sinal', async () => {
     const wrapper = await mountWith(overview({ projectedBalance: -250 }))
-    const value = wrapper.get('[data-testid="card-projection"] .text-4xl')
+    const value = wrapper.get('[data-testid="card-projection"] [data-kpi]')
 
     expect(value.classes()).toContain('text-red-600')
     expect(brl(value.text())).toContain('250,00')
@@ -77,7 +77,7 @@ describe('DashboardLayer1', () => {
     const wrapper = await mountWith(overview())
     const card = wrapper.get('[data-testid="card-categories"]')
 
-    expect(card.get('.text-4xl').text()).toBe('1 de 3')
+    expect(card.get('[data-kpi]').text()).toBe('1 de 3')
     expect(card.text()).toContain('Preciso ajustar?')
     const items = card.findAll('li')
     expect(items.map((li) => brl(li.text()))).toEqual([
@@ -101,7 +101,7 @@ describe('DashboardLayer1', () => {
     const wrapper = await mountWith(overview())
     const card = wrapper.get('[data-testid="card-goal"]')
 
-    expect(card.get('.text-4xl').text()).toBe('25%')
+    expect(card.get('[data-kpi]').text()).toBe('25%')
     expect(brl(card.text())).toContain('Reserva de Emergência')
     expect(brl(card.text())).toContain('R$ 250,00 de R$ 1.000,00')
     const bar = card.get('[role="progressbar"]')

@@ -2,12 +2,12 @@
   <div class="min-w-0 space-y-2" data-testid="goal-chart">
     <p class="flex flex-wrap gap-4 text-xs text-gray-600">
       <span class="flex items-center gap-1">
-        <span class="inline-block h-0.5 w-4 bg-[#10B981]" aria-hidden="true" />
+        <span class="inline-block h-0.5 w-4 bg-[#059669]" aria-hidden="true" />
         Acumulado
       </span>
       <span v-if="projected.length > 1" class="flex items-center gap-1">
         <span
-          class="inline-block w-4 border-t-2 border-dashed border-[#10B981]"
+          class="inline-block w-4 border-t-2 border-dashed border-[#059669]"
           aria-hidden="true"
         />
         Projeção com o aporte atual
@@ -15,6 +15,7 @@
     </p>
     <div class="relative">
       <svg
+        ref="svg"
         :viewBox="`0 0 ${WIDTH} ${HEIGHT}`"
         class="h-auto w-full overflow-visible"
         role="group"
@@ -33,7 +34,7 @@
             :x2="WIDTH - PAD.right"
             :y1="m.y"
             :y2="m.y"
-            stroke="#d1d5db"
+            stroke="#CBD5E1"
             stroke-width="1"
             stroke-dasharray="4 3"
           />
@@ -42,17 +43,17 @@
             :y="m.y"
             text-anchor="end"
             dominant-baseline="middle"
-            font-size="11"
-            fill="#6b7280"
+            font-size="13"
+            fill="#475569"
           >
-            {{ formatBRL(m.value) }}
+            {{ axisBRL(m.value, narrow) }}
           </text>
           <text
             :x="WIDTH - PAD.right + 6"
             :y="m.y"
             dominant-baseline="middle"
-            font-size="11"
-            fill="#6b7280"
+            font-size="13"
+            fill="#475569"
           >
             {{ m.percent }}%
           </text>
@@ -62,7 +63,7 @@
           :x2="WIDTH - PAD.right"
           :y1="yOf(0)"
           :y2="yOf(0)"
-          stroke="#9ca3af"
+          stroke="#94A3B8"
           stroke-width="1"
         />
         <text
@@ -70,10 +71,10 @@
           :y="yOf(0)"
           text-anchor="end"
           dominant-baseline="middle"
-          font-size="11"
-          fill="#6b7280"
+          font-size="13"
+          fill="#475569"
         >
-          {{ formatBRL(0) }}
+          {{ axisBRL(0, narrow) }}
         </text>
         <text
           v-for="(tick, i) in xTicks"
@@ -87,8 +88,8 @@
                 ? 'end'
                 : 'middle'
           "
-          font-size="11"
-          fill="#6b7280"
+          font-size="13"
+          fill="#475569"
         >
           {{ shortMonth(shiftMonth(start, tick)) }}
         </text>
@@ -97,7 +98,7 @@
           v-if="projected.length > 1"
           :points="projected.map((p) => `${xOf(p.index)},${yOf(p.amount)}`).join(' ')"
           fill="none"
-          stroke="#10B981"
+          stroke="#059669"
           stroke-width="2"
           stroke-dasharray="6 4"
           :data-months="projected.length - 1"
@@ -106,7 +107,7 @@
         <polyline
           :points="real.map((p) => `${p.x},${p.y}`).join(' ')"
           fill="none"
-          stroke="#10B981"
+          stroke="#059669"
           stroke-width="2.5"
           stroke-linejoin="round"
           stroke-linecap="round"
@@ -121,7 +122,7 @@
           :cx="p.x"
           :cy="p.y"
           r="5"
-          :fill="active === i || real.length === 1 ? '#10B981' : 'transparent'"
+          :fill="active === i || real.length === 1 ? '#059669' : 'transparent'"
           :stroke="active === i ? '#ffffff' : 'transparent'"
           stroke-width="1.5"
           :tabindex="i === focusIndex ? 0 : -1"
@@ -156,6 +157,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { axisBRL, labelPad, useChartWidth, xTickCount } from '@/lib/chart'
 import { formatMonthBR, shiftMonth } from '@/lib/date'
 import { monthsBetween } from '@/lib/goalPace'
 import { formatBRL } from '@/lib/money'
@@ -167,9 +169,8 @@ import type { Goal, GoalProgressPoint } from '@/types/goal'
  */
 const props = defineProps<{ goal: Goal; points: GoalProgressPoint[] }>()
 
-const WIDTH = 640
 const HEIGHT = 240
-const PAD = { top: 16, right: 40, bottom: 32, left: 104 }
+const DESIGN_PAD = { top: 16, right: 40, bottom: 32, left: 104 }
 const MAX_MONTHS = 120
 const X_TICKS = 4
 const SHORT_MONTH = new Intl.DateTimeFormat('pt-BR', {
@@ -179,6 +180,16 @@ const SHORT_MONTH = new Intl.DateTimeFormat('pt-BR', {
 })
 
 const active = ref<number | null>(null)
+
+const svg = ref<SVGElement | null>(null)
+const { width: WIDTH, narrow } = useChartWidth(svg, 640)
+
+/** Estreito: margem esquerda do tamanho do maior rótulo (o alvo é o maior marco). */
+const PAD = computed(() =>
+  narrow.value
+    ? { ...DESIGN_PAD, left: labelPad([axisBRL(props.goal.targetAmount, true), axisBRL(yMin.value, true)]) }
+    : DESIGN_PAD,
+)
 
 const start = computed(() => props.points[0]?.month ?? '')
 const currentIndex = computed(() => Math.max(props.points.length - 1, 0))
@@ -218,12 +229,13 @@ const yMax = computed(() =>
 const yMin = computed(() => Math.min(0, ...props.points.map((p) => p.amount)))
 
 function xOf(index: number): number {
-  return PAD.left + (index / (lastIndex.value || 1)) * (WIDTH - PAD.left - PAD.right)
+  return PAD.value.left + (index / (lastIndex.value || 1)) * (WIDTH.value - PAD.value.left - PAD.value.right)
 }
 
 function yOf(value: number): number {
   return (
-    PAD.top + ((yMax.value - value) / (yMax.value - yMin.value)) * (HEIGHT - PAD.top - PAD.bottom)
+    DESIGN_PAD.top +
+    ((yMax.value - value) / (yMax.value - yMin.value)) * (HEIGHT - DESIGN_PAD.top - DESIGN_PAD.bottom)
   )
 }
 
@@ -250,7 +262,9 @@ function shortMonth(month: string): string {
 
 const xTicks = computed(() => {
   const ticks = new Set<number>()
-  for (let i = 0; i <= X_TICKS; i++) ticks.add(Math.round((lastIndex.value * i) / X_TICKS))
+  // Pontas ancoradas no início/fim: o rótulo da ponta ocupa um lado só, então cada intervalo precisa de 1,5 rótulo
+  const count = xTickCount(WIDTH.value - PAD.value.left - PAD.value.right, 15, X_TICKS)
+  for (let i = 0; i <= count; i++) ticks.add(Math.round((lastIndex.value * i) / count))
   return [...ticks]
 })
 
@@ -264,7 +278,7 @@ watch(currentIndex, (i) => {
 const activePoint = computed(() => (active.value === null ? null : real.value[active.value]))
 
 const tooltipAlign = computed(() => {
-  const ratio = (activePoint.value?.x ?? 0) / WIDTH
+  const ratio = (activePoint.value?.x ?? 0) / WIDTH.value
   if (ratio < 0.2) return 'translate-x-0'
   return ratio > 0.8 ? '-translate-x-full' : '-translate-x-1/2'
 })

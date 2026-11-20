@@ -4,6 +4,7 @@
   </p>
   <template v-else>
     <svg
+      ref="svg"
       :viewBox="`0 0 ${WIDTH} ${HEIGHT}`"
       class="h-auto w-full"
       role="img"
@@ -11,19 +12,20 @@
       :data-testid="testId"
     >
       <g v-for="tick in ticks" :key="tick">
-        <line :x1="PAD_LEFT" :x2="WIDTH - PAD_RIGHT" :y1="yOf(tick)" :y2="yOf(tick)" stroke="#e5e7eb" stroke-width="1" />
-        <text :x="PAD_LEFT - 6" :y="yOf(tick)" text-anchor="end" dominant-baseline="middle" font-size="11" fill="#6b7280">
+        <line :x1="PAD_LEFT" :x2="WIDTH - PAD_RIGHT" :y1="yOf(tick)" :y2="yOf(tick)" stroke="#E2E8F0" stroke-width="1" />
+        <text :x="PAD_LEFT - 6" :y="yOf(tick)" text-anchor="end" dominant-baseline="middle" font-size="13" fill="#475569">
           {{ tickFormat(tick) }}
         </text>
       </g>
       <text
         v-for="(month, i) in months"
+        v-show="(months.length - 1 - i) % labelStep === 0"
         :key="month"
         :x="xOf(i)"
         :y="BASE + 16"
         text-anchor="middle"
-        font-size="11"
-        fill="#6b7280"
+        font-size="13"
+        fill="#475569"
       >
         {{ month }}
       </text>
@@ -63,7 +65,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { useChartWidth, xTickCount } from '@/lib/chart'
 
 // Story 10.3: linhas em SVG próprio (sem biblioteca), uma por banco, eixo de 0 a 100 %. Um mês null interrompe a linha.
 // Story 10.4: `max` e `tickFormat` trocam o eixo (contagens de usuários), `seriesHeader` a coluna da tabela acessível
@@ -84,7 +87,8 @@ const props = withDefaults(defineProps<{
   seriesHeader: 'Banco',
 })
 
-const WIDTH = 600
+const svg = ref<SVGElement | null>(null)
+const { width: WIDTH } = useChartWidth(svg, 600)
 const HEIGHT = 200
 const PAD_LEFT = 48
 const PAD_RIGHT = 24
@@ -104,9 +108,16 @@ const ticks = computed(() => [0, top.value / 2, top.value])
 const hasData = computed(() => props.series.some((s) => s.values.some((v) => v !== null)))
 
 function xOf(i: number) {
-  const step = (WIDTH - PAD_LEFT - PAD_RIGHT) / Math.max(1, props.months.length - 1)
+  const step = (WIDTH.value - PAD_LEFT - PAD_RIGHT) / Math.max(1, props.months.length - 1)
   return PAD_LEFT + i * step
 }
+
+// Só os rótulos do eixo X que cabem sem sobrepor, sempre com o mais novo
+const labelStep = computed(() => {
+  const n = props.months.length
+  const chars = Math.max(1, ...props.months.map((m) => m.length))
+  return Math.ceil(n / (xTickCount(WIDTH.value - PAD_LEFT - PAD_RIGHT, chars, n) + 1))
+})
 
 function yOf(value: number) {
   return BASE - (value / top.value) * (BASE - TOP)

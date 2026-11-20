@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BrandMark from '@/components/common/BrandMark.vue'
 import { ref } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -49,7 +50,8 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <main class="flex min-h-screen items-center justify-center bg-white px-4">
+  <main class="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 py-10">
+    <BrandMark />
     <section class="w-full max-w-md">
       <Card>
         <CardHeader>
@@ -89,6 +91,10 @@ async function handleSubmit() {
               <label for="email" class="text-sm font-medium text-gray-900"> Email </label>
               <Input
                 id="email"
+                name="email"
+                autocomplete="email"
+                spellcheck="false"
+                autocapitalize="off"
                 v-model="email"
                 type="email"
                 required
@@ -105,7 +111,7 @@ async function handleSubmit() {
               class="w-full min-h-[44px] bg-purple-600 hover:bg-purple-700 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600 disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label="Enviar link de redefinição"
             >
-              <span v-if="isLoading">Enviando...</span>
+              <span v-if="isLoading">Enviando…</span>
               <span v-else>Enviar link de redefinição</span>
             </Button>
           </form>

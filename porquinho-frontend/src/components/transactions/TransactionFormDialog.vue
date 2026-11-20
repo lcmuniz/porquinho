@@ -136,7 +136,7 @@
             Cancelar
           </Button>
           <Button type="submit" class="min-h-[44px]" :disabled="saving || optionsLoading" data-testid="edit-save">
-            {{ saving ? 'Salvando...' : 'Salvar' }}
+            {{ saving ? 'Salvando…' : 'Salvar' }}
           </Button>
         </DialogFooter>
       </form>

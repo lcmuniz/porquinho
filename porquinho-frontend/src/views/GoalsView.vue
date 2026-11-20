@@ -1,16 +1,16 @@
 <template>
-  <main class="min-h-screen bg-gray-50 px-4 py-8">
-    <div class="mx-auto max-w-3xl space-y-6">
-      <div class="flex items-start justify-between gap-4">
+  <main class="px-4 py-6 md:px-8 md:py-8">
+    <div class="mx-auto max-w-4xl space-y-6">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 ref="heading" tabindex="-1" class="text-2xl font-semibold text-gray-900 outline-none">
+          <h1 ref="heading" tabindex="-1" class="text-2xl font-bold text-gray-900 md:text-[28px] outline-none">
             Metas
           </h1>
           <p class="mt-1 text-sm text-gray-600">
             Seus objetivos financeiros e quanto falta para cada um
           </p>
         </div>
-        <div class="flex flex-wrap justify-end gap-2">
+        <div class="flex flex-wrap gap-2 sm:justify-end">
           <RouterLink
             v-if="activeGoals.length >= 2"
             to="/metas/ajustar"
@@ -28,13 +28,6 @@
           >
             Criar meta
           </Button>
-          <RouterLink
-            to="/dashboard"
-            data-testid="back-to-dashboard"
-            class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-          >
-            Voltar ao dashboard
-          </RouterLink>
         </div>
       </div>
 
@@ -61,7 +54,7 @@
 
       <div v-if="loading" class="space-y-2" aria-busy="true" data-testid="goals-skeleton">
         <div class="h-32 animate-pulse rounded-lg bg-gray-200" />
-        <span class="sr-only">Carregando suas metas...</span>
+        <span class="sr-only">Carregando suas metas…</span>
       </div>
 
       <div

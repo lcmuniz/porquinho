@@ -151,7 +151,7 @@ describe('CardForm', () => {
   it('informa o envio em andamento por v-model:submitting e usa os rótulos recebidos', async () => {
     let resolve: (c: CreditCard) => void = () => {}
     mockCreate.mockReturnValue(new Promise<CreditCard>((r) => (resolve = r)))
-    const wrapper = mountForm({ submitLabel: 'Salvar cartão', submittingLabel: 'Salvando...' })
+    const wrapper = mountForm({ submitLabel: 'Salvar cartão', submittingLabel: 'Salvando…' })
     expect(wrapper.get('[data-testid="add-card-button"]').text()).toBe('Salvar cartão')
 
     await fill(wrapper, 'Inter', '1', '10')
@@ -159,7 +159,7 @@ describe('CardForm', () => {
     expect(wrapper.emitted('update:submitting')?.[0]).toEqual([true])
     await flushPromises()
     const button = wrapper.get('[data-testid="add-card-button"]')
-    expect(button.text()).toBe('Salvando...')
+    expect(button.text()).toBe('Salvando…')
     expect(button.attributes('disabled')).toBeDefined()
 
     resolve(created())

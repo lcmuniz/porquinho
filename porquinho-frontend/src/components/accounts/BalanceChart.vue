@@ -2,6 +2,7 @@
   <figure class="space-y-3" data-testid="balance-chart">
     <div class="relative">
       <svg
+        ref="svg"
         :viewBox="`0 0 ${WIDTH} ${HEIGHT}`"
         class="h-auto w-full overflow-visible"
         role="group"
@@ -17,7 +18,7 @@
               :x2="WIDTH - PAD.right"
               :y1="tick.y"
               :y2="tick.y"
-              stroke="#e5e7eb"
+              stroke="#E2E8F0"
               stroke-width="1"
             />
             <text
@@ -25,10 +26,10 @@
               :y="tick.y"
               text-anchor="end"
               dominant-baseline="middle"
-              font-size="11"
-              fill="#6b7280"
+              font-size="13"
+              fill="#475569"
             >
-              {{ formatBRL(tick.value) }}
+              {{ tick.label }}
             </text>
           </g>
         </g>
@@ -38,7 +39,7 @@
           :x2="WIDTH - PAD.right"
           :y1="zeroY"
           :y2="zeroY"
-          stroke="#9ca3af"
+          stroke="#94A3B8"
           stroke-width="1"
           stroke-dasharray="4 3"
           data-testid="chart-zero-line"
@@ -51,7 +52,7 @@
             :x2="WIDTH - PAD.right"
             :y1="HEIGHT - PAD.bottom"
             :y2="HEIGHT - PAD.bottom"
-            stroke="#9ca3af"
+            stroke="#94A3B8"
             stroke-width="1"
           />
           <text
@@ -60,8 +61,8 @@
             :x="tick.x"
             :y="HEIGHT - PAD.bottom + 18"
             :text-anchor="anchorOf(i)"
-            font-size="11"
-            fill="#6b7280"
+            font-size="13"
+            fill="#475569"
           >
             {{ tick.label }}
           </text>
@@ -72,7 +73,7 @@
           v-if="plotted.length"
           :d="stepPath"
           fill="none"
-          stroke="#7c3aed"
+          stroke="#1E40AF"
           stroke-width="2"
           stroke-linejoin="round"
           data-testid="chart-line"
@@ -146,7 +147,17 @@ import {
   markerOf,
   markerPath,
 } from '@/lib/balanceEvents'
-import { LINE_CHART, balanceDomain, movePointFocus, valueTicks, yOf as chartY } from '@/lib/chart'
+import {
+  LINE_CHART,
+  axisBRL,
+  balanceDomain,
+  labelPad,
+  movePointFocus,
+  useChartWidth,
+  valueTicks,
+  xTickCount,
+  yOf as chartY,
+} from '@/lib/chart'
 import { formatDateBR } from '@/lib/date'
 import { formatBRL } from '@/lib/money'
 import type { BalancePoint } from '@/types/account'
@@ -163,9 +174,12 @@ const props = defineProps<{
   now?: string
 }>()
 
-const { WIDTH, HEIGHT, PAD } = LINE_CHART
+const { HEIGHT } = LINE_CHART
 const Y_TICKS = 4
 const X_TICKS = 4
+
+const svg = ref<SVGElement | null>(null)
+const { width: WIDTH, narrow } = useChartWidth(svg, LINE_CHART.WIDTH)
 
 const active = ref<number | null>(null)
 /** Ponto com tabindex 0; começa no mais recente. */
@@ -199,15 +213,24 @@ const xDomain = computed<[number, number]>(() => {
 
 const yDomain = computed(() => balanceDomain(props.points.map((p) => p.balance)))
 
+const yLabels = computed(() =>
+  valueTicks(yDomain.value, Y_TICKS).map((value) => ({ value, label: axisBRL(value, narrow.value) })),
+)
+
+/** Estreito: margem esquerda do tamanho do maior rótulo. */
+const PAD = computed(() =>
+  narrow.value ? { ...LINE_CHART.PAD, left: labelPad(yLabels.value.map((t) => t.label)) } : LINE_CHART.PAD,
+)
+
 function xOf(time: number): number {
   const [min, max] = xDomain.value
-  const inner = WIDTH - PAD.left - PAD.right
-  if (max === min) return PAD.left + inner / 2
-  return PAD.left + ((Math.max(time, min) - min) / (max - min)) * inner
+  const inner = WIDTH.value - PAD.value.left - PAD.value.right
+  if (max === min) return PAD.value.left + inner / 2
+  return PAD.value.left + ((Math.max(time, min) - min) / (max - min)) * inner
 }
 
 function yOf(value: number): number {
-  return chartY(value, yDomain.value, HEIGHT, PAD)
+  return chartY(value, yDomain.value, HEIGHT, PAD.value)
 }
 
 interface PlottedPoint {
@@ -243,7 +266,7 @@ const stepPath = computed(() => {
 
 const activePoint = computed(() => (active.value === null ? null : plotted.value[active.value]))
 
-const yTicks = computed(() => valueTicks(yDomain.value, Y_TICKS).map((value) => ({ value, y: yOf(value) })))
+const yTicks = computed(() => yLabels.value.map((t) => ({ ...t, y: yOf(t.value) })))
 
 const zeroY = computed(() => {
   const [lo, hi] = yDomain.value
@@ -254,8 +277,10 @@ const xTicks = computed(() => {
   const [min, max] = xDomain.value
   if (!props.points.length) return []
   if (min === max) return [{ x: xOf(min), label: formatDateBR(new Date(min).toISOString()) }]
-  return Array.from({ length: X_TICKS + 1 }, (_, i) => {
-    const time = min + ((max - min) * i) / X_TICKS
+  // Pontas ancoradas no início/fim: o rótulo da ponta ocupa um lado só, então cada intervalo precisa de 1,5 rótulo
+  const count = xTickCount(WIDTH.value - PAD.value.left - PAD.value.right, 15, X_TICKS)
+  return Array.from({ length: count + 1 }, (_, i) => {
+    const time = min + ((max - min) * i) / count
     return { x: xOf(time), label: formatDateBR(new Date(time).toISOString()) }
   })
 })

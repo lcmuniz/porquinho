@@ -178,6 +178,13 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      // novo-design: preferências, sessões, exportação e exclusão de conta
+      path: '/configuracoes',
+      name: 'settings',
+      component: () => import('../views/SettingsView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/auth/sessions',
       name: 'sessions',
       component: () => import('../views/SessionsView.vue'),

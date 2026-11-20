@@ -1,34 +1,27 @@
 <template>
-  <main class="min-h-screen bg-gray-50 px-4 py-8">
-    <div class="mx-auto max-w-3xl space-y-6">
-      <div class="flex items-start justify-between gap-4">
+  <main class="px-4 py-6 md:px-8 md:py-8">
+    <div class="mx-auto max-w-4xl space-y-6">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 tabindex="-1" class="text-2xl font-semibold text-gray-900 outline-none">Orçamento</h1>
+          <h1 tabindex="-1" class="text-2xl font-bold text-gray-900 md:text-[28px] outline-none">Orçamento</h1>
           <p class="mt-1 text-sm text-gray-600">Quanto você pretende gastar em cada categoria no mês</p>
         </div>
-        <div class="flex flex-wrap justify-end gap-2">
+        <div class="flex flex-wrap gap-2 sm:justify-end">
+          <RouterLink
+            to="/orcamento/comparativo"
+            data-testid="comparison-link"
+            class="inline-flex min-h-[44px] items-center rounded-[10px] border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50"
+          >
+            Planejado × real
+          </RouterLink>
           <Button
             variant="outline"
             class="min-h-[44px]"
             data-testid="budget-export"
             @click="exportOpen = true"
           >
-            Exportar relatório de orçamento
+            Exportar relatório
           </Button>
-          <RouterLink
-            to="/orcamento/comparativo"
-            data-testid="comparison-link"
-            class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-          >
-            Planejado × real
-          </RouterLink>
-          <RouterLink
-            to="/dashboard"
-            data-testid="back-to-dashboard"
-            class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-          >
-            Voltar ao dashboard
-          </RouterLink>
         </div>
       </div>
 
@@ -55,20 +48,22 @@
       </p>
 
       <nav aria-label="Mês" class="flex items-center justify-between gap-2">
-        <Button variant="outline" class="min-h-[44px]" data-testid="previous-month" @click="changeMonth(-1)">
-          ‹ Mês anterior
+        <Button variant="outline" class="min-h-[44px]" data-testid="previous-month" aria-label="Mês anterior" @click="changeMonth(-1)">
+          <ChevronLeft class="size-5" aria-hidden="true" />
+          <span class="hidden sm:inline">Mês anterior</span>
         </Button>
-        <h2 class="text-base font-semibold text-gray-900 first-letter:uppercase" data-testid="month-label">
+        <h2 class="text-lg font-bold whitespace-nowrap text-gray-900 first-letter:uppercase" data-testid="month-label">
           {{ monthLabel }}
         </h2>
-        <Button variant="outline" class="min-h-[44px]" data-testid="next-month" @click="changeMonth(1)">
-          Próximo ›
+        <Button variant="outline" class="min-h-[44px]" data-testid="next-month" aria-label="Próximo mês" @click="changeMonth(1)">
+          <span class="hidden sm:inline">Próximo</span>
+          <ChevronRight class="size-5" aria-hidden="true" />
         </Button>
       </nav>
 
       <div v-if="loading" class="space-y-2" aria-busy="true" data-testid="budget-skeleton">
         <div class="h-32 animate-pulse rounded-lg bg-gray-200" />
-        <span class="sr-only">Carregando o orçamento...</span>
+        <span class="sr-only">Carregando o orçamento…</span>
       </div>
 
       <div
@@ -82,14 +77,17 @@
       </div>
 
       <form v-else-if="budget" class="space-y-6" novalidate data-testid="budget-form" @submit.prevent="save">
-        <div class="space-y-1 rounded-lg border border-gray-200 bg-white p-4 text-sm" data-testid="budget-totals">
-          <p class="text-gray-900">
-            Total alocado: <span class="font-semibold" data-testid="total-allocated">{{ formatBRL(totalAllocated) }}</span>
-          </p>
-          <p class="text-gray-900">
-            Total disponível nas contas:
-            <span class="font-semibold" data-testid="total-available">{{ formatBRL(budget.totalAvailable) }}</span>
-          </p>
+        <div class="space-y-3 rounded-lg border border-gray-200 bg-white p-4 text-sm md:p-6" data-testid="budget-totals">
+          <div class="grid grid-cols-2 gap-4">
+            <p class="text-gray-600">
+              Total alocado
+              <span class="block text-xl font-bold text-gray-900 md:text-2xl" data-testid="total-allocated">{{ formatBRL(totalAllocated) }}</span>
+            </p>
+            <p class="text-gray-600">
+              Disponível nas contas
+              <span class="block text-xl font-bold text-gray-900 md:text-2xl" data-testid="total-available">{{ formatBRL(budget.totalAvailable) }}</span>
+            </p>
+          </div>
           <p
             v-if="overAvailable"
             role="alert"
@@ -118,7 +116,7 @@
           :aria-labelledby="`group-${group.parent.id}`"
           :data-testid="`group-${group.parent.id}`"
         >
-          <h3 :id="`group-${group.parent.id}`" class="text-sm font-semibold text-gray-900">
+          <h3 :id="`group-${group.parent.id}`" class="text-base font-bold text-gray-900">
             {{ group.parent.categoryName }}
           </h3>
           <ul class="space-y-4">
@@ -129,9 +127,9 @@
               :class="{ '-mx-2 rounded-md bg-red-50 p-2': byCategory[child.id]!.status === 'OVERSPENT' }"
               :data-testid="`category-${child.id}`"
             >
-              <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div class="flex items-center gap-3">
-                  <label :for="`amount-${child.id}`" class="font-medium text-gray-900">{{ child.categoryName }}</label>
+              <div class="flex items-center justify-between gap-3">
+                <div class="flex min-w-0 flex-wrap items-center gap-x-3">
+                  <label :for="`amount-${child.id}`" class="min-w-0 font-semibold break-words text-gray-900">{{ child.categoryName }}</label>
                   <RouterLink
                     :to="`/orcamento/categorias/${child.id}/historico`"
                     :aria-label="`Histórico de ${child.categoryName}`"
@@ -141,13 +139,13 @@
                     Histórico
                   </RouterLink>
                 </div>
-                <div class="sm:w-40">
+                <div class="w-32 shrink-0 sm:w-40">
                   <Input
                     :id="`amount-${child.id}`"
                     v-model="values[child.id]"
                     inputmode="decimal"
                     placeholder="0,00"
-                    class="min-h-[44px]"
+                    class="min-h-[44px] text-right"
                     :aria-invalid="fieldErrors[child.id] ? 'true' : undefined"
                     :aria-describedby="fieldErrors[child.id] ? `amount-error-${child.id}` : undefined"
                     :data-testid="`amount-${child.id}`"
@@ -242,7 +240,15 @@
           </ul>
         </section>
 
-        <div v-if="groups.length > 0" class="flex flex-col gap-2 sm:flex-row sm:justify-end">
+        <!-- novo-design: barra de ações fixa; no celular fica acima da barra de navegação inferior -->
+        <div
+          v-if="groups.length > 0"
+          class="sticky bottom-16 z-20 -mx-4 grid grid-cols-2 gap-2 border-t border-gray-200 bg-white/95 px-4 py-3 backdrop-blur sm:flex sm:items-center sm:justify-end md:-mx-8 md:px-8 lg:bottom-0"
+          data-testid="budget-actions"
+        >
+          <p v-if="dirty" class="col-span-2 text-sm font-semibold text-amber-800 sm:mr-auto" data-testid="unsaved-changes">
+            Alterações não salvas
+          </p>
           <Button
             v-if="!closedMonth"
             ref="reallocateButton"
@@ -260,14 +266,16 @@
             type="button"
             variant="outline"
             class="min-h-[44px]"
+            :class="{ 'col-span-2': closedMonth }"
             :disabled="saving || repeating"
             data-testid="repeat-previous"
             @click="repeatPrevious"
           >
-            Repetir orçamento do mês anterior
+            <span class="sm:hidden">Repetir mês anterior</span>
+            <span class="hidden sm:inline">Repetir orçamento do mês anterior</span>
           </Button>
-          <Button type="submit" class="min-h-[44px]" :disabled="saving || repeating" data-testid="save-budget">
-            {{ saving ? 'Salvando...' : 'Salvar orçamento' }}
+          <Button type="submit" class="col-span-2 min-h-[44px]" :disabled="saving || repeating" data-testid="save-budget">
+            {{ saving ? 'Salvando…' : 'Salvar orçamento' }}
           </Button>
         </div>
         <p
@@ -331,9 +339,11 @@
 </template>
 
 <script setup lang="ts">
+import { ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { useFeedback } from '@/composables/useFeedback'
-import { RouterLink } from 'vue-router'
+import { useEventListener } from '@vueuse/core'
+import { onBeforeRouteLeave, RouterLink } from 'vue-router'
 import BudgetExportDialog from '@/components/budget/BudgetExportDialog.vue'
 import BudgetStatusLabel from '@/components/budget/BudgetStatusLabel.vue'
 import ReallocateForm from '@/components/budget/ReallocateForm.vue'
@@ -610,4 +620,10 @@ function onMoved(data: Budget, message: string) {
 }
 
 onMounted(load)
+
+// Não perder valores digitados sem salvar ao trocar de tela ou fechar a aba
+onBeforeRouteLeave(() => !dirty.value || window.confirm('Há alterações não salvas no orçamento. Sair mesmo assim?'))
+useEventListener(window, 'beforeunload', (e: BeforeUnloadEvent) => {
+  if (dirty.value) e.preventDefault()
+})
 </script>

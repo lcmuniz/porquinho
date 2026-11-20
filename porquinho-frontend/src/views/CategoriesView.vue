@@ -1,12 +1,12 @@
 <template>
-  <main class="min-h-screen bg-gray-50 px-4 py-8">
-    <div class="mx-auto max-w-3xl space-y-6">
-      <div class="flex items-start justify-between gap-4">
+  <main class="px-4 py-6 md:px-8 md:py-8">
+    <div class="mx-auto max-w-4xl space-y-6">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 ref="heading" tabindex="-1" class="text-2xl font-semibold text-gray-900 outline-none">Categorias</h1>
+          <h1 ref="heading" tabindex="-1" class="text-2xl font-bold text-gray-900 md:text-[28px] outline-none">Categorias</h1>
           <p class="mt-1 text-sm text-gray-600">Os envelopes do seu orçamento, organizados por grupo</p>
         </div>
-        <div class="flex flex-wrap justify-end gap-2">
+        <div class="flex flex-wrap gap-2 sm:justify-end">
           <Button
             ref="addButton"
             class="min-h-[44px]"
@@ -24,13 +24,6 @@
           >
             Exportar relatório de orçamento
           </Button>
-          <RouterLink
-            to="/dashboard"
-            data-testid="back-to-dashboard"
-            class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-          >
-            Voltar ao dashboard
-          </RouterLink>
         </div>
       </div>
 
@@ -49,7 +42,7 @@
 
       <div v-if="loading" class="space-y-2" aria-busy="true" data-testid="categories-skeleton">
         <div class="h-32 animate-pulse rounded-lg bg-gray-200" />
-        <span class="sr-only">Carregando suas categorias...</span>
+        <span class="sr-only">Carregando suas categorias…</span>
       </div>
 
       <div
@@ -112,7 +105,7 @@
             </Button>
           </div>
           <div v-show="!collapsed.has(group.parent.id)" :id="`group-items-${group.parent.id}`">
-            <ul class="space-y-2 pl-6">
+            <ul class="space-y-2 sm:pl-6">
               <li
                 v-for="child in group.children"
                 :key="child.id"
@@ -126,7 +119,7 @@
                 >
                   <component :is="categoryIcon(child.iconName)" class="h-5 w-5" :style="{ color: child.colorHex }" />
                 </span>
-                <span class="flex-1 font-medium text-gray-900">{{ child.categoryName }}</span>
+                <span class="min-w-0 flex-1 font-medium break-words text-gray-900">{{ child.categoryName }}</span>
                 <Button
                   variant="outline"
                   class="min-h-[44px]"
@@ -135,7 +128,8 @@
                   :data-testid="`move-${child.id}`"
                   @click="openMove(child)"
                 >
-                  Mover
+                  <FolderInput class="size-5 sm:hidden" aria-hidden="true" />
+                  <span class="hidden sm:inline">Mover</span>
                 </Button>
                 <Button
                   variant="outline"
@@ -144,7 +138,8 @@
                   :data-testid="`delete-${child.id}`"
                   @click="openDelete(child)"
                 >
-                  Excluir
+                  <Trash2 class="size-5 sm:hidden" aria-hidden="true" />
+                  <span class="hidden sm:inline">Excluir</span>
                 </Button>
               </li>
             </ul>
@@ -231,7 +226,7 @@
                   :style="{ backgroundColor: color }"
                   aria-hidden="true"
                 >
-                  <Check v-if="form.colorHex === color" class="h-4 w-4 text-white" />
+                  <Check v-if="form.colorHex === color" class="h-4 w-4 text-white" aria-hidden="true" />
                 </span>
               </button>
             </div>
@@ -278,7 +273,7 @@
               Cancelar
             </Button>
             <Button type="submit" class="min-h-[44px]" :disabled="saving" data-testid="category-save">
-              {{ saving ? 'Salvando...' : 'Salvar' }}
+              {{ saving ? 'Salvando…' : 'Salvar' }}
             </Button>
           </DialogFooter>
         </form>
@@ -320,7 +315,7 @@
               Cancelar
             </Button>
             <Button type="submit" class="min-h-[44px]" :disabled="saving" data-testid="move-save">
-              {{ saving ? 'Salvando...' : 'Salvar' }}
+              {{ saving ? 'Salvando…' : 'Salvar' }}
             </Button>
           </DialogFooter>
         </form>
@@ -348,8 +343,7 @@ import { SELECT_CLASS } from '@/lib/formField'
 import { Input } from '@/components/ui/input'
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { useFeedback } from '@/composables/useFeedback'
-import { RouterLink } from 'vue-router'
-import { Check, ChevronDown, ChevronRight } from 'lucide-vue-next'
+import { Check, ChevronDown, ChevronRight, FolderInput, Trash2 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import BudgetExportDialog from '@/components/budget/BudgetExportDialog.vue'
 import CategoryDeleteDialog from '@/components/category/CategoryDeleteDialog.vue'

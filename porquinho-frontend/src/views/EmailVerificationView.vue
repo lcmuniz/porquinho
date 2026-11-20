@@ -1,5 +1,6 @@
 <template>
-  <main class="flex min-h-screen items-center justify-center bg-white px-4">
+  <main class="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 py-10">
+    <BrandMark />
     <section class="w-full max-w-md">
       <Card>
         <CardHeader>
@@ -14,7 +15,7 @@
           <!-- Verificando -->
           <div v-if="verificationStatus === 'verifying'" class="text-center py-8">
             <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
-            <p class="mt-4 text-gray-600">Verificando seu email...</p>
+            <p class="mt-4 text-gray-600">Verificando seu email…</p>
           </div>
 
           <!-- Sucesso -->
@@ -127,6 +128,7 @@
 </template>
 
 <script setup lang="ts">
+import BrandMark from '@/components/common/BrandMark.vue'
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -156,7 +158,7 @@ const pageTitle = computed(() => {
 const pageDescription = computed(() => {
   switch (verificationStatus.value) {
     case 'verifying':
-      return 'Aguarde enquanto verificamos seu email...'
+      return 'Aguarde enquanto verificamos seu email…'
     case 'success':
       return 'Sua conta foi ativada com sucesso'
     case 'error':

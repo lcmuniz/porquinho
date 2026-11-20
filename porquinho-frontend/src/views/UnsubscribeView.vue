@@ -1,5 +1,6 @@
 <template>
-  <main class="flex min-h-screen items-center justify-center bg-white px-4">
+  <main class="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 py-10">
+    <BrandMark />
     <section class="w-full max-w-md">
       <Card>
         <CardHeader>
@@ -28,7 +29,7 @@
               :disabled="status === 'sending'"
               @click="confirm"
             >
-              {{ status === 'sending' ? 'Descadastrando...' : 'Não quero mais receber' }}
+              {{ status === 'sending' ? 'Descadastrando…' : 'Não quero mais receber' }}
             </Button>
           </template>
         </CardContent>
@@ -38,6 +39,7 @@
 </template>
 
 <script setup lang="ts">
+import BrandMark from '@/components/common/BrandMark.vue'
 import { ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'

@@ -22,7 +22,7 @@
 
       <div v-if="loadingList" class="space-y-2" aria-busy="true" data-testid="accounts-skeleton">
         <div class="h-14 animate-pulse rounded-lg bg-gray-100" />
-        <span class="sr-only">Carregando suas contas...</span>
+        <span class="sr-only">Carregando suas contas…</span>
       </div>
       <div v-else class="space-y-2">
         <h2 class="text-sm font-medium text-gray-900">Suas contas ({{ accounts.length }})</h2>
@@ -85,7 +85,7 @@
           :disabled="busy || (accounts.length === 0 && !listFailed)"
           @click="finish(false)"
         >
-          {{ finishing === 'next' ? 'Salvando...' : 'Próximo' }}
+          {{ finishing === 'next' ? 'Salvando…' : 'Próximo' }}
           <ChevronRight class="h-4 w-4" aria-hidden="true" />
         </Button>
       </div>
@@ -100,7 +100,7 @@
         :disabled="busy"
         @click="finish(true)"
       >
-        {{ finishing === 'skip' ? 'Salvando...' : 'Pular por agora' }}
+        {{ finishing === 'skip' ? 'Salvando…' : 'Pular por agora' }}
       </Button>
     </nav>
   </div>

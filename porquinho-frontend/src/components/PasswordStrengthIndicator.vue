@@ -3,7 +3,7 @@
     <div class="h-2 w-full bg-gray-200 rounded-full overflow-hidden">
       <div
         :class="strengthBarClass"
-        class="h-full transition-all duration-300"
+        class="h-full transition-[width] duration-300"
         :style="{ width: strengthWidth }"
       ></div>
     </div>

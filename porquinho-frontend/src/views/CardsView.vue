@@ -1,20 +1,13 @@
 <template>
-  <main class="min-h-screen bg-gray-50 px-4 py-8">
-    <div class="mx-auto max-w-3xl space-y-6">
-      <div class="flex items-start justify-between gap-4">
+  <main class="px-4 py-6 md:px-8 md:py-8">
+    <div class="mx-auto max-w-4xl space-y-6">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 ref="heading" tabindex="-1" class="text-2xl font-semibold text-gray-900 outline-none">
+          <h1 ref="heading" tabindex="-1" class="text-2xl font-bold text-gray-900 md:text-[28px] outline-none">
             Cartões de crédito
           </h1>
           <p class="mt-1 text-sm text-gray-600">Os cartões que você usa no dia a dia</p>
         </div>
-        <RouterLink
-          to="/dashboard"
-          data-testid="back-to-dashboard"
-          class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-        >
-          Voltar ao dashboard
-        </RouterLink>
       </div>
 
       <!-- Sempre no DOM: leitores de tela só anunciam mudanças numa região live que já existe -->
@@ -43,7 +36,7 @@
       <div v-if="loading" class="space-y-2" aria-busy="true" data-testid="cards-skeleton">
         <div class="h-20 animate-pulse rounded-lg bg-gray-100" />
         <div class="h-16 animate-pulse rounded-lg bg-gray-100" />
-        <span class="sr-only">Carregando seus cartões...</span>
+        <span class="sr-only">Carregando seus cartões…</span>
       </div>
 
       <div
@@ -88,7 +81,7 @@
         >
           <div>
             <p id="total-limit-label" class="text-sm text-gray-600">Limite total</p>
-            <p class="text-2xl font-semibold text-gray-900" data-testid="cards-total">
+            <p class="text-2xl font-bold text-gray-900 md:text-[28px]" data-testid="cards-total">
               {{ formatBRL(totalCents / 100) }}
             </p>
           </div>
@@ -111,23 +104,26 @@
             <li
               v-for="card in cards"
               :key="card.id"
-              class="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3"
+              class="rounded-lg border border-gray-200 bg-white p-4"
               :data-testid="`card-item-${card.id}`"
             >
-              <CreditCardIcon class="h-5 w-5 shrink-0 text-purple-600" aria-hidden="true" />
-              <div class="min-w-0 flex-1">
-                <p class="truncate font-medium text-gray-900">{{ card.cardName }}</p>
-                <p class="truncate text-xs text-gray-500" data-testid="card-details">
-                  <template v-if="card.bankName">{{ card.bankName }} · </template>vence dia
-                  {{ card.dueDay }}
-                </p>
+              <div class="flex items-start gap-3">
+                <CreditCardIcon class="mt-0.5 size-5 shrink-0 text-purple-600" aria-hidden="true" />
+                <div class="min-w-0 flex-1">
+                  <p class="break-words text-[15px] font-semibold text-gray-900">{{ card.cardName }}</p>
+                  <p class="text-sm text-gray-600" data-testid="card-details">
+                    <template v-if="card.bankName">{{ card.bankName }} · </template>vence dia
+                    {{ card.dueDay }}
+                  </p>
+                </div>
+                <span
+                  class="text-base font-semibold whitespace-nowrap text-gray-900"
+                  data-testid="card-limit"
+                >
+                  {{ formatBRL(card.cardLimit) }}
+                </span>
               </div>
-              <span
-                class="text-sm font-semibold whitespace-nowrap text-gray-900"
-                data-testid="card-limit"
-              >
-                {{ formatBRL(card.cardLimit) }}
-              </span>
+              <div class="mt-2 -mb-1 flex justify-end gap-1">
               <Button
                 variant="ghost"
                 class="min-h-[44px] min-w-[44px] shrink-0 text-purple-700 hover:bg-purple-50"
@@ -140,7 +136,7 @@
               </Button>
               <Button
                 variant="ghost"
-                class="min-h-[44px] min-w-[44px] shrink-0 text-red-700 hover:bg-red-50"
+                class="min-h-[44px] min-w-[44px] shrink-0 text-gray-700 hover:bg-red-50 hover:text-red-700"
                 :data-testid="`remove-card-${card.id}`"
                 :aria-label="`Remover ${card.cardName}`"
                 @click="openRemove(card)"
@@ -148,6 +144,7 @@
                 <Trash2 class="h-4 w-4" aria-hidden="true" />
                 Remover
               </Button>
+              </div>
             </li>
           </ul>
         </section>
@@ -180,7 +177,7 @@
             class="text-sm text-gray-600"
             data-testid="removed-cards-loading"
           >
-            Carregando cartões removidos...
+            Carregando cartões removidos…
           </p>
           <div
             v-else-if="removedLoadFailed"
@@ -232,7 +229,7 @@
                 @click="restore(card)"
               >
                 <RotateCcw class="h-4 w-4" aria-hidden="true" />
-                {{ restoringId === card.id ? 'Restaurando...' : 'Restaurar' }}
+                {{ restoringId === card.id ? 'Restaurando…' : 'Restaurar' }}
               </Button>
             </li>
           </ul>
@@ -271,7 +268,7 @@
           primary
           :card="editing"
           :submit-label="editing ? 'Salvar alterações' : 'Salvar cartão'"
-          submitting-label="Salvando..."
+          submitting-label="Salvando…"
           @created="onCreated"
           @updated="onUpdated"
           @not-found="onNotFound"
@@ -327,7 +324,7 @@
             :disabled="removeSubmitting"
             @click="confirmRemove"
           >
-            {{ removeSubmitting ? 'Removendo...' : 'Remover' }}
+            {{ removeSubmitting ? 'Removendo…' : 'Remover' }}
           </Button>
         </div>
       </DialogContent>
@@ -337,7 +334,6 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { RouterLink } from 'vue-router'
 import { CreditCard as CreditCardIcon, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-vue-next'
 import CardForm from '@/components/cards/CardForm.vue'
 import { Button } from '@/components/ui/button'

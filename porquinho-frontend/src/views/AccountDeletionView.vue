@@ -1,9 +1,9 @@
 <template>
-  <main class="min-h-screen bg-gray-50 px-4 py-8">
+  <main class="px-4 py-6 md:px-8 md:py-8">
     <div class="mx-auto max-w-3xl space-y-6">
       <div class="flex items-center justify-between">
         <div>
-          <h1 class="text-2xl font-semibold text-gray-900">Excluir minha conta</h1>
+          <h1 class="text-2xl font-bold text-gray-900 md:text-[28px]">Excluir minha conta</h1>
           <p class="mt-1 text-sm text-gray-600">
             Solicite a exclusão permanente da sua conta e dos seus dados (direito LGPD)
           </p>
@@ -12,7 +12,7 @@
           variant="outline"
           class="min-h-[44px]"
           @click="goBack"
-          aria-label="Voltar para o dashboard"
+          aria-label="Voltar para configurações"
         >
           Voltar
         </Button>
@@ -107,7 +107,7 @@
               @click="handleConfirmDeletion"
               aria-label="Confirmar exclusão definitiva da conta"
             >
-              {{ isSubmitting ? 'Excluindo...' : 'Confirmar exclusão' }}
+              {{ isSubmitting ? 'Excluindo…' : 'Confirmar exclusão' }}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -149,7 +149,7 @@ const confirmInputRef = ref<HTMLInputElement | null>(null)
 const isConfirmTextValid = computed(() => confirmText.value.trim() === CONFIRM_PHRASE)
 
 function goBack() {
-  router.push('/dashboard')
+  router.push('/configuracoes')
 }
 
 async function openConfirmDialog() {

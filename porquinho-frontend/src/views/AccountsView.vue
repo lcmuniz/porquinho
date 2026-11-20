@@ -1,20 +1,13 @@
 <template>
-  <main class="min-h-screen bg-gray-50 px-4 py-8">
-    <div class="mx-auto max-w-3xl space-y-6">
-      <div class="flex items-start justify-between gap-4">
+  <main class="px-4 py-6 md:px-8 md:py-8">
+    <div class="mx-auto max-w-4xl space-y-6">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 ref="heading" tabindex="-1" class="text-2xl font-semibold text-gray-900 outline-none">
+          <h1 ref="heading" tabindex="-1" class="text-2xl font-bold text-gray-900 md:text-[28px] outline-none">
             Contas bancárias
           </h1>
           <p class="mt-1 text-sm text-gray-600">Onde seu dinheiro está hoje</p>
         </div>
-        <RouterLink
-          to="/dashboard"
-          data-testid="back-to-dashboard"
-          class="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-        >
-          Voltar ao dashboard
-        </RouterLink>
       </div>
 
       <!-- Sempre no DOM: leitores de tela só anunciam mudanças numa região live que já existe -->
@@ -43,7 +36,7 @@
       <div v-if="loading" class="space-y-2" aria-busy="true" data-testid="accounts-skeleton">
         <div class="h-20 animate-pulse rounded-lg bg-gray-100" />
         <div class="h-16 animate-pulse rounded-lg bg-gray-100" />
-        <span class="sr-only">Carregando suas contas...</span>
+        <span class="sr-only">Carregando suas contas…</span>
       </div>
 
       <div
@@ -189,7 +182,7 @@
                 </Button>
                 <Button
                   variant="ghost"
-                  class="min-h-[44px] min-w-[44px] shrink-0 text-red-700 hover:bg-red-50"
+                  class="min-h-[44px] min-w-[44px] shrink-0 text-gray-700 hover:bg-red-50 hover:text-red-700"
                   :data-testid="`remove-account-${account.id}`"
                   :aria-label="`Remover ${account.accountName}`"
                   @click="openRemove(account)"
@@ -219,7 +212,7 @@
           class="text-sm text-gray-600"
           data-testid="transfers-loading"
         >
-          Carregando transferências...
+          Carregando transferências…
         </p>
         <div
           v-else-if="transfersLoadFailed"
@@ -303,7 +296,7 @@
             class="text-sm text-gray-600"
             data-testid="removed-accounts-loading"
           >
-            Carregando contas removidas...
+            Carregando contas removidas…
           </p>
           <div
             v-else-if="removedLoadFailed"
@@ -355,7 +348,7 @@
                 @click="restore(account)"
               >
                 <RotateCcw class="h-4 w-4" aria-hidden="true" />
-                {{ restoringId === account.id ? 'Restaurando...' : 'Restaurar' }}
+                {{ restoringId === account.id ? 'Restaurando…' : 'Restaurar' }}
               </Button>
             </li>
           </ul>
@@ -394,7 +387,7 @@
           primary
           :account="editing"
           :submit-label="editing ? 'Salvar alterações' : 'Salvar conta'"
-          submitting-label="Salvando..."
+          submitting-label="Salvando…"
           @created="onCreated"
           @updated="onUpdated"
           @not-found="onNotFound"
@@ -450,7 +443,7 @@
             :disabled="removeSubmitting"
             @click="confirmRemove"
           >
-            {{ removeSubmitting ? 'Removendo...' : 'Remover' }}
+            {{ removeSubmitting ? 'Removendo…' : 'Remover' }}
           </Button>
         </div>
       </DialogContent>

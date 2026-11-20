@@ -1,5 +1,6 @@
 <template>
-  <main class="flex min-h-screen items-center justify-center bg-white px-4">
+  <main class="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 py-10">
+    <BrandMark />
     <section class="w-full max-w-md">
       <Card>
         <CardHeader>
@@ -35,6 +36,10 @@
               </label>
               <Input
                 id="email"
+                name="email"
+                autocomplete="email"
+                spellcheck="false"
+                autocapitalize="off"
                 v-model="email"
                 type="email"
                 required
@@ -51,6 +56,8 @@
               </label>
               <Input
                 id="password"
+                name="password"
+                autocomplete="new-password"
                 v-model="password"
                 type="password"
                 required
@@ -69,6 +76,8 @@
               </label>
               <Input
                 id="confirmPassword"
+                name="confirm-password"
+                autocomplete="new-password"
                 v-model="confirmPassword"
                 type="password"
                 required
@@ -93,7 +102,7 @@
               class="w-full min-h-[44px] bg-purple-600 hover:bg-purple-700 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600 disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label="Cadastrar com email"
             >
-              <span v-if="isLoading">Criando conta...</span>
+              <span v-if="isLoading">Criando conta…</span>
               <span v-else>Cadastrar com Email</span>
             </Button>
           </form>
@@ -141,7 +150,7 @@
                 d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 0 1-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"
               />
             </svg>
-            <span v-if="isLoading">Carregando...</span>
+            <span v-if="isLoading">Carregando…</span>
             <span v-else>Cadastrar com Google</span>
           </Button>
 
@@ -172,6 +181,7 @@
 </template>
 
 <script setup lang="ts">
+import BrandMark from '@/components/common/BrandMark.vue'
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'

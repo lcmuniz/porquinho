@@ -18,9 +18,9 @@ describe('AllocationHistoryChart', () => {
     })
     const allocated = wrapper.get('[data-testid="chart-line-allocated"]')
     const spent = wrapper.get('[data-testid="chart-line-spent"]')
-    expect(allocated.attributes('stroke')).toBe('#7c3aed')
+    expect(allocated.attributes('stroke')).toBe('#1E40AF')
     expect(allocated.attributes('stroke-dasharray')).toBeUndefined()
-    expect(spent.attributes('stroke')).toBe('#DC2626')
+    expect(spent.attributes('stroke')).toBe('#B91C1C')
     expect(spent.attributes('stroke-dasharray')).toBe('6 4')
     expect(allocated.attributes('points')!.split(' ')).toHaveLength(3)
     // gasto 0 fica na base; o maior valor (200) no topo

@@ -1,9 +1,9 @@
 <template>
-  <main class="min-h-screen bg-gray-50 px-4 py-8">
-    <div class="mx-auto max-w-3xl space-y-6">
-      <div class="flex items-start justify-between gap-4">
+  <main class="px-4 py-6 md:px-8 md:py-8">
+    <div class="mx-auto max-w-4xl space-y-6">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div class="min-w-0">
-          <h1 class="text-2xl font-semibold text-gray-900" data-testid="history-heading">
+          <h1 class="text-2xl font-bold text-gray-900 md:text-[28px]" data-testid="history-heading">
             Histórico de saldo<template v-if="history">
               — {{ history.account.accountName }}</template
             >
@@ -57,7 +57,7 @@
 
       <div v-if="loading" class="space-y-2" aria-busy="true" data-testid="history-skeleton">
         <div class="h-64 animate-pulse rounded-lg bg-gray-100" />
-        <span class="sr-only">Carregando o histórico...</span>
+        <span class="sr-only">Carregando o histórico…</span>
       </div>
 
       <div

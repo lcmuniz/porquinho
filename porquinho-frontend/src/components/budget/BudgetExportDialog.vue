@@ -81,7 +81,7 @@
             :aria-describedby="!valid ? 'budget-export-help' : undefined"
             data-testid="budget-export-submit"
           >
-            {{ exporting ? 'Gerando...' : 'Gerar CSV' }}
+            {{ exporting ? 'Gerando…' : 'Gerar CSV' }}
           </Button>
         </DialogFooter>
       </form>

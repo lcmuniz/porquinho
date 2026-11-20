@@ -31,3 +31,4 @@ _bmad-output/
 
 # Scripts locais do Windows (podem conter caminhos e credenciais da máquina)
 *.bat
+.env.design-demo

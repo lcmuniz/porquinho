@@ -9,31 +9,61 @@
     <Button variant="outline" class="min-h-[44px]" data-testid="overview-error-retry" @click="retry">Tentar de novo</Button>
   </div>
   <div v-else-if="overview" class="mt-4 space-y-4">
-    <!-- Story 7.4: no desktop, a curva em 2/3 e o card (1) ao lado; no mobile, um embaixo do outro -->
+    <!-- novo-design: no desktop, a curva em 2/3 e os três valores do mês empilhados ao lado; no mobile, um embaixo do outro -->
     <div data-testid="wealth-row" class="grid grid-cols-1 gap-4 lg:grid-cols-3">
-      <WealthChart class="lg:col-span-2" :points="overview.wealthHistory" />
-      <div
-        data-testid="card-balance"
-        class="min-w-0 rounded-lg border border-gray-200 bg-white p-6"
-      >
-        <p class="text-sm text-gray-600">Saldo total disponível</p>
-        <p class="break-words text-4xl font-bold text-gray-900">
-          {{ formatBRL(overview.totalBalance) }}
-        </p>
+      <!-- novo-design: no celular os valores do mês vêm antes do gráfico ("onde estou?" na primeira tela) -->
+      <WealthChart class="order-2 lg:order-1 lg:col-span-2" :points="overview.wealthHistory" />
+      <div class="order-1 grid min-w-0 grid-cols-1 gap-4 md:grid-cols-3 lg:order-2 lg:grid-cols-1">
+        <div data-testid="card-balance" class="min-w-0 rounded-lg border border-gray-200 bg-white p-4 md:p-6">
+          <p class="text-sm font-medium text-gray-600">Saldo total disponível</p>
+          <p data-kpi
+            class="mt-1 break-words text-[28px] leading-9 font-bold text-gray-900 md:text-[32px] md:leading-10">
+            {{ formatBRL(overview.totalBalance) }}
+          </p>
+        </div>
+        <div data-testid="card-spent" class="min-w-0 rounded-lg border border-gray-200 bg-white p-4 md:p-6">
+          <p class="text-sm font-medium text-gray-600">Gasto do mês</p>
+          <p data-kpi
+            class="mt-1 break-words text-[28px] leading-9 font-bold md:text-[32px] md:leading-10 text-gray-900">
+            {{ formatBRL(overview.monthSpent) }}
+          </p>
+          <p class="mt-1 text-sm text-gray-600">
+            Você gastou {{ formatBRL(overview.monthSpent) }} de
+            {{ formatBRL(overview.monthAllocated) }} planejados este mês
+          </p>
+        </div>
+
+        <div
+          data-testid="card-projection"
+          class="min-w-0 rounded-lg border border-gray-200 bg-white p-4 md:p-6"
+        >
+          <p class="text-sm font-medium text-gray-600">Projeção do saldo no fim do mês</p>
+          <p
+            data-kpi
+            class="mt-1 break-words text-[28px] leading-9 font-bold md:text-[32px] md:leading-10"
+            :class="overview.projectedBalance < 0 ? 'text-red-600' : 'text-gray-900'"
+          >
+            {{ formatBRL(overview.projectedBalance) }}
+          </p>
+          <p class="mt-1 text-sm text-gray-600">
+            No ritmo atual de gasto, já descontadas as parcelas do mês
+          </p>
+        </div>
       </div>
     </div>
 
     <div data-testid="metrics-grid" class="grid grid-cols-1 gap-4 md:grid-cols-2">
       <div
         data-testid="card-categories"
-        class="min-w-0 rounded-lg border border-gray-200 bg-white p-6"
+        class="min-w-0 rounded-lg border border-gray-200 bg-white p-4 md:p-6"
       >
-        <p class="text-sm text-gray-600">Status das categorias</p>
+        <p class="text-sm font-medium text-gray-600">Status das categorias</p>
         <template v-if="overview.categories.length">
-          <p class="break-words text-4xl font-bold text-gray-900">
+          <p data-kpi
+            class="mt-1 break-words text-[28px] leading-9 font-bold md:text-[32px] md:leading-10 text-gray-900">
             {{ healthyCount }} de {{ overview.categories.length }}
           </p>
-          <p class="text-sm text-gray-600">{{ healthyCount === 1 ? 'saudável' : 'saudáveis' }}</p>
+          <p class="text-sm font-medium text-gray-600">{{ healthyCount === 1 ? 'saudável' : 'saudáveis' }}</p>
           <p v-if="overspentCount" class="mt-3 text-sm font-semibold text-red-600">
             Preciso ajustar?
           </p>
@@ -65,10 +95,11 @@
         </p>
       </div>
 
-      <div data-testid="card-goal" class="min-w-0 rounded-lg border border-gray-200 bg-white p-6">
-        <p class="text-sm text-gray-600">Meta principal</p>
+      <div data-testid="card-goal" class="min-w-0 rounded-lg border border-gray-200 bg-white p-4 md:p-6">
+        <p class="text-sm font-medium text-gray-600">Meta principal</p>
         <template v-if="overview.mainGoal">
-          <p class="break-words text-4xl font-bold text-gray-900">
+          <p data-kpi
+            class="mt-1 break-words text-[28px] leading-9 font-bold md:text-[32px] md:leading-10 text-gray-900">
             {{ overview.mainGoal.percent }}%
           </p>
           <p class="break-words text-sm text-gray-900">{{ overview.mainGoal.name }}</p>
@@ -80,7 +111,7 @@
             :aria-label="`Progresso da meta ${overview.mainGoal.name}`"
             class="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-200"
           >
-            <div class="h-full bg-purple-600" :style="{ width: `${overview.mainGoal.percent}%` }" />
+            <div class="h-full bg-green-600" :style="{ width: `${overview.mainGoal.percent}%` }" />
           </div>
           <p class="mt-1 text-sm text-gray-600">
             {{ formatBRL(overview.mainGoal.currentAmount) }} de
@@ -92,32 +123,6 @@
         </p>
       </div>
 
-      <div data-testid="card-spent" class="min-w-0 rounded-lg border border-gray-200 bg-white p-6">
-        <p class="text-sm text-gray-600">Gasto do mês</p>
-        <p class="break-words text-4xl font-bold text-gray-900">
-          {{ formatBRL(overview.monthSpent) }}
-        </p>
-        <p class="mt-1 text-sm text-gray-700">
-          Você gastou {{ formatBRL(overview.monthSpent) }} de
-          {{ formatBRL(overview.monthAllocated) }} planejados este mês
-        </p>
-      </div>
-
-      <div
-        data-testid="card-projection"
-        class="min-w-0 rounded-lg border border-gray-200 bg-white p-6"
-      >
-        <p class="text-sm text-gray-600">Projeção do saldo no fim do mês</p>
-        <p
-          class="break-words text-4xl font-bold"
-          :class="overview.projectedBalance < 0 ? 'text-red-600' : 'text-gray-900'"
-        >
-          {{ formatBRL(overview.projectedBalance) }}
-        </p>
-        <p class="mt-1 text-sm text-gray-700">
-          No ritmo atual de gasto, já descontadas as parcelas do mês
-        </p>
-      </div>
     </div>
   </div>
   <p v-else role="status" data-testid="overview-loading" class="mt-4 text-sm text-gray-600">

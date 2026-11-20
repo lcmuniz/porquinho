@@ -98,17 +98,17 @@ describe('DashboardLayer2', () => {
       expect(w.find(`[data-testid="card-${id}"]`).exists()).toBe(true)
   })
 
-  it('donut com as 5 maiores em Chart 2–6, "Outras" em cinza e total = gasto do mês', async () => {
+  it('donut com as 5 maiores na ordem das séries, "Outras" em cinza e total = gasto do mês', async () => {
     const w = await mountWith(tactical())
 
     const slices = w.findAll('[data-testid^="donut-slice-"]')
     expect(slices.map((s) => s.attributes('stroke'))).toEqual([
-      '#06B6D4',
-      '#F59E0B',
-      '#10B981',
-      '#EC4899',
-      '#8B5CF6',
-      '#9CA3AF',
+      '#1E40AF',
+      '#059669',
+      '#D97706',
+      '#0284C7',
+      '#E11D48',
+      '#94A3B8',
     ])
     expect(brl(slices[5]!.attributes('aria-label'))).toBe('Outras: R$ 80,00')
     expect(slices[5]!.attributes('role')).toBe('img')

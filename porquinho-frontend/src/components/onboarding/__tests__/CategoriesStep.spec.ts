@@ -175,7 +175,7 @@ describe('CategoriesStep', () => {
 
     await nextButton(wrapper).trigger('click')
     await nextButton(wrapper).trigger('click')
-    expect(nextButton(wrapper).text()).toContain('Salvando...')
+    expect(nextButton(wrapper).text()).toContain('Salvando…')
     expect(nextButton(wrapper).element.disabled).toBe(true)
     resolve(nextProgress)
     await flushPromises()

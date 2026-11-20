@@ -18,15 +18,15 @@ export interface Marker {
 }
 
 export const BALANCE_EVENT_MARKER: Record<BalanceEvent, Marker> = {
-  initial: { color: '#4b5563', shape: 'circle' },
+  initial: { color: '#475569', shape: 'circle' },
   edit: { color: '#2563eb', shape: 'square' },
   transfer: { color: '#0891b2', shape: 'diamond' },
-  reconciliation: { color: '#16a34a', shape: 'triangle' },
+  reconciliation: { color: '#047857', shape: 'triangle' },
   transaction: { color: '#d97706', shape: 'triangle-down' },
 }
 
 /** Evento desconhecido (versão nova do backend) cai num marcador neutro em vez de quebrar o gráfico. */
-export const DEFAULT_MARKER: Marker = { color: '#6b7280', shape: 'circle' }
+export const DEFAULT_MARKER: Marker = { color: '#475569', shape: 'circle' }
 
 export function markerOf(event: string): Marker {
   return BALANCE_EVENT_MARKER[event as BalanceEvent] ?? DEFAULT_MARKER

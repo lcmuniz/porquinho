@@ -41,9 +41,9 @@
               </ol>
               <!-- Seta de rolagem -->
               <div class="flex flex-col items-center justify-between py-2" aria-hidden="true">
-                <ChevronsDown class="h-5 w-5 text-purple-400" />
+                <ChevronsDown class="h-5 w-5 text-purple-400" aria-hidden="true" />
                 <div class="w-1 flex-1 rounded-full bg-purple-200" />
-                <ChevronsDown class="h-5 w-5 text-purple-600" />
+                <ChevronsDown class="h-5 w-5 text-purple-600" aria-hidden="true" />
               </div>
             </div>
             <figcaption
@@ -156,7 +156,7 @@
                 :key="n"
                 class="flex items-center gap-1 rounded-full bg-white px-3 py-1 text-xs text-gray-600 shadow-sm"
               >
-                <ListFilter class="h-3 w-3" />
+                <ListFilter class="h-3 w-3" aria-hidden="true" />
                 Filtro
               </span>
             </div>
@@ -172,7 +172,7 @@
                   <div class="h-2 w-2/3 rounded bg-gray-200" />
                   <div class="h-2 w-1/3 rounded bg-gray-100" />
                 </div>
-                <Pencil class="h-4 w-4 shrink-0 text-purple-600" />
+                <Pencil class="h-4 w-4 shrink-0 text-purple-600" aria-hidden="true" />
               </li>
             </ul>
           </figure>
@@ -236,7 +236,7 @@
         :disabled="finishing"
         @click="next"
       >
-        {{ finishing ? 'Salvando...' : 'Próximo' }}
+        {{ finishing ? 'Salvando…' : 'Próximo' }}
         <ChevronRight class="h-4 w-4" aria-hidden="true" />
       </Button>
     </nav>

@@ -139,7 +139,7 @@ describe('BudgetExportDialog', () => {
     await submit()
 
     expect($<HTMLButtonElement>('budget-export-cancel')!.disabled).toBe(true)
-    expect($('budget-export-submit')!.textContent?.trim()).toBe('Gerando...')
+    expect($('budget-export-submit')!.textContent?.trim()).toBe('Gerando…')
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     document.body.querySelector<HTMLButtonElement>('[data-slot="dialog-close"]')!.click()
     await flushPromises()

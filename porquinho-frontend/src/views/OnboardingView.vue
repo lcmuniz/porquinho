@@ -8,7 +8,7 @@
         <div class="mx-auto h-16 w-16 animate-pulse rounded-full bg-gray-100" />
         <div class="mx-auto h-8 w-3/4 animate-pulse rounded bg-gray-100" />
         <div class="h-24 animate-pulse rounded-lg bg-gray-100" />
-        <span class="sr-only">Carregando...</span>
+        <span class="sr-only">Carregando…</span>
       </div>
 
       <!-- Passo 2: contas bancárias (Story 3.2) -->
@@ -255,7 +255,7 @@
             :disabled="saving"
             @click="next"
           >
-            {{ saving && isLastScreen ? 'Salvando...' : 'Próximo' }}
+            {{ saving && isLastScreen ? 'Salvando…' : 'Próximo' }}
             <ChevronRight class="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
@@ -294,7 +294,7 @@
               :disabled="saving"
               @click="finish(true)"
             >
-              {{ saving ? 'Salvando...' : 'Pular' }}
+              {{ saving ? 'Salvando…' : 'Pular' }}
             </Button>
           </DialogFooter>
         </DialogContent>

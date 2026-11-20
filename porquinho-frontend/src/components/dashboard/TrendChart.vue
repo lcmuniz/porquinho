@@ -24,6 +24,7 @@
     </p>
     <template v-else>
       <svg
+        ref="svg"
         :viewBox="`0 0 ${WIDTH} ${HEIGHT}`"
         class="h-auto w-full overflow-visible"
         role="img"
@@ -36,7 +37,7 @@
             :x2="WIDTH - PAD.right"
             :y1="tick.y"
             :y2="tick.y"
-            stroke="#e5e7eb"
+            stroke="#E2E8F0"
             stroke-width="1"
           />
           <text
@@ -44,22 +45,22 @@
             :y="tick.y"
             text-anchor="end"
             dominant-baseline="middle"
-            font-size="11"
-            fill="#6b7280"
+            font-size="13"
+            fill="#475569"
           >
-            {{ formatBRL(tick.value) }}
+            {{ tick.label }}
           </text>
         </g>
         <text
-          v-for="(label, i) in monthLabels"
-          :key="`x-${i}`"
-          :x="xOf(i)"
+          v-for="tick in xTicks"
+          :key="`x-${tick.i}`"
+          :x="xOf(tick.i)"
           :y="HEIGHT - PAD.bottom + 18"
-          text-anchor="middle"
-          font-size="11"
-          fill="#6b7280"
+          :text-anchor="tick.i === 0 && period.length > 1 ? 'start' : tick.i === period.length - 1 && tick.i > 0 ? 'end' : 'middle'"
+          font-size="13"
+          fill="#475569"
         >
-          {{ label }}
+          {{ tick.label }}
         </text>
         <g v-for="line in lines" :key="line.key" :data-testid="`trend-line-${line.key}`">
           <polyline
@@ -128,7 +129,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { Button } from '@/components/ui/button'
-import { valueTicks, yOf as chartY } from '@/lib/chart'
+import { axisBRL, labelPad, useChartWidth, valueTicks, xTickCount, yOf as chartY } from '@/lib/chart'
 import { formatBRL } from '@/lib/money'
 import type { CategoryTrend } from '@/types/dashboard'
 import { CHART_COLORS } from './chartColors'
@@ -140,13 +141,15 @@ import { CHART_COLORS } from './chartColors'
 const props = defineProps<{ trends: CategoryTrend[] }>()
 
 const RANGES = [3, 6, 12] as const
-const WIDTH = 640
 const HEIGHT = 260
-const PAD = { top: 16, right: 24, bottom: 32, left: 96 }
+const DESIGN_PAD = { top: 16, right: 24, bottom: 32, left: 96 }
 const Y_TICKS = 4
 const SHORT_MONTH = new Intl.DateTimeFormat('pt-BR', { month: 'short', year: '2-digit', timeZone: 'UTC' })
 
 const months = ref<(typeof RANGES)[number]>(3)
+
+const svg = ref<SVGElement | null>(null)
+const { width: WIDTH, narrow } = useChartWidth(svg, 640)
 
 const period = computed(() => props.trends[0]?.months.slice(-months.value) ?? [])
 
@@ -176,14 +179,31 @@ const lines = computed(() =>
 
 const max = computed(() => Math.max(...lines.value.flatMap((l) => l.values), 1))
 
+const yLabels = computed(() =>
+  valueTicks([0, max.value], Y_TICKS).map((value) => ({ value, label: axisBRL(value, narrow.value) })),
+)
+
+/** Estreito: margem esquerda do tamanho do maior rótulo. */
+const PAD = computed(() =>
+  narrow.value ? { ...DESIGN_PAD, left: labelPad(yLabels.value.map((t) => t.label)) } : DESIGN_PAD,
+)
+
 function xOf(i: number): number {
   const n = period.value.length
-  return PAD.left + (n > 1 ? (i / (n - 1)) * (WIDTH - PAD.left - PAD.right) : 0)
+  return PAD.value.left + (n > 1 ? (i / (n - 1)) * (WIDTH.value - PAD.value.left - PAD.value.right) : 0)
 }
 
 function yOf(value: number): number {
-  return chartY(value, [0, max.value], HEIGHT, PAD)
+  return chartY(value, [0, max.value], HEIGHT, PAD.value)
 }
 
-const yTicks = computed(() => valueTicks([0, max.value], Y_TICKS).map((value) => ({ value, y: yOf(value) })))
+const yTicks = computed(() => yLabels.value.map((t) => ({ ...t, y: yOf(t.value) })))
+
+/** Só os meses que cabem sem sobrepor, sempre com o mais novo; a tabela abaixo tem todos. */
+const xTicks = computed(() => {
+  const n = monthLabels.value.length
+  // Pontas ancoradas no início/fim (como no WealthChart): cada intervalo precisa de 1,5 rótulo
+  const step = Math.ceil(n / (xTickCount(WIDTH.value - PAD.value.left - PAD.value.right, 15, n) + 1))
+  return monthLabels.value.map((label, i) => ({ i, label })).filter(({ i }) => (n - 1 - i) % step === 0)
+})
 </script>

@@ -189,7 +189,7 @@
         >
           {{
             finishing === 'create'
-              ? 'Salvando...'
+              ? 'Salvando…'
               : goalCreated
                 ? 'Concluir'
                 : 'Criar meta e concluir'
@@ -204,7 +204,7 @@
         :disabled="busy || loadingGoals"
         @click="skip"
       >
-        {{ finishing === 'skip' ? 'Salvando...' : 'Pular por agora' }}
+        {{ finishing === 'skip' ? 'Salvando…' : 'Pular por agora' }}
       </Button>
     </nav>
   </div>

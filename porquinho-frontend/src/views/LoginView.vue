@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BrandMark from '@/components/common/BrandMark.vue'
 import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Button } from '@/components/ui/button'
@@ -168,7 +169,8 @@ function togglePasswordVisibility() {
 </script>
 
 <template>
-  <main class="flex min-h-screen items-center justify-center bg-white px-4">
+  <main class="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 py-10">
+    <BrandMark />
     <section class="w-full max-w-md">
       <Card>
         <CardHeader>
@@ -206,6 +208,10 @@ function togglePasswordVisibility() {
               </label>
               <Input
                 id="email"
+                name="email"
+                autocomplete="email"
+                spellcheck="false"
+                autocapitalize="off"
                 v-model="email"
                 type="email"
                 required
@@ -223,6 +229,8 @@ function togglePasswordVisibility() {
               <div class="relative">
                 <Input
                   id="password"
+                  name="password"
+                  autocomplete="current-password"
                   v-model="password"
                   :type="showPassword ? 'text' : 'password'"
                   required
@@ -291,7 +299,7 @@ function togglePasswordVisibility() {
               class="w-full min-h-[44px] bg-purple-600 hover:bg-purple-700 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-purple-600 disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label="Entrar com email"
             >
-              <span v-if="isLoading">Entrando...</span>
+              <span v-if="isLoading">Entrando…</span>
               <span v-else>Entrar</span>
             </Button>
           </form>

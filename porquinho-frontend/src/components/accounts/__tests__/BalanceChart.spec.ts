@@ -140,7 +140,7 @@ describe('BalanceChart', () => {
       { date: '2026-10-10T15:00:00Z', balance: 1, event: 'novo' as BalancePoint['event'] },
     ])
     const point = wrapper.get('[data-testid="chart-point-1"]')
-    expect(point.attributes('fill')).toBe('#6b7280')
+    expect(point.attributes('fill')).toBe('#475569')
     expect(point.attributes('aria-label')).toContain('novo')
     await point.trigger('mouseenter')
     expect(wrapper.get('[data-testid="chart-tooltip"]').text()).toContain('novo')
