@@ -17,18 +17,12 @@
         </div>
       </div>
 
-      <!-- Sempre no DOM: leitores de tela só anunciam mudanças numa região live que já existe -->
-      <p
-        role="status"
-        data-testid="transactions-success"
-        :class="
-          successMessage
-            ? 'rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800'
-            : 'sr-only'
-        "
-      >
-        {{ successMessage }}
-      </p>
+      <FeedbackBanner
+        :message="feedbackAtBar ? null : successMessage"
+        testid="transactions-success"
+        @pause="pauseSuccess"
+        @resume="resumeSuccess"
+      />
 
       <p
         v-if="actionError"
@@ -197,7 +191,7 @@
       :cards="cards"
       :categories="categories"
       :initial="exportInitial"
-      @exported="setSuccess(`Relatório exportado: ${plural($event, 'transação', 'transações')}`)"
+      @exported="notify(`Relatório exportado: ${plural($event, 'transação', 'transações')}`)"
     />
 
     <Dialog :open="confirmOpen" @update:open="onConfirmOpenChange">
@@ -270,6 +264,20 @@
         <Button variant="ghost" class="min-h-[44px]" data-testid="batch-clear" @click="selected = []">Limpar seleção</Button>
       </div>
     </section>
+    <!-- O resultado do lote (com "Desfazer") aparece onde estava a barra, perto de quem agiu -->
+    <div
+      class="pointer-events-none fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-30 flex justify-center px-4 lg:bottom-6 lg:pl-62"
+    >
+      <FeedbackBanner
+        ref="batchFeedback"
+        class="pointer-events-auto w-full max-w-4xl shadow-lg"
+        :message="feedbackAtBar && !selected.length ? successMessage : null"
+        :action="successAction"
+        testid="batch-success"
+        @pause="pauseSuccess"
+        @resume="resumeSuccess"
+      />
+    </div>
     <!-- Sempre no DOM: anuncia quantas estão marcadas -->
     <p role="status" class="sr-only" data-testid="batch-status">
       {{ selected.length ? plural(selected.length, 'transação selecionada', 'transações selecionadas') : '' }}
@@ -303,12 +311,14 @@
               :disabled="optionsLoading"
               data-testid="batch-category-select"
             >
-              <option value="">Sem categoria</option>
+              <!-- Critique de 20/11/2026: nada vem escolhido; tirar a categoria é uma escolha explícita, no fim -->
+              <option value="" disabled>Escolha uma categoria</option>
               <optgroup v-for="group in categoryGroups" :key="group.id" :label="group.name">
                 <option v-for="category in group.children" :key="category.id" :value="category.id">
                   {{ category.categoryName }}
                 </option>
               </optgroup>
+              <option :value="NO_CATEGORY">Sem categoria</option>
             </select>
           </div>
           <DialogFooter>
@@ -326,7 +336,7 @@
               type="submit"
               :variant="batchMode === 'delete' ? 'destructive' : 'default'"
               class="min-h-[44px]"
-              :disabled="batchSaving"
+              :disabled="batchSaving || (batchMode === 'category' && !batchCategoryId)"
               data-testid="batch-confirm"
             >
               <template v-if="batchMode === 'category'">{{ batchSaving ? 'Salvando…' : 'Aplicar' }}</template>
@@ -344,6 +354,8 @@ import { RouterLink } from 'vue-router'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useFeedback } from '@/composables/useFeedback'
+import type { FeedbackAction } from '@/composables/useFeedback'
+import FeedbackBanner from '@/components/common/FeedbackBanner.vue'
 import { ArrowLeftRight, ChevronLeft, ChevronRight, CreditCard, Download, Inbox } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import {
@@ -408,7 +420,14 @@ const loading = ref(true)
 const loadFailed = ref(false)
 const optionsLoading = ref(false)
 const optionsFailed = ref(false)
-const { successMessage, setSuccess } = useFeedback()
+const { successMessage, successAction, setSuccess, pauseSuccess, resumeSuccess } = useFeedback()
+/** O resultado do lote aparece embaixo, no lugar da barra; o resto, no topo. */
+const feedbackAtBar = ref(false)
+
+function notify(message: string, action: FeedbackAction | null = null, atBar = false) {
+  feedbackAtBar.value = atBar
+  setSuccess(message, action)
+}
 const actionError = ref<string | null>(null)
 /** A linha do diálogo aberto. Continua definida depois de fechar, para o foco voltar ao botão dela. */
 const current = ref<Transaction | null>(null)
@@ -512,7 +531,7 @@ async function onSaved({ message, month: createdMonth }: { message: string; mont
   if (createdMonth) month.value = createdMonth
   actionError.value = null
   await load()
-  setSuccess(message)
+  notify(message)
 }
 
 function openConfirm(row: Transaction, mode: 'delete' | 'futures') {
@@ -530,10 +549,10 @@ async function confirmAction() {
   try {
     if (confirmMode.value === 'delete') {
       await deleteTransaction(row.id)
-      setSuccess('Transação removida')
+      notify('Transação removida')
     } else {
       const removed = await removeFutureInstallments(row.id)
-      setSuccess(
+      notify(
         removed === 1 ? '1 parcela futura removida' : `${plural(removed, 'parcela futura', 'parcelas futuras')} removidas`,
       )
     }
@@ -552,7 +571,10 @@ const selected = ref<string[]>([])
 const allSelected = computed(() => transactions.value.length > 0 && selected.value.length === transactions.value.length)
 const batchOpen = ref(false)
 const batchMode = ref<'category' | 'delete'>('category')
+/** Valor do "Sem categoria" no seletor do lote ("" é o "Escolha uma categoria", que não vale). */
+const NO_CATEGORY = 'none'
 const batchCategoryId = ref('')
+const batchFeedback = ref<InstanceType<typeof FeedbackBanner> | null>(null)
 const batchSaving = ref(false)
 const batchCategoryButton = ref<{ $el: HTMLElement } | null>(null)
 const categoryGroups = computed(() => categoryOptionGroups(categories.value))
@@ -578,24 +600,34 @@ function onBatchOpenChange(open: boolean) {
   if (!batchSaving.value) batchOpen.value = open
 }
 
-/** O foco volta à barra (se ainda há seleção) ou ao título. */
+/** O foco volta à barra (se ainda há seleção), ao resultado do lote ou ao título. */
 function returnBatchFocus(event: Event) {
   event.preventDefault()
-  void nextTick(() => (batchCategoryButton.value?.$el ?? heading.value)?.focus())
+  void nextTick(() => {
+    if (feedbackAtBar.value && successMessage.value && !selected.value.length) batchFeedback.value?.focus()
+    else (batchCategoryButton.value?.$el ?? heading.value)?.focus()
+  })
 }
 
 async function confirmBatch() {
   if (batchSaving.value || selected.value.length === 0) return
+  if (batchMode.value === 'category' && !batchCategoryId.value) return
   batchSaving.value = true
   actionError.value = null
   const ids = [...selected.value]
   try {
     if (batchMode.value === 'category') {
-      const updated = await batchUpdateCategory(ids, batchCategoryId.value || null)
-      setSuccess(plural(updated, 'transação atualizada', 'transações atualizadas'))
+      const before = previousCategories(ids)
+      const target = batchCategoryId.value === NO_CATEGORY ? null : batchCategoryId.value
+      const updated = await batchUpdateCategory(ids, target)
+      notify(
+        plural(updated, 'transação atualizada', 'transações atualizadas'),
+        { label: 'Desfazer', run: () => void undoBatchCategory(before) },
+        true,
+      )
     } else {
       const removed = await batchDeleteTransactions(ids)
-      setSuccess(plural(removed, 'transação removida', 'transações removidas'))
+      notify(plural(removed, 'transação removida', 'transações removidas'), null, true)
     }
     selected.value = []
   } catch (err) {
@@ -608,12 +640,43 @@ async function confirmBatch() {
   await load()
 }
 
+/** A categoria de cada transação antes do lote, agrupada: um pedido por categoria de antes. */
+function previousCategories(ids: string[]): Map<string | null, string[]> {
+  const groups = new Map<string | null, string[]>()
+  for (const row of transactions.value) {
+    if (!ids.includes(row.id)) continue
+    const key = row.category?.id ?? null
+    groups.set(key, [...(groups.get(key) ?? []), row.id])
+  }
+  return groups
+}
+
+/** "Desfazer" do lote: cada transação volta para a categoria que tinha. */
+async function undoBatchCategory(before: Map<string | null, string[]>) {
+  if (batchSaving.value) return
+  batchSaving.value = true
+  setSuccess(null)
+  actionError.value = null
+  try {
+    // shortcut: um pedido por categoria de antes; se um falhar no meio, os anteriores já voltaram (endpoint de
+    // "restaurar" atômico se isso incomodar)
+    for (const [categoryId, ids] of before) await batchUpdateCategory(ids, categoryId)
+    notify('Alterações desfeitas', null, true)
+  } catch (err) {
+    actionError.value = apiErrorDetail(err, ACTION_FAILED)
+  } finally {
+    batchSaving.value = false
+  }
+  await load()
+  void nextTick(() => (successMessage.value ? batchFeedback.value?.focus() : heading.value?.focus()))
+}
+
 onMounted(() => {
   // A conclusão da importação abre aqui no mês dela, com o resumo; limpo para não repetir ao recarregar
   const state = window.history.state as Partial<ImportCompletedState> | null
   if (state?.importMessage) {
     if (state.importMonth) month.value = state.importMonth
-    setSuccess(state.importMessage)
+    notify(state.importMessage)
     window.history.replaceState({ ...state, importMonth: null, importMessage: null }, '')
   }
   void load()

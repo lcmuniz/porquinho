@@ -586,8 +586,51 @@ describe('TransactionsView', () => {
       expect(mockBatchCategory).toHaveBeenCalledExactlyOnceWith(['t1', 't3'], 'c2')
       expect(mockList).toHaveBeenCalledTimes(2)
       expect(inDialog('batch-dialog')).toBeNull()
-      expect(w.get('[data-testid="transactions-success"]').text()).toBe('2 transações atualizadas')
+      expect(w.get('[data-testid="batch-success"]').text()).toBe('2 transações atualizadas')
+      expect(w.get('[data-testid="transactions-success"]').text()).toBe('')
       expect(w.find('[data-testid="batch-bar"]').exists()).toBe(false)
+      expect(document.activeElement?.getAttribute('data-testid')).toBe('batch-success-action')
+    })
+
+    it('nada vem escolhido: Aplicar fica desabilitado até escolher uma categoria', async () => {
+      const w = await mountView(rows())
+      await check(w, 't2')
+      await w.get('[data-testid="batch-category"]').trigger('click')
+      await flushPromises()
+      const select = inDialog<HTMLSelectElement>('batch-category-select')!
+      expect(select.value).toBe('')
+      expect(select.options[0]!.textContent).toBe('Escolha uma categoria')
+      expect(select.options[0]!.disabled).toBe(true)
+      expect(select.options[select.options.length - 1]!.textContent).toBe('Sem categoria')
+      expect(inDialog<HTMLButtonElement>('batch-confirm')!.disabled).toBe(true)
+      inDialog<HTMLFormElement>('batch-form')!.dispatchEvent(new Event('submit'))
+      await flushPromises()
+      expect(mockBatchCategory).not.toHaveBeenCalled()
+    })
+
+    it('Desfazer devolve cada transação à categoria que tinha', async () => {
+      const list = [
+        transaction('t1', { description: 'Mercado' }),
+        transaction('t2', { description: 'Padaria', category: null }),
+        transaction('t3', { description: 'Farmácia' }),
+      ]
+      const w = await mountView(list)
+      await w.get('[data-testid="select-all"]').trigger('change')
+      await w.get('[data-testid="batch-category"]').trigger('click')
+      await flushPromises()
+      await setValue('batch-category-select', 'c2')
+      mockBatchCategory.mockResolvedValue(3)
+      inDialog<HTMLFormElement>('batch-form')!.dispatchEvent(new Event('submit'))
+      await flushPromises()
+
+      mockBatchCategory.mockClear()
+      await w.get('[data-testid="batch-success-action"]').trigger('click')
+      await flushPromises()
+      expect(mockBatchCategory).toHaveBeenCalledTimes(2)
+      expect(mockBatchCategory).toHaveBeenCalledWith(['t1', 't3'], 'c1')
+      expect(mockBatchCategory).toHaveBeenCalledWith(['t2'], null)
+      expect(w.get('[data-testid="batch-success"]').text()).toBe('Alterações desfeitas')
+      expect(w.find('[data-testid="batch-success-action"]').exists()).toBe(false)
     })
 
     it('"Sem categoria" manda null', async () => {
@@ -595,11 +638,12 @@ describe('TransactionsView', () => {
       await check(w, 't2')
       await w.get('[data-testid="batch-category"]').trigger('click')
       await flushPromises()
+      await setValue('batch-category-select', 'none')
       mockBatchCategory.mockResolvedValue(1)
       inDialog<HTMLFormElement>('batch-form')!.dispatchEvent(new Event('submit'))
       await flushPromises()
       expect(mockBatchCategory).toHaveBeenCalledExactlyOnceWith(['t2'], null)
-      expect(w.get('[data-testid="transactions-success"]').text()).toBe('1 transação atualizada')
+      expect(w.get('[data-testid="batch-success"]').text()).toBe('1 transação atualizada')
     })
 
     it('Remover confirma, remove as selecionadas e avisa das parcelas futuras', async () => {
@@ -619,7 +663,8 @@ describe('TransactionsView', () => {
 
       expect(mockBatchDelete).toHaveBeenCalledExactlyOnceWith(['t1', 't2'])
       expect(w.findAll('[data-testid^="transaction-"]')).toHaveLength(1)
-      expect(w.get('[data-testid="transactions-success"]').text()).toBe('2 transações removidas')
+      expect(w.get('[data-testid="batch-success"]').text()).toBe('2 transações removidas')
+      expect(w.find('[data-testid="batch-success-action"]').exists()).toBe(false)
     })
 
     it('erro do lote não grava nada: mostra a mensagem e mantém a seleção', async () => {
