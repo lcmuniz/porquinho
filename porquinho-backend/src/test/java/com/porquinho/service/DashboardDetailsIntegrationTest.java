@@ -203,6 +203,9 @@ class DashboardDetailsIntegrationTest {
         // A-Z by group then category, same category newest first, uncategorized last
         assertThat(descriptions(detailsService.details(userId, filter(null, false, null, null, null, "category,asc"),
             0))).containsExactly("Zebra", "Lazer", "Mercado 2", "Mercado 1", "Sem categoria");
+        // Z-A also keeps uncategorized last
+        assertThat(descriptions(detailsService.details(userId, filter(null, false, null, null, null, "category,desc"),
+            0))).containsExactly("Mercado 2", "Mercado 1", "Lazer", "Zebra", "Sem categoria");
 
         List<UUID> twice = detailsService.details(userId, filter(null, false, null, null, null, null), 0).items()
             .stream().map(TransactionResponse::id).toList();

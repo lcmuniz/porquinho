@@ -259,6 +259,9 @@ public class DashboardDetailsService {
                     default -> keys.add(root.get("transactionDate"));
                 }
                 List<Order> orders = new ArrayList<>();
+                // "Não classificado" and "Pagamento de fatura" (no category) go last in A-Z and Z-A alike
+                if (field.equals("category")) orders.add(cb.asc(cb.selectCase()
+                    .when(cb.isNull(root.get("categoryId")), 1).otherwise(0)));
                 keys.forEach(k -> orders.add(asc ? cb.asc(k) : cb.desc(k)));
                 // stable tie-break: newest date, then id
                 orders.add(cb.desc(root.get("transactionDate")));
