@@ -326,7 +326,8 @@ public class TransactionImportProcessor {
         transaction.setImportId(transactionImport.getId());
         transaction.setExternalId(entry.externalId());
         transaction.setTransactionDate(entry.date());
-        transaction.setDescription(entry.description());
+        // Shown description without the full CPF; the original keeps it for the duplicate detector
+        transaction.setDescription(PixDetector.maskFullCpf(entry.description()));
         transaction.setOriginalDescription(entry.originalDescription());
         transaction.setAmount(entry.amount());
         transaction.setTransactionType(entry.type());
