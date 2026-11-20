@@ -153,7 +153,7 @@ class DashboardControllerTest {
         when(dashboardService.tactical(userId)).thenReturn(new DashboardLayer2Response("2026-11",
             List.of(new DashboardLayer2Response.CategorySpending(categoryId, "Lazer", "#EC4899",
                 new BigDecimal("620.00"), new BigDecimal("500.00"), BudgetStatus.OVERSPENT),
-                new DashboardLayer2Response.CategorySpending(null, "Não classificado", null, new BigDecimal("40.00"),
+                new DashboardLayer2Response.CategorySpending(null, "Sem categoria", null, new BigDecimal("40.00"),
                     null, null)),
             List.of(new DashboardLayer2Response.CategoryTrend(categoryId, "Lazer",
                 List.of(new DashboardLayer2Response.MonthSpent("2026-11", new BigDecimal("620.00")))))));
@@ -169,7 +169,7 @@ class DashboardControllerTest {
             .andExpect(jsonPath("$.categories[0].allocated").value(500.00))
             .andExpect(jsonPath("$.categories[0].status").value("OVERSPENT"))
             .andExpect(jsonPath("$.categories[1].categoryId").doesNotExist())
-            .andExpect(jsonPath("$.categories[1].name").value("Não classificado"))
+            .andExpect(jsonPath("$.categories[1].name").value("Sem categoria"))
             .andExpect(jsonPath("$.trends[0].categoryId").value(categoryId.toString()))
             .andExpect(jsonPath("$.trends[0].months[0].month").value("2026-11"))
             .andExpect(jsonPath("$.trends[0].months[0].spent").value(620.00));

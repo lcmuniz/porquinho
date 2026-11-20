@@ -6,7 +6,7 @@ import java.util.List;
 /**
  * Classifies one batch of transactions into the user's categories (Story 5.8). Transactions and categories go by short
  * numbers, never by UUID: fewer output tokens, and an invented id is easy to spot. Implementations never throw: on any
- * failure they return an empty list, and the caller leaves the batch "Não classificado".
+ * failure they return an empty list, and the caller leaves the batch "Sem categoria".
  */
 public interface TransactionClassifier {
 

@@ -38,7 +38,7 @@ export function indicator(row: ImportTransaction): { icon: Component; text: stri
   const group = groupOf(row)
   if (group === 'card-payment') return null
   if (group === 'reviewed') return { icon: UserCheck, text: 'Revisada por você', class: 'text-purple-700' }
-  if (isUnclassified(row)) return { icon: Flag, text: 'Não classificado', class: 'text-red-700' }
+  if (isUnclassified(row)) return { icon: Flag, text: 'Sem categoria', class: 'text-red-700' }
   const text = `${GROUP_TITLES[group]} (${row.confidence}%)`
   if (group === 'high') return { icon: CircleCheck, text, class: 'text-green-700' }
   if (group === 'medium') return { icon: TriangleAlert, text, class: 'text-yellow-700' }

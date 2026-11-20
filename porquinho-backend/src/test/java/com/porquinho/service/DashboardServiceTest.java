@@ -45,7 +45,7 @@ import static org.mockito.Mockito.when;
 /**
  * Story 7.2: the traffic light rule, one line of the spec's matrix per test plus the 80/50 limits. Story 7.3: the 5
  * metrics (category order, goal %, projection on the first, a middle and the last day of the month). Story 7.4: the
- * wealth curve, one line of the spec's matrix per test. Story 7.5: the tactical view (order, "Não classificado",
+ * wealth curve, one line of the spec's matrix per test. Story 7.5: the tactical view (order, "Sem categoria",
  * allocation and status, 12 months with zeros).
  */
 @ExtendWith(MockitoExtension.class)
@@ -672,7 +672,7 @@ class DashboardServiceTest {
             new DashboardLayer2Response.CategorySpending(fun, "Lazer", "#111111", new BigDecimal("620.00"),
                 new BigDecimal("500.00"), BudgetStatus.OVERSPENT),
             new DashboardLayer2Response.CategorySpending(food, "Mercado", "#111111", new BigDecimal("80.00"), null, null),
-            new DashboardLayer2Response.CategorySpending(null, "Não classificado", null, new BigDecimal("40.00"), null,
+            new DashboardLayer2Response.CategorySpending(null, "Sem categoria", null, new BigDecimal("40.00"), null,
                 null),
             new DashboardLayer2Response.CategorySpending(home, "Casa", "#111111", BigDecimal.ZERO,
                 new BigDecimal("300.00"), BudgetStatus.HEALTHY)), response.categories());
@@ -687,7 +687,7 @@ class DashboardServiceTest {
             foodTrend.months().get(1));
         assertEquals(new DashboardLayer2Response.MonthSpent("2026-11", new BigDecimal("80.00")),
             foodTrend.months().get(11));
-        assertEquals("Não classificado", response.trends().get(2).name());
+        assertEquals("Sem categoria", response.trends().get(2).name());
     }
 
     @Test

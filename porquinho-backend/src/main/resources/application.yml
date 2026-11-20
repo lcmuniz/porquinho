@@ -85,7 +85,7 @@ stripe:
   secret-key: ${STRIPE_SECRET_KEY:}
   webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
 anthropic:
-  # Segredo só no backend. Vazio = IA fora do ar: as transações importadas ficam "Não classificado" (Story 5.8).
+  # Segredo só no backend. Vazio = IA fora do ar: as transações importadas ficam "Sem categoria" (Story 5.8).
   api-key: ${ANTHROPIC_API_KEY:}
 supabase:
   project-url: ${SUPABASE_PROJECT_URL:}

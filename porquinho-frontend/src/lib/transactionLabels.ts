@@ -38,10 +38,10 @@ export function signedAmount(row: { type: 'DEBIT' | 'CREDIT'; amount: number }):
   return row.type === 'DEBIT' ? -row.amount : row.amount
 }
 
-/** "Grupo › Categoria", "Pagamento de fatura" ou "Não classificado" (Stories 5.12 e 7.6). */
+/** "Grupo › Categoria", "Pagamento de fatura" ou "Sem categoria" (Stories 5.12 e 7.6). */
 export function categoryLabel(row: Pick<Transaction, 'kind' | 'category'>): string {
   if (row.kind === 'CARD_PAYMENT') return 'Pagamento de fatura'
-  if (!row.category) return 'Não classificado'
+  if (!row.category) return 'Sem categoria'
   return row.category.group ? `${row.category.group} › ${row.category.name}` : row.category.name
 }
 
@@ -72,12 +72,12 @@ export function categoryOptionGroups(categories: Category[]): { id: string; name
     .filter((group) => group.children.length > 0)
 }
 
-/** Story 7.6/9.1: opções de categoria dos filtros, "Não classificado" primeiro e as filhas sob o grupo, A-Z. */
+/** Story 7.6/9.1: opções de categoria dos filtros, "Sem categoria" primeiro e as filhas sob o grupo, A-Z. */
 export function categoryFilterOptions(categories: Category[]): MultiSelectOption[] {
   const byName = (a: Category, b: Category) => a.categoryName.localeCompare(b.categoryName, 'pt-BR')
   const parents = categories.filter((c) => c.parentCategoryId === null).sort(byName)
   return [
-    { value: 'uncategorized', label: 'Não classificado' },
+    { value: 'uncategorized', label: 'Sem categoria' },
     ...parents.flatMap((parent) =>
       categories
         .filter((c) => c.parentCategoryId === parent.id)

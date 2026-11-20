@@ -588,7 +588,7 @@ class TransactionServiceTest {
         assertThat(auditOf(TransactionService.AUDIT_EDITED)).anySatisfy(m -> assertThat(m)
             .contains("\"future_installments_changed\":6"));
 
-        // no category also goes to the futures, as "Não classificado"
+        // no category also goes to the futures, as "Sem categoria"
         service.update(userId, third, edit("2026-11-03", "DEBIT", "120.00", null, null, card), IP);
         for (UUID future : futures) {
             assertThat(rowOf(future)).containsEntry("category_id", null)

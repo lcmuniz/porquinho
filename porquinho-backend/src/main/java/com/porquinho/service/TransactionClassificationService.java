@@ -35,7 +35,7 @@ import java.util.concurrent.Future;
  * database transaction per batch, whatever its result: the classification with its history, the future installments
  * of the batch (decision 1A) and the progress, which also keeps {@code updated_at} fresh for the orphan sweep.
  *
- * <p>The rows are born "Não classificado" ({@code NONE}, confidence 0, see {@link TransactionImportProcessor}), so a
+ * <p>The rows are born "Sem categoria" ({@code NONE}, confidence 0, see {@link TransactionImportProcessor}), so a
  * failed batch or a discarded item writes nothing to them. Any confidence keeps the category: flagged for review is
  * {@code classification_confidence < 80}. Logs carry only ids and counts.
  *
@@ -91,7 +91,7 @@ public class TransactionClassificationService {
         this.clock = clock;
     }
 
-    /** Classifies import {@code importId} of {@code userId}. Never throws: whatever failed stays "Não classificado". */
+    /** Classifies import {@code importId} of {@code userId}. Never throws: whatever failed stays "Sem categoria". */
     public void classify(UUID importId, UUID userId, boolean creditCard) {
         try {
             classifyBatches(importId, userId, creditCard);
@@ -132,7 +132,7 @@ public class TransactionClassificationService {
             try {
                 applied = transactionTemplate.execute(status -> apply(importId, userId, batch, accepted, categoryIds));
             } catch (Exception e) {
-                // a batch that could not be saved never stops the next ones; its rows stay "Não classificado"
+                // a batch that could not be saved never stops the next ones; its rows stay "Sem categoria"
                 log.warn("Import {} batch not saved: {}", importId, e.getClass().getName());
                 failed++;
                 continue;

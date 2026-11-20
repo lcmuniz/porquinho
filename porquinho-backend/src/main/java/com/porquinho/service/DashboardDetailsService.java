@@ -201,7 +201,7 @@ public class DashboardDetailsService {
     /** Same label as /transacoes: "Grupo › Categoria", card payments and uncategorized by name. */
     private static String categoryLabel(Transaction row, com.porquinho.dto.ImportTransactionResponse.Category category) {
         if (row.getKind() == Transaction.Kind.CARD_PAYMENT) return "Pagamento de fatura";
-        if (category == null) return "Não classificado";
+        if (category == null) return "Sem categoria";
         return category.group() == null ? category.name() : category.group() + " › " + category.name();
     }
 
@@ -229,7 +229,7 @@ public class DashboardDetailsService {
             where.add(cb.between(root.get("transactionDate"), from, to));
             List<Predicate> categories = new ArrayList<>();
             if (!f.categoryIds().isEmpty()) categories.add(root.get("categoryId").in(f.categoryIds()));
-            // "Não classificado" as the list shows it: a card payment without category is "Pagamento de fatura"
+            // "Sem categoria" as the list shows it: a card payment without category is "Pagamento de fatura"
             if (f.uncategorized()) categories.add(cb.and(cb.isNull(root.get("categoryId")),
                 cb.notEqual(root.get("kind"), Transaction.Kind.CARD_PAYMENT)));
             if (!categories.isEmpty()) where.add(cb.or(categories.toArray(Predicate[]::new)));
@@ -259,7 +259,7 @@ public class DashboardDetailsService {
                     default -> keys.add(root.get("transactionDate"));
                 }
                 List<Order> orders = new ArrayList<>();
-                // "Não classificado" and "Pagamento de fatura" (no category) go last in A-Z and Z-A alike
+                // "Sem categoria" and "Pagamento de fatura" (no category) go last in A-Z and Z-A alike
                 if (field.equals("category")) orders.add(cb.asc(cb.selectCase()
                     .when(cb.isNull(root.get("categoryId")), 1).otherwise(0)));
                 keys.forEach(k -> orders.add(asc ? cb.asc(k) : cb.desc(k)));

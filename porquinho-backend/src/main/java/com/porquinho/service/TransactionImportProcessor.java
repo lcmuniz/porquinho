@@ -333,7 +333,7 @@ public class TransactionImportProcessor {
         transaction.setTransactionType(entry.type());
         transaction.setKind(entry.cardPayment() ? Transaction.Kind.CARD_PAYMENT : Transaction.Kind.REGULAR);
         transaction.setClassificationSource(Transaction.ClassificationSource.NONE);
-        // Story 5.8: "Não classificado" from the start, so a row the AI never reaches needs no write; a card payment
+        // Story 5.8: "Sem categoria" from the start, so a row the AI never reaches needs no write; a card payment
         // does not go to the AI and has no confidence at all
         transaction.setClassificationConfidence(entry.cardPayment() ? null : 0);
         transaction.setReviewStatus(Transaction.ReviewStatus.PENDING);

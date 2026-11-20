@@ -138,7 +138,7 @@ class DashboardTacticalIntegrationTest {
 
         assertThat(response.month()).isEqualTo(CURRENT.toString());
         assertThat(response.categories()).extracting(DashboardLayer2Response.CategorySpending::name)
-            .containsExactly("Mercado", "Não classificado");
+            .containsExactly("Mercado", "Sem categoria");
         DashboardLayer2Response.CategoryTrend trend = response.trends().stream()
             .filter(t -> food.equals(t.categoryId())).findFirst().orElseThrow();
         assertThat(trend.months()).hasSize(12);

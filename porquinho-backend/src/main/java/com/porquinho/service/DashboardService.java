@@ -160,7 +160,7 @@ public class DashboardService {
     /**
      * Story 7.5. Spending per child category (Epic 6 rule) of the current month with its allocation and status, plus
      * the last 12 months per category, from one query. A category no longer active is left out; uncategorized
-     * spending (null id) is "Não classificado".
+     * spending (null id) is "Sem categoria".
      */
     @Transactional(readOnly = true)
     public DashboardLayer2Response tactical(UUID userId) {
@@ -237,7 +237,7 @@ public class DashboardService {
     }
 
     private static String name(UUID id, Map<UUID, Category> active) {
-        return id == null ? "Não classificado" : active.get(id).getCategoryName();
+        return id == null ? "Sem categoria" : active.get(id).getCategoryName();
     }
 
     /**

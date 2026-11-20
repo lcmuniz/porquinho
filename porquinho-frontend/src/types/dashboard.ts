@@ -33,7 +33,7 @@ export interface WealthPoint {
 
 /**
  * Story 7.5: resposta de GET /api/v1/dashboard/layer2. `categories`: filhas com gasto ou alocação no mês `month`
- * ("AAAA-MM"), maior gasto primeiro; `categoryId` null é "Não classificado". `trends`: 12 meses por categoria, do mais
+ * ("AAAA-MM"), maior gasto primeiro; `categoryId` null é "Sem categoria". `trends`: 12 meses por categoria, do mais
  * antigo ao corrente (parcial), meses sem gasto valem 0.
  */
 export interface DashboardTactical {
@@ -71,7 +71,7 @@ export interface DonutSlice {
 export type DetailsSortField = 'date' | 'amount' | 'category'
 
 /**
- * Story 7.6: filtros da Camada 3. `from`/`to` "AAAA-MM-DD"; `categoryIds` com 'uncategorized' para "Não classificado";
+ * Story 7.6: filtros da Camada 3. `from`/`to` "AAAA-MM-DD"; `categoryIds` com 'uncategorized' para "Sem categoria";
  * `targets` como "account:<id>"/"card:<id>"; listas vazias não filtram.
  */
 export interface DetailsFilter {

@@ -178,7 +178,7 @@ public interface TransactionImportRepository extends JpaRepository<TransactionIm
     /**
      * Moves to REVIEW every PROCESSING orphan (no change since {@code updatedBefore}) whose rows were already saved
      * (Story 5.8): as FAILED, the rows would stay active and a new upload of the file would see them as duplicates. The
-     * rows not reached by the classification stay "Não classificado".
+     * rows not reached by the classification stay "Sem categoria".
      */
     @Transactional
     @Modifying(clearAutomatically = true, flushAutomatically = true)

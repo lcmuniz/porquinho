@@ -7,7 +7,7 @@ import java.util.UUID;
 /**
  * GET /api/v1/dashboard/layer2 (Story 7.5): the tactical view of the current {@code month} ("YYYY-MM").
  * {@code categories} holds the child categories with spending or allocation in the month, biggest spending first; a null
- * {@code categoryId} is the uncategorized spending ("Não classificado"). {@code allocated} and {@code status} are null
+ * {@code categoryId} is the uncategorized spending ("Sem categoria"). {@code allocated} and {@code status} are null
  * without allocation. {@code trends} has one entry per category with spending in the last 12 months (current one
  * included, partial), each with the 12 months oldest first, months without spending worth 0.
  */

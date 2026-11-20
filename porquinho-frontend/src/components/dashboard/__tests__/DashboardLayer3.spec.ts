@@ -6,12 +6,14 @@ import type { Transaction } from '@/types/transaction'
 const mockLargest = vi.fn()
 const mockDrilldown = vi.fn()
 const mockUpdate = vi.fn()
+const mockBatchCategory = vi.fn()
 vi.mock('@/services/dashboardService', () => ({
   getLargestSpent: () => mockLargest(),
   getDrilldown: (...a: unknown[]) => mockDrilldown(...a),
 }))
 vi.mock('@/services/transactionService', () => ({
   updateTransaction: (...a: unknown[]) => mockUpdate(...a),
+  batchUpdateCategory: (...a: unknown[]) => mockBatchCategory(...a),
   createTransaction: vi.fn(),
 }))
 vi.mock('@/services/accountService', () => ({ listAccounts: async () => [{ id: 'a1', accountName: 'Nubank' }] }))
@@ -79,7 +81,7 @@ describe('DashboardLayer3', () => {
     document.body.innerHTML = ''
   })
 
-  it('não repete a lista de transações: grupo de rádios com Maiores gastos e Não classificadas', async () => {
+  it('não repete a lista de transações: grupo de rádios com Maiores gastos e Sem categoria', async () => {
     const w = await mountLayer()
     const group = w.get('[data-testid="details-view"]')
     expect(group.element.tagName).toBe('FIELDSET')
@@ -87,15 +89,18 @@ describe('DashboardLayer3', () => {
     const radios = group.findAll('input[type="radio"]')
     expect(radios.map((r) => r.element.parentElement!.textContent!.trim().replace(/\s+/g, ' '))).toEqual([
       'Maiores gastos',
-      'Não classificadas (1)',
+      'Sem categoria (1)',
     ])
     expect(w.find('[data-testid="details-filters"]').exists()).toBe(false)
+    // em "Sem categoria", o link abre Transações já filtrada; em "Maiores gastos", a lista toda
+    expect(w.findComponent(RouterLinkStub).props('to')).toBe('/transacoes?filtro=sem-categoria')
+    await w.get('[data-testid="details-view-largest"]').setValue(true)
     expect(w.findComponent(RouterLinkStub).props('to')).toBe('/transacoes')
     // só as saídas sem categoria (regra de gasto do backend)
     expect(mockDrilldown).toHaveBeenCalledExactlyOnceWith(null)
   })
 
-  it('abre em Não classificadas quando há alguma, com o atalho Classificar', async () => {
+  it('abre em Sem categoria quando há alguma, com o atalho Classificar', async () => {
     const w = await mountLayer()
     expect(checked(w, 'uncategorized')).toBe(true)
     const row = w.get('[data-testid="details-row-u1"]')
@@ -142,46 +147,90 @@ describe('DashboardLayer3', () => {
     expect(w.find('[data-testid="details-row-u1"]').exists()).toBe(true)
   })
 
-  it('Classificar abre o diálogo de /transacoes; salvar recarrega as listas e avisa o dashboard', async () => {
-    const w = await mountLayer()
+  /** Abre o diálogo curto da linha u1 e escolhe a categoria. */
+  async function classify(w: VueWrapper, categoryId = 'c2') {
     await w.get('[data-testid="details-classify-u1"]').trigger('click')
     await flushPromises()
-    const category = document.body.querySelector<HTMLSelectElement>('[data-testid="edit-category"]')!
-    category.value = 'c2'
-    category.dispatchEvent(new Event('change'))
+    const select = document.body.querySelector<HTMLSelectElement>('[data-testid="classify-category"]')!
+    select.value = categoryId
+    select.dispatchEvent(new Event('change'))
     await flushPromises()
-    mockUpdate.mockResolvedValue({ ...loose, category: { id: 'c2', name: 'Restaurante', group: 'Alimentação' } })
+  }
+  const settle = async () => {
+    await flushPromises()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await flushPromises()
+  }
+
+  it('Classificar abre um diálogo só com a categoria, com o foco nela e Salvar desabilitado até escolher', async () => {
+    const w = await mountLayer()
+    await w.get('[data-testid="details-classify-u1"]').trigger('click')
+    await settle()
+    const dialog = document.body.querySelector('[data-testid="classify-dialog"]')!
+    expect(dialog.textContent).toContain('Pix sem nome')
+    expect(dialog.querySelectorAll('select, input')).toHaveLength(1)
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('classify-category')
+    expect(document.body.querySelector<HTMLButtonElement>('[data-testid="classify-save"]')!.disabled).toBe(true)
+  })
+
+  it('salvar muda só a categoria, recarrega as listas e avisa o dashboard', async () => {
+    const w = await mountLayer()
+    await classify(w)
+    mockBatchCategory.mockResolvedValue(1)
     mockDrilldown.mockResolvedValue([])
-    document.body.querySelector<HTMLFormElement>('[data-testid="edit-form"]')!.dispatchEvent(new Event('submit'))
+    document.body.querySelector<HTMLFormElement>('[data-testid="classify-form"]')!.dispatchEvent(new Event('submit'))
     await flushPromises()
 
-    expect(mockUpdate).toHaveBeenCalledExactlyOnceWith('u1', expect.objectContaining({ categoryId: 'c2' }))
+    expect(mockBatchCategory).toHaveBeenCalledExactlyOnceWith(['u1'], 'c2')
+    expect(mockUpdate).not.toHaveBeenCalled()
     expect(mockDrilldown).toHaveBeenCalledTimes(2)
     expect(w.emitted('transaction-saved')).toHaveLength(1)
     // a escolha do usuário fica: a lista vazia mostra que acabou
     expect(checked(w, 'uncategorized')).toBe(true)
     expect(w.get('[data-testid="details-empty"]').text()).toBe('Tudo classificado neste mês.')
-    expect(w.get('[data-testid="details-success"]').text()).toBe('Transação atualizada')
+    expect(w.get('[data-testid="details-success"]').text()).toBe('Transação classificada')
+  })
+
+  it('erro ao classificar fica no diálogo, que continua aberto', async () => {
+    const w = await mountLayer()
+    await classify(w)
+    mockBatchCategory.mockRejectedValue(new Error('rede'))
+    document.body.querySelector<HTMLFormElement>('[data-testid="classify-form"]')!.dispatchEvent(new Event('submit'))
+    await flushPromises()
+    expect(document.body.querySelector('[data-testid="classify-error"]')!.textContent).toContain('Não foi possível classificar')
+    expect(document.body.querySelector('[data-testid="classify-dialog"]')).not.toBeNull()
+    expect(w.emitted('transaction-saved')).toBeUndefined()
+  })
+
+  it('Editar tudo troca o diálogo curto pelo formulário completo da mesma transação', async () => {
+    const w = await mountLayer()
+    await w.get('[data-testid="details-classify-u1"]').trigger('click')
+    await flushPromises()
+    document.body.querySelector<HTMLButtonElement>('[data-testid="classify-edit-all"]')!.click()
+    await settle()
+    expect(document.body.querySelector('[data-testid="classify-dialog"]')).toBeNull()
+    expect(document.body.querySelector('[data-testid="edit-dialog"]')!.textContent).toContain('Editar transação')
+
+    mockUpdate.mockResolvedValue(loose)
+    document.body.querySelector<HTMLFormElement>('[data-testid="edit-form"]')!.dispatchEvent(new Event('submit'))
+    await flushPromises()
+    expect(mockUpdate).toHaveBeenCalledExactlyOnceWith('u1', expect.objectContaining({ description: 'Pix sem nome' }))
+    expect(w.emitted('transaction-saved')).toHaveLength(1)
   })
 
   it('a linha classificada sai da lista e o foco vai para o rádio da lista', async () => {
     const w = await mountLayer()
     await w.get('[data-testid="details-classify-u1"]').trigger('click')
     await flushPromises()
-    document.body.querySelector<HTMLButtonElement>('[data-testid="edit-cancel"]')!.click()
-    await flushPromises()
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    await flushPromises()
+    document.body.querySelector<HTMLButtonElement>('[data-testid="classify-cancel"]')!.click()
+    await settle()
     expect(document.activeElement?.getAttribute('data-testid')).toBe('details-classify-u1')
 
     mockDrilldown.mockResolvedValue([])
-    await w.get('[data-testid="details-classify-u1"]').trigger('click')
-    await flushPromises()
-    mockUpdate.mockResolvedValue(loose)
-    document.body.querySelector<HTMLFormElement>('[data-testid="edit-form"]')!.dispatchEvent(new Event('submit'))
-    await flushPromises()
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    await flushPromises()
+    await classify(w)
+    mockBatchCategory.mockResolvedValue(1)
+    document.body.querySelector<HTMLFormElement>('[data-testid="classify-form"]')!.dispatchEvent(new Event('submit'))
+    await settle()
     expect(document.activeElement?.getAttribute('data-testid')).toBe('details-view-uncategorized')
   })
 

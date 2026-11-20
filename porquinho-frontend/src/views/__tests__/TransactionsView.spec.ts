@@ -388,6 +388,45 @@ describe('TransactionsView', () => {
     expect(w.get('[data-testid="transactions-success"]').text()).toBe('')
   })
 
+  describe('filtro Só sem categoria (critique de 20/11, 3ª)', () => {
+    const rows = () => [
+      transaction('t1'),
+      transaction('t2', { category: null, description: 'Pix solto' }),
+      transaction('t3', { category: null, kind: 'CARD_PAYMENT', description: 'Pagamento fatura' }),
+    ]
+
+    it('marca a sem categoria como pendência e não conta o pagamento de fatura', async () => {
+      const w = await mountView(rows())
+      const category = w.get('[data-testid="transaction-t2"] [data-testid="row-category"]')
+      expect(category.text()).toBe('Sem categoria')
+      expect(category.classes()).toContain('text-amber-800')
+      expect(category.find('svg').exists()).toBe(true)
+      expect(w.get('[data-testid="transaction-t3"] [data-testid="row-category"]').text()).toBe('Pagamento de fatura')
+      expect(w.get('[data-testid="only-uncategorized"]').element.parentElement!.textContent).toContain('Só sem categoria (1)')
+    })
+
+    it('filtra a lista, guarda na URL e seleciona só as do filtro', async () => {
+      const w = await mountView(rows())
+      await w.get('[data-testid="only-uncategorized"]').setValue(true)
+      await flushPromises()
+      expect(w.findAll('[data-testid^="transaction-t"]').map((r) => r.attributes('data-testid'))).toEqual(['transaction-t2'])
+      expect(mockReplace).toHaveBeenLastCalledWith({ query: expect.objectContaining({ filtro: 'sem-categoria' }) })
+      await w.get('[data-testid="select-all"]').setValue(true)
+      expect(w.get('[data-testid="batch-status"]').text()).toBe('1 transação selecionada')
+    })
+
+    it('abre já filtrada com ?filtro=sem-categoria e mostra o vazio quando não sobra nenhuma', async () => {
+      route.query = { filtro: 'sem-categoria' }
+      const w = await mountView([transaction('t1')])
+      expect(w.get('[data-testid="uncategorized-empty"]').text()).toBe('Nenhuma transação sem categoria neste mês.')
+      // o filtro continua à vista para poder ser desligado
+      await w.get('[data-testid="only-uncategorized"]').setValue(false)
+      await flushPromises()
+      expect(w.find('[data-testid="transaction-t1"]').exists()).toBe(true)
+      expect(w.find('[data-testid="only-uncategorized"]').exists()).toBe(false)
+    })
+  })
+
   describe('foco ao fechar os diálogos', () => {
     const focused = async () => {
       await new Promise((r) => setTimeout(r, 0))

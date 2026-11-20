@@ -248,7 +248,7 @@ describe('ImportReviewView', () => {
     expect(count(w)).toBe('2 transações de alta confiança, 1 precisa de revisão')
   })
 
-  it('confiança nula ou falta de categoria ficam na Baixa como "Não classificado"', async () => {
+  it('confiança nula ou falta de categoria ficam na Baixa como "Sem categoria"', async () => {
     const w = await mountView([
       transaction('legacy', { confidence: null }),
       transaction('no-category', { confidence: 92, category: null }),
@@ -256,7 +256,7 @@ describe('ImportReviewView', () => {
 
     expect(rowsOf(w, 'low')).toEqual(['transaction-legacy', 'transaction-no-category'])
     for (const id of ['legacy', 'no-category']) {
-      expect(w.get(`[data-testid="transaction-${id}"] [data-testid="row-confidence"]`).text()).toBe('Não classificado')
+      expect(w.get(`[data-testid="transaction-${id}"] [data-testid="row-confidence"]`).text()).toBe('Sem categoria')
     }
     expect(count(w)).toBe('0 transações de alta confiança, 2 precisam de revisão')
   })
@@ -287,12 +287,12 @@ describe('ImportReviewView', () => {
     expect(low.get('[data-testid="row-confidence"] svg').classes()).toContain('lucide-flag-icon')
   })
 
-  it('pagamento de fatura não tem indicador de confiança nem "Não classificado"', async () => {
+  it('pagamento de fatura não tem indicador de confiança nem "Sem categoria"', async () => {
     const w = await mountView([transaction('payment', { kind: 'CARD_PAYMENT', confidence: null, category: null })])
 
     const row = w.get('[data-testid="transaction-payment"]')
     expect(row.find('[data-testid="row-confidence"]').exists()).toBe(false)
-    expect(row.text()).not.toContain('Não classificado')
+    expect(row.text()).not.toContain('Sem categoria')
   })
 
   it('marca Pix com o texto da direção e da contraparte', async () => {
@@ -665,12 +665,12 @@ describe('ImportReviewView', () => {
       ])
     })
 
-    it('linha sem categoria mostra "Não classificado" e exige a escolha', async () => {
+    it('linha sem categoria mostra "Sem categoria" e exige a escolha', async () => {
       const w = await mountView([transaction('t1', { category: null, confidence: null })])
 
       await openEdit(w, 't1')
 
-      expect(inDialog('dialog-current-category')?.textContent).toContain('Não classificado')
+      expect(inDialog('dialog-current-category')?.textContent).toContain('Sem categoria')
       expect(inDialog<HTMLButtonElement>('category-save')?.disabled).toBe(true)
     })
 

@@ -116,7 +116,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID>,
 
     /**
      * Story 5.9, decision 1A: approves the pending rows the review shows as high confidence. A row without category is
-     * "Não classificado", whatever its confidence. Rows already approved stay out, so a second call changes nothing.
+     * "Sem categoria", whatever its confidence. Rows already approved stay out, so a second call changes nothing.
      */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE Transaction t SET t.reviewStatus = com.porquinho.entity.Transaction.ReviewStatus.APPROVED, "

@@ -75,21 +75,35 @@
       </div>
 
       <template v-else>
-        <!-- Edição em lote: marcar as linhas abre a barra de ações -->
-        <label class="inline-flex min-h-[44px] cursor-pointer items-center gap-3 px-4 text-sm font-medium text-gray-700">
-          <input
-            type="checkbox"
-            class="size-5 accent-purple-700"
-            :checked="allSelected"
-            :indeterminate="selected.length > 0 && !allSelected"
-            data-testid="select-all"
-            @change="toggleAll"
-          />
-          Selecionar todas do mês
-        </label>
-        <ul ref="list" class="divide-y divide-gray-200 rounded-lg border border-gray-200 bg-white">
+        <div class="flex flex-wrap items-center justify-between gap-x-4">
+          <!-- Edição em lote: marcar as linhas abre a barra de ações -->
+          <label class="inline-flex min-h-[44px] cursor-pointer items-center gap-3 px-4 text-sm font-medium text-gray-700">
+            <input
+              type="checkbox"
+              class="size-5 accent-purple-700"
+              :checked="allSelected"
+              :indeterminate="selected.length > 0 && !allSelected"
+              :disabled="visibleRows.length === 0"
+              data-testid="select-all"
+              @change="toggleAll"
+            />
+            {{ onlyUncategorized ? 'Selecionar todas sem categoria' : 'Selecionar todas do mês' }}
+          </label>
+          <!-- Critique de 20/11/2026 (3ª): achar as sem categoria sem procurar no mês inteiro -->
+          <label
+            v-if="uncategorizedCount > 0 || onlyUncategorized"
+            class="inline-flex min-h-[44px] cursor-pointer items-center gap-3 px-4 text-sm font-medium text-gray-700"
+          >
+            <input v-model="onlyUncategorized" type="checkbox" class="size-5 accent-purple-700" data-testid="only-uncategorized" />
+            Só sem categoria ({{ uncategorizedCount }})
+          </label>
+        </div>
+        <p v-if="visibleRows.length === 0" class="rounded-lg border border-gray-200 bg-white p-6 text-center text-[15px] text-gray-900" data-testid="uncategorized-empty">
+          Nenhuma transação sem categoria neste mês.
+        </p>
+        <ul v-else ref="list" class="divide-y divide-gray-200 rounded-lg border border-gray-200 bg-white">
           <li
-            v-for="row in transactions"
+            v-for="row in visibleRows"
             :key="row.id"
             class="flex gap-1 py-3 pr-4 pl-1 [contain-intrinsic-size:auto_72px] [content-visibility:auto]"
             :class="{ 'bg-purple-50': selected.includes(row.id) }"
@@ -112,7 +126,14 @@
                   <p class="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm text-gray-600">
                     <span>{{ formatLocalDateBR(row.date) }}</span>
                     <span data-testid="row-target">{{ targetName(row, accounts, cards) }}</span>
-                    <span class="text-gray-800" data-testid="row-category">{{ categoryLabel(row) }}</span>
+                    <span
+                      class="inline-flex items-center gap-1"
+                      :class="isUncategorized(row) ? 'font-medium text-amber-800' : 'text-gray-800'"
+                      data-testid="row-category"
+                    >
+                      <CircleDashed v-if="isUncategorized(row)" class="size-4" aria-hidden="true" />
+                      {{ categoryLabel(row) }}
+                    </span>
                     <span v-if="row.isPix" class="inline-flex items-center gap-1" data-testid="row-pix">
                       <ArrowLeftRight class="size-4" aria-hidden="true" />
                       {{ pixLabel(row) }}
@@ -367,6 +388,7 @@ import {
   CalendarX,
   ChevronLeft,
   ChevronRight,
+  CircleDashed,
   CreditCard,
   Download,
   Inbox,
@@ -431,6 +453,16 @@ const router = useRouter()
 const month = ref(monthFromQuery(route.query.mes))
 watch(month, (mes) => void router.replace({ query: { ...route.query, mes } }))
 const transactions = ref<Transaction[]>([])
+/** Pendência: saída ou entrada sem categoria (pagamento de fatura não tem categoria por natureza). */
+const isUncategorized = (row: Transaction) => !row.category && row.kind !== 'CARD_PAYMENT'
+const uncategorizedCount = computed(() => transactions.value.filter(isUncategorized).length)
+// o filtro também fica na URL (?filtro=sem-categoria): o "Sem categoria" do Início abre a lista já filtrada
+const onlyUncategorized = ref(route.query.filtro === 'sem-categoria')
+watch(onlyUncategorized, (only) => {
+  selected.value = []
+  void router.replace({ query: { ...route.query, filtro: only ? 'sem-categoria' : undefined } })
+})
+const visibleRows = computed(() => (onlyUncategorized.value ? transactions.value.filter(isUncategorized) : transactions.value))
 const accounts = ref<Account[]>([])
 const cards = ref<Card[]>([])
 const categories = ref<Category[]>([])
@@ -482,8 +514,8 @@ async function load() {
     const rows = await listTransactions(month.value)
     if (currentRequest !== request) return
     transactions.value = rows
-    // a seleção fica só com as linhas que ainda estão na lista
-    const ids = new Set(rows.map((r) => r.id))
+    // a seleção fica só com as linhas que ainda estão na lista (e no filtro)
+    const ids = new Set(visibleRows.value.map((r) => r.id))
     selected.value = selected.value.filter((id) => ids.has(id))
   } catch {
     if (currentRequest === request) loadFailed.value = true
@@ -586,7 +618,7 @@ async function confirmAction() {
 // --- Edição em lote ---
 
 const selected = ref<string[]>([])
-const allSelected = computed(() => transactions.value.length > 0 && selected.value.length === transactions.value.length)
+const allSelected = computed(() => visibleRows.value.length > 0 && selected.value.length === visibleRows.value.length)
 const batchOpen = ref(false)
 const batchMode = ref<'category' | 'delete'>('category')
 /** Valor do "Sem categoria" no seletor do lote ("" é o "Escolha uma categoria", que não vale). */
@@ -604,7 +636,7 @@ const batchFuturesGoingAlong = computed(() =>
 )
 
 function toggleAll() {
-  selected.value = allSelected.value ? [] : transactions.value.map((r) => r.id)
+  selected.value = allSelected.value ? [] : visibleRows.value.map((r) => r.id)
 }
 
 function openBatch(mode: 'category' | 'delete') {

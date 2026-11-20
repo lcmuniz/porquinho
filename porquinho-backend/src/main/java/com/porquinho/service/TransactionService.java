@@ -232,7 +232,7 @@ public class TransactionService {
         row.setAffectsBalance(affects);
         if (categoryChanged) {
             row.setCategoryId(request.categoryId());
-            // no category is "Não classificado", not a choice with confidence
+            // no category is "Sem categoria", not a choice with confidence
             row.setClassificationSource(request.categoryId() == null ? Transaction.ClassificationSource.NONE
                 : Transaction.ClassificationSource.USER);
             row.setClassificationConfidence(request.categoryId() == null ? 0

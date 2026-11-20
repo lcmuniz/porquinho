@@ -23,8 +23,12 @@
           </span>
         </label>
       </fieldset>
-      <RouterLink to="/transacoes" class="text-sm font-medium text-purple-700 underline hover:text-purple-800" data-testid="details-all">
-        Ver todas as transações
+      <RouterLink
+        :to="view === 'uncategorized' ? '/transacoes?filtro=sem-categoria' : '/transacoes'"
+        class="inline-flex min-h-[44px] items-center text-sm font-medium text-purple-700 underline hover:text-purple-800"
+        data-testid="details-all"
+      >
+        {{ view === 'uncategorized' ? 'Ver as sem categoria em Transações' : 'Ver todas as transações' }}
       </RouterLink>
     </div>
 
@@ -72,13 +76,22 @@
           class="col-span-2 min-h-[44px] justify-self-start sm:col-span-1"
           :aria-label="`Classificar ${row.description}`"
           :data-testid="`details-classify-${row.id}`"
-          @click="openEdit(row)"
+          @click="openClassify(row)"
         >
           Classificar
         </Button>
       </li>
     </ul>
 
+    <ClassifyDialog
+      v-model:open="classifyOpen"
+      :row="current"
+      :categories="categories"
+      :options-loading="optionsLoading"
+      @saved="onSaved"
+      @edit-all="editAll"
+      @close-auto-focus="returnFocus"
+    />
     <TransactionFormDialog
       v-model:open="editOpen"
       :row="current"
@@ -99,6 +112,7 @@ import { computed, nextTick, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useFeedback } from '@/composables/useFeedback'
 import { Button } from '@/components/ui/button'
+import ClassifyDialog from '@/components/dashboard/ClassifyDialog.vue'
 import TransactionFormDialog from '@/components/transactions/TransactionFormDialog.vue'
 import { formatLocalDateBR } from '@/lib/date'
 import { formatSignedBRL } from '@/lib/money'
@@ -114,7 +128,7 @@ import type { Transaction } from '@/types/transaction'
 
 /**
  * Camada 3 (pós-critique 20/11/2026): em vez de repetir /transacoes, mostra os 10 maiores gastos do mês ou as saídas
- * do mês sem categoria, com "Classificar" abrindo o diálogo de /transacoes. Abre em "Não classificadas" se houver
+ * do mês sem categoria, com "Classificar" abrindo um diálogo só com a categoria ("Editar tudo" abre o de /transacoes). Abre em "Sem categoria" se houver
  * alguma; senão em "Maiores gastos".
  */
 const emit = defineEmits<{ 'transaction-saved': []; loaded: [] }>()
@@ -122,7 +136,7 @@ const emit = defineEmits<{ 'transaction-saved': []; loaded: [] }>()
 type View = 'uncategorized' | 'largest'
 const OPTIONS: { value: View; label: string }[] = [
   { value: 'largest', label: 'Maiores gastos' },
-  { value: 'uncategorized', label: 'Não classificadas' },
+  { value: 'uncategorized', label: 'Sem categoria' },
 ]
 
 const view = ref<View>('largest')
@@ -140,6 +154,7 @@ const optionsFailed = ref(false)
 const { successMessage, setSuccess } = useFeedback()
 const current = ref<Transaction | null>(null)
 const editOpen = ref(false)
+const classifyOpen = ref(false)
 
 // A lista padrão é escolhida só na primeira carga que der certo; depois vale a escolha do usuário
 let defaulted = false
@@ -168,14 +183,21 @@ async function loadOptions() {
   }
 }
 
-function openEdit(row: Transaction) {
+function openClassify(row: Transaction) {
   current.value = row
+  classifyOpen.value = true
+}
+
+/** "Editar tudo": troca o diálogo curto pelo formulário completo da mesma transação. */
+function editAll() {
+  classifyOpen.value = false
   editOpen.value = true
 }
 
-/** O foco volta ao "Classificar" da linha; se ela saiu da lista (foi classificada), ao grupo de opções. */
+/** O foco volta ao "Classificar" da linha (menos quando o diálogo curto dá lugar ao completo); se ela saiu da lista (foi classificada), ao grupo de opções. */
 function returnFocus(event: Event) {
   event.preventDefault()
+  if (editOpen.value) return
   void nextTick(() => {
     const button = document.querySelector<HTMLElement>(`[data-testid="details-classify-${current.value?.id}"]`)
     ;(button ?? document.querySelector<HTMLElement>(`[data-testid="details-view-${view.value}"]`))?.focus()

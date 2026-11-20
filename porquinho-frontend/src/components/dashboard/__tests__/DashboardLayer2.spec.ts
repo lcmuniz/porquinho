@@ -40,7 +40,7 @@ function tactical(overrides: Partial<DashboardTactical> = {}): DashboardTactical
       cat('c1', 'Lazer', 620, 500),
       cat('c2', 'Mercado', 400, 600),
       cat('c3', 'Casa', 300),
-      cat(null, 'Não classificado', 200),
+      cat(null, 'Sem categoria', 200),
       cat('c5', 'Saúde', 100),
       cat('c6', 'Pets', 50),
       cat('c7', 'Livros', 30),
@@ -112,7 +112,7 @@ describe('DashboardLayer2', () => {
     ])
     expect(brl(slices[5]!.attributes('aria-label'))).toBe('Outras: R$ 80,00')
     expect(slices[5]!.attributes('role')).toBe('img')
-    expect(brl(slices[3]!.attributes('aria-label'))).toBe('Não classificado: R$ 200,00')
+    expect(brl(slices[3]!.attributes('aria-label'))).toBe('Sem categoria: R$ 200,00')
     expect(brl(w.get('[data-testid="spending-donut-svg"]').attributes('aria-label'))).toContain(
       'total R$ 1.700,00',
     )
@@ -120,7 +120,7 @@ describe('DashboardLayer2', () => {
       'Lazer',
       'Mercado',
       'Casa',
-      'Não classificado',
+      'Sem categoria',
       'Saúde',
     ])
   })
@@ -214,7 +214,7 @@ describe('DashboardLayer2', () => {
     expect(inDialog('drilldown-loading')).toBeNull()
   })
 
-  it('Enter numa fatia do "Não classificado" lista as sem categoria; Esc fecha e devolve o foco', async () => {
+  it('Enter numa fatia do "Sem categoria" lista as sem categoria; Esc fecha e devolve o foco', async () => {
     mockList.mockResolvedValue([tx('t1', null)])
     const w = await mountWith(tactical())
     const slice = w.get('[data-testid="donut-slice-uncategorized"]')

@@ -143,7 +143,7 @@ class DashboardDetailsIntegrationTest {
         confirmed(null, card, food, DAY, "MERCADO no cartão", "12.00");
         confirmed(account, null, food, DAY, "Padaria", "13.00");
         confirmed(account, null, null, DAY, "Mercadinho sem categoria", "14.00");
-        // a card payment without category is "Pagamento de fatura", not "Não classificado"
+        // a card payment without category is "Pagamento de fatura", not "Sem categoria"
         UUID payment = confirmed(account, null, null, DAY, "Pagamento fatura", "15.00");
         jdbc.update("UPDATE transactions SET kind = 'CARD_PAYMENT' WHERE id = ?", payment);
         row(userId, account, null, food, DAY, "Mercado pendente", "1.00", "DEBIT", "PENDING", false);
@@ -249,7 +249,7 @@ class DashboardDetailsIntegrationTest {
         assertThat(lines).hasSize(65);
         assertThat(export.count()).isEqualTo(64);
         String date = DAY.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"));
-        assertThat(lines[1]).isEqualTo(date + ";\"Loja; \"\"Boa\"\"\";-1234,50;Saída;Não classificado;Roxinho;Sim;Sim;2/5;Manual;Não");
+        assertThat(lines[1]).isEqualTo(date + ";\"Loja; \"\"Boa\"\"\";-1234,50;Saída;Sem categoria;Roxinho;Sim;Sim;2/5;Manual;Não");
         assertThat(lines[2]).isEqualTo(date + ";Importada;-500,00;Saída;Essenciais › Mercado;Nubank;Não;Não;;Importação;Não");
         assertThat(lines[3]).isEqualTo(date + ";Fatura;-300,00;Saída;Pagamento de fatura;Nubank;Não;Não;;Manual;Não");
         assertThat(lines[4]).isEqualTo(date + ";'=HYPERLINK(1);7,00;Entrada;Essenciais › Lazer;Nubank;Não;Não;;Manual;Não");
