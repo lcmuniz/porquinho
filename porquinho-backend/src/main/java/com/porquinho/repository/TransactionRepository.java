@@ -188,6 +188,9 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID>,
     int markInBalance(@Param("userId") UUID userId, @Param("ids") Collection<UUID> ids,
                            @Param("now") OffsetDateTime now);
 
+    /** Active future installments of import {@code importId}: the completion message counts only the file's rows. */
+    long countByUserIdAndImportIdAndFutureInstallmentTrueAndDeletedAtIsNull(UUID userId, UUID importId);
+
     /** The import is finished (Story 5.10): every active row is CONFIRMED, future installments included (5.9, 2A). */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE Transaction t SET t.reviewStatus = com.porquinho.entity.Transaction.ReviewStatus.CONFIRMED, "

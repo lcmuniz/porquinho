@@ -871,7 +871,8 @@ class TransactionImportReviewServiceTest {
 
         ImportReviewActionResponse response = reviewService.complete(userId, review, IP);
 
-        assertThat(response.affectedTransactions()).isEqualTo(2);
+        // Only the file's row counts for the message; the future is confirmed all the same
+        assertThat(response.affectedTransactions()).isEqualTo(1);
         assertThat(rowOf(row)).containsEntry("review_status", "CONFIRMED").containsEntry("affects_balance", false)
             .containsEntry("category_id", null);
         assertThat(rowOf(future)).containsEntry("review_status", "CONFIRMED").containsEntry("affects_balance", false);

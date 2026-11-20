@@ -197,6 +197,8 @@ public class TransactionImportReviewService {
             balanceEffect = applyBalanceEffect(userId, importId, accountId, transactionImport.getFileType(), now);
         }
         int affectingBalance = balanceEffect.entered();
+        long futures = transactionRepository.countByUserIdAndImportIdAndFutureInstallmentTrueAndDeletedAtIsNull(
+            userId, importId);
         int confirmed = transactionRepository.confirmByImport(userId, importId, now);
         patternService.markReviewed(userId, importId);
         auditLogService.log(AUDIT_COMPLETED, userId, ipAddress, "{\"import_id\":\"" + importId
@@ -204,7 +206,9 @@ public class TransactionImportReviewService {
         log.info("Import {} completed: {} transaction(s) confirmed, {} affecting the balance", importId, confirmed,
             affectingBalance);
         budgetBalanceCache.evict(userId);
-        return new ImportReviewActionResponse(importId, TransactionImport.Status.COMPLETED.name(), confirmed,
+        // Futures are confirmed too, but the message counts only the file's rows: the lists hide future installments
+        int fromFile = confirmed - (int) futures;
+        return new ImportReviewActionResponse(importId, TransactionImport.Status.COMPLETED.name(), fromFile,
             balanceEffect.before());
     }
 
