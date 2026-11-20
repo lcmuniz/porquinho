@@ -79,7 +79,10 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -325,7 +328,9 @@ public class DataExportService {
         });
 
         Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put("export_date", LocalDateTime.now().toString());
+        // Brasília time with the offset, so the file doesn't read as local time when the server runs in UTC
+        metadata.put("export_date", OffsetDateTime.now(ZoneId.of("America/Sao_Paulo"))
+            .truncatedTo(ChronoUnit.SECONDS).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME));
         metadata.put("user_id", userId.toString());
         metadata.put("data_version", DATA_VERSION);
         metadata.put("schema_version", schemaVersion());

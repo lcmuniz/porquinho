@@ -1375,7 +1375,7 @@ class DataExportServiceTest {
                 }
                 assertEquals("2.0", metadata.get("data_version"));
                 assertEquals(userId.toString(), metadata.get("user_id"));
-                assertNotNull(metadata.get("export_date"));
+                assertTrue(((String) metadata.get("export_date")).matches("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}-0[23]:00"));
                 assertTrue(metadata.containsKey("schema_version"));
                 List<Map<String, Object>> files = (List<Map<String, Object>>) metadata.get("files");
                 assertEquals(ZIP_FILES.subList(0, 7), files.stream().map(f -> f.get("name")).toList());
