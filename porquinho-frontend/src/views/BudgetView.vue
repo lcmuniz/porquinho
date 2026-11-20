@@ -75,7 +75,7 @@
 
       <form v-else-if="budget" class="space-y-6" novalidate data-testid="budget-form" @submit.prevent="save">
         <div class="space-y-3 rounded-lg border border-gray-200 bg-white p-4 text-sm md:p-6" data-testid="budget-totals">
-          <div class="grid grid-cols-2 gap-4">
+          <div class="grid grid-cols-2 gap-4" :class="{ 'sm:grid-cols-3': totalCommitted !== null }">
             <p class="text-gray-600">
               Total alocado
               <HelpTip term="alocado" testid="allocated">
@@ -87,6 +87,15 @@
             <p class="text-gray-600">
               Disponível nas contas
               <span class="block text-xl font-bold text-gray-900 md:text-2xl" data-testid="total-available">{{ formatBRL(budget.totalAvailable) }}</span>
+            </p>
+            <!-- Critique de 20/11/2026: a ajuda do termo fica aqui, uma vez, e não na primeira linha da lista -->
+            <p v-if="totalCommitted !== null" class="col-span-2 text-gray-600 sm:col-span-1">
+              Comprometido
+              <HelpTip term="comprometido" testid="committed">
+                Comprometido é a soma das parcelas de compras parceladas que ainda vão cair neste mês. Elas já estão
+                confirmadas, então esse dinheiro já tem destino.
+              </HelpTip>
+              <span class="block text-xl font-bold text-gray-900 md:text-2xl" data-testid="total-committed">{{ formatBRL(totalCommitted) }}</span>
             </p>
           </div>
           <p
@@ -164,17 +173,8 @@
               </p>
               <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-700">
                 <span :data-testid="`spent-${child.id}`">Gasto: {{ formatBRL(byCategory[child.id]!.spent) }}</span>
-                <span
-                  v-if="byCategory[child.id]!.committed !== null"
-                  class="inline-flex items-center gap-1"
-                  :data-testid="`committed-${child.id}`"
-                >
+                <span v-if="byCategory[child.id]!.committed !== null" :data-testid="`committed-${child.id}`">
                   Comprometido: {{ formatBRL(byCategory[child.id]!.committed!) }}
-                  <!-- Só no primeiro, para não repetir o ícone em cada categoria -->
-                  <HelpTip v-if="child.id === firstCommittedId" term="comprometido" testid="committed">
-                    Comprometido é a soma das parcelas de compras parceladas desta categoria que ainda vão cair neste mês.
-                    Elas já estão confirmadas, então esse dinheiro já tem destino.
-                  </HelpTip>
                 </span>
               </div>
               <p
@@ -454,10 +454,12 @@ const groups = computed(() =>
     .sort((a, b) => Number(overspent(b.children[0]!)) - Number(overspent(a.children[0]!))),
 )
 
-/** A primeira filha mostrada com comprometido: só ela leva o ícone de ajuda do termo. */
-const firstCommittedId = computed(
-  () => groups.value.flatMap((g) => g.children).find((c) => byCategory.value[c.id]!.committed !== null)?.id,
-)
+/** Soma do comprometido das categorias mostradas; null em mês fechado (o backend não manda comprometido). */
+const totalCommitted = computed(() => {
+  const values = groups.value.flatMap((g) => g.children).map((c) => byCategory.value[c.id]!.committed)
+  // soma em centavos inteiros, para não acumular erro de ponto flutuante
+  return values.some((v) => v !== null) ? values.reduce<number>((sum, v) => sum + Math.round((v ?? 0) * 100), 0) / 100 : null
+})
 
 // "X categorias saudáveis, Y baixas, Z estouradas"; some quando nada tem orçamento
 const summary = computed(() => {

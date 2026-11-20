@@ -7,7 +7,7 @@
         <label
           v-for="option in OPTIONS"
           :key="option.value"
-          class="inline-flex min-h-[40px] cursor-pointer items-center rounded-lg px-4 text-sm font-semibold text-gray-700 has-[:checked]:bg-purple-700 has-[:checked]:text-white has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/50"
+          class="inline-flex min-h-[44px] cursor-pointer items-center rounded-lg px-4 text-sm font-semibold text-gray-700 has-[:checked]:bg-purple-700 has-[:checked]:text-white has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/50"
         >
           <input
             v-model="view"

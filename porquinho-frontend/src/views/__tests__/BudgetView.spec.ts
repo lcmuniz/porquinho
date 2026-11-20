@@ -101,10 +101,10 @@ describe('BudgetView', () => {
     expect((w.get('[data-testid="amount-c1"]').element as HTMLInputElement).value).toBe('400,00')
     expect(w.get('[data-testid="spent-c1"]').text()).toContain('100,00')
     expect(w.get('[data-testid="committed-c1"]').text()).toContain('50,00')
-    // ajuda contextual: alocado no total e comprometido só na primeira categoria
+    // ajuda contextual: alocado e comprometido nos totais, uma vez cada, e não nas linhas
     expect(w.get('[data-testid="help-allocated"]').attributes('aria-label')).toBe('O que é alocado?')
     expect(w.findAll('[data-testid="help-committed"]')).toHaveLength(1)
-    expect(w.find('[data-testid="committed-c1"] [data-testid="help-committed"]').exists()).toBe(true)
+    expect(w.find('[data-testid="budget-totals"] [data-testid="help-committed"]').exists()).toBe(true)
     expect(w.get('[data-testid="progress-c1"]').attributes('aria-valuenow')).toBe('25')
     expect(w.get('[data-testid="progress-text-c1"]').text()).toContain('Restante: R$')
     expect(w.get('[data-testid="progress-text-c1"]').text()).toContain('300,00')
@@ -257,6 +257,19 @@ describe('BudgetView', () => {
     expect(w.find('[data-testid="status-summary"]').exists()).toBe(false)
   })
 
+  it('o total comprometido soma o das categorias mostradas', async () => {
+    mockGet.mockResolvedValue(
+      budget({
+        categories: [
+          { categoryId: 'c1', allocated: 400, spent: 100, committed: 0.1, remaining: 300, status: 'HEALTHY' },
+          { categoryId: 'c2', allocated: null, spent: 0, committed: 0.2, remaining: null, status: null },
+        ],
+      }),
+    )
+    const w = await mountView()
+    expect(w.get('[data-testid="total-committed"]').text()).toContain('0,30')
+  })
+
   it('mês fechado não mostra o comprometido', async () => {
     mockGet.mockResolvedValue(
       budget({
@@ -268,6 +281,7 @@ describe('BudgetView', () => {
     )
     const w = await mountView()
     expect(w.find('[data-testid="committed-c1"]').exists()).toBe(false)
+    expect(w.find('[data-testid="total-committed"]').exists()).toBe(false)
   })
 
   it('salva só os campos preenchidos e mostra "Orçamento salvo" com Desfazer na barra, com o foco nele', async () => {

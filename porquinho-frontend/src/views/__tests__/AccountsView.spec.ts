@@ -1764,10 +1764,11 @@ describe('AccountsView — reconciliar com o banco (Story 4.6)', () => {
     )
   })
 
-  it('a ajuda do termo fica ao lado do "Reconciliar", só na primeira conta', async () => {
+  it('a ajuda de "reconciliar" fica no cabeçalho da lista, uma vez só', async () => {
     const wrapper = await mountView()
     expect(wrapper.findAll('[data-testid="help-reconcile"]')).toHaveLength(1)
-    const help = wrapper.get('[data-testid="account-item-a1"] [data-testid="help-reconcile"]')
+    expect(wrapper.find('[data-testid="accounts-list"] [data-testid="help-reconcile"]').exists()).toBe(false)
+    const help = wrapper.get('[data-testid="help-reconcile"]')
     expect(help.attributes('aria-label')).toBe('O que é reconciliar?')
   })
 

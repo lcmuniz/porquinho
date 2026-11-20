@@ -115,9 +115,16 @@
         </section>
 
         <section aria-labelledby="accounts-list-heading" class="space-y-2">
-          <h2 id="accounts-list-heading" class="text-sm font-medium text-gray-900">
-            Suas contas ({{ accounts.length }})
-          </h2>
+          <!-- Critique de 20/11/2026: a ajuda de "reconciliar" fica no cabeçalho, uma vez, sem desalinhar a primeira conta -->
+          <div class="flex items-center gap-1">
+            <h2 id="accounts-list-heading" class="text-sm font-medium text-gray-900">
+              Suas contas ({{ accounts.length }})
+            </h2>
+            <HelpTip term="reconciliar" testid="reconcile">
+              Reconciliar é conferir se o saldo do porquinho bate com o do banco. Se houver diferença, você pode ajustar o
+              saldo e anotar o motivo (uma tarifa esquecida, por exemplo).
+            </HelpTip>
+          </div>
           <ul ref="list" class="space-y-2" data-testid="accounts-list">
             <li
               v-for="account in accounts"
@@ -160,23 +167,16 @@
                   Histórico
                 </RouterLink>
                 <!-- Story 4.6: conferir o saldo com o banco -->
-                <div class="flex items-center">
-                  <Button
-                    variant="ghost"
-                    class="min-h-[44px] min-w-[44px] flex-1 shrink-0 text-purple-700 hover:bg-purple-50"
-                    :data-testid="`reconcile-account-${account.id}`"
-                    :aria-label="`Reconciliar ${account.accountName}`"
-                    @click="openReconcile(account)"
-                  >
-                    <Scale class="h-4 w-4" aria-hidden="true" />
-                    Reconciliar
-                  </Button>
-                  <!-- Só na primeira conta, para não repetir o ícone em cada card -->
-                  <HelpTip v-if="account.id === accounts[0]?.id" term="reconciliar" testid="reconcile">
-                    Reconciliar é conferir se o saldo do porquinho bate com o do banco. Se houver diferença, você pode
-                    ajustar o saldo e anotar o motivo (uma tarifa esquecida, por exemplo).
-                  </HelpTip>
-                </div>
+                <Button
+                  variant="ghost"
+                  class="min-h-[44px] min-w-[44px] shrink-0 text-purple-700 hover:bg-purple-50"
+                  :data-testid="`reconcile-account-${account.id}`"
+                  :aria-label="`Reconciliar ${account.accountName}`"
+                  @click="openReconcile(account)"
+                >
+                  <Scale class="h-4 w-4" aria-hidden="true" />
+                  Reconciliar
+                </Button>
                 <!-- Ações menos frequentes ficam no menu "⋯" -->
                 <DropdownMenu :modal="false">
                   <DropdownMenuTrigger as-child>
