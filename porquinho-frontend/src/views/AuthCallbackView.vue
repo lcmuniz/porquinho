@@ -31,6 +31,7 @@ import { useAuth } from '@/composables/useAuth'
 import { authService } from '@/services/authService'
 import { useAuthStore } from '@/stores/auth'
 import { endSession } from '@/services/session'
+import { supabase } from '@/services/supabase'
 import { apiErrorDetail, isRegistrationRefused } from '@/lib/apiError'
 
 const router = useRouter()
@@ -43,10 +44,25 @@ const errorMessage = ref('')
 onMounted(async () => {
   try {
     // Get session from Supabase (contains JWT after OAuth)
-    const session = await getSession()
+    const hash = new URLSearchParams(window.location.hash.slice(1))
+    const accessToken = hash.get('access_token')
+    const refreshToken = hash.get('refresh_token')
+
+    let session = await getSession()
+    // O Supabase pode falhar ao ler os tokens da URL (rede instável): tenta de novo com eles
+    if (!session && accessToken && refreshToken) {
+      const { data } = await supabase.auth
+        .setSession({ access_token: accessToken, refresh_token: refreshToken })
+        .catch(() => ({ data: { session: null } }))
+      session = data.session
+    }
 
     if (!session) {
-      throw new Error('Nenhuma sessão encontrada. Por favor, tente novamente.')
+      throw new Error(
+        accessToken
+          ? 'Não foi possível concluir o login. Verifique sua conexão e tente novamente.'
+          : 'Nenhuma sessão encontrada. Por favor, tente novamente.'
+      )
     }
 
     // Extract user info from session
