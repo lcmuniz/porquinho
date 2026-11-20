@@ -77,6 +77,7 @@ describe('CategoriesView', () => {
     await mountView()
     const titles = wrapper!.findAll('h2').map((h) => h.text().trim())
     expect(titles).toEqual(['Essenciais', 'Variáveis'])
+    expect(wrapper!.get('[data-testid="help-envelope"]').attributes('aria-label')).toBe('O que é envelope?')
     expect(wrapper!.get('[data-testid="group-g1"]').text()).toContain('Moradia')
     expect(wrapper!.get('[data-testid="group-g2"]').text()).toContain('Nenhuma categoria neste grupo')
   })

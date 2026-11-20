@@ -4,7 +4,13 @@
       <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 ref="heading" tabindex="-1" class="text-2xl font-bold text-gray-900 md:text-[28px] outline-none">Categorias</h1>
-          <p class="mt-1 text-sm text-gray-600">Os envelopes do seu orçamento, organizados por grupo</p>
+          <p class="mt-1 flex items-center gap-1 text-sm text-gray-600">
+            Os envelopes do seu orçamento, organizados por grupo
+            <HelpTip term="envelope" testid="envelope">
+              Cada categoria é um envelope: no Orçamento você separa um valor para ela no mês, e os gastos dessa categoria
+              saem desse valor.
+            </HelpTip>
+          </p>
         </div>
         <div class="flex flex-wrap gap-2 sm:justify-end">
           <Button
@@ -333,6 +339,7 @@ import { useFeedback } from '@/composables/useFeedback'
 import { Check, ChevronDown, ChevronRight, FolderInput, Trash2 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import CategoryDeleteDialog from '@/components/category/CategoryDeleteDialog.vue'
+import HelpTip from '@/components/common/HelpTip.vue'
 import {
   Dialog,
   DialogContent,

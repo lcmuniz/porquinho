@@ -81,6 +81,10 @@
           <div class="grid grid-cols-2 gap-4">
             <p class="text-gray-600">
               Total alocado
+              <HelpTip term="alocado" testid="allocated">
+                Alocado é o dinheiro que você separou para cada categoria neste mês, como envelopes. O ideal é que o total
+                não passe do que está disponível nas contas.
+              </HelpTip>
               <span class="block text-xl font-bold text-gray-900 md:text-2xl" data-testid="total-allocated">{{ formatBRL(totalAllocated) }}</span>
             </p>
             <p class="text-gray-600">
@@ -163,8 +167,17 @@
               </p>
               <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-700">
                 <span :data-testid="`spent-${child.id}`">Gasto: {{ formatBRL(byCategory[child.id]!.spent) }}</span>
-                <span v-if="byCategory[child.id]!.committed !== null" :data-testid="`committed-${child.id}`">
+                <span
+                  v-if="byCategory[child.id]!.committed !== null"
+                  class="inline-flex items-center gap-1"
+                  :data-testid="`committed-${child.id}`"
+                >
                   Comprometido: {{ formatBRL(byCategory[child.id]!.committed!) }}
+                  <!-- Só no primeiro, para não repetir o ícone em cada categoria -->
+                  <HelpTip v-if="child.id === firstCommittedId" term="comprometido" testid="committed">
+                    Comprometido é a soma das parcelas de compras parceladas desta categoria que ainda vão cair neste mês.
+                    Elas já estão confirmadas, então esse dinheiro já tem destino.
+                  </HelpTip>
                 </span>
               </div>
               <p
@@ -373,6 +386,7 @@ import { useEventListener } from '@vueuse/core'
 import { onBeforeRouteLeave, RouterLink, useRoute, useRouter } from 'vue-router'
 import BudgetExportDialog from '@/components/budget/BudgetExportDialog.vue'
 import BudgetStatusLabel from '@/components/budget/BudgetStatusLabel.vue'
+import HelpTip from '@/components/common/HelpTip.vue'
 import ReallocateForm from '@/components/budget/ReallocateForm.vue'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -460,6 +474,11 @@ const groups = computed(() =>
     }))
     .filter((g) => g.children.length > 0)
     .sort((a, b) => Number(overspent(b.children[0]!)) - Number(overspent(a.children[0]!))),
+)
+
+/** A primeira filha mostrada com comprometido: só ela leva o ícone de ajuda do termo. */
+const firstCommittedId = computed(
+  () => groups.value.flatMap((g) => g.children).find((c) => byCategory.value[c.id]!.committed !== null)?.id,
 )
 
 // "X categorias saudáveis, Y baixas, Z estouradas"; some quando nada tem orçamento

@@ -1764,6 +1764,13 @@ describe('AccountsView — reconciliar com o banco (Story 4.6)', () => {
     )
   })
 
+  it('a ajuda do termo fica ao lado do "Reconciliar", só na primeira conta', async () => {
+    const wrapper = await mountView()
+    expect(wrapper.findAll('[data-testid="help-reconcile"]')).toHaveLength(1)
+    const help = wrapper.get('[data-testid="account-item-a1"] [data-testid="help-reconcile"]')
+    expect(help.attributes('aria-label')).toBe('O que é reconciliar?')
+  })
+
   it('mostra "Reconciliada em dd/mm/aaaa" (fuso de São Paulo) só quando houver data', async () => {
     mockList.mockResolvedValue([
       account({ id: 'a1', lastReconciliationDate: '2026-11-04T01:00:00Z' }),

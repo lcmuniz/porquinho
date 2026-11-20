@@ -101,6 +101,10 @@ describe('BudgetView', () => {
     expect((w.get('[data-testid="amount-c1"]').element as HTMLInputElement).value).toBe('400,00')
     expect(w.get('[data-testid="spent-c1"]').text()).toContain('100,00')
     expect(w.get('[data-testid="committed-c1"]').text()).toContain('50,00')
+    // ajuda contextual: alocado no total e comprometido só na primeira categoria
+    expect(w.get('[data-testid="help-allocated"]').attributes('aria-label')).toBe('O que é alocado?')
+    expect(w.findAll('[data-testid="help-committed"]')).toHaveLength(1)
+    expect(w.find('[data-testid="committed-c1"] [data-testid="help-committed"]').exists()).toBe(true)
     expect(w.get('[data-testid="progress-c1"]').attributes('aria-valuenow')).toBe('25')
     expect(w.get('[data-testid="progress-text-c1"]').text()).toContain('Restante: R$')
     expect(w.get('[data-testid="progress-text-c1"]').text()).toContain('300,00')

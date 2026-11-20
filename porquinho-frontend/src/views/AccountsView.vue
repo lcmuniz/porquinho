@@ -160,16 +160,23 @@
                   Histórico
                 </RouterLink>
                 <!-- Story 4.6: conferir o saldo com o banco -->
-                <Button
-                  variant="ghost"
-                  class="min-h-[44px] min-w-[44px] shrink-0 text-purple-700 hover:bg-purple-50"
-                  :data-testid="`reconcile-account-${account.id}`"
-                  :aria-label="`Reconciliar ${account.accountName}`"
-                  @click="openReconcile(account)"
-                >
-                  <Scale class="h-4 w-4" aria-hidden="true" />
-                  Reconciliar
-                </Button>
+                <div class="flex items-center">
+                  <Button
+                    variant="ghost"
+                    class="min-h-[44px] min-w-[44px] flex-1 shrink-0 text-purple-700 hover:bg-purple-50"
+                    :data-testid="`reconcile-account-${account.id}`"
+                    :aria-label="`Reconciliar ${account.accountName}`"
+                    @click="openReconcile(account)"
+                  >
+                    <Scale class="h-4 w-4" aria-hidden="true" />
+                    Reconciliar
+                  </Button>
+                  <!-- Só na primeira conta, para não repetir o ícone em cada card -->
+                  <HelpTip v-if="account.id === accounts[0]?.id" term="reconciliar" testid="reconcile">
+                    Reconciliar é conferir se o saldo do porquinho bate com o do banco. Se houver diferença, você pode
+                    ajustar o saldo e anotar o motivo (uma tarifa esquecida, por exemplo).
+                  </HelpTip>
+                </div>
                 <!-- Ações menos frequentes ficam no menu "⋯" -->
                 <DropdownMenu :modal="false">
                   <DropdownMenuTrigger as-child>
@@ -552,6 +559,7 @@ import {
 import AccountForm from '@/components/accounts/AccountForm.vue'
 import ReconcileForm from '@/components/accounts/ReconcileForm.vue'
 import TransferForm from '@/components/accounts/TransferForm.vue'
+import HelpTip from '@/components/common/HelpTip.vue'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import {

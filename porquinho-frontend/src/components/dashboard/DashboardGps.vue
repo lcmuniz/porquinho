@@ -22,9 +22,12 @@
         tabindex="-1"
         class="scroll-mt-32 py-8 focus:outline-none md:py-10"
       >
-        <h2 :id="`${layer.id}-heading`" class="text-xl font-bold text-gray-900">
-          {{ layer.title }}
-        </h2>
+        <div class="flex items-center gap-1">
+          <h2 :id="`${layer.id}-heading`" class="text-xl font-bold text-gray-900">
+            {{ layer.title }}
+          </h2>
+          <HelpTip :term="layer.title" :testid="layer.id">{{ layer.help }}</HelpTip>
+        </div>
         <DashboardLayer1 v-if="layer.id === 'layer-overview'" :refresh="refresh" @loaded="onLoaded" />
         <DashboardLayer2 v-else-if="layer.id === 'layer-tactical'" :refresh="refresh" @loaded="onLoaded" />
         <DashboardLayer3 v-else @transaction-saved="onTransactionSaved" @loaded="onLoaded" />
@@ -38,6 +41,7 @@ import { ref } from 'vue'
 import DashboardLayer1 from './DashboardLayer1.vue'
 import DashboardLayer2 from './DashboardLayer2.vue'
 import DashboardLayer3 from './DashboardLayer3.vue'
+import HelpTip from '@/components/common/HelpTip.vue'
 
 const emit = defineEmits<{ 'transaction-saved': []; loaded: [] }>()
 
@@ -57,9 +61,21 @@ function onLoaded() {
 
 // Story 7.1: as 3 camadas do Dashboard GPS; o conteúdo real chega nas stories 7.2–7.6
 const layers = [
-  { id: 'layer-overview', title: 'Visão geral' },
-  { id: 'layer-tactical', title: 'Visão tática' },
-  { id: 'layer-details', title: 'Detalhes' },
+  {
+    id: 'layer-overview',
+    title: 'Visão geral',
+    help: 'A 1ª camada do Início: o mês em poucos números, como saldo total, quanto já gastou e quanto vai sobrar.',
+  },
+  {
+    id: 'layer-tactical',
+    title: 'Visão tática',
+    help: 'A 2ª camada: para onde o dinheiro está indo, com o gasto por categoria no mês e a tendência dos últimos 12 meses.',
+  },
+  {
+    id: 'layer-details',
+    title: 'Detalhes',
+    help: 'A 3ª camada: as transações que pedem atenção, os maiores gastos do mês e as que ainda estão sem categoria.',
+  },
 ] as const
 
 // Sem `behavior`: herda o scroll-behavior do CSS, que respeita o movimento reduzido.
