@@ -25,18 +25,15 @@
         </div>
       </div>
 
-      <!-- Sempre no DOM: leitores de tela só anunciam mudanças numa região live que já existe -->
-      <p
-        role="status"
-        data-testid="budget-success"
-        :class="
-          successMessage
-            ? 'rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800'
-            : 'sr-only'
-        "
-      >
-        {{ successMessage }}
-      </p>
+      <!-- Sem a barra de ações (nenhuma categoria), a faixa de sucesso fica no topo -->
+      <FeedbackBanner
+        v-if="groups.length === 0"
+        :message="successMessage"
+        :action="successAction"
+        testid="budget-success"
+        @pause="pauseSuccess"
+        @resume="resumeSuccess"
+      />
 
       <p
         v-if="actionError"
@@ -263,6 +260,16 @@
           <p v-if="dirty" class="col-span-2 text-sm font-semibold text-amber-800 sm:mr-auto" data-testid="unsaved-changes">
             Alterações não salvas
           </p>
+          <!-- Critique de 20/11/2026: a confirmação (com "Desfazer") aparece aqui, junto do botão que salvou -->
+          <FeedbackBanner
+            ref="feedback"
+            class="col-span-2 sm:mr-auto"
+            :message="successMessage"
+            :action="successAction"
+            testid="budget-success"
+            @pause="pauseSuccess"
+            @resume="resumeSuccess"
+          />
           <Button
             v-if="!closedMonth"
             ref="reallocateButton"
@@ -288,7 +295,7 @@
             <span class="sm:hidden">Repetir mês anterior</span>
             <span class="hidden sm:inline">Repetir orçamento do mês anterior</span>
           </Button>
-          <Button type="submit" class="col-span-2 min-h-[44px]" :disabled="saving || repeating" data-testid="save-budget">
+          <Button type="submit" class="col-span-2 min-h-[44px]" :disabled="saving || repeating || !dirty" data-testid="save-budget">
             {{ saving ? 'Salvando…' : 'Salvar orçamento' }}
           </Button>
         </div>
@@ -350,42 +357,18 @@
       @exported="setSuccess('Relatório de orçamento exportado')"
     />
 
-    <!-- Toast "Orçamento salvo · Desfazer" no topo (embaixo fica a barra de salvar): a região live fica sempre no DOM; o tempo pausa com o mouse ou o foco nele -->
-    <div
-      role="status"
-      class="pointer-events-none fixed inset-x-0 top-[calc(4rem+env(safe-area-inset-top))] z-40 flex justify-center px-4 lg:top-6 lg:pl-62"
-    >
-      <div
-        v-if="undo"
-        class="pointer-events-auto flex items-center gap-4 rounded-lg bg-gray-900 py-1 pr-1 pl-4 text-sm text-white shadow-lg"
-        data-testid="budget-toast"
-        @mouseenter="pauseUndo"
-        @mouseleave="resumeUndo"
-        @focusin="pauseUndo"
-        @focusout="resumeUndo"
-      >
-        <span>Orçamento salvo</span>
-        <button
-          type="button"
-          class="min-h-[44px] rounded-md px-3 font-semibold text-purple-200 hover:bg-white/10 focus-visible:ring-[3px] focus-visible:ring-purple-300 focus-visible:outline-none"
-          data-testid="budget-undo"
-          @click="undoSave"
-        >
-          Desfazer
-        </button>
-      </div>
-    </div>
   </main>
 </template>
 
 <script setup lang="ts">
 import { ChevronLeft, ChevronRight } from 'lucide-vue-next'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useFeedback } from '@/composables/useFeedback'
 import { useEventListener } from '@vueuse/core'
 import { onBeforeRouteLeave, RouterLink, useRoute, useRouter } from 'vue-router'
 import BudgetExportDialog from '@/components/budget/BudgetExportDialog.vue'
 import BudgetStatusLabel from '@/components/budget/BudgetStatusLabel.vue'
+import FeedbackBanner from '@/components/common/FeedbackBanner.vue'
 import HelpTip from '@/components/common/HelpTip.vue'
 import ReallocateForm from '@/components/budget/ReallocateForm.vue'
 import { Button } from '@/components/ui/button'
@@ -429,13 +412,8 @@ const loadError = ref<string | null>(null)
 const saving = ref(false)
 const repeating = ref(false)
 const actionError = ref<string | null>(null)
-const { successMessage, setSuccess } = useFeedback()
-
-/** Tempo do toast "Desfazer" depois de salvar. */
-const UNDO_TIMEOUT_MS = 8000
-/** As alocações de antes do último salvamento, para o "Desfazer" do toast. */
-const undo = ref<{ month: string; allocations: BudgetAllocationInput[] } | null>(null)
-let undoTimer: ReturnType<typeof setTimeout> | undefined
+const { successMessage, successAction, setSuccess, pauseSuccess, resumeSuccess } = useFeedback()
+const feedback = ref<InstanceType<typeof FeedbackBanner> | null>(null)
 const notice = ref<string | null>(null)
 const reallocateOpen = ref(false)
 const exportOpen = ref(false)
@@ -577,7 +555,6 @@ async function load() {
   loadError.value = null
   actionError.value = null
   setSuccess(null)
-  dismissUndo()
   notice.value = null
   try {
     const [data, list] = await Promise.all([getBudget(month.value), listCategories()])
@@ -656,43 +633,31 @@ async function save() {
   const allocations = Object.entries(values.value)
     .filter(([, text]) => text.trim())
     .map(([categoryId, text]) => ({ categoryId, amount: parseBRL(text)! }))
-  const previous = { month: month.value, allocations: savedAllocations(budget.value) }
-  dismissUndo()
+  const previous = savedAllocations(budget.value)
+  const target = month.value
   setSuccess(null)
   if (await persist(allocations)) {
-    undo.value = previous
-    resumeUndo()
+    setSuccess('Orçamento salvo', { label: 'Desfazer', run: () => void undoSave(target, previous) })
+    focusFeedback()
   }
 }
 
-/** Volta as alocações de antes do último salvamento. */
-async function undoSave() {
-  const previous = undo.value
-  if (!previous || saving.value || !budget.value || previous.month !== month.value) return
-  dismissUndo()
+/** Volta as alocações de antes do último salvamento (o "Desfazer" da faixa de sucesso). */
+async function undoSave(target: string, previous: BudgetAllocationInput[]) {
+  if (saving.value || !budget.value || target !== month.value) return
+  setSuccess(null)
   actionError.value = null
-  const ok = await persist(previous.allocations)
-  if (ok) setSuccess('Alterações desfeitas')
-  // o botão some com o toast: o foco vai para o "Salvar" (habilitado de novo só depois de gravar)
-  await nextTick()
-  document.querySelector<HTMLElement>('[data-testid="save-budget"]')?.focus()
+  if (await persist(previous)) setSuccess('Alterações desfeitas')
+  focusFeedback()
 }
 
-function pauseUndo() {
-  clearTimeout(undoTimer)
+/** O "Salvar" fica desabilitado depois de gravar: o foco vai para a faixa de sucesso, ao lado dele. */
+function focusFeedback() {
+  void nextTick(() => feedback.value?.focus())
 }
 
-function resumeUndo() {
-  clearTimeout(undoTimer)
-  if (undo.value) undoTimer = setTimeout(() => (undo.value = null), UNDO_TIMEOUT_MS)
-}
-
-function dismissUndo() {
-  clearTimeout(undoTimer)
-  undo.value = null
-}
-
-onBeforeUnmount(() => clearTimeout(undoTimer))
+// Digitar de novo tira a confirmação: o "Desfazer" apagaria o que está sendo digitado
+watch(dirty, (changed) => changed && setSuccess(null))
 
 function openReallocate() {
   reallocateError.value = null

@@ -270,7 +270,7 @@ describe('BudgetView', () => {
     expect(w.find('[data-testid="committed-c1"]').exists()).toBe(false)
   })
 
-  it('salva só os campos preenchidos e mostra o toast "Orçamento salvo"', async () => {
+  it('salva só os campos preenchidos e mostra "Orçamento salvo" com Desfazer na barra, com o foco nele', async () => {
     mockSave.mockResolvedValue(
       budget({
         categories: [
@@ -288,8 +288,10 @@ describe('BudgetView', () => {
       { categoryId: 'c1', amount: 400 },
       { categoryId: 'c2', amount: 0 },
     ])
-    expect(w.get('[data-testid="budget-toast"]').text()).toContain('Orçamento salvo')
-    expect(w.get('[data-testid="budget-toast"]').element.parentElement!.getAttribute('role')).toBe('status')
+    expect(w.get('[data-testid="budget-success"]').text()).toBe('Orçamento salvo')
+    expect(w.get('[data-testid="budget-success"]').attributes('role')).toBe('status')
+    expect(w.get('[data-testid="budget-actions"] [data-testid="budget-success-action"]').text()).toBe('Desfazer')
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('budget-success-action')
     expect(w.find('[data-testid="no-budget-c2"]').exists()).toBe(false)
   })
 
@@ -377,20 +379,32 @@ describe('BudgetView', () => {
     expect(w.get('[data-testid="save-budget"]').attributes('disabled')).toBeDefined()
     await w.get('[data-testid="budget-form"]').trigger('submit')
     expect(mockSave).not.toHaveBeenCalled()
-    resolve(budget())
+    resolve(
+      budget({
+        month: '2026-10',
+        categories: [{ categoryId: 'c1', allocated: 250, spent: 0, committed: null, remaining: 250, status: 'HEALTHY' }],
+      }),
+    )
     await flushPromises()
     expect(w.get('[data-testid="save-budget"]').attributes('disabled')).toBeUndefined()
   })
 
-  it('o toast some ao trocar de mês e não aparece se o mês mudou durante o salvamento', async () => {
+  it('Salvar fica desabilitado sem alterações', async () => {
+    const w = await mountView()
+    expect(w.get('[data-testid="save-budget"]').attributes('disabled')).toBeDefined()
+    await type('amount-c2', '10')
+    expect(w.get('[data-testid="save-budget"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('a confirmação some ao trocar de mês e não aparece se o mês mudou durante o salvamento', async () => {
     mockSave.mockResolvedValue(budget())
     const w = await mountView()
     await w.get('[data-testid="budget-form"]').trigger('submit')
     await flushPromises()
-    expect(w.find('[data-testid="budget-toast"]').exists()).toBe(true)
+    expect(w.find('[data-testid="budget-success-action"]').exists()).toBe(true)
     await w.get('[data-testid="next-month"]').trigger('click')
     await flushPromises()
-    expect(w.find('[data-testid="budget-toast"]').exists()).toBe(false)
+    expect(w.find('[data-testid="budget-success-action"]').exists()).toBe(false)
 
     let resolve: (b: Budget) => void = () => {}
     mockSave.mockReturnValueOnce(new Promise<Budget>((r) => (resolve = r)))
@@ -398,7 +412,7 @@ describe('BudgetView', () => {
     await w.get('[data-testid="previous-month"]').trigger('click')
     resolve(budget())
     await flushPromises()
-    expect(w.find('[data-testid="budget-toast"]').exists()).toBe(false)
+    expect(w.find('[data-testid="budget-success-action"]').exists()).toBe(false)
   })
 
   describe('Desfazer depois de salvar', () => {
@@ -432,36 +446,43 @@ describe('BudgetView', () => {
     it('restaura as alocações de antes com a versão nova e avisa', async () => {
       const w = await saveChanges()
       mockSave.mockResolvedValueOnce(before)
-      await w.get('[data-testid="budget-undo"]').trigger('click')
+      await w.get('[data-testid="budget-success-action"]').trigger('click')
       await flushPromises()
 
       expect(mockSave).toHaveBeenLastCalledWith('2026-11', 'v2', [{ categoryId: 'c1', amount: 400 }])
-      expect(w.find('[data-testid="budget-toast"]').exists()).toBe(false)
+      expect(w.find('[data-testid="budget-success-action"]').exists()).toBe(false)
       expect((w.get('[data-testid="amount-c1"]').element as HTMLInputElement).value).toBe('400,00')
       expect((w.get('[data-testid="amount-c2"]').element as HTMLInputElement).value).toBe('')
       expect(w.get('[data-testid="budget-success"]').text()).toBe('Alterações desfeitas')
-      expect(document.activeElement?.getAttribute('data-testid')).toBe('save-budget')
+      expect(document.activeElement?.getAttribute('data-testid')).toBe('budget-success-banner')
     })
 
     it('some sozinho depois de alguns segundos, mas não enquanto tem foco', async () => {
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
       const w = await saveChanges()
-      const toast = w.get('[data-testid="budget-toast"]')
+      const toast = w.get('[data-testid="budget-success-banner"]')
       await toast.trigger('focusin')
       vi.advanceTimersByTime(20000)
       await flushPromises()
-      expect(w.find('[data-testid="budget-toast"]').exists()).toBe(true)
+      expect(w.find('[data-testid="budget-success-action"]').exists()).toBe(true)
 
       await toast.trigger('focusout')
       vi.advanceTimersByTime(8000)
       await flushPromises()
-      expect(w.find('[data-testid="budget-toast"]').exists()).toBe(false)
+      expect(w.find('[data-testid="budget-success-action"]').exists()).toBe(false)
+    })
+
+    it('digitar de novo tira a confirmação com Desfazer', async () => {
+      const w = await saveChanges()
+      await type('amount-c1', '700')
+      expect(w.find('[data-testid="budget-success-action"]').exists()).toBe(false)
+      expect(w.get('[data-testid="budget-success"]').text()).toBe('')
     })
 
     it('erro ao desfazer fica no aviso de erro', async () => {
       const w = await saveChanges()
       mockSave.mockRejectedValueOnce({ response: { status: 409, data: { detail: 'O orçamento mudou' } } })
-      await w.get('[data-testid="budget-undo"]').trigger('click')
+      await w.get('[data-testid="budget-success-action"]').trigger('click')
       await flushPromises()
       expect(w.get('[data-testid="budget-error"]').text()).toBe('O orçamento mudou')
     })
