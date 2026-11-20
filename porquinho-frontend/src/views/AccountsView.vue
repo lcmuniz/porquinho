@@ -148,7 +148,7 @@
               >
                 {{ formatBRL(account.currentBalance) }}
               </span>
-              <div class="grid w-full grid-cols-[1fr_1fr_auto] gap-1 sm:ml-auto sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
+              <div class="grid w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-1 sm:ml-auto sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
                 <!-- Story 4.7: gráfico do saldo ao longo do tempo -->
                 <RouterLink
                   :to="`/contas/${account.id}/historico`"

@@ -165,7 +165,7 @@
               >
                 {{ fieldErrors[child.id] }}
               </p>
-              <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-700">
+              <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-700">
                 <span :data-testid="`spent-${child.id}`">Gasto: {{ formatBRL(byCategory[child.id]!.spent) }}</span>
                 <span
                   v-if="byCategory[child.id]!.committed !== null"
@@ -350,10 +350,10 @@
       @exported="setSuccess('Relatório de orçamento exportado')"
     />
 
-    <!-- Toast "Orçamento salvo · Desfazer": a região live fica sempre no DOM; o tempo pausa com o mouse ou o foco nele -->
+    <!-- Toast "Orçamento salvo · Desfazer" no topo (embaixo fica a barra de salvar): a região live fica sempre no DOM; o tempo pausa com o mouse ou o foco nele -->
     <div
       role="status"
-      class="pointer-events-none fixed inset-x-0 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-40 flex justify-center px-4 lg:bottom-6 lg:pl-62"
+      class="pointer-events-none fixed inset-x-0 top-[calc(4rem+env(safe-area-inset-top))] z-40 flex justify-center px-4 lg:top-6 lg:pl-62"
     >
       <div
         v-if="undo"

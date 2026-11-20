@@ -54,10 +54,11 @@
       <li
         v-for="row in rows"
         :key="row.id"
-        class="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3"
+        class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-4 py-3"
+        :class="{ 'sm:grid-cols-[minmax(0,1fr)_auto_auto]': view === 'uncategorized' }"
         :data-testid="`details-row-${row.id}`"
       >
-        <div class="min-w-0 flex-1">
+        <div class="min-w-0">
           <p class="break-words font-medium text-gray-900">{{ row.description }}</p>
           <p class="text-sm text-gray-600">
             {{ formatLocalDateBR(row.date) }} · {{ targetName(row, accounts, cards) }}
@@ -68,7 +69,7 @@
         <Button
           v-if="view === 'uncategorized'"
           variant="outline"
-          class="min-h-[44px]"
+          class="col-span-2 min-h-[44px] justify-self-start sm:col-span-1"
           :aria-label="`Classificar ${row.description}`"
           :data-testid="`details-classify-${row.id}`"
           @click="openEdit(row)"
