@@ -99,14 +99,14 @@ describe('ReconcileForm', () => {
     expect(difference(wrapper).classes()).toContain('text-red-600')
   })
 
-  it('saldos iguais: diferença zero e "Confirmar reconciliação"', async () => {
+  it('saldos iguais: diferença zero e "Confirmar saldo"', async () => {
     const wrapper = mountForm()
     await typeBank(wrapper, '1.000,00')
 
     expect(plain(difference(wrapper).text())).toBe('R$ 0,00')
     expect(wrapper.find('[data-testid="reconcile-question"]').exists()).toBe(false)
     expect(wrapper.get('[data-testid="reconcile-confirm-button"]').text()).toBe(
-      'Confirmar reconciliação',
+      'Confirmar saldo',
     )
     expect(wrapper.get('[data-testid="cancel-reconcile"]').text()).toBe('Cancelar')
   })
@@ -144,7 +144,7 @@ describe('ReconcileForm', () => {
     expect(wrapper.emitted('reconciled')?.[0]).toEqual([result])
   })
 
-  it('"Confirmar reconciliação" envia com diferença zero e motivo vazio vira null', async () => {
+  it('"Confirmar saldo" envia com diferença zero e motivo vazio vira null', async () => {
     const wrapper = mountForm()
     await typeBank(wrapper, '1000')
     await wrapper.get('[data-testid="reconcile-reason-input"]').setValue('   ')

@@ -111,7 +111,7 @@
         data-testid="reconcile-confirm-button"
         :disabled="disabled || submitting"
       >
-        {{ submitting ? 'Salvando…' : 'Confirmar reconciliação' }}
+        {{ submitting ? 'Salvando…' : 'Confirmar saldo' }}
       </Button>
       <!-- Com diferença ≠ 0, "Investigar depois" já fecha sem mudar nada -->
       <Button
@@ -142,7 +142,7 @@ import type { ApiError } from '@/lib/apiError'
  * Formulário de reconciliação do saldo com o banco (Story 4.6). Mostra o saldo da tela e a diferença enquanto o
  * usuário digita; quem decide a diferença gravada é o servidor, a partir do saldo que ele tem. Com diferença ≠ 0
  * pergunta "Deseja ajustar o saldo?" ("Ajustar saldo" envia, "Investigar depois" emite `dismiss`); com diferença 0
- * os botões são "Confirmar reconciliação" e "Cancelar" (também emite `dismiss`). Erros 400 aparecem no campo; outras falhas (404, rede) vão para o pai em
+ * os botões são "Confirmar saldo" e "Cancelar" (também emite `dismiss`). Erros 400 aparecem no campo; outras falhas (404, rede) vão para o pai em
  * `failed`, com o `detail` da API e o status.
  */
 const props = withDefaults(

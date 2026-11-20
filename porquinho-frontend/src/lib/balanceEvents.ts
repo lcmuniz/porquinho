@@ -5,7 +5,7 @@ export const BALANCE_EVENT_LABEL: Record<BalanceEvent, string> = {
   initial: 'Saldo inicial',
   edit: 'Edição',
   transfer: 'Transferência',
-  reconciliation: 'Reconciliação',
+  reconciliation: 'Conferência com o banco',
   transaction: 'Transação',
 }
 

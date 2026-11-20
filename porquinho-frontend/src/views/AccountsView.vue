@@ -115,16 +115,9 @@
         </section>
 
         <section aria-labelledby="accounts-list-heading" class="space-y-2">
-          <!-- Critique de 20/11/2026: a ajuda de "reconciliar" fica no cabeçalho, uma vez, sem desalinhar a primeira conta -->
-          <div class="flex items-center gap-1">
-            <h2 id="accounts-list-heading" class="text-sm font-medium text-gray-900">
-              Suas contas ({{ accounts.length }})
-            </h2>
-            <HelpTip term="reconciliar" testid="reconcile">
-              Reconciliar é conferir se o saldo do porquinho bate com o do banco. Se houver diferença, você pode ajustar o
-              saldo e anotar o motivo (uma tarifa esquecida, por exemplo).
-            </HelpTip>
-          </div>
+          <h2 id="accounts-list-heading" class="text-sm font-medium text-gray-900">
+            Suas contas ({{ accounts.length }})
+          </h2>
           <ul ref="list" class="space-y-2" data-testid="accounts-list">
             <li
               v-for="account in accounts"
@@ -145,7 +138,7 @@
                   class="truncate text-xs text-gray-500"
                   data-testid="account-reconciled-at"
                 >
-                  Reconciliada em {{ formatDateBR(account.lastReconciliationDate) }}
+                  Conferida com o banco em {{ formatDateBR(account.lastReconciliationDate) }}
                 </p>
               </div>
               <span
@@ -171,11 +164,12 @@
                   variant="ghost"
                   class="min-h-[44px] min-w-[44px] shrink-0 text-purple-700 hover:bg-purple-50"
                   :data-testid="`reconcile-account-${account.id}`"
-                  :aria-label="`Reconciliar ${account.accountName}`"
+                  :aria-label="`Conferir ${account.accountName} com o banco`"
                   @click="openReconcile(account)"
                 >
                   <Scale class="h-4 w-4" aria-hidden="true" />
-                  Reconciliar
+                  <!-- Critique de 20/11/2026 (3ª): o nome explica a ação e dispensa o (?) de "reconciliar" -->
+                  Conferir com o banco
                 </Button>
                 <!-- Ações menos frequentes ficam no menu "⋯" -->
                 <DropdownMenu :modal="false">
@@ -514,7 +508,7 @@
         @close-auto-focus="onReconcileCloseAutoFocus"
       >
         <DialogHeader>
-          <DialogTitle>Reconciliar {{ reconciling?.accountName }}</DialogTitle>
+          <DialogTitle>Conferir {{ reconciling?.accountName }} com o banco</DialogTitle>
           <DialogDescription>
             Informe o saldo que o banco mostra hoje para conferir com o do porquinho.
           </DialogDescription>
@@ -559,7 +553,6 @@ import {
 import AccountForm from '@/components/accounts/AccountForm.vue'
 import ReconcileForm from '@/components/accounts/ReconcileForm.vue'
 import TransferForm from '@/components/accounts/TransferForm.vue'
-import HelpTip from '@/components/common/HelpTip.vue'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import {
@@ -589,7 +582,7 @@ import type { ApiError } from '@/lib/apiError'
  * Story 4.4: "Remover" com confirmação; "Mostrar removidas" lista as removidas com "Restaurar".
  * Story 4.5: "Transferir" (com 2 ou mais contas) abre o diálogo de transferência; a seção "Transferências
  * recentes" lista as transferências registradas.
- * Story 4.6: "Reconciliar" de cada conta abre o diálogo de reconciliação com o banco; a conta mostra a data da última.
+ * Story 4.6: "Conferir com o banco" (antes "Reconciliar") de cada conta abre o diálogo de reconciliação com o banco; a conta mostra a data da última.
  * Retro do Epic 4: as cargas de contas têm guarda de sequência, o 404 de qualquer ação passa por `onAccountNotFound`
  * e o 409 da edição (a conta mudou em outra tela) fecha o diálogo, avisa e recarrega as contas. Item 19: listas,
  * avisos e a máquina de diálogo vêm de composables (`useAccountList`, `useSequencedList`, `useFeedback`,
@@ -915,7 +908,7 @@ function onReconciled(result: ReconciliationResult) {
     accounts.value.splice(index, 1, result.account)
   }
   reconcileDialogOpen.value = false
-  setSuccess('Saldo reconciliado')
+  setSuccess('Saldo conferido com o banco')
   void refreshAccounts()
 }
 
@@ -929,7 +922,7 @@ function onReconcileFailed(detail: string | undefined, status?: number) {
     onAccountNotFound(reconciling.value?.id, 'Esta conta não existe mais')
     return
   }
-  reconcileError.value = detail ?? 'Não foi possível reconciliar a conta. Tente novamente.'
+  reconcileError.value = detail ?? 'Não foi possível conferir o saldo. Tente novamente.'
 }
 
 onMounted(load)

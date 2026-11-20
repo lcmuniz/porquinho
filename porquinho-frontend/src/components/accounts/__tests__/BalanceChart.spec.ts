@@ -33,7 +33,7 @@ describe('BalanceChart', () => {
     expect(legend).toContain('Saldo inicial')
     expect(legend).toContain('Edição')
     expect(legend).toContain('Transferência')
-    expect(legend).toContain('Reconciliação')
+    expect(legend).toContain('Conferência com o banco')
     expect(legend).not.toContain('Transação')
   })
 
@@ -64,7 +64,7 @@ describe('BalanceChart', () => {
     const tooltip = plain(wrapper.get('[data-testid="chart-tooltip"]').text())
     expect(tooltip).toContain('03/11/2026')
     expect(tooltip).toContain('R$ 1.050,00')
-    expect(tooltip).toContain('Reconciliação')
+    expect(tooltip).toContain('Conferência com o banco')
     await wrapper.get('[data-testid="balance-chart-svg"]').trigger('mouseleave')
     expect(wrapper.find('[data-testid="chart-tooltip"]').exists()).toBe(false)
   })

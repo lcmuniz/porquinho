@@ -74,13 +74,13 @@ describe('AccountHistoryView', () => {
     expect(wrapper.findAll('[data-testid="history-row"]')).toHaveLength(4)
   })
 
-  it('a tabela vem da mais recente para a mais antiga, com "Reconciliação R$ 1.050,00" no topo', async () => {
+  it('a tabela vem da mais recente para a mais antiga, com "Conferência com o banco R$ 1.050,00" no topo', async () => {
     const wrapper = await mountView()
     const headers = wrapper.findAll('th').map((th) => th.text())
     expect(headers).toEqual(['Data', 'Evento', 'Saldo'])
     const rows = wrapper.findAll('[data-testid="history-row"]').map((r) => plain(r.text()))
     expect(rows[0]).toContain('03/11/2026')
-    expect(rows[0]).toContain('Reconciliação')
+    expect(rows[0]).toContain('Conferência com o banco')
     expect(rows[0]).toContain('R$ 1.050,00')
     expect(rows[3]).toContain('Saldo inicial')
   })
@@ -91,7 +91,7 @@ describe('AccountHistoryView', () => {
     const tooltip = plain(wrapper.get('[data-testid="chart-tooltip"]').text())
     expect(tooltip).toContain('03/11/2026')
     expect(tooltip).toContain('R$ 1.050,00')
-    expect(tooltip).toContain('Reconciliação')
+    expect(tooltip).toContain('Conferência com o banco')
   })
 
   it('tem o link "Voltar para contas"', async () => {
