@@ -15,6 +15,7 @@ import java.text.Normalizer;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -169,13 +170,29 @@ public class CategoryService {
             hasIcon ? iconName : CategoryOptions.DEFAULT_ICON, false));
     }
 
-    /** First palette color no active group uses; the first of the palette when all are taken. */
+    /**
+     * Palette color no active group uses that is farthest (RGB) from the closest group color, so a new group does not
+     * look like an existing one (#3B82F6 next to #2563EB); ties go to palette order. The first of the palette when all
+     * are taken.
+     */
     private static String freeGroupColor(List<Category> active) {
         Set<String> used = new HashSet<>();
         active.stream().filter(c -> c.getParentCategoryId() == null)
             .forEach(c -> used.add(CategoryOptions.normalizeColor(c.getColorHex())));
-        return CategoryOptions.COLORS.stream().filter(c -> !used.contains(c)).findFirst()
+        return CategoryOptions.COLORS.stream().filter(c -> !used.contains(c))
+            .max(Comparator.comparingInt(c -> used.stream().mapToInt(u -> colorDistance(c, u)).min()
+                .orElse(Integer.MAX_VALUE)))
             .orElse(CategoryOptions.COLORS.get(0));
+    }
+
+    /** Squared RGB distance of two #RRGGBB colors. */
+    private static int colorDistance(String a, String b) {
+        int distance = 0;
+        for (int i = 1; i < 7; i += 2) {
+            int delta = Integer.parseInt(a.substring(i, i + 2), 16) - Integer.parseInt(b.substring(i, i + 2), 16);
+            distance += delta * delta;
+        }
+        return distance;
     }
 
     /** The user's active group with this id; 400 when missing, removed, another user's or a child. */

@@ -279,7 +279,7 @@ class CategoryCustomizationIntegrationTest {
     // ---- Story 6.2: create groups and move children ----
 
     @Test
-    void createWithoutParentCreatesAGroupWithTheFirstFreeColorAndTheFolderIcon() {
+    void createWithoutParentCreatesAGroupWithTheFarthestFreeColorAndTheFolderIcon() {
         atStepFive(List.of("housing", "leisure")); // groups #2563EB and #9333EA
 
         Category home = categoryService.create(userId, " Casa ", null, null, null);
@@ -288,7 +288,7 @@ class CategoryCustomizationIntegrationTest {
         assertThat(row(home.getId()))
             .containsEntry("category_name", "Casa")
             .containsEntry("parent_category_id", null)
-            .containsEntry("color_hex", "#3B82F6")
+            .containsEntry("color_hex", "#F59E0B") // not #3B82F6, too close to the #2563EB group
             .containsEntry("icon_name", CategoryOptions.DEFAULT_ICON)
             .containsEntry("is_system_default", false);
         assertThat(categoryService.create(userId, "Lazer extra", "#ec4899", "gift", null).getColorHex())
