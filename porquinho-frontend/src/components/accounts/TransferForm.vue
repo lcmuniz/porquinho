@@ -75,16 +75,14 @@
     </div>
 
     <div class="space-y-1">
-      <label for="transfer-date" class="text-sm font-medium text-gray-900">Data</label>
-      <Input
-        id="transfer-date"
+      <label id="transfer-date-label" class="text-sm font-medium text-gray-900">Data</label>
+      <DateInput
+        labelledby="transfer-date-label"
         v-model="form.transferDate"
-        type="date"
         :max="todayISO()"
-        class="min-h-[44px]"
-        data-testid="transfer-date-input"
-        :aria-invalid="errors.transferDate ? 'true' : undefined"
-        :aria-describedby="errors.transferDate ? 'transfer-date-error' : undefined"
+        testid="transfer-date-input"
+        :invalid="!!errors.transferDate"
+        :describedby="errors.transferDate ? 'transfer-date-error' : undefined"
       />
       <p
         v-if="errors.transferDate"
@@ -137,6 +135,7 @@ import { SELECT_CLASS } from '@/lib/formField'
 import { reactive, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import DateInput from '@/components/common/DateInput.vue'
 import { toISODate, todayInSaoPaulo } from '@/lib/goalPlan'
 import { formatBRL, parseBRL } from '@/lib/money'
 import { createTransfer } from '@/services/transferService'

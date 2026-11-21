@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, RouterLinkStub, type VueWrapper } from '@vue/test-utils'
 import TransactionsView from '../TransactionsView.vue'
 import type { Transaction } from '@/types/transaction'
+import { inputValue, typeDate } from '@/test-utils/dateInput'
 
 const route: { query: Record<string, string> } = { query: {} }
 const mockReplace = vi.fn()
@@ -92,6 +93,7 @@ async function chooseRowAction(w: VueWrapper, action: 'edit' | 'remove' | 'remov
 }
 
 async function setValue(testId: string, value: string) {
+  if (testId === 'edit-date') return typeDate(inDialog(testId)!, value)
   const element = inDialog<HTMLInputElement | HTMLSelectElement>(testId)!
   element.value = value
   element.dispatchEvent(new Event(element.tagName === 'SELECT' ? 'change' : 'input'))
@@ -514,7 +516,7 @@ describe('TransactionsView', () => {
       const w = await mountView([])
       await openCreate(w)
       expect(inDialog('edit-dialog')?.textContent).toContain('Adicionar transação')
-      expect(inDialog<HTMLInputElement>('edit-date')?.value).toBe('2026-11-09')
+      expect(inputValue(inDialog('edit-date'))).toBe('2026-11-09')
       expect(inDialog<HTMLSelectElement>('edit-type')?.value).toBe('DEBIT')
       expect(inDialog<HTMLSelectElement>('edit-target')?.disabled).toBe(false)
       expect(inDialog('wallet-hint')).toBeNull()

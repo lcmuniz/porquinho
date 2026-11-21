@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import EmergencyFundStep from '../EmergencyFundStep.vue'
+import { inputValue, typeDate } from '@/test-utils/dateInput'
 
 const mockCreateGoal = vi.fn()
 const mockFinish = vi.fn()
@@ -32,6 +33,15 @@ type Wrapper = Awaited<ReturnType<typeof mountStep>>
 const input = (wrapper: Wrapper, field: string) =>
   wrapper.get<HTMLInputElement>(`[data-testid="goal-${field}-input"]`)
 
+const value = (wrapper: Wrapper, field: string) =>
+  field === 'target-date' ? inputValue(input(wrapper, field).element) : input(wrapper, field).element.value
+
+/** Data vai pelos segmentos do DateInput; o resto, pelo setValue. */
+async function setField(wrapper: Wrapper, field: string, v: string) {
+  if (field === 'target-date') await typeDate(input(wrapper, field).element, v)
+  else await input(wrapper, field).setValue(v)
+}
+
 /** Intl usa espaço não separável depois de "R$"; normaliza para comparar. */
 const plain = (s: string) => s.replace(/\s/g, ' ')
 
@@ -56,12 +66,10 @@ describe('EmergencyFundStep', () => {
 
     expect(wrapper.get('h1').text()).toBe('Crie sua primeira meta: Reserva de Emergência')
     expect(document.activeElement).toBe(wrapper.get('h1').element)
-    expect(input(wrapper, 'name').element.value).toBe('Reserva de Emergência')
-    expect(input(wrapper, 'target-amount').element.value).toBe('25.000,00')
-    expect(input(wrapper, 'target-date').element.value).toBe('2027-11-02')
-    expect(input(wrapper, 'target-date').attributes('type')).toBe('date')
-    expect(input(wrapper, 'target-date').attributes('min')).toBe('2026-11-02')
-    expect(input(wrapper, 'monthly-allocation').element.value).toBe('2.083,34')
+    expect(value(wrapper, 'name')).toBe('Reserva de Emergência')
+    expect(value(wrapper, 'target-amount')).toBe('25.000,00')
+    expect(value(wrapper, 'target-date')).toBe('2027-11-02')
+    expect(value(wrapper, 'monthly-allocation')).toBe('2.083,34')
 
     const bar = wrapper.get('[data-testid="goal-progress"]')
     expect(bar.attributes('role')).toBe('progressbar')
@@ -72,6 +80,11 @@ describe('EmergencyFundStep', () => {
     expect(wrapper.get('[data-testid="goal-forecast"]').text()).toBe(
       'Previsão de conclusão: novembro de 2027',
     )
+
+    // Mínimo hoje: o DateInput marca data-invalid numa data anterior
+    expect(input(wrapper, 'target-date').attributes('data-invalid')).toBeUndefined()
+    await setField(wrapper, 'target-date', '2026-11-01')
+    expect(input(wrapper, 'target-date').attributes('data-invalid')).toBeDefined()
   })
 
   it('todos os campos têm label', async () => {
@@ -79,39 +92,41 @@ describe('EmergencyFundStep', () => {
     for (const id of [
       'goal-name',
       'goal-target-amount',
-      'goal-target-date',
       'goal-monthly-allocation',
     ]) {
       expect(wrapper.find(`label[for="${id}"]`).exists()).toBe(true)
       expect(wrapper.find(`#${id}`).exists()).toBe(true)
     }
+    // o campo de data é rotulado por aria-labelledby (o reka põe o id num input escondido)
+    expect(wrapper.find('label#goal-target-date-label').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="goal-target-date-input"]').attributes('aria-labelledby')).toBe('goal-target-date-label')
   })
 
   it('mudar valor ou data recalcula o aporte e a previsão', async () => {
     const wrapper = await mountStep()
 
-    await input(wrapper, 'target-amount').setValue('12.000,00')
-    expect(input(wrapper, 'monthly-allocation').element.value).toBe('1.000,00')
+    await setField(wrapper, 'target-amount', '12.000,00')
+    expect(value(wrapper, 'monthly-allocation')).toBe('1.000,00')
 
-    await input(wrapper, 'target-date').setValue('2027-05-02')
-    expect(input(wrapper, 'monthly-allocation').element.value).toBe('2.000,00')
+    await setField(wrapper, 'target-date', '2027-05-02')
+    expect(value(wrapper, 'monthly-allocation')).toBe('2.000,00')
     expect(wrapper.get('[data-testid="goal-forecast"]').text()).toBe(
       'Previsão de conclusão: maio de 2027',
     )
 
     // Data no mesmo mês: mínimo de 1 mês
-    await input(wrapper, 'target-date').setValue('2026-11-20')
-    expect(input(wrapper, 'monthly-allocation').element.value).toBe('12.000,00')
+    await setField(wrapper, 'target-date', '2026-11-20')
+    expect(value(wrapper, 'monthly-allocation')).toBe('12.000,00')
   })
 
   it('depois de editar o aporte, mudar valor ou data não o sobrescreve; a previsão segue o aporte', async () => {
     const wrapper = await mountStep()
 
-    await input(wrapper, 'monthly-allocation').setValue('1.000,00')
-    await input(wrapper, 'target-amount').setValue('30.000,00')
-    await input(wrapper, 'target-date').setValue('2028-11-02')
+    await setField(wrapper, 'monthly-allocation', '1.000,00')
+    await setField(wrapper, 'target-amount', '30.000,00')
+    await setField(wrapper, 'target-date', '2028-11-02')
 
-    expect(input(wrapper, 'monthly-allocation').element.value).toBe('1.000,00')
+    expect(value(wrapper, 'monthly-allocation')).toBe('1.000,00')
     // 30.000 ÷ 1.000 = 30 meses a partir de 11/2026 → maio de 2029
     expect(wrapper.get('[data-testid="goal-forecast"]').text()).toBe(
       'Previsão de conclusão: maio de 2029',
@@ -121,12 +136,12 @@ describe('EmergencyFundStep', () => {
   it('sem aporte, a prévia mostra a data-alvo; sem os dois, pede um deles', async () => {
     const wrapper = await mountStep()
 
-    await input(wrapper, 'monthly-allocation').setValue('')
+    await setField(wrapper, 'monthly-allocation', '')
     expect(wrapper.get('[data-testid="goal-forecast"]').text()).toBe(
       'Previsão de conclusão: novembro de 2027',
     )
 
-    await input(wrapper, 'target-date').setValue('')
+    await setField(wrapper, 'target-date', '')
     expect(wrapper.get('[data-testid="goal-forecast"]').text()).toContain(
       'Informe um aporte mensal ou uma data-alvo',
     )
@@ -153,8 +168,8 @@ describe('EmergencyFundStep', () => {
 
   it('sem data e sem aporte manda null nos dois', async () => {
     const wrapper = await mountStep()
-    await input(wrapper, 'target-date').setValue('')
-    await input(wrapper, 'monthly-allocation').setValue('')
+    await setField(wrapper, 'target-date', '')
+    await setField(wrapper, 'monthly-allocation', '')
 
     await wrapper.get('[data-testid="create-goal-button"]').trigger('click')
     await flushPromises()
@@ -185,7 +200,7 @@ describe('EmergencyFundStep', () => {
     ['name', '\u200B\uFEFF', 'Informe o nome da meta'],
   ])('valida %s = "%s" no campo, sem chamar a API', async (field, value, message) => {
     const wrapper = await mountStep()
-    await input(wrapper, field).setValue(value)
+    await setField(wrapper, field, value)
 
     await wrapper.get('[data-testid="create-goal-button"]').trigger('click')
     await flushPromises()
@@ -200,7 +215,7 @@ describe('EmergencyFundStep', () => {
 
   it('hoje é aceito como data-alvo', async () => {
     const wrapper = await mountStep()
-    await input(wrapper, 'target-date').setValue('2026-11-02')
+    await setField(wrapper, 'target-date', '2026-11-02')
 
     await wrapper.get('[data-testid="create-goal-button"]').trigger('click')
     await flushPromises()
@@ -311,9 +326,10 @@ describe('EmergencyFundStep', () => {
     for (const testid of ['back-button', 'create-goal-button', 'skip-button']) {
       expect(wrapper.get(`[data-testid="${testid}"]`).classes()).toContain('min-h-[44px]')
     }
-    for (const field of ['name', 'target-amount', 'target-date', 'monthly-allocation']) {
+    for (const field of ['name', 'target-amount', 'monthly-allocation']) {
       expect(input(wrapper, field).classes()).toContain('min-h-[44px]')
     }
+    expect(input(wrapper, 'target-date').classes()).toContain('h-11')
   })
 
   it('"hoje" é o dia em São Paulo: perto da meia-noite UTC ainda vale o dia anterior', async () => {
@@ -321,10 +337,13 @@ describe('EmergencyFundStep', () => {
     vi.setSystemTime(new Date('2026-11-03T01:30:00Z'))
     const wrapper = await mountStep()
 
-    expect(input(wrapper, 'target-date').attributes('min')).toBe('2026-11-02')
-    expect(input(wrapper, 'target-date').element.value).toBe('2027-11-02')
+    expect(value(wrapper, 'target-date')).toBe('2027-11-02')
 
-    await input(wrapper, 'target-date').setValue('2026-11-02')
+    // Mínimo é 02/11 (São Paulo), não 03/11 (UTC)
+    await setField(wrapper, 'target-date', '2026-11-01')
+    expect(input(wrapper, 'target-date').attributes('data-invalid')).toBeDefined()
+    await setField(wrapper, 'target-date', '2026-11-02')
+    expect(input(wrapper, 'target-date').attributes('data-invalid')).toBeUndefined()
     await wrapper.get('[data-testid="create-goal-button"]').trigger('click')
     await flushPromises()
 
@@ -336,7 +355,7 @@ describe('EmergencyFundStep', () => {
   it('aporte de 0,01 numa meta grande mostra "daqui a mais de 100 anos" sem quebrar', async () => {
     const wrapper = await mountStep()
 
-    await input(wrapper, 'monthly-allocation').setValue('0,01')
+    await setField(wrapper, 'monthly-allocation', '0,01')
 
     expect(wrapper.get('[data-testid="goal-forecast"]').text()).toBe(
       'Previsão de conclusão: daqui a mais de 100 anos',
@@ -359,10 +378,10 @@ describe('EmergencyFundStep', () => {
     ])
     const wrapper = await mountStep()
 
-    expect(input(wrapper, 'name').element.value).toBe('Minha reserva')
-    expect(input(wrapper, 'target-amount').element.value).toBe('18.000,00')
-    expect(input(wrapper, 'target-date').element.value).toBe('2027-06-02')
-    expect(input(wrapper, 'monthly-allocation').element.value).toBe('2.250,00')
+    expect(value(wrapper, 'name')).toBe('Minha reserva')
+    expect(value(wrapper, 'target-amount')).toBe('18.000,00')
+    expect(value(wrapper, 'target-date')).toBe('2027-06-02')
+    expect(value(wrapper, 'monthly-allocation')).toBe('2.250,00')
     expect(input(wrapper, 'name').attributes('disabled')).toBeDefined()
     const message = wrapper.get('[data-testid="goal-saved-message"]')
     expect(message.attributes('role')).toBe('status')

@@ -90,18 +90,16 @@
           </div>
 
           <div class="space-y-1">
-            <label for="goal-target-date" class="text-sm font-medium text-gray-900">
+            <label id="goal-target-date-label" class="text-sm font-medium text-gray-900">
               Data-alvo <span class="font-normal text-gray-500">(opcional)</span>
             </label>
-            <Input
-              id="goal-target-date"
+            <DateInput
+              labelledby="goal-target-date-label"
               v-model="form.targetDate"
-              class="min-h-[44px]"
-              type="date"
               :min="toISODate(today)"
-              data-testid="goal-target-date-input"
-              :aria-invalid="errors.targetDate ? 'true' : undefined"
-              :aria-describedby="errors.targetDate ? 'goal-target-date-error' : undefined"
+              testid="goal-target-date-input"
+              :invalid="!!errors.targetDate"
+              :describedby="errors.targetDate ? 'goal-target-date-error' : undefined"
             />
             <p
               v-if="errors.targetDate"
@@ -200,6 +198,7 @@
 import { nextTick, reactive, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import DateInput from '@/components/common/DateInput.vue'
 import {
   Dialog,
   DialogContent,

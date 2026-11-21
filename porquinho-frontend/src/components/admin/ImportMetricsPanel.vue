@@ -6,14 +6,14 @@
       data-testid="import-filters"
       @submit.prevent="apply"
     >
-      <label class="text-sm text-gray-700">
-        De
-        <input v-model="form.from" type="date" :class="SELECT_CLASS" data-testid="filter-from" />
-      </label>
-      <label class="text-sm text-gray-700">
-        Até
-        <input v-model="form.to" type="date" :class="SELECT_CLASS" data-testid="filter-to" />
-      </label>
+      <div class="text-sm text-gray-700">
+        <span id="filter-from-label">De</span>
+        <DateInput v-model="form.from" labelledby="filter-from-label" testid="filter-from" />
+      </div>
+      <div class="text-sm text-gray-700">
+        <span id="filter-to-label">Até</span>
+        <DateInput v-model="form.to" labelledby="filter-to-label" testid="filter-to" />
+      </div>
       <label class="text-sm text-gray-700">
         Banco
         <select v-model="form.bank" :class="SELECT_CLASS" data-testid="filter-bank">
@@ -215,6 +215,7 @@
 </template>
 
 <script setup lang="ts">
+import DateInput from '@/components/common/DateInput.vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import HealthBarChart from '@/components/admin/HealthBarChart.vue'
 import StatusBadge from '@/components/admin/StatusBadge.vue'

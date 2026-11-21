@@ -76,19 +76,17 @@
           </div>
 
           <div class="space-y-1">
-            <label for="goal-target-date" class="text-sm font-medium text-gray-900">
+            <label id="goal-target-date-label" class="text-sm font-medium text-gray-900">
               Data-alvo <span class="font-normal text-gray-500">(opcional)</span>
             </label>
-            <Input
-              class="min-h-[44px]"
-              id="goal-target-date"
+            <DateInput
+              labelledby="goal-target-date-label"
               v-model="form.targetDate"
-              type="date"
               :min="todayISO"
-              data-testid="goal-target-date-input"
+              testid="goal-target-date-input"
               :disabled="goalCreated"
-              :aria-invalid="errors.targetDate ? 'true' : undefined"
-              :aria-describedby="errors.targetDate ? 'goal-target-date-error' : undefined"
+              :invalid="!!errors.targetDate"
+              :describedby="errors.targetDate ? 'goal-target-date-error' : undefined"
             />
             <p
               v-if="errors.targetDate"
@@ -216,6 +214,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ChevronLeft, Target } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import DateInput from '@/components/common/DateInput.vue'
 import {
   addMonths,
   formatMonthYear,

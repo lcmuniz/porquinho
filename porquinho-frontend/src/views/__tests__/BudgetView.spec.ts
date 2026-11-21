@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, RouterLinkStub, type VueWrapper } from '@vue/test-utils'
 import BudgetView from '../BudgetView.vue'
 import type { Budget } from '@/types/budget'
+import { inputValue } from '@/test-utils/dateInput'
 
 const route: { query: Record<string, string> } = { query: {} }
 const mockReplace = vi.fn()
@@ -769,8 +770,7 @@ describe('BudgetView: exportar relatório de orçamento (Story 9.2)', () => {
     await w.get('[data-testid="budget-export"]').trigger('click')
     await flushPromises()
 
-    const from = document.body.querySelector<HTMLInputElement>('[data-testid="budget-export-from"]')!
-    expect(from.value).toBe('2026-10')
+    expect(inputValue(document.body.querySelector('[data-testid="budget-export-from"]'))).toBe('2026-10')
     expect(document.body.querySelector('[data-testid="budget-export-hierarchy"]')).not.toBeNull()
     expect(document.body.querySelector('[data-testid="budget-export-averages"]')).not.toBeNull()
     document.body.querySelector('[data-testid="budget-export-form"]')!.dispatchEvent(new Event('submit'))

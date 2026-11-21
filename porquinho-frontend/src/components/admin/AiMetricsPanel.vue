@@ -6,14 +6,14 @@
       data-testid="ai-filters"
       @submit.prevent="apply"
     >
-      <label class="text-sm text-gray-700">
-        De
-        <input v-model="form.from" type="date" :class="SELECT_CLASS" data-testid="ai-filter-from" />
-      </label>
-      <label class="text-sm text-gray-700">
-        Até
-        <input v-model="form.to" type="date" :class="SELECT_CLASS" data-testid="ai-filter-to" />
-      </label>
+      <div class="text-sm text-gray-700">
+        <span id="ai-filter-from-label">De</span>
+        <DateInput v-model="form.from" labelledby="ai-filter-from-label" testid="ai-filter-from" />
+      </div>
+      <div class="text-sm text-gray-700">
+        <span id="ai-filter-to-label">Até</span>
+        <DateInput v-model="form.to" labelledby="ai-filter-to-label" testid="ai-filter-to" />
+      </div>
       <label class="text-sm text-gray-700">
         Banco
         <select v-model="form.bank" :class="SELECT_CLASS" data-testid="ai-filter-bank">
@@ -228,6 +228,7 @@
 </template>
 
 <script setup lang="ts">
+import DateInput from '@/components/common/DateInput.vue'
 import { computed, onMounted, reactive, ref } from 'vue'
 import AccuracyLineChart from '@/components/admin/AccuracyLineChart.vue'
 import HealthBarChart from '@/components/admin/HealthBarChart.vue'

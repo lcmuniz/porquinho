@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import ImportMetricsPanel from '../ImportMetricsPanel.vue'
+import { inputValue, typeDate } from '@/test-utils/dateInput'
 import type { ImportBankDetail, ImportMetrics } from '@/types/admin'
 
 const mockGetImportMetrics = vi.fn()
@@ -82,7 +83,7 @@ describe('ImportMetricsPanel', () => {
       '#B91C1C',
       '#047857',
     ])
-    expect(wrapper.get('[data-testid="filter-from"]').element).toHaveProperty('value', '2026-10-19')
+    expect(inputValue(wrapper.get('[data-testid="filter-from"]').element)).toBe('2026-10-19')
   })
 
   it('sem importações mostra "Nenhuma importação no período"', async () => {
@@ -118,8 +119,8 @@ describe('ImportMetricsPanel', () => {
     await wrapper.get('[data-testid="bank-open-NUBANK"]').trigger('click')
     await flushPromises()
 
-    await wrapper.get('[data-testid="filter-from"]').setValue('2026-11-01')
-    await wrapper.get('[data-testid="filter-to"]').setValue('2026-11-10')
+    await typeDate(wrapper.get('[data-testid="filter-from"]').element as HTMLElement, '2026-11-01')
+    await typeDate(wrapper.get('[data-testid="filter-to"]').element as HTMLElement, '2026-11-10')
     await wrapper.get('[data-testid="filter-bank"]').setValue('NUBANK')
     await wrapper.get('[data-testid="filter-status"]').setValue('FAILED')
     mockGetImportMetrics.mockResolvedValue(metrics({ from: '2026-11-01', to: '2026-11-10' }))

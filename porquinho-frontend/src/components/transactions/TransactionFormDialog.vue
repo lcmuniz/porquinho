@@ -21,14 +21,12 @@
       </p>
       <form class="space-y-4" novalidate data-testid="edit-form" @submit.prevent="save">
         <div class="space-y-1">
-          <label for="transaction-date" class="text-sm font-medium text-gray-900">Data</label>
-          <Input
-            id="transaction-date"
+          <label id="transaction-date-label" class="text-sm font-medium text-gray-900">Data</label>
+          <DateInput
+            labelledby="transaction-date-label"
             v-model="form.date"
-            type="date"
-            class="min-h-[44px]"
-            :aria-describedby="isFutureDate ? 'transaction-date-warning' : undefined"
-            data-testid="edit-date"
+            :describedby="isFutureDate ? 'transaction-date-warning' : undefined"
+            testid="edit-date"
           />
           <p
             v-if="isFutureDate"
@@ -149,6 +147,7 @@
 <script setup lang="ts">
 import { SELECT_CLASS } from '@/lib/formField'
 import { Input } from '@/components/ui/input'
+import DateInput from '@/components/common/DateInput.vue'
 import { computed, reactive, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { Button } from '@/components/ui/button'

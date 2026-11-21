@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import BudgetExportDialog from '../BudgetExportDialog.vue'
+import { inputValue, pickMonth } from '@/test-utils/dateInput'
 
 const mockExport = vi.fn()
 vi.mock('@/services/budgetService', () => ({
@@ -34,12 +35,7 @@ async function mountDialog(initialMonth = '2026-11') {
 const $ = <T extends Element = HTMLElement>(testid: string) =>
   document.body.querySelector<T>(`[data-testid="${testid}"]`)
 
-async function setMonth(testid: string, value: string) {
-  const input = $<HTMLInputElement>(testid)!
-  input.value = value
-  input.dispatchEvent(new Event('input'))
-  await flushPromises()
-}
+const setMonth = (testid: string, value: string) => pickMonth($(testid)!, value)
 
 async function submit() {
   $<HTMLFormElement>('budget-export-form')!.dispatchEvent(new Event('submit'))
@@ -69,8 +65,8 @@ describe('BudgetExportDialog', () => {
       expect(this.download).toBe('orcamento_2026-11.csv')
     })
     const w = await mountDialog()
-    expect($<HTMLInputElement>('budget-export-from')!.value).toBe('2026-11')
-    expect($<HTMLInputElement>('budget-export-to')!.value).toBe('2026-11')
+    expect(inputValue($('budget-export-from'))).toBe('2026-11')
+    expect(inputValue($('budget-export-to'))).toBe('2026-11')
     expect($<HTMLInputElement>('budget-export-hierarchy')!.checked).toBe(false)
     expect($<HTMLInputElement>('budget-export-averages')!.checked).toBe(false)
 
@@ -99,7 +95,8 @@ describe('BudgetExportDialog', () => {
     expect(click).toHaveBeenCalledOnce()
   })
 
-  it('intervalo invertido, acima de 12 meses ou vazio desabilita "Gerar CSV" com texto de ajuda', async () => {
+  // O MonthInput não deixa apagar o mês depois de escolhido; o caso "vazio" saiu daqui.
+  it('intervalo invertido ou acima de 12 meses desabilita "Gerar CSV" com texto de ajuda', async () => {
     await mountDialog()
     await setMonth('budget-export-from', '2026-12')
     const button = $<HTMLButtonElement>('budget-export-submit')!
@@ -108,8 +105,6 @@ describe('BudgetExportDialog', () => {
     expect($('budget-export-help')!.textContent?.trim()).toBe('Escolha até 12 meses, com o mês final a partir do inicial.')
 
     await setMonth('budget-export-from', '2025-11')
-    expect($<HTMLButtonElement>('budget-export-submit')!.disabled).toBe(true)
-    await setMonth('budget-export-from', '')
     expect($<HTMLButtonElement>('budget-export-submit')!.disabled).toBe(true)
 
     // 12 meses é o limite
@@ -152,10 +147,16 @@ describe('BudgetExportDialog', () => {
     expect(w.emitted('exported')).toEqual([[]])
   })
 
-  it('o foco entra no mês inicial e volta ao botão que abriu', async () => {
+  // Regressão: um portal montado junto com o diálogo fazia o FocusScope do reka roubar o foco inicial
+  it('o foco entra no mês inicial', async () => {
     await mountDialog()
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(document.activeElement?.getAttribute('data-testid')).toBe('budget-export-from')
+  })
+
+  it('o foco volta ao botão que abriu', async () => {
+    await mountDialog()
+    await new Promise((resolve) => setTimeout(resolve, 0))
 
     $<HTMLButtonElement>('budget-export-cancel')!.click()
     await flushPromises()

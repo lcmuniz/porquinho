@@ -26,27 +26,23 @@
         </div>
         <div v-if="form.preset === 'custom'" class="grid grid-cols-2 gap-3">
           <div class="space-y-1">
-            <label for="export-from" class="text-sm font-medium text-gray-900">De</label>
-            <Input
-              id="export-from"
+            <label id="export-from-label" class="text-sm font-medium text-gray-900">De</label>
+            <DateInput
+              labelledby="export-from-label"
               v-model="form.from"
-              type="date"
-              class="min-h-[44px]"
-              :aria-invalid="!period"
-              :aria-describedby="!period ? 'export-period-help' : undefined"
-              data-testid="export-from"
+              :invalid="!period"
+              :describedby="!period ? 'export-period-help' : undefined"
+              testid="export-from"
             />
           </div>
           <div class="space-y-1">
-            <label for="export-to" class="text-sm font-medium text-gray-900">Até</label>
-            <Input
-              id="export-to"
+            <label id="export-to-label" class="text-sm font-medium text-gray-900">Até</label>
+            <DateInput
+              labelledby="export-to-label"
               v-model="form.to"
-              type="date"
-              class="min-h-[44px]"
-              :aria-invalid="!period"
-              :aria-describedby="!period ? 'export-period-help' : undefined"
-              data-testid="export-to"
+              :invalid="!period"
+              :describedby="!period ? 'export-period-help' : undefined"
+              testid="export-to"
             />
           </div>
           <p v-if="!period" id="export-period-help" class="col-span-2 text-sm text-red-700" data-testid="export-period-help">
@@ -116,7 +112,7 @@
 import { computed, reactive } from 'vue'
 import { useExportDialog } from '@/composables/useExportDialog'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import DateInput from '@/components/common/DateInput.vue'
 import {
   Dialog,
   DialogContent,

@@ -3,6 +3,7 @@ import { mount, flushPromises, RouterLinkStub, type VueWrapper } from '@vue/test
 import BudgetComparisonView from '../BudgetComparisonView.vue'
 import PlannedVsActualChart from '@/components/budget/PlannedVsActualChart.vue'
 import type { Budget, CategoryBudget } from '@/types/budget'
+import { pickMonth } from '@/test-utils/dateInput'
 
 const route: { query: Record<string, string> } = { query: {} }
 const mockReplace = vi.fn()
@@ -321,10 +322,10 @@ describe('BudgetComparisonView', () => {
         : budget(month, [cb('c1', null, 20), cb('c4', null, 10)]),
     )
     await w.get('[data-testid="period-custom"]').trigger('click')
-    await w.get('[data-testid="custom-from"]').setValue('2026-09')
+    await pickMonth(w.get('[data-testid="custom-from"]').element as HTMLElement, '2026-09')
     await flushPromises()
     mockGet.mockClear()
-    await w.get('[data-testid="custom-to"]').setValue('2026-10')
+    await pickMonth(w.get('[data-testid="custom-to"]').element as HTMLElement, '2026-10')
     await flushPromises()
     expect(mockGet.mock.calls.map((c) => c[0])).toEqual(['2026-09', '2026-10'])
     // alocado em um mês só já conta como "com orçamento"; o gasto do mês sem orçamento vai à parte (decisão A)
@@ -339,17 +340,17 @@ describe('BudgetComparisonView', () => {
     expect(w.get('[data-testid="period-label"]').text()).toBe('setembro de 2026 a outubro de 2026')
 
     mockGet.mockClear()
-    await w.get('[data-testid="custom-to"]').setValue('2026-08')
+    await pickMonth(w.get('[data-testid="custom-to"]').element as HTMLElement, '2026-08')
     await flushPromises()
     expect(w.get('[data-testid="range-error"]').text()).toBe(
       'Escolha até 12 meses, com o mês final depois do inicial',
     )
-    await w.get('[data-testid="custom-from"]').setValue('2024-01')
-    await w.get('[data-testid="custom-to"]').setValue('2026-11')
+    await pickMonth(w.get('[data-testid="custom-from"]').element as HTMLElement, '2024-01')
+    await pickMonth(w.get('[data-testid="custom-to"]').element as HTMLElement, '2026-11')
     await flushPromises()
     expect(w.find('[data-testid="range-error"]').exists()).toBe(true)
     expect(mockGet).not.toHaveBeenCalled()
-    await w.get('[data-testid="custom-from"]').setValue('2025-12')
+    await pickMonth(w.get('[data-testid="custom-from"]').element as HTMLElement, '2025-12')
     await flushPromises()
     expect(mockGet).toHaveBeenCalledTimes(12)
   })
@@ -403,8 +404,8 @@ describe('BudgetComparisonView', () => {
     )
     const w = await mountView()
     await w.get('[data-testid="period-custom"]').trigger('click')
-    await w.get('[data-testid="custom-from"]').setValue('2026-01')
-    await w.get('[data-testid="custom-to"]').setValue('2026-02')
+    await pickMonth(w.get('[data-testid="custom-from"]').element as HTMLElement, '2026-01')
+    await pickMonth(w.get('[data-testid="custom-to"]').element as HTMLElement, '2026-02')
     await flushPromises()
 
     const cells = (id: string) =>

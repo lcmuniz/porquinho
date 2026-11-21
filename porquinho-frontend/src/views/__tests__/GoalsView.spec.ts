@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, RouterLinkStub, type VueWrapper } from '@vue/test-utils'
 import GoalsView from '../GoalsView.vue'
 import type { Goal } from '@/types/goal'
+import { inputValue, typeDate } from '@/test-utils/dateInput'
 
 const mockList = vi.fn()
 const mockCreate = vi.fn()
@@ -55,6 +56,7 @@ const inDialog = <T extends Element = HTMLElement>(testId: string) =>
   document.body.querySelector<T>(`[data-testid="${testId}"]`)
 
 async function type(testId: string, value: string) {
+  if (testId === 'goal-target-date-input') return typeDate(inDialog(testId)!, value)
   const el = inDialog<HTMLInputElement>(testId)!
   el.value = value
   el.dispatchEvent(new Event('input'))
@@ -260,7 +262,8 @@ describe('GoalsView', () => {
       inDialog<HTMLInputElement>(`goal-template-${code}`)!.click()
       await flushPromises()
     }
-    const value = (testId: string) => inDialog<HTMLInputElement>(testId)!.value
+    const value = (testId: string) =>
+      testId === 'goal-target-date-input' ? inputValue(inDialog(testId)) : inDialog<HTMLInputElement>(testId)!.value
 
     it('começa em "Personalizada" com o rótulo "Usar modelo"', async () => {
       await mountView()

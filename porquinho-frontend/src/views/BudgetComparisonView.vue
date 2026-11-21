@@ -41,22 +41,16 @@
         <div v-if="period === 'custom'" class="flex flex-wrap gap-3" data-testid="custom-range">
           <label class="space-y-1 text-sm text-gray-700">
             <span class="block">Mês inicial</span>
-            <Input
+            <MonthInput
               v-model="customFrom"
-              type="month"
-              placeholder="AAAA-MM"
-              class="min-h-[44px]"
-              data-testid="custom-from"
+              testid="custom-from"
             />
           </label>
           <label class="space-y-1 text-sm text-gray-700">
             <span class="block">Mês final</span>
-            <Input
+            <MonthInput
               v-model="customTo"
-              type="month"
-              placeholder="AAAA-MM"
-              class="min-h-[44px]"
-              data-testid="custom-to"
+              testid="custom-to"
             />
           </label>
         </div>
@@ -282,7 +276,7 @@ import BudgetStatusLabel from '@/components/budget/BudgetStatusLabel.vue'
 import PlannedVsActualChart from '@/components/budget/PlannedVsActualChart.vue'
 import SortableHeader from '@/components/common/SortableHeader.vue'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import MonthInput from '@/components/common/MonthInput.vue'
 import { STATUS, computeStatus } from '@/lib/budgetStatus'
 import { currentMonth, formatMonthBR, shiftMonth } from '@/lib/date'
 import { csvLine, downloadCsv } from '@/lib/download'

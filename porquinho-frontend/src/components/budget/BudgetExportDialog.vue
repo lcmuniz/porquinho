@@ -17,28 +17,22 @@
         <div class="grid grid-cols-2 gap-3">
           <div class="space-y-1">
             <label for="budget-export-from" class="text-sm font-medium text-gray-900">Mês inicial</label>
-            <Input
+            <MonthInput
               id="budget-export-from"
               v-model="form.from"
-              type="month"
-              placeholder="AAAA-MM"
-              class="min-h-[44px]"
-              :aria-invalid="!valid"
-              :aria-describedby="!valid ? 'budget-export-help' : undefined"
-              data-testid="budget-export-from"
+              :invalid="!valid"
+              :describedby="!valid ? 'budget-export-help' : undefined"
+              testid="budget-export-from"
             />
           </div>
           <div class="space-y-1">
             <label for="budget-export-to" class="text-sm font-medium text-gray-900">Mês final</label>
-            <Input
+            <MonthInput
               id="budget-export-to"
               v-model="form.to"
-              type="month"
-              placeholder="AAAA-MM"
-              class="min-h-[44px]"
-              :aria-invalid="!valid"
-              :aria-describedby="!valid ? 'budget-export-help' : undefined"
-              data-testid="budget-export-to"
+              :invalid="!valid"
+              :describedby="!valid ? 'budget-export-help' : undefined"
+              testid="budget-export-to"
             />
           </div>
           <p v-if="!valid" id="budget-export-help" class="col-span-2 text-sm text-red-700" data-testid="budget-export-help">
@@ -93,7 +87,7 @@
 import { computed, reactive } from 'vue'
 import { useExportDialog } from '@/composables/useExportDialog'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import MonthInput from '@/components/common/MonthInput.vue'
 import {
   Dialog,
   DialogContent,

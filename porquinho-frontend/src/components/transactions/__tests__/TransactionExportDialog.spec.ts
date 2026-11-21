@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import TransactionExportDialog, { type ExportInitial } from '../TransactionExportDialog.vue'
+import { typeDate } from '@/test-utils/dateInput'
 
 const mockExport = vi.fn()
 vi.mock('@/services/dashboardService', () => ({
@@ -130,15 +131,10 @@ describe('TransactionExportDialog', () => {
     expect(button.getAttribute('aria-describedby')).toBe('export-period-help')
     expect($('export-period-help')!.textContent).toContain('datas válidas')
 
-    const to = $<HTMLInputElement>('export-to')!
-    to.value = ''
-    to.dispatchEvent(new Event('input'))
-    await flushPromises()
+    await typeDate($('export-to')!, '')
     expect($<HTMLButtonElement>('export-submit')!.disabled).toBe(true)
 
-    to.value = '2026-12-15'
-    to.dispatchEvent(new Event('input'))
-    await flushPromises()
+    await typeDate($('export-to')!, '2026-12-15')
     expect($<HTMLButtonElement>('export-submit')!.disabled).toBe(false)
     await submit()
     expect(lastPeriod()).toEqual(['2026-11-30', '2026-12-15'])

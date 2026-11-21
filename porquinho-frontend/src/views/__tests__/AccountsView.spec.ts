@@ -8,6 +8,7 @@ import TransferForm from '@/components/accounts/TransferForm.vue'
 import { toISODate, todayInSaoPaulo } from '@/lib/goalPlan'
 import type { Account, ReconciliationResult } from '@/types/account'
 import type { Transfer } from '@/types/transfer'
+import { inputValue, typeDate } from '@/test-utils/dateInput'
 
 const mockList = vi.fn()
 const mockCreate = vi.fn()
@@ -1418,7 +1419,7 @@ describe('AccountsView — transferências (Story 4.5)', () => {
     expect(items[1]!.find('[data-testid="transfer-description"]').exists()).toBe(false)
   })
 
-  it('abre "Nova transferência" com as contas ativas (nome e saldo), data de hoje e foco na origem', async () => {
+  it('abre "Nova transferência" com as contas ativas (nome e saldo) e data de hoje', async () => {
     const wrapper = await mountView()
     const form = await openTransfer(wrapper)
 
@@ -1434,9 +1435,14 @@ describe('AccountsView — transferências (Story 4.5)', () => {
     expect(
       (form.get('[data-testid="transfer-to-select"]').element as HTMLSelectElement).value,
     ).toBe('a2')
-    const date = form.get('[data-testid="transfer-date-input"]').element as HTMLInputElement
-    expect(date.value).toBe(today)
-    expect(date.max).toBe(today)
+    // O máximo (hoje) é coberto em TransferForm.spec e pela validação de data futura abaixo
+    expect(inputValue(form.get('[data-testid="transfer-date-input"]').element)).toBe(today)
+  })
+
+  // Regressão: um portal montado junto com o diálogo fazia o FocusScope do reka roubar o foco inicial
+  it('"Nova transferência" abre com foco na origem', async () => {
+    const wrapper = await mountView()
+    await openTransfer(wrapper)
     await flushPromises()
     expect(document.activeElement?.getAttribute('data-testid')).toBe('transfer-from-select')
   })
@@ -1524,7 +1530,7 @@ describe('AccountsView — transferências (Story 4.5)', () => {
     await fillAndSubmit(form, '10,123')
     expect(form.find('[data-testid="transfer-amount-error"]').exists()).toBe(true)
 
-    await form.get('[data-testid="transfer-date-input"]').setValue('2999-01-01')
+    await typeDate(form.get('[data-testid="transfer-date-input"]').element as HTMLElement, '2999-01-01')
     await fillAndSubmit(form, '10')
     expect(form.get('[data-testid="transfer-date-error"]').text()).toBe(
       'A data não pode estar no futuro',

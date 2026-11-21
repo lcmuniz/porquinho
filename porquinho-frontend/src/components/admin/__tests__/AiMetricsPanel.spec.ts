@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import AiMetricsPanel from '../AiMetricsPanel.vue'
 import type { AiBankDetail, AiMetrics } from '@/types/admin'
+import { inputValue, typeDate } from '@/test-utils/dateInput'
 
 const mockGetAiMetrics = vi.fn()
 const mockGetAiBankDetail = vi.fn()
@@ -92,7 +93,7 @@ describe('AiMetricsPanel', () => {
     // traço fixo por banco, não pela posição: Itaú vem primeiro e mantém o seu
     expect(series.map((g) => g.get('path').attributes('stroke-dasharray'))).toEqual(['2 3', 'none'])
     expect(wrapper.get('[data-testid="ai-chart-trend-table"]').text()).toContain('11/26')
-    expect(wrapper.get('[data-testid="ai-filter-from"]').element).toHaveProperty('value', '2026-10-19')
+    expect(inputValue(wrapper.get('[data-testid="ai-filter-from"]').element)).toBe('2026-10-19')
   })
 
   it('variação: queda, e "sem comparação" sem o mês anterior', async () => {
@@ -136,8 +137,8 @@ describe('AiMetricsPanel', () => {
     await wrapper.get('[data-testid="ai-open-ITAU"]').trigger('click')
     await flushPromises()
 
-    await wrapper.get('[data-testid="ai-filter-from"]').setValue('2026-11-01')
-    await wrapper.get('[data-testid="ai-filter-to"]').setValue('2026-11-10')
+    await typeDate(wrapper.get('[data-testid="ai-filter-from"]').element as HTMLElement, '2026-11-01')
+    await typeDate(wrapper.get('[data-testid="ai-filter-to"]').element as HTMLElement, '2026-11-10')
     await wrapper.get('[data-testid="ai-filter-bank"]').setValue('ITAU')
     mockGetAiMetrics.mockResolvedValue(metrics({ from: '2026-11-01', to: '2026-11-10' }))
     await wrapper.get('[data-testid="ai-filters"]').trigger('submit')

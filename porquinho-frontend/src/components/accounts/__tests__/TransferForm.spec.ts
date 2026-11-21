@@ -5,6 +5,7 @@ import TransferForm from '../TransferForm.vue'
 import { toISODate, todayInSaoPaulo } from '@/lib/goalPlan'
 import type { Account } from '@/types/account'
 import type { Transfer } from '@/types/transfer'
+import { inputValue, typeDate } from '@/test-utils/dateInput'
 
 const mockCreate = vi.fn()
 
@@ -47,6 +48,8 @@ function mountForm(props: Record<string, unknown> = {}) {
 
 type Wrapper = ReturnType<typeof mountForm>
 
+const dateField = (wrapper: Wrapper) => wrapper.get('[data-testid="transfer-date-input"]').element as HTMLElement
+
 async function submit(wrapper: Wrapper) {
   await wrapper.get('[data-testid="transfer-form"]').trigger('submit')
   await flushPromises()
@@ -69,28 +72,31 @@ describe('TransferForm', () => {
       'transfer-from',
       'transfer-to',
       'transfer-amount',
-      'transfer-date',
       'transfer-description',
     ]) {
       expect(wrapper.find(`label[for="${id}"]`).exists()).toBe(true)
       expect(wrapper.get(`#${id}`).classes()).toContain('min-h-[44px]')
     }
+    // o campo de data é rotulado por aria-labelledby (o reka põe o id num input escondido)
+    expect(wrapper.find('label#transfer-date-label').exists()).toBe(true)
+    expect(dateField(wrapper).classList).toContain('h-11')
+    expect(dateField(wrapper).getAttribute('aria-labelledby')).toBe('transfer-date-label')
     expect(wrapper.get('[data-testid="save-transfer-button"]').classes()).toContain('min-h-[44px]')
   })
 
-  it('usa <select> nativo e <input type="date"> com padrão e máximo hoje', () => {
+  it('usa <select> nativo e campo de data com padrão e máximo hoje', async () => {
     const wrapper = mountForm()
     expect(wrapper.get('[data-testid="transfer-from-select"]').element.tagName).toBe('SELECT')
-    const date = wrapper.get('[data-testid="transfer-date-input"]').element as HTMLInputElement
-    expect(date.type).toBe('date')
-    expect(date.value).toBe(today)
-    expect(date.max).toBe(today)
+    expect(inputValue(dateField(wrapper))).toBe(today)
+    expect(dateField(wrapper).hasAttribute('data-invalid')).toBe(false)
+    await typeDate(dateField(wrapper), '2999-12-31')
+    expect(dateField(wrapper).hasAttribute('data-invalid')).toBe(true)
   })
 
   it('envia valor no formato brasileiro, a data e a descrição sem espaços e emite created', async () => {
     const wrapper = mountForm()
     await wrapper.get('[data-testid="transfer-amount-input"]').setValue('1.200,50')
-    await wrapper.get('[data-testid="transfer-date-input"]').setValue('2026-10-31')
+    await typeDate(dateField(wrapper), '2026-10-31')
     await wrapper.get('[data-testid="transfer-description-input"]').setValue('  Reserva ')
     await submit(wrapper)
 
@@ -152,13 +158,13 @@ describe('TransferForm', () => {
   it('data vazia ou futura mostra o erro no campo', async () => {
     const wrapper = mountForm()
     await wrapper.get('[data-testid="transfer-amount-input"]').setValue('10')
-    await wrapper.get('[data-testid="transfer-date-input"]').setValue('')
+    await typeDate(dateField(wrapper), '')
     await submit(wrapper)
     expect(wrapper.get('[data-testid="transfer-date-error"]').text()).toBe(
       'Informe a data da transferência',
     )
 
-    await wrapper.get('[data-testid="transfer-date-input"]').setValue('2999-12-31')
+    await typeDate(dateField(wrapper), '2999-12-31')
     await submit(wrapper)
     expect(wrapper.get('[data-testid="transfer-date-error"]').text()).toBe(
       'A data não pode estar no futuro',
@@ -232,21 +238,18 @@ describe('TransferForm', () => {
     try {
       vi.setSystemTime(new Date('2026-11-03T12:00:00-03:00'))
       const wrapper = mountForm()
-      expect(
-        (wrapper.get('[data-testid="transfer-date-input"]').element as HTMLInputElement).max,
-      ).toBe('2026-11-03')
+      // O máximo do campo aparece como data-invalid (reka) quando a data passa de hoje
+      await typeDate(dateField(wrapper), '2026-11-04')
+      expect(dateField(wrapper).hasAttribute('data-invalid')).toBe(true)
 
       // Passa da meia-noite em São Paulo com o formulário aberto
       vi.setSystemTime(new Date('2026-11-04T00:30:00-03:00'))
       await wrapper.get('[data-testid="transfer-amount-input"]').setValue('10')
-      await wrapper.get('[data-testid="transfer-date-input"]').setValue('2026-11-04')
       await submit(wrapper)
 
       expect(wrapper.find('[data-testid="transfer-date-error"]').exists()).toBe(false)
       expect(mockCreate.mock.calls[0]![0].transferDate).toBe('2026-11-04')
-      expect(
-        (wrapper.get('[data-testid="transfer-date-input"]').element as HTMLInputElement).max,
-      ).toBe('2026-11-04')
+      expect(dateField(wrapper).hasAttribute('data-invalid')).toBe(false)
     } finally {
       vi.useRealTimers()
     }
