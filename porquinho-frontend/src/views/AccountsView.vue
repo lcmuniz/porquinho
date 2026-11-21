@@ -131,7 +131,7 @@
                 </p>
                 <p
                   v-if="account.lastReconciliationDate"
-                  class="truncate text-xs text-gray-500"
+                  class="text-xs text-gray-500"
                   data-testid="account-reconciled-at"
                 >
                   Conferida com o banco em {{ formatDateBR(account.lastReconciliationDate) }}
@@ -148,7 +148,7 @@
                 <!-- Story 4.7: gráfico do saldo ao longo do tempo -->
                 <RouterLink
                   :to="`/contas/${account.id}/historico`"
-                  class="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center gap-2 rounded-md px-3 text-sm font-medium text-purple-700 hover:bg-purple-50"
+                  class="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center gap-2 rounded-md px-2 text-sm font-medium text-purple-700 hover:bg-purple-50 sm:px-3"
                   :data-testid="`history-account-${account.id}`"
                   :aria-label="`Histórico de ${account.accountName}`"
                 >
@@ -158,14 +158,15 @@
                 <!-- Story 4.6: conferir o saldo com o banco -->
                 <Button
                   variant="ghost"
-                  class="min-h-[44px] min-w-[44px] shrink-0 text-purple-700 hover:bg-purple-50"
+                  class="min-h-[44px] min-w-[44px] shrink-0 px-2 text-purple-700 hover:bg-purple-50 sm:px-4"
                   :data-testid="`reconcile-account-${account.id}`"
                   :aria-label="`Conferir com o banco: ${account.accountName}`"
                   @click="openReconcile(account)"
                 >
                   <Scale class="h-4 w-4" aria-hidden="true" />
-                  <!-- Critique de 20/11/2026 (3ª): o nome explica a ação e dispensa o (?) de "reconciliar" -->
-                  Conferir com o banco
+                  <!-- Critique de 20/11/2026 (3ª): o nome explica a ação e dispensa o (?) de "reconciliar". No celular,
+                       "Conferir" cabe na linha com "Histórico" e "⋯"; o nome acessível segue completo -->
+                  Conferir<span class="hidden sm:inline"> com o banco</span>
                 </Button>
                 <!-- Ações menos frequentes ficam no menu "⋯" -->
                 <DropdownMenu :modal="false">
