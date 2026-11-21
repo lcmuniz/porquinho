@@ -166,7 +166,8 @@
                   <Scale class="h-4 w-4" aria-hidden="true" />
                   <!-- Critique de 20/11/2026 (3ª): o nome explica a ação e dispensa o (?) de "reconciliar". No celular,
                        "Conferir" cabe na linha com "Histórico" e "⋯"; o nome acessível segue completo -->
-                  Conferir<span class="hidden sm:inline"> com o banco</span>
+                  <!-- Um span só: o gap do botão separava "Conferir" de " com o banco" com espaço em dobro -->
+                  <span>Conferir<span class="hidden sm:inline"> com o banco</span></span>
                 </Button>
                 <!-- Ações menos frequentes ficam no menu "⋯" -->
                 <DropdownMenu :modal="false">
