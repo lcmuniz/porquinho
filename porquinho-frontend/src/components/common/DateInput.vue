@@ -18,7 +18,7 @@
       :data-value="modelValue"
       class="flex h-11 w-full min-w-0 items-center rounded-[10px] border border-input bg-card pr-1 pl-3 text-base tabular-nums focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50 aria-invalid:border-destructive data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 md:text-[15px]"
     >
-      <div class="flex flex-1 items-center">
+      <div ref="segmentsEl" class="flex flex-1 items-center">
         <template v-for="item in segments" :key="item.part">
           <DatePickerInput v-if="item.part === 'literal'" :part="item.part" class="text-gray-500">
             {{ item.value }}
@@ -107,7 +107,7 @@ import {
   DatePickerTrigger,
   type DateValue,
 } from 'reka-ui'
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 /**
  * Campo de data sempre em dd/mm/aaaa. O `<input type="date">` nativo segue o idioma do navegador (mm/dd/aaaa num
@@ -141,6 +141,22 @@ function toDate(value: string | undefined): CalendarDate | undefined {
     return undefined
   }
 }
+
+/**
+ * O reka chama preventDefault em toda tecla de um segmento (menos Tab), e o diálogo ignora o Esc com defaultPrevented:
+ * com o foco na data, o Esc não fechava o diálogo. Esc não tem ação padrão aqui, então o preventDefault vira nada.
+ */
+const segmentsEl = ref<HTMLElement | null>(null)
+// Listener nativo: o do Vue marca o evento com a hora e faz os listeners do reka ignorá-lo quando o Date é falso nos testes
+onMounted(() =>
+  segmentsEl.value?.addEventListener(
+    'keydown',
+    (event) => {
+      if (event.key === 'Escape') event.preventDefault = () => {}
+    },
+    { capture: true },
+  ),
+)
 
 const date = computed<DateValue | undefined>({
   get: () => toDate(props.modelValue),

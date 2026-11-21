@@ -34,4 +34,13 @@ describe('DateInput', () => {
     expect(value.value).toBe('2026-11-05')
     wrapper.unmount()
   })
+
+  // Regressão: o diálogo só fecha com Esc que não teve preventDefault
+  it('Esc num segmento não fica com defaultPrevented', () => {
+    const { wrapper } = host('2026-11-28')
+    const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    wrapper.get('[data-testid="d-day"]').element.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+    wrapper.unmount()
+  })
 })
