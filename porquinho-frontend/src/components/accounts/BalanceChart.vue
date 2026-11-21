@@ -149,7 +149,7 @@ import {
 } from '@/lib/balanceEvents'
 import {
   LINE_CHART,
-  axisBRL,
+  axisLabels,
   balanceDomain,
   labelPad,
   movePointFocus,
@@ -213,9 +213,11 @@ const xDomain = computed<[number, number]>(() => {
 
 const yDomain = computed(() => balanceDomain(props.points.map((p) => p.balance)))
 
-const yLabels = computed(() =>
-  valueTicks(yDomain.value, Y_TICKS).map((value) => ({ value, label: axisBRL(value, narrow.value) })),
-)
+const yLabels = computed(() => {
+  const values = valueTicks(yDomain.value, Y_TICKS)
+  const labels = axisLabels(values, narrow.value)
+  return values.map((value, i) => ({ value, label: labels[i]! }))
+})
 
 /** Estreito: margem esquerda do tamanho do maior rótulo. */
 const PAD = computed(() =>

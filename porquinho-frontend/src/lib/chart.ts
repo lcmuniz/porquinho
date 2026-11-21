@@ -105,6 +105,12 @@ export function axisBRL(value: number, compact: boolean): string {
   return compact ? COMPACT_BRL.format(value) : formatBRL(value)
 }
 
+/** Rótulos dos ticks; numa faixa estreita (10.000 a 10.200) o compacto arredonda e repete, então vai o valor exato. */
+export function axisLabels(values: number[], compact: boolean): string[] {
+  const labels = values.map((value) => axisBRL(value, compact))
+  return new Set(labels).size === labels.length ? labels : values.map((value) => axisBRL(value, false))
+}
+
 /** Largura média aproximada de um caractere em 13px. */
 const CHAR_PX = 7.5
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { axisBRL, balanceDomain, labelPad, niceMax, valueTicks, xTickCount, yOf } from '../chart'
+import { axisBRL, axisLabels, balanceDomain, labelPad, niceMax, valueTicks, xTickCount, yOf } from '../chart'
 
 describe('balanceDomain', () => {
   it('inclui o zero quando há saldo negativo', () => {
@@ -32,6 +32,12 @@ describe('rótulos no gráfico estreito', () => {
     expect(axisBRL(33000, true).replace(/\s/g, ' ')).toBe('R$ 33 mil')
     expect(axisBRL(-12500, true).replace(/\s/g, ' ')).toBe('-R$ 12,5 mil')
     expect(axisBRL(33000, false).replace(/\s/g, ' ')).toBe('R$ 33.000,00')
+  })
+
+  it('axisLabels troca o compacto pelo valor exato quando o arredondamento repete rótulos', () => {
+    const plain = (labels: string[]) => labels.map((l) => l.replace(/\s/g, ' '))
+    expect(plain(axisLabels([0, 1000, 2000], true))).toEqual(['R$ 0', 'R$ 1 mil', 'R$ 2 mil'])
+    expect(plain(axisLabels([10000, 10050, 10100], true))).toEqual(['R$ 10.000,00', 'R$ 10.050,00', 'R$ 10.100,00'])
   })
 
   it('labelPad cabe o maior rótulo e xTickCount não sobrepõe nem passa do máximo', () => {
