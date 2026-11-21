@@ -165,6 +165,7 @@
                     :aria-invalid="fieldErrors[child.id] ? 'true' : undefined"
                     :aria-describedby="fieldErrors[child.id] ? `amount-error-${child.id}` : undefined"
                     :data-testid="`amount-${child.id}`"
+                    @focus="keepAboveBar"
                   />
                 </div>
               </div>
@@ -629,6 +630,11 @@ async function load() {
 function changeMonth(delta: number) {
   month.value = shiftMonth(month.value, delta)
   void load()
+}
+
+/** O navegador não rola um campo focado que ainda "está na tela", mesmo coberto pela barra fixa; o nearest respeita o scroll-mb. */
+function keepAboveBar(event: FocusEvent) {
+  ;(event.target as HTMLElement).scrollIntoView({ block: 'nearest' })
 }
 
 async function repeatPrevious() {
