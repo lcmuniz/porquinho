@@ -9,7 +9,7 @@
           {{
             action?.kind === 'allocation'
               ? `Quanto guardar por mês em ${action?.goal.name}.`
-              : `Quanto você guardou agora em ${action?.goal.name}.`
+              : `Quanto você guardou agora em ${action?.goal.name}. O aporte não vem das transações: registre aqui o que você guardou.`
           }}
         </DialogDescription>
       </DialogHeader>
