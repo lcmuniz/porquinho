@@ -48,7 +48,7 @@ describe('WealthChart', () => {
     await wrapper.get('[data-testid="wealth-range-12"]').trigger('click')
     expect(wrapper.findAll('[data-testid^="wealth-point-"]')).toHaveLength(4)
     expect(trendText(wrapper)).toBe('-R$ 1.000,00 em 12 meses')
-    expect(wrapper.get('[data-testid="wealth-trend"]').classes()).toContain('text-gray-700')
+    expect(wrapper.get('[data-testid="wealth-trend"]').classes()).toContain('text-red-700')
 
     await wrapper.get('[data-testid="wealth-range-6"]').trigger('click')
     // início 2026-05-30 vale 3000
@@ -74,7 +74,7 @@ describe('WealthChart', () => {
       { date: '2026-11-30', balance: 1005 },
     ])
     const trend = wrapper.get('[data-testid="wealth-trend"]')
-    expect(trend.classes()).toContain('text-gray-600')
+    expect(trend.classes()).toContain('text-amber-800')
     expect(plain(trend.text())).toBe('+R$ 5,00 em 3 meses')
   })
 
@@ -83,7 +83,7 @@ describe('WealthChart', () => {
       { date: '2025-11-30', balance: 0 },
       { date: '2026-11-30', balance: 0 },
     ])
-    expect(wrapper.get('[data-testid="wealth-trend"]').classes()).toContain('text-gray-600')
+    expect(wrapper.get('[data-testid="wealth-trend"]').classes()).toContain('text-amber-800')
   })
 
   it('sem histórico mostra o aviso no lugar da linha e esconde a tendência', () => {

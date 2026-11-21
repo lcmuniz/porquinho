@@ -240,12 +240,12 @@ const trend = computed(() => {
   const first = s[0]!.balance
   const diff = s[s.length - 1]!.balance - first
   const label = `${formatSignedBRL(Math.round(diff * 100) / 100)} em ${months.value} meses`
-  // Queda de patrimônio não é erro: tom neutro (vermelho fica para saldo negativo). Texto sm precisa de 4,5:1
+  // Mesmos tons de aviso e erro das outras telas (amber-800, red-700): texto sm precisa de 4,5:1
   if (diff === 0 || Math.abs(diff) < Math.abs(first) * 0.01)
-    return { icon: Minus, text: 'text-gray-600', label }
+    return { icon: Minus, text: 'text-amber-800', label }
   return diff > 0
     ? { icon: ArrowUp, text: 'text-green-700', label }
-    : { icon: ArrowDown, text: 'text-gray-700', label }
+    : { icon: ArrowDown, text: 'text-red-700', label }
 })
 
 const xDomain = computed<[number, number]>(() => {
