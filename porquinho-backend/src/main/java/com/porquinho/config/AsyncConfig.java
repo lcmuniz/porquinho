@@ -6,7 +6,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * Configuration to enable async processing and scheduling.
- * Uses virtual threads (Java 21) via spring.threads.virtual.enabled=true in application.yml.
+ * Platform threads: spring.threads.virtual.enabled=false in application.yml, which says why.
  */
 @Configuration
 @EnableAsync
