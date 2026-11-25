@@ -51,8 +51,12 @@ services:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/actuator/health"]
       interval: 30s
       timeout: 5s
-      start_period: 60s
+      # com 1 CPU a JVM sobe mais devagar; unhealthy aqui derrubaria o deploy inteiro
+      start_period: 120s
       retries: 3
+    # 2 núcleos e 8 GB divididos com os outros apps do servidor: um giro de CPU aqui não pode parar o resto
+    cpus: 1
+    mem_limit: 1g
     restart: unless-stopped
     depends_on:
       porquinho-redis:
